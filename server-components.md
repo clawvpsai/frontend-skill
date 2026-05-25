@@ -82,28 +82,39 @@ const posts = await getUserPosts(id)
 const [user, posts] = await Promise.all([getUser(id), getUserPosts(id)])
 ```
 
-### Server Component: Caching with `next/cache`
+## Next.js 15 Caching — Important Changes
+
+In Next.js 15, the default caching behavior for `fetch` changed. **Dynamic is the new default** — data is fetched on every request unless explicitly cached.
+
+### Cache Options in Next.js 15
 
 ```tsx
-// Revalidate every hour
+// Dynamic (no cache) — every request fetches fresh data
+// This is NOW THE DEFAULT in Next.js 15
+const stats = await fetch('https://api.example.com/stats', {
+  cache: 'no-store',
+})
+```
+
+```tsx
+// Static (cached) — revalidate every hour
 const posts = await fetch('https://api.example.com/posts', {
+  cache: 'force-cache',
   next: { revalidate: 3600 },
 })
 ```
 
 ```tsx
-// Never revalidate (static at build time)
-const posts = await fetch('https://api.example.com/posts', {
-  cache: 'force-cache',
-})
-```
-
-```tsx
-// Dynamic (no cache, every request)
-const stats = await fetch('https://api.example.com/stats', {
+// Never cache (force dynamic)
+const data = await fetch('https://api.example.com/real-time', {
   cache: 'no-store',
 })
 ```
+
+**Summary of changes in Next.js 15:**
+- `cache: 'no-store'` is now the default behavior (previously needed explicit opt-out)
+- `cache: 'force-cache'` (previously `cache: 'true'`) for static data
+- `revalidateTag` and `revalidatePath` still work as before
 
 ## Server → Client Data Passing
 
@@ -255,7 +266,8 @@ export async function createPost(formData: FormData) {
 'use client'
 
 import { createPost } from '@/app/actions'
-import { useFormStatus } from 'react-dom'
+import { useFormStatus } from 'react' // React 19: from 'react', not 'react-dom'
+import { useActionState } from 'react' // React 19: useActionState for form state
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -263,8 +275,11 @@ function SubmitButton() {
 }
 
 export function CreatePostForm() {
+  // React 19 useActionState — replaces useFormState from react-dom
+  const [state, formAction, isPending] = useActionState(createPost, null)
+  
   return (
-    <form action={createPost}>
+    <form action={formAction}>
       <input name="title" placeholder="Post title" />
       <textarea name="content" placeholder="Post content" />
       <SubmitButton />
@@ -280,3 +295,4 @@ export function CreatePostForm() {
 - **Passing non-serializable props** — functions and refs can't cross the RSC boundary
 - **Sequential awaits when parallel is possible** — use `Promise.all` for independent fetches
 - **Forgetting `revalidatePath`** — after mutations with Server Actions, revalidate caches
+- **Relying on old fetch caching defaults** — in Next.js 15, `cache: 'no-store'` is the default; use `cache: 'force-cache'` with `revalidate` for static data

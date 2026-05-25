@@ -153,7 +153,7 @@ export async function updatePost(postId: string, formData: FormData) {
 'use client'
 
 import { createPost } from '@/app/actions'
-import { useFormStatus } from 'react-dom'
+import { useFormStatus } from 'react' // React 19
 import { useActionState } from 'react'  // React 19
 import { useEffect } from 'react'
 

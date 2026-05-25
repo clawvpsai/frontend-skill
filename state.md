@@ -136,7 +136,7 @@ export function CreatePostButton() {
 }
 ```
 
-### Optimistic Updates
+### Optimistic Updates (useMutation pattern)
 
 ```tsx
 const mutation = useMutation({
@@ -166,6 +166,57 @@ const mutation = useMutation({
   },
 })
 ```
+
+### Optimistic Updates — React 19 `useOptimistic` (Recommended)
+
+React 19 introduces `useOptimistic` — a declarative way to show immediate UI feedback while a mutation is pending. Unlike the `useMutation` pattern above, this doesn't require manual snapshot/rollback:
+
+```tsx
+'use client'
+
+import { useOptimistic, useState } from 'react'
+import { updatePost } from '@/app/actions'
+
+interface Post {
+  id: string
+  content: string
+  likes: number
+}
+
+export function LikeButton({ post }: { post: Post }) {
+  const [liked, setLiked] = useState(false)
+
+  // Optimistic state: shows updated likes immediately while action runs
+  const [optimisticPost, addOptimisticPost] = useOptimistic(
+    post,
+    (state, newLikes: number) => ({ ...state, likes: newLikes })
+  )
+
+  async function handleLike() {
+    const newLikes = optimisticPost.likes + 1
+    // Apply optimistic update immediately
+    addOptimisticPost(newLikes)
+    setLiked(true)
+
+    try {
+      await updatePost(post.id, { likes: newLikes })
+    } catch {
+      // If the action fails, React reverts to the actual server state
+      setLiked(false)
+    }
+  }
+
+  return (
+    <button onClick={handleLike}>
+      {optimisticPost.likes} likes
+    </button>
+  )
+}
+```
+
+**When to use which:**
+- `useOptimistic` — best for simple like/subscribe/toggle patterns where you want instant feedback
+- `useMutation` optimistic pattern — better for complex updates that need full rollback control, or when you need to optimistically add/remove items from a list
 
 ## Zustand Setup
 

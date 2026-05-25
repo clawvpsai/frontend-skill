@@ -277,7 +277,7 @@ async function onSubmit(values: z.infer<typeof uploadSchema>) {
 ```tsx
 // components/submit-button.tsx
 'use client'
-import { useFormStatus } from 'react-dom'
+import { useFormStatus } from 'react' // React 19
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 

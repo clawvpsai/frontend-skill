@@ -107,14 +107,10 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: '*.amazonaws.com' },
     ],
   },
-  experimental: {
-    // Enable server actions
-    serverActions: { allowedOrigins: ['localhost:3000'] },
-  },
 }
-
-export default nextConfig
 ```
+
+**Note:** In Next.js 15, Server Actions are stable — no `experimental.serverActions` block needed. Previously required config options like `allowedOrigins` are no longer necessary.
 
 ### `next-env.d.ts`
 
@@ -273,3 +269,4 @@ my-app/
 - **`moduleResolution: Bundler`** — required for Next.js 15, not `"Node"` or `"Node16"`
 - **Tailwind v4** — use `@tailwindcss/vite` plugin for Vite, or the built-in Next.js Tailwind support
 - **ESM vs CJS** — prefer `"module": "ESNext"` + `"type": "module"` in package.json
+- **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15, Server Actions are stable
