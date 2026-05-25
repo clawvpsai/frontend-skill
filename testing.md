@@ -1,0 +1,352 @@
+# Testing — Vitest + Playwright
+
+## Testing Pyramid
+
+```
+        ┌──────────────┐
+        │     E2E      │  ← Few, slow, high confidence
+        │  (Playwright)│
+        ├──────────────┤
+        │  Integration │  ← More, moderate speed
+        │   (Vitest)   │
+        ├──────────────┤
+        │    Unit      │  ← Many, fast, isolated
+        │   (Vitest)   │
+        └──────────────┘
+```
+
+## Vitest Setup
+
+```bash
+npm install -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom
+```
+
+### `vitest.config.ts`
+
+```ts
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+    },
+  },
+})
+```
+
+### `src/test/setup.ts`
+
+```ts
+import '@testing-library/jest-dom'
+```
+
+## Unit Tests
+
+### Component Tests
+
+```tsx
+// components/counter.test.tsx
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, userEvent } from '@testing-library/react'
+import { Counter } from '../counter'
+
+describe('Counter', () => {
+  it('increments count on click', async () => {
+    const user = userEvent.setup()
+    render(<Counter initialCount={0} />)
+    
+    const button = screen.getByRole('button', { name: /increment/i })
+    await user.click(button)
+    
+    expect(screen.getByText('1')).toBeInTheDocument()
+  })
+  
+  it('decrements count on click', async () => {
+    const user = userEvent.setup()
+    render(<Counter initialCount={5} />)
+    
+    const button = screen.getByRole('button', { name: /decrement/i })
+    await user.click(button)
+    
+    expect(screen.getByText('4')).toBeInTheDocument()
+  })
+})
+```
+
+### Hook Tests
+
+```tsx
+// hooks/use-counter.test.ts
+import { describe, it, expect } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { useCounter } from './use-counter'
+
+describe('useCounter', () => {
+  it('initializes with default value', () => {
+    const { result } = renderHook(() => useCounter())
+    expect(result.current.count).toBe(0)
+  })
+  
+  it('accepts initial value', () => {
+    const { result } = renderHook(() => useCounter(10))
+    expect(result.current.count).toBe(10)
+  })
+  
+  it('increments', () => {
+    const { result } = renderHook(() => useCounter())
+    act(() => { result.current.increment() })
+    expect(result.current.count).toBe(1)
+  })
+})
+```
+
+### Utility Function Tests
+
+```ts
+// lib/utils.test.ts
+import { describe, it, expect } from 'vitest'
+import { cn } from './utils'
+import { clsx } from 'clsx'
+
+describe('cn()', () => {
+  it('merges class names', () => {
+    expect(cn('foo', 'bar')).toBe('foo bar')
+  })
+  
+  it('handles conditional classes', () => {
+    expect(cn('base', false && 'hidden')).toBe('base')
+    expect(cn('base', true && 'active')).toBe('base active')
+  })
+  
+  it('handles undefined', () => {
+    expect(cn('base', undefined)).toBe('base')
+  })
+})
+```
+
+## Integration Tests
+
+### Testing Server Actions
+
+```ts
+// app/actions.test.ts
+import { describe, it, expect, beforeEach } from 'vitest'
+import { createPost, updatePost } from '../actions'
+import { db } from '@/lib/db'
+
+// Mock the database
+vi.mock('@/lib/db', () => ({
+  db: {
+    post: {
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+  },
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('createPost', () => {
+  it('creates a post with valid data', async () => {
+    vi.mocked(db.post.create).mockResolvedValue({
+      id: '1',
+      title: 'Test',
+      content: 'Content',
+      published: false,
+      authorId: 'author-1',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    })
+    
+    const formData = new FormData()
+    formData.set('title', 'Test')
+    formData.set('content', 'Content')
+    
+    await createPost(formData)
+    
+    expect(db.post.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        title: 'Test',
+        content: 'Content',
+      }),
+    })
+  })
+})
+```
+
+### Testing API Routes
+
+```ts
+// app/api/posts/route.test.ts
+import { describe, it, expect } from 'vitest'
+import { GET, POST } from './route'
+import { NextRequest } from 'next/server'
+
+describe('GET /api/posts', () => {
+  it('returns paginated posts', async () => {
+    const request = new NextRequest('http://localhost:3000/api/posts?page=1&limit=10')
+    const response = await GET(request)
+    const data = await response.json()
+    
+    expect(response.status).toBe(200)
+    expect(data).toHaveProperty('data')
+    expect(data).toHaveProperty('meta')
+  })
+})
+```
+
+## Playwright (E2E)
+
+```bash
+npm install -D @playwright/test
+npx playwright install chromium
+```
+
+### `playwright.config.ts`
+
+```ts
+import { defineConfig, devices } from '@playwright/test'
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'html',
+  use: {
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:3000',
+    reuseExistingServer: !process.env.CI,
+  },
+})
+```
+
+### E2E Test Example
+
+```ts
+// e2e/auth.spec.ts
+import { test, expect } from '@playwright/test'
+
+test.describe('Authentication', () => {
+  test('user can login with valid credentials', async ({ page }) => {
+    await page.goto('/login')
+    
+    await page.fill('[name="email"]', 'test@example.com')
+    await page.fill('[name="password"]', 'password123')
+    await page.click('[type="submit"]')
+    
+    await expect(page).toHaveURL('/dashboard')
+    await expect(page.getByText('Welcome')).toBeVisible()
+  })
+  
+  test('shows error with invalid credentials', async ({ page }) => {
+    await page.goto('/login')
+    
+    await page.fill('[name="email"]', 'wrong@example.com')
+    await page.fill('[name="password"]', 'wrongpassword')
+    await page.click('[type="submit"]')
+    
+    await expect(page.getByText('Invalid credentials')).toBeVisible()
+    await expect(page).toHaveURL('/login')
+  })
+})
+```
+
+### Running Tests
+
+```bash
+# Unit + Integration
+npm run test
+
+# Unit + Integration with coverage
+npm run test:coverage
+
+# E2E
+npx playwright test
+
+# E2E with UI
+npx playwright test --ui
+
+# Single file
+npx playwright test e2e/auth.spec.ts
+```
+
+## React Testing Library Patterns
+
+```tsx
+// Prefer queries by role, label, placeholder, text — NOT data-testid
+
+// ✅ Good — semantic queries
+screen.getByRole('button', { name: /submit/i })
+screen.getByLabelText(/email/i)
+screen.getByText(/hello world/i)
+
+// ❌ Bad — fragile test IDs
+screen.getByTestId('submit-btn')
+```
+
+### Async Queries
+
+```tsx
+// Wait for async data
+const { findByText } = render(<UserProfile userId="1" />)
+
+// Wait for loading to finish
+await expect(screen.findByText('Loading...')).toBeVisible()
+const content = await screen.findByText('User Name')
+```
+
+## Mocking
+
+### Mocking Modules
+
+```ts
+vi.mock('@/lib/api', () => ({
+  fetchUser: vi.fn().mockResolvedValue({ id: '1', name: 'Alice' }),
+}))
+```
+
+### Mocking Time
+
+```ts
+import { vi } from 'vitest'
+
+it('shows correct relative time', async () => {
+  const now = new Date('2025-01-01T12:00:00Z')
+  vi.setSystemTime(now)
+  
+  render(<RelativeTime date={new Date('2025-01-01T11:59:00Z')} />)
+  expect(screen.getByText('just now')).toBeInTheDocument()
+  
+  vi.useRealTimers()
+})
+```
+
+## Common Mistakes
+
+- **Testing implementation details** — test behavior, not how it's built
+- **No `await` for async operations** — always `await` user events and async renders
+- **Overusing `act()`** — usually a sign that something else is wrong
+- **Not cleaning up mocks** — use `beforeEach` to clear mock state
+- **E2E tests as the primary strategy** — they're slow; unit tests catch most bugs faster

@@ -1,0 +1,418 @@
+# Patterns — Composite Recipes for Common Flows
+
+## Search with Debounce + URL Sync + React Query
+
+```tsx
+// components/post-search.tsx
+'use client'
+
+import { useCallback, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { useDebouncedValue } from '@/hooks/use-debounced-value'
+
+export function PostSearch() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const query = searchParams.get('q') ?? ''
+  
+  // Debounce input to avoid excessive API calls
+  const [debouncedQuery, isDebouncing] = useDebouncedValue(query, 300)
+  
+  // React Query for caching + loading
+  const { data: results, isLoading } = useQuery({
+    queryKey: ['posts', 'search', debouncedQuery],
+    queryFn: () => searchPosts(debouncedQuery),
+    enabled: debouncedQuery.length > 2,  // Don't search until 3+ chars
+  })
+  
+  // Sync input to URL
+  function handleSearch(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value
+    const params = new URLSearchParams(searchParams)
+    if (value) {
+      params.set('q', value)
+    } else {
+      params.delete('q')
+    }
+    router.push(`?${params.toString()}`, { scroll: false })
+  }
+  
+  return (
+    <div>
+      <input 
+        value={query} 
+        onChange={handleSearch}
+        placeholder="Search posts..."
+      />
+      {isLoading && <Spinner />}
+      {results && <PostList posts={results} />}
+    </div>
+  )
+}
+```
+
+### Debounce Hook
+
+```ts
+// hooks/use-debounced-value.ts
+import { useState, useEffect } from 'react'
+
+export function useDebouncedValue<T>(value: T, delay: number): [T, boolean] {
+  const [debouncedValue, setDebouncedValue] = useState(value)
+  const [isDebouncing, setIsDebouncing] = useState(false)
+  
+  useEffect(() => {
+    setIsDebouncing(true)
+    const timer = setTimeout(() => {
+      setDebouncedValue(value)
+      setIsDebouncing(false)
+    }, delay)
+    
+    return () => clearTimeout(timer)
+  }, [value, delay])
+  
+  return [debouncedValue, isDebouncing]
+}
+```
+
+## Multi-Step Form with React Hook Form + Zod
+
+```tsx
+// components/multi-step-form.tsx
+'use client'
+
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Button } from '@/components/ui/button'
+import { Form } from '@/components/ui/form'
+
+const step1Schema = z.object({
+  email: z.string().email('Invalid email'),
+  password: z.string().min(8, 'Min 8 characters'),
+})
+
+const step2Schema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  age: z.coerce.number().int().min(18),
+})
+
+const fullSchema = step1Schema.merge(step2Schema)
+type FormData = z.infer<typeof fullSchema>
+
+export function MultiStepForm() {
+  const [step, setStep] = useState(1)
+  const form = useForm<FormData>({
+    resolver: zodResolver(step === 1 ? step1Schema : fullSchema),
+    mode: 'onChange',
+  })
+  
+  async function handleNext() {
+    const fields = step === 1 ? ['email', 'password'] : ['firstName', 'lastName', 'age']
+    const valid = await form.trigger(fields as any)
+    if (valid) setStep(s => s + 1)
+  }
+  
+  async function handleSubmit(data: FormData) {
+    await fetch('/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  }
+  
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)}>
+        {step === 1 && (
+          <fieldset className="space-y-4">
+            <Form.Field control={form.control} name="email">
+              <Form.Item>
+                <Form.Label>Email</Form.Label>
+                <Form.Control><input {...form.register('email')} /></Form.Control>
+                <Form.Message />
+              </Form.Item>
+            </Form.Field>
+            <Form.Field control={form.control} name="password">
+              <Form.Item>
+                <Form.Label>Password</Form.Label>
+                <Form.Control><input type="password" {...form.register('password')} /></Form.Control>
+                <Form.Message />
+              </Form.Item>
+            </Form.Field>
+            <Button type="button" onClick={handleNext}>Next</Button>
+          </fieldset>
+        )}
+        
+        {step === 2 && (
+          <fieldset className="space-y-4">
+            <Form.Field control={form.control} name="firstName">
+              <Form.Item><Form.Label>First Name</Form.Label>
+                <Form.Control><input {...form.register('firstName')} /></Form.Control>
+                <Form.Message />
+              </Form.Item>
+            </Form.Field>
+            <Form.Field control={form.control} name="lastName">
+              <Form.Item><Form.Label>Last Name</Form.Label>
+                <Form.Control><input {...form.register('lastName')} /></Form.Control>
+                <Form.Message />
+              </Form.Item>
+            </Form.Field>
+            <Form.Field control={form.control} name="age">
+              <Form.Item><Form.Label>Age</Form.Label>
+                <Form.Control><input type="number" {...form.register('age')} /></Form.Control>
+                <Form.Message />
+              </Form.Item>
+            </Form.Field>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(1)}>Back</Button>
+              <Button type="submit">Register</Button>
+            </div>
+          </fieldset>
+        )}
+      </form>
+    </Form>
+  )
+}
+```
+
+## Server Component → Client Component Data Passing
+
+### Pattern: Pass Serializable Data
+
+```tsx
+// app/users/[id]/page.tsx — server component
+import { db } from '@/lib/db'
+import { UserProfileClient } from '@/components/user-profile-client'
+
+export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const user = await db.user.findUnique({ where: { id } })
+  
+  if (!user) notFound()
+  
+  // Pass plain serializable data to client component
+  return (
+    <UserProfileClient 
+      user={{
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        joinedAt: user.createdAt.toISOString(),  // Convert Date to string
+      }}
+    />
+  )
+}
+```
+
+```tsx
+// components/user-profile-client.tsx
+'use client'
+
+import { useState } from 'react'
+
+interface UserProfileProps {
+  user: {
+    id: string
+    name: string
+    email: string
+    role: string
+    joinedAt: string
+  }
+}
+
+export function UserProfileClient({ user }: UserProfileProps) {
+  const [following, setFollowing] = useState(false)
+  // ...
+}
+```
+
+### Pattern: Pass a Promise (React 19 `use()`)
+
+```tsx
+// app/users/[id]/page.tsx — server component
+import { getUser } from '@/lib/api'
+
+export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  
+  return (
+    <Suspense fallback={<UserSkeleton />}>
+      <UserProfile userPromise={getUser(id)} />
+    </Suspense>
+  )
+}
+```
+
+```tsx
+// components/user-profile.tsx — client component
+'use client'
+
+import { use } from 'react'
+
+export function UserProfile({ userPromise }: { userPromise: Promise<User> }) {
+  const user = use(userPromise)  // Suspends until resolved
+  return <div>{user.name}</div>
+}
+```
+
+## Infinite Scroll with React Query
+
+```tsx
+// components/post-feed.tsx
+'use client'
+
+import { useInfiniteQuery } from '@tanstack/react-query'
+import { useCallback } from 'react'
+import { useInView } from 'react-intersection-observer'
+
+export function PostFeed() {
+  const { ref, inView } = useInView()
+  
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+    queryKey: ['posts'],
+    queryFn: ({ pageParam = 0 }) => fetchPosts({ cursor: pageParam }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    initialPageParam: 0,
+  })
+  
+  useEffect(() => {
+    if (inView && hasNextPage) {
+      fetchNextPage()
+    }
+  }, [inView, hasNextPage, fetchNextPage])
+  
+  return (
+    <div>
+      {data?.pages.flatMap(page => page.posts).map(post => (
+        <PostCard key={post.id} post={post} />
+      ))}
+      
+      <div ref={ref}>
+        {isFetchingNextPage && <Spinner />}
+        {!hasNextPage && <p>No more posts</p>}
+      </div>
+    </div>
+  )
+}
+```
+
+## Optimistic UI Update
+
+```tsx
+// components/like-button.tsx
+'use client'
+
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+export function LikeButton({ postId, initialLikes }: { postId: string; initialLikes: number }) {
+  const queryClient = useQueryClient()
+  
+  const mutation = useMutation({
+    mutationFn: () => toggleLike(postId),
+    
+    onMutate: async () => {
+      // Cancel outgoing queries
+      await queryClient.cancelQueries({ queryKey: ['post', postId] })
+      
+      // Snapshot previous value
+      const previous = queryClient.getQueryData(['post', postId])
+      
+      // Optimistically update
+      queryClient.setQueryData(['post', postId], (old: any) => ({
+        ...old,
+        likes: old.likes + 1,
+        liked: true,
+      }))
+      
+      return { previous }
+    },
+    
+    onError: (_err, _vars, context) => {
+      // Rollback
+      queryClient.setQueryData(['post', postId], context?.previous)
+    },
+    
+    onSettled: () => {
+      // Always sync with server
+      queryClient.invalidateQueries({ queryKey: ['post', postId] })
+    },
+  })
+  
+  return (
+    <button onClick={() => mutation.mutate()}>
+      {mutation.variables ? '♥' : '♡'} {initialLikes}
+    </button>
+  )
+}
+```
+
+## File Upload with Preview
+
+```tsx
+// components/image-upload.tsx
+'use client'
+
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import Image from 'next/image'
+
+export function ImageUpload() {
+  const [preview, setPreview] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    // Create preview
+    const url = URL.createObjectURL(file)
+    setPreview(url)
+  }
+  
+  async function handleUpload(e: React.ChangeEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const formData = new FormData(e.currentTarget)
+    const file = formData.get('file') as File
+    
+    setUploading(true)
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      const { url } = await res.json()
+      console.log('Uploaded to:', url)
+    } finally {
+      setUploading(false)
+    }
+  }
+  
+  return (
+    <form onSubmit={handleUpload}>
+      <input type="file" name="file" accept="image/*" onChange={handleFileChange} />
+      {preview && (
+        <div className="mt-4 relative w-64 h-64">
+          <Image src={preview} alt="Preview" fill className="object-cover" />
+        </div>
+      )}
+      <button type="submit" disabled={uploading}>
+        {uploading ? 'Uploading...' : 'Upload'}
+      </button>
+    </form>
+  )
+}
+```
+
+## Common Mistakes in Composite Patterns
+
+- **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation
+- **Not handling loading states** — every async operation needs a loading state
+- **Not handling errors** — always show error UI, not just console.log
+- **Mutations in render** — never call mutation functions in render; always in event handlers
+- **Not resetting forms after submit** — `form.reset()` after successful submission
+- **Stale closures in useEffect** — use refs or proper dependency arrays
