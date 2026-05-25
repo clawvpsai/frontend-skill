@@ -1,5 +1,37 @@
 # Patterns — Composite Recipes for Common Flows
 
+## Turbopack (Next.js 15)
+
+Turbopack is Next.js's Rust-based bundler and is now stable for development in Next.js 15. It replaces Webpack for development, offering significantly faster hot module replacement (HMR) and cold start times.
+
+```bash
+# Use Turbopack in development (Next.js 15 default)
+npm run dev
+
+# Force Turbopack explicitly
+next dev --turbopack
+
+# Force Webpack if needed
+next dev --webpack
+```
+
+**Current status:**
+- ✅ Stable for development (hot reload, fast refresh, error overlay)
+- ⚠️ Production builds still use Webpack (Turbopack production is in progress)
+- ✅ App Router and Pages Router both supported
+- ✅ Most Next.js features work (but check the [migration guide](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack) for known issues)
+
+**When using Turbopack:**
+```bash
+# In next.config.ts — Turbopack config options
+const nextConfig: NextConfig = {
+  turbopack: {
+    // Enable experimental features if needed
+    // experimental: { ... }
+  },
+}
+```
+
 ## Search with Debounce + URL Sync + React Query
 
 ```tsx
@@ -301,55 +333,48 @@ export function PostFeed() {
 }
 ```
 
-## Optimistic UI Update
+## Optimistic UI with `useOptimistic` (React 19)
+
+React 19's `useOptimistic` provides a declarative way to show immediate UI feedback while a mutation is pending:
 
 ```tsx
-// components/like-button.tsx
 'use client'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useOptimistic } from 'react'
+import { updatePost } from '@/app/actions'
 
-export function LikeButton({ postId, initialLikes }: { postId: string; initialLikes: number }) {
-  const queryClient = useQueryClient()
-  
-  const mutation = useMutation({
-    mutationFn: () => toggleLike(postId),
-    
-    onMutate: async () => {
-      // Cancel outgoing queries
-      await queryClient.cancelQueries({ queryKey: ['post', postId] })
-      
-      // Snapshot previous value
-      const previous = queryClient.getQueryData(['post', postId])
-      
-      // Optimistically update
-      queryClient.setQueryData(['post', postId], (old: any) => ({
-        ...old,
-        likes: old.likes + 1,
-        liked: true,
-      }))
-      
-      return { previous }
-    },
-    
-    onError: (_err, _vars, context) => {
-      // Rollback
-      queryClient.setQueryData(['post', postId], context?.previous)
-    },
-    
-    onSettled: () => {
-      // Always sync with server
-      queryClient.invalidateQueries({ queryKey: ['post', postId] })
-    },
-  })
-  
+interface Post {
+  id: string
+  content: string
+  likes: number
+}
+
+export function LikeButton({ post }: { post: Post }) {
+  const [optimisticPost, addOptimistic] = useOptimistic(
+    post,
+    (state, newLikes: number) => ({ ...state, likes: newLikes })
+  )
+
+  async function handleLike() {
+    addOptimistic(post.likes + 1)
+    try {
+      await updatePost(post.id, { likes: optimisticPost.likes + 1 })
+    } catch {
+      // React reverts on error automatically
+    }
+  }
+
   return (
-    <button onClick={() => mutation.mutate()}>
-      {mutation.variables ? '♥' : '♡'} {initialLikes}
+    <button onClick={handleLike}>
+      {optimisticPost.likes} likes
     </button>
   )
 }
 ```
+
+**When to use `useOptimistic` vs React Query's optimistic update:**
+- `useOptimistic` — simpler, for single-item optimistic updates (likes, follows, toggles)
+- React Query `onMutate` — for complex list mutations (add/remove from lists), full rollback control
 
 ## File Upload with Preview
 
@@ -416,3 +441,5 @@ export function ImageUpload() {
 - **Mutations in render** — never call mutation functions in render; always in event handlers
 - **Not resetting forms after submit** — `form.reset()` after successful submission
 - **Stale closures in useEffect** — use refs or proper dependency arrays
+- **Passing server-side data to client without serialization** — Dates must be `.toISOString()`, non-serializable objects can't cross the RSC boundary
+- **`use()` with non-Promise** — `use()` only accepts Promises; for regular values just use them directly

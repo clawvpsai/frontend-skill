@@ -109,6 +109,99 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 }
 ```
 
+## Dynamic Metadata (`generateMetadata`)
+
+For metadata that depends on dynamic data (e.g., blog post titles, OG images), use `generateMetadata`:
+
+```tsx
+// app/blog/[slug]/page.tsx
+import type { Metadata } from 'next'
+
+interface Props {
+  params: Promise<{ slug: string }>
+}
+
+// Generate metadata at build time or request time
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { slug } = await params
+  const post = await getPostBySlug(slug)
+  
+  if (!post) return { title: 'Post not found' }
+  
+  return {
+    title: post.title,
+    description: post.excerpt,
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      images: [{ url: post.ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: post.title,
+      description: post.excerpt,
+      images: [post.ogImage],
+    },
+  }
+}
+
+export default async function BlogPostPage({ params }: Props) {
+  const { slug } = await params
+  const post = await getPostBySlug(slug)
+  if (!post) notFound()
+  return <article>{post.content}</article>
+}
+```
+
+**Key pattern:** `params` in `generateMetadata` is also a `Promise` in Next.js 15 — always `await` it.
+
+### `generateViewport` (Mobile Responsiveness)
+
+```tsx
+import type { Metadata, Viewport } from 'next'
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
+  width: 'device-width',
+  initialScale: 1,
+}
+
+// Or use generateViewport for dynamic viewport config
+export function generateViewport({ params }: Props): Viewport {
+  return {
+    themeColor: '#4f46e5',
+  }
+}
+```
+
+## Route Segment Config
+
+Control how a route is rendered and cached with export config:
+
+```tsx
+// app/api/health/route.ts
+export const dynamic = 'force-dynamic'     // Always render at request time (no cache)
+export const revalidate = 0                 // Revalidate every request (same as above)
+```
+
+```tsx
+// app/blog/[slug]/page.tsx
+export const revalidate = 3600  // Revalidate this page every hour (ISR)
+```
+
+**Options for `dynamic`:**
+| Value | Behavior |
+|---|---|
+| `'auto'` | Default — Next.js decides based on data fetching |
+| `'force-dynamic'` | Always render at request time (no cache) |
+| `'force-static'` | Force static rendering (throws if you try to use dynamic data) |
+| `'error'` | Error if dynamic data is accessed without explicitly opting out |
+
+**Note:** `revalidate = 0` is equivalent to `dynamic = 'force-dynamic'`.
+
 ## Loading UI
 
 ```tsx

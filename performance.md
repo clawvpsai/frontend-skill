@@ -157,6 +157,20 @@ const posts = await fetch('https://api.example.com/posts', {
 revalidateTag('posts')
 ```
 
+### `unstable_cache` for Non-Fetch Data
+
+For direct database calls or non-HTTP data sources, use `unstable_cache` (see [server-components.md](./server-components.md)):
+
+```tsx
+import { unstable_cache } from 'next/cache'
+
+export const getFeaturedPosts = unstable_cache(
+  () => db.post.findMany({ where: { featured: true }, take: 5 }),
+  ['featured-posts'],
+  { tags: ['posts'], revalidate: 3600 }
+)
+```
+
 ### Revalidation Patterns
 
 ```tsx
@@ -226,6 +240,25 @@ export function Counter() {
 }
 ```
 
+## Turbopack — Fast Development Bundler
+
+Next.js 15 ships Turbopack (Rust-based bundler) as the default development bundler:
+
+```bash
+# Development uses Turbopack automatically in Next.js 15
+npm run dev
+
+# Force Webpack if you hit Turbopack bugs
+next dev --webpack
+```
+
+**Benefits:**
+- ~10x faster cold start vs Webpack
+- 10x faster HMR (hot module replacement) for large apps
+- Same behavior as Webpack for most Next.js features
+
+**Production builds** still use Webpack (Turbopack production is in progress).
+
 ## Font Optimization
 
 ```tsx
@@ -247,6 +280,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   )
 }
 ```
+
+**Next.js 15 font improvements:**
+- `next/font` now handles font subsetting automatically
+- No layout shift from font swaps with `display: 'swap'`
+- Self-hosted fonts with zero external requests
 
 ## Prefetching
 
@@ -281,3 +319,4 @@ const router = useRouter()
 - **Forgetting `revalidatePath`** — stale data after mutations
 - **Large `data` arrays passed as props** — paginate or virtualize long lists
 - **`useEffect` for initial data** — use server components or React Query instead
+- **Using `fetch` for DB data with caching** — use `unstable_cache` instead for non-HTTP data sources

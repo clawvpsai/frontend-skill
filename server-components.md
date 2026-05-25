@@ -116,6 +116,41 @@ const data = await fetch('https://api.example.com/real-time', {
 - `cache: 'force-cache'` (previously `cache: 'true'`) for static data
 - `revalidateTag` and `revalidatePath` still work as before
 
+### `unstable_cache` — Granular Function-Level Caching
+
+For non-`fetch` data sources (direct DB calls, external APIs without `fetch`), use `unstable_cache`:
+
+```tsx
+// lib/data.ts
+import { unstable_cache } from 'next/cache'
+
+// Cache this DB query with tags
+export const getTopPosts = unstable_cache(
+  async (limit: number) => {
+    return db.post.findMany({
+      where: { published: true },
+      orderBy: { views: 'desc' },
+      take: limit,
+    })
+  },
+  ['top-posts'],           // cache key parts
+  { 
+    tags: ['posts'],       // for revalidation
+    revalidate: 3600,      // or use tags, not both
+  }
+)
+
+// In a server component:
+export default async function PopularPosts() {
+  const posts = await getTopPosts(10)
+  return <PostList posts={posts} />
+}
+```
+
+**When to use `unstable_cache` vs `fetch` with `next` option:**
+- Use `fetch` with `next: { tags: [...] }` when fetching from external HTTP APIs
+- Use `unstable_cache` for direct database calls or other non-fetch data sources
+
 ## Server → Client Data Passing
 
 ### Passing Serializable Props
@@ -139,7 +174,7 @@ Server components can pass data to client components via props — but props mus
 />
 ```
 
-### Passing Promises (React 19 use() hook)
+### Passing Promises (React 19 `use()` hook)
 
 In React 19 / Next.js 15, you can pass Promises from server to client:
 
@@ -175,6 +210,37 @@ export function UserProfile({ userPromise }: UserProfileProps) {
 ```
 
 **Why not just await?** Because `await` blocks the entire render, while `use()` with Suspense allows streaming and partial rendering.
+
+### Consuming Context with `use()` (React 19)
+
+React 19's `use()` hook can consume Context, even in components that can't use hooks at the top level:
+
+```tsx
+// components/user-badge.tsx
+'use client'
+
+import { use } from 'react'
+import { ThemeContext } from '@/contexts/theme-context'
+
+export function UserBadge() {
+  // Unlike useContext(), use() works inside conditional statements
+  // and during render (though with caveats — only for Suspense-compatible data)
+  const theme = use(ThemeContext)
+  return <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{theme}</span>
+}
+```
+
+```tsx
+// Conditional consumption with use() — only in client components
+function Dashboard(props: { showStats: boolean }) {
+  if (props.showStats) {
+    const stats = use(StatsContext) // ✅ allowed in React 19
+  }
+  return <div>...</div>
+}
+```
+
+**Note:** `use()` for Context is only available in Client Components. The component itself must have `'use client'`.
 
 ## The Client Component Island Pattern
 
@@ -296,3 +362,4 @@ export function CreatePostForm() {
 - **Sequential awaits when parallel is possible** — use `Promise.all` for independent fetches
 - **Forgetting `revalidatePath`** — after mutations with Server Actions, revalidate caches
 - **Relying on old fetch caching defaults** — in Next.js 15, `cache: 'no-store'` is the default; use `cache: 'force-cache'` with `revalidate` for static data
+- **Using `unstable_cache` for fetch-based data** — use `fetch` with `next: { tags: [...] }` instead
