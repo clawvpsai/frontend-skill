@@ -17,12 +17,12 @@ npx create-next-app@latest my-app \
 Flags explained:
 - `--typescript` — required for production
 - `--tailwind` — use Tailwind CSS v4
-- `--eslint` — linting with next lint
+- `--eslint` — adds ESLint config (`next/core-web-vitals`, `next/typescript`); in Next.js 15.5+, prefer installing ESLint directly and using `npx eslint` instead of the deprecated `next lint`
 - `--app` — App Router (not Pages Router)
 - `--src-dir` — put code in `src/` directory
 - `--import-alias "@/*"` — `@/*` maps to `src/*`
 
-**Note:** Turbopack is now stable for development in Next.js 15 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds still use Webpack.
+**Note:** Turbopack is now stable for development in Next.js 15 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds still use Webpack (or Turbopack in beta as of Next.js 15.5).
 
 ### Vite (React SPA, non-Next)
 
@@ -235,14 +235,28 @@ npm install -D @rtk-query/codegen-openapi
 
 ## ESLint Configuration
 
+In Next.js 15.5+, `next lint` is deprecated. Use ESLint directly instead:
+
+```bash
+npm install -D eslint @eslint/js typescript-eslint
+npx eslint .
+```
+
+### Recommended `.eslintrc.json`
+
 ```json
 {
-  "extends": ["next/core-web-vitals", "next/typescript"],
+  "extends": [
+    "next/core-web-vitals",
+    "next/typescript"
+  ],
   "rules": {
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
   }
 }
 ```
+
+**Why `next lint` was deprecated:** It wraps ESLint with a simplified CLI that hides some options. Using `npx eslint` directly gives full control and clearer output.
 
 ## Key Files Created
 
@@ -270,3 +284,4 @@ my-app/
 - **Tailwind v4** — use `@tailwindcss/vite` plugin for Vite, or the built-in Next.js Tailwind support
 - **ESM vs CJS** — prefer `"module": "ESNext"` + `"type": "module"` in package.json
 - **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15, Server Actions are stable
+- **`next lint` in Next.js 15.5+** — deprecated; use `npx eslint` directly instead
