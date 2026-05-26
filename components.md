@@ -167,6 +167,46 @@ export function Card<C extends ElementType = 'div'>(
 }
 ```
 
+### React 19 `ref` as a Prop
+
+In React 19, you can pass `ref` as a regular prop — no `forwardRef` needed. This is the preferred pattern for new code:
+
+```tsx
+// React 19 — ref as a regular prop (no forwardRef)
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  ref?: React.Ref<HTMLInputElement>
+}
+
+function MyInput({ ref, className, ...props }: InputProps) {
+  return <input ref={ref} className={cn('border rounded px-3 py-2', className)} {...props} />
+}
+
+// Usage with ref
+function Form() {
+  const inputRef = useRef<HTMLInputElement>(null)
+  
+  function handleFocus() {
+    inputRef.current?.focus()
+  }
+  
+  return (
+    <div>
+      <MyInput ref={inputRef} placeholder="Type here..." />
+      <button onClick={handleFocus}>Focus input</button>
+    </div>
+  )
+}
+```
+
+**Why this matters:** `forwardRef` was previously the only way to forward refs. React 19 deprecates `forwardRef` in favor of this native prop pattern. The old `forwardRef` still works, but prefer the new style for new components.
+
+```tsx
+// Legacy approach (still works, prefer new style in React 19)
+const MyInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
+  ({ className, ...props }, ref) => <input ref={ref} className={className} {...props} />
+)
+```
+
 ## Error Handling in Components
 
 ### Error Boundaries (Client Components)

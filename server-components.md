@@ -261,6 +261,56 @@ function Dashboard(props: { showStats: boolean }) {
 
 **Note:** `use()` for Context is only available in Client Components. The component itself must have `'use client'`.
 
+## React 19 Document Metadata
+
+React 19 introduces native support for rendering metadata elements (`<title>`, `<meta>`, `<link>`) directly in component JSX — no framework-specific API needed. This works in both server and client components.
+
+```tsx
+// app/about/page.tsx
+import { title, meta, link } from 'react'
+
+export default function AboutPage() {
+  return (
+    <>
+      {title('About Us — My App')}
+      {meta({ name: 'description', content: 'Learn about our company and team.' })}
+      {link({ rel: 'canonical', href: 'https://myapp.com/about' })}
+      
+      <main>
+        <h1>About Us</h1>
+        {/* Page content */}
+      </main>
+    </>
+  )
+}
+```
+
+**Why this matters:** Previously, metadata required either Next.js `generateMetadata()` or a library like `react-helmet`. Now it's just React. Next.js's metadata API is still recommended for complex cases (OG images, i18n), but simple metadata is now portable across React frameworks.
+
+**With Next.js metadata:** Next.js's `generateMetadata()` still takes precedence. React 19 metadata functions are a lower-level primitive that works everywhere React does.
+
+**Common metadata patterns:**
+
+```tsx
+import { title, meta, link } from 'react'
+
+// Set page title
+{title('Page Title')}
+
+// Meta description
+{meta({ name: 'description', content: 'Page description' })}
+
+// Viewport (React 19 handles this too)
+{meta({ name: 'viewport', content: 'width=device-width, initial-scale=1' })}
+
+// Open Graph
+{meta({ property: 'og:title', content: 'My Article' })}
+{meta({ property: 'og:image', content: 'https://myapp.com/og.jpg' })}
+
+// Canonical link
+{link({ rel: 'canonical', href: 'https://myapp.com/articles/my-post' })}
+```
+
 ## The Client Component Island Pattern
 
 Keep the `'use client'` boundary as small as possible. Wrap interactive areas, not entire pages:

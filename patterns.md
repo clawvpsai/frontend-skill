@@ -439,6 +439,81 @@ export function ImageUpload() {
 }
 ```
 
+
+## Deferred Operations with `after()` (Next.js 15)
+
+Next.js 15 introduces `after()` from `next/server` — a way to run code **after** the response is sent to the user. This is ideal for non-critical operations that shouldn't block the response.
+
+```tsx
+// app/dashboard/page.tsx
+import { after } from 'next/server'
+import { logAnalytics, sendSlackNotification } from '@/lib/analytics'
+
+export default async function DashboardPage() {
+  const data = await getDashboardData()
+  
+  // Run AFTER the response is sent — doesn't delay the page
+  after(async () => {
+    await logAnalytics({ 
+      page: '/dashboard', 
+      userId: data.user.id,
+      timestamp: new Date().toISOString()
+    })
+  })
+  
+  after(async () => {
+    if (data.user.isNew) {
+      await sendSlackNotification(`New user signed up: ${data.user.email}`)
+    }
+  })
+  
+  return <Dashboard data={data} />
+}
+```
+
+**When to use `after()`:**
+
+| Use Case | Example |
+|---|---|
+| Analytics / logging | `logAnalytics()`, `trackEvent()` |
+| Notifications | Send Slack/email after user action |
+| Cache warming | Pre-fetch related data after page load |
+| Background jobs | Trigger async jobs without blocking response |
+
+**Rules:**
+- `after()` runs **after** the response is streamed — the user sees the page immediately
+- It still runs on the server — it has access to server-only resources (DB, filesystem)
+- If `after()` throws, the page still renders normally — errors don't affect the user
+- Multiple `after()` calls run in parallel
+
+```tsx
+// Real-world: log page view without slowing down response
+import { after } from 'next/server'
+
+export default async function BlogPost({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const post = await getPost(slug)
+  
+  after(async () => {
+    // Non-blocking — doesn't affect TTFB
+    await fetch('/api/analytics', {
+      method: 'POST',
+      body: JSON.stringify({ path: `/blog/${slug}`, referrer: headers().get('referer') }),
+    })
+  })
+  
+  return <Article post={post} />
+}
+```
+
+**`after()` vs alternatives:**
+
+| Pattern | Use When |
+|---|---|
+| `after()` (Next.js 15) | Server-side ops after response, inside Next.js |
+| `queue` (Redis/Bull) | Background jobs that need durability across restarts |
+| `useEffect` (client) | Client-side ops like analytics after hydration |
+
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation
