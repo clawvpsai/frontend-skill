@@ -50,6 +50,96 @@ export function MyForm() {
 }
 ```
 
+## React 19 Native Forms with Server Actions
+
+React 19 introduces native `<form>` support for Server Actions — forms work even before JavaScript loads (progressive enhancement). This is the recommended approach for forms that submit to Server Actions.
+
+### Server Action (in `app/actions.ts`)
+
+```tsx
+'use server'
+
+import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
+
+const ContactSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email address'),
+  message: z.string().min(10, 'Message must be at least 10 characters'),
+})
+
+// Return type: null on success, Record<string, string[]> on validation error
+export async function submitContact(prevState: unknown, formData: FormData) {
+  const parsed = ContactSchema.safeParse(Object.fromEntries(formData))
+  
+  if (!parsed.success) {
+    // Return field errors for useActionState to display
+    return { errors: parsed.error.flatten().fieldErrors }
+  }
+  
+  // await sendEmail(parsed.data)
+  revalidatePath('/contact')
+  redirect('/contact/success')
+}
+```
+
+### Form Component with `useActionState` (from `react`, not `react-dom`)
+
+```tsx
+// components/contact-form.tsx
+'use client'
+
+import { useActionState } from 'react'  // React 19: from 'react'
+import { submitContact } from '@/app/actions'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+
+// Initial state for the form
+const initialState = { errors: {} as Record<string, string[]> }
+
+export function ContactForm() {
+  const [state, formAction, isPending] = useActionState(submitContact, initialState)
+
+  return (
+    <form action={formAction} className="space-y-4">
+      <div>
+        <Input name="name" placeholder="Your name" />
+        {state.errors?.name && (
+          <p className="text-sm text-destructive">{state.errors.name[0]}</p>
+        )}
+      </div>
+      
+      <div>
+        <Input name="email" type="email" placeholder="your@email.com" />
+        {state.errors?.email && (
+          <p className="text-sm text-destructive">{state.errors.email[0]}</p>
+        )}
+      </div>
+      
+      <div>
+        <Textarea name="message" placeholder="Your message..." />
+        {state.errors?.message && (
+          <p className="text-sm text-destructive">{state.errors.message[0]}</p>
+        )}
+      </div>
+      
+      <Button type="submit" disabled={isPending}>
+        {isPending ? 'Sending...' : 'Send Message'}
+      </Button>
+    </form>
+  )
+}
+```
+
+**Why `useActionState` from `react`?**
+- In React 19, `useActionState` (formerly `useFormState` in canary) is exported from `react`, not `react-dom`
+- `useFormStatus` is also from `react` in React 19 (not `react-dom`)
+- Both work with native `<form action={...}>` elements
+
+**Progressive enhancement:** Because this uses `action={formAction}` on a `<form>` element (not `onSubmit`), the form works without JavaScript — the Server Action handles the submission directly.
+
 ## Zod Schema Patterns
 
 ### String Validation
@@ -168,7 +258,7 @@ export function ProfileForm() {
           name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Username</FormLabel>
+              <FormLabel>Username</Form.Label>
               <FormControl><Input {...field} /></FormControl>
               <FormDescription>Your unique identifier.</FormDescription>
               <FormMessage />
@@ -180,7 +270,7 @@ export function ProfileForm() {
           name="email"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>Email</Form.Label>
               <FormControl><Input type="email" {...field} /></FormControl>
               <FormMessage />
             </FormItem>
@@ -277,7 +367,7 @@ async function onSubmit(values: z.infer<typeof uploadSchema>) {
 ```tsx
 // components/submit-button.tsx
 'use client'
-import { useFormStatus } from 'react' // React 19
+import { useFormStatus } from 'react' // React 19: from 'react', not react-dom
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 
@@ -293,7 +383,7 @@ export function SubmitButton() {
 ```
 
 ```tsx
-// Parent form must be using Server Actions for useFormStatus to work
+// Parent form using Server Action — useFormStatus reads this form's state
 <form action={serverAction}>
   <input name="email" />
   <SubmitButton />
@@ -319,3 +409,5 @@ const form = useForm({
 - **Setting initial values incorrectly** — use `defaultValues`, not `value` prop on fields
 - **Missing `type="submit"` on submit button** — triggers form's `onSubmit`
 - **Not handling server-side validation errors** — map API errors to form errors with `form.setError()`
+- **`useActionState` from `react-dom`** — in React 19, import from `react`, not `react-dom`
+- **Using `onSubmit` with Server Actions** — prefer native `action={serverAction}` for progressive enhancement

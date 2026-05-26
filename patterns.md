@@ -15,15 +15,21 @@ next dev --turbopack
 next dev --webpack
 ```
 
-**Current status:**
-- ✅ Stable for development (hot reload, fast refresh, error overlay)
-- ⚠️ Production builds still use Webpack (Turbopack production is in progress)
+**Current status (Next.js 15.5):**
+- ✅ Stable for development — hot reload, fast refresh, error overlay
+- 🧪 Beta for production builds (`next build --turbopack`) — 2x–5x faster builds than Webpack; used in production on vercel.com and nextjs.org serving 1.2B+ requests
 - ✅ App Router and Pages Router both supported
-- ✅ Most Next.js features work (but check the [migration guide](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack) for known issues)
+- ⚠️ Some edge-case features may still differ from Webpack; check the [migration guide](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack)
+
+**Enable Turbopack production builds:**
+```bash
+# In next.config.ts — enable Turbopack for production builds
+# next build --turbo  (or set environment variable NEXT_BUILD_USE_TURBOPACK=1)
+```
 
 **When using Turbopack:**
-```bash
-# In next.config.ts — Turbopack config options
+```ts
+// next.config.ts — Turbopack config options
 const nextConfig: NextConfig = {
   turbopack: {
     // Enable experimental features if needed
