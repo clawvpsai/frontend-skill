@@ -11,8 +11,7 @@ npx create-next-app@latest my-app \
   --eslint \
   --app \
   --src-dir \
-  --import-alias "@/*" \
-  --no-turbopack
+  --import-alias "@/*"
 ```
 
 Flags explained:
@@ -22,7 +21,8 @@ Flags explained:
 - `--app` — App Router (not Pages Router)
 - `--src-dir` — put code in `src/` directory
 - `--import-alias "@/*"` — `@/*` maps to `src/*`
-- `--no-turbopack` — use Webpack (Turbopack still has rough edges in dev)
+
+**Note:** Turbopack is now stable for development in Next.js 15 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds still use Webpack.
 
 ### Vite (React SPA, non-Next)
 

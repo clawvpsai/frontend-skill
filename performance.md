@@ -240,6 +240,58 @@ export function Counter() {
 }
 ```
 
+## Partial Prerendering (PPR) — Experimental
+
+Partial Prerendering (PPR) combines static rendering and dynamic rendering at the route segment level. Static parts are pre-rendered at build time (or revalidated), while dynamic parts stream in on request.
+
+**Enable PPR** in `next.config.ts`:
+
+```ts
+const nextConfig: NextConfig = {
+  experimental: {
+    ppr: true,
+  },
+}
+```
+
+### How PPR Works
+
+Wrap dynamic segments in `Suspense` boundaries — Next.js automatically identifies which parts are static (rendered at build time) and which are dynamic (streamed on request):
+
+```tsx
+// app/layout.tsx — static shell (always cached)
+import { Suspense } from 'react'
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <head />
+      <body>
+        <Header />  {/* Static — rendered at build time */}
+        <Suspense fallback={<Spinner />}>
+          <UserSpecificContent />  {/* Dynamic — streams on request */}
+        </Suspense>
+        <Footer />  {/* Static — rendered at build time */}
+      </body>
+    </html>
+  )
+}
+```
+
+### When to Use PPR
+
+| Scenario | Use PPR? |
+|---|---|
+| Mostly static page with small dynamic parts | ✅ Yes — great fit |
+| Fully dynamic page (personalized per user) | ❌ No — use `force-dynamic` instead |
+| Mixed static/dynamic content | ✅ Yes — best fit |
+
+**PPR vs traditional ISR:**
+- **ISR**: Entire page is static or revalidated together
+- **PPR**: Granular control — individual Suspense boundaries can have different caching strategies
+
+**Note:** PPR is experimental in Next.js 15. Check the [Next.js docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/ppr) for the latest status before using in production.
+
 ## Turbopack — Fast Development Bundler
 
 Next.js 15 ships Turbopack (Rust-based bundler) as the default development bundler:

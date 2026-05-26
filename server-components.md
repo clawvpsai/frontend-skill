@@ -211,6 +211,25 @@ export function UserProfile({ userPromise }: UserProfileProps) {
 
 **Why not just await?** Because `await` blocks the entire render, while `use()` with Suspense allows streaming and partial rendering.
 
+**Error handling with `use()`:** If the Promise rejects, `use()` **throws** the error (it doesn't return normally). This means:
+- The **Suspense boundary** handles the "pending" state (shows fallback while loading)
+- The **Error Boundary** handles the "rejected" state (shows error UI if the fetch fails)
+
+```tsx
+// Both boundaries are needed for complete handling
+export default function UserPage() {
+  const userPromise = getUser('123')
+  
+  return (
+    <ErrorBoundary fallback={<UserError />}>
+      <Suspense fallback={<UserSkeleton />}>
+        <UserProfile userPromise={userPromise} />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
 ### Consuming Context with `use()` (React 19)
 
 React 19's `use()` hook can consume Context, even in components that can't use hooks at the top level:
@@ -363,3 +382,4 @@ export function CreatePostForm() {
 - **Forgetting `revalidatePath`** — after mutations with Server Actions, revalidate caches
 - **Relying on old fetch caching defaults** — in Next.js 15, `cache: 'no-store'` is the default; use `cache: 'force-cache'` with `revalidate` for static data
 - **Using `unstable_cache` for fetch-based data** — use `fetch` with `next: { tags: [...] }` instead
+- **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it
