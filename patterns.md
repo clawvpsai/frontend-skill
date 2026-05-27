@@ -514,6 +514,145 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
 | `queue` (Redis/Bull) | Background jobs that need durability across restarts |
 | `useEffect` (client) | Client-side ops like analytics after hydration |
 
+## React 19 Compiler (React Compiler)
+
+The React Compiler (stable in React 19.2) is a build-time tool that automatically optimizes component rendering — eliminating the need for manual `useMemo` and `useCallback` in most cases. It analyzes your code and generates memoized versions of components and hooks.
+
+**How it works:** The compiler looks at your component code and determines which values are "expensive" and which are stable. It wraps those values in `useMemo`/`useCallback` automatically, so you don't have to.
+
+### Enable in Next.js
+
+Next.js uses an SWC-based implementation that's more efficient than the standalone Babel plugin — it only runs on files that actually use JSX or React hooks.
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  reactCompiler: true,  // ✅ Auto-compile all eligible components
+}
+```
+
+**With granular control** (opt-in mode — only compile explicitly annotated components):
+
+```ts
+const nextConfig: NextConfig = {
+  reactCompiler: {
+    mode: 'annotation',  // Only compile components/hooks with "use memo" directive
+  },
+}
+```
+
+### Usage in Components
+
+With the compiler enabled, you can write components naturally without manual memoization:
+
+```tsx
+// ❌ Before React Compiler — manual memoization required
+function ExpensiveList({ items, filter }: Props) {
+  const filtered = useMemo(
+    () => items.filter(i => i.category === filter),
+    [items, filter]
+  )
+  const sorted = useMemo(
+    () => [...filtered].sort((a, b) => a.name.localeCompare(b.name)),
+    [filtered]
+  )
+  return <div>{sorted.map(item => <Item key={item.id} {...item} />)}</div>
+}
+
+function Parent() {
+  const [count, setCount] = useState(0)
+  return (
+    <div>
+      <button onClick={() => setCount(c => c + 1)}>{count}</button>
+      <ExpensiveList items={data} filter="active" />
+    </div>
+  )
+}
+```
+
+```tsx
+// ✅ With React Compiler — write naturally, compiler handles memoization
+function ExpensiveList({ items, filter }: Props) {
+  const filtered = items.filter(i => i.category === filter)
+  const sorted = [...filtered].sort((a, b) => a.name.localeCompare(b.name))
+  return <div>{sorted.map(item => <Item key={item.id} {...item} />)}</div>
+}
+```
+
+### ESLint Plugin (Recommended Alongside Compiler)
+
+The `eslint-plugin-react-compiler` catches code patterns that violate compiler rules:
+
+```bash
+npm install -D eslint-plugin-react-compiler
+```
+
+```js
+// eslint.config.mjs
+import reactCompiler from 'eslint-plugin-react-compiler'
+
+export default [
+  {
+    plugins: {
+      'react-compiler': reactCompiler,
+      // Or via flat config rules:
+    },
+    rules: {
+      'react-compiler/react-compiler': 'warn',  // or 'error' for strict
+    },
+  },
+]
+```
+
+**Note:** Even with the React Compiler, keep the ESLint plugin — it catches cases where the compiler can't optimize and tells you why.
+
+### What the Compiler Handles
+
+| Pattern | Compiler Action |
+|---|---|
+| `useMemo(() => expr)` | Included automatically |
+| `useCallback(fn)` | Included automatically |
+| `React.memo(Component)` | Often unnecessary with compiler |
+| `[] deps that never change` | Detected and preserved |
+| Mutations of props/state | Flagged as errors |
+
+### What the Compiler Requires
+
+The compiler works when your code follows React's rules:
+- **No mutation of props or state** — treat all values as immutable
+- **Stable hook signatures** — don't call hooks conditionally
+- **Functions called during render must be pure** — same inputs → same outputs
+
+```tsx
+// ❌ Compiler skips this component — it mutates a prop
+function BadComponent({ items }: Props) {
+  items.push({ id: 'new' })  // Mutation — compiler skips entire component
+  return <List items={items} />
+}
+
+// ✅ Compiler optimizes this component — pure render
+function GoodComponent({ items }: Props) {
+  const newItems = [...items, { id: 'new' }]  // Creates new array
+  return <List items={newItems} />
+}
+```
+
+### When to Use the Compiler
+
+| Scenario | Recommendation |
+|---|---|
+| New project | ✅ Enable by default |
+| Existing codebase with `useMemo`/`useCallback` | ✅ Enable, then gradually remove manual memoization |
+| Codebase with frequent prop/state mutations | ⚠️ Fix mutation patterns first |
+| Strict performance requirements | ✅ Enable + keep ESLint plugin |
+
+**Sources:**
+- [React Compiler docs](https://react.dev/reference/react-compiler)
+- [Next.js React Compiler config](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)
+- [React Compiler configuration](https://react.dev/reference/react-compiler/configuration)
+
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation
@@ -524,3 +663,4 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
 - **Stale closures in useEffect** — use refs or proper dependency arrays
 - **Passing server-side data to client without serialization** — Dates must be `.toISOString()`, non-serializable objects can't cross the RSC boundary
 - **`use()` with non-Promise** — `use()` only accepts Promises; for regular values just use them directly
+- **Mutating props/state with React Compiler** — the compiler skips components that mutate; fix mutations first

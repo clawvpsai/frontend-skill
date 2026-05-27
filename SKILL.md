@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-developer
-version: 1.0.0
+version: 1.1.0
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -10,7 +10,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 | Topic | File | When to Use |
 |---|---|---|
-| Project setup, TypeScript, Vite, env vars | `setup.md` | Starting a new project |
+| Project setup, TypeScript, Vite, Biome, env vars | `setup.md` | Starting a new project |
 | React components, shadcn/ui, composition | `components.md` | Building UI |
 | Server vs Client components, data fetching | `server-components.md` | Next.js App Router |
 | Routing, layouts, loading, error boundaries | `routing.md` | Navigation & page structure |
@@ -24,7 +24,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest, Playwright, component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities | `typescript.md` | Type safety |
-| RSC vs client boundaries, patterns | `patterns.md` | Composite recipes |
+| Turbopack, React Compiler, advanced patterns | `patterns.md` | Composite recipes |
 | Zustand, React Query, data fetching | `zustand.md` | Client state management |
 
 ## Critical Rules (Never Forget)
@@ -41,12 +41,13 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 15** (latest — App Router, Server Components, Server Actions)
-- **React 19** (concurrent features, use() hook, useFormStatus)
+- **Next.js 15** (latest — App Router, Server Components, Server Actions, Turbopack dev, Node.js middleware)
+- **React 19.2** (React Compiler stable, use() hook, useOptimistic, useFormStatus, useActionState)
 - **TypeScript 6.0** (strict by default, ES2025 target, import defer)
-- **Zod 4** (14x faster string parsing, strict/loose object modes)
+- **Zod 4** (14x faster string parsing, strict/loose object modes, z.file())
 - **Tailwind CSS v4** + **shadcn/ui**
 - **Vite 6** (for non-Next projects; Next uses Turbopack)
+- **Biome** (recommended linter/formatter — 10–100x faster than ESLint)
 - **Node.js 22 LTS**
 
 ## Pro Tips
@@ -56,5 +57,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - Use `shadcn@latest add <component>` to add components — they live in your codebase, not node_modules
 - Use `next.config.ts` for all Next.js configuration (not `.js`)
 - Use `react-hook-form` + `zod` for all forms — never manage form state with useState
+- Enable React Compiler in `next.config.ts` with `reactCompiler: true` — eliminates most `useMemo`/`useCallback` manually
+- Use Biome (`npx biome check`) for linting — 10–100x faster than ESLint
 
 Start with `setup.md` to initialize a project, then `components.md` for shadcn/ui patterns.

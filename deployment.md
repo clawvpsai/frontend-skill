@@ -407,3 +407,21 @@ jobs:
 - **Not setting `NEXTAUTH_URL`** in production — causes redirect loops
 - **Port mismatch** — ensure `PORT` env var matches Nginx/docker config
 - **No health check** — Kubernetes/load balancers need `/api/health` to know if the app is ready
+
+## Preparing for Next.js 16
+
+Next.js 16 beta is available. Key changes to watch:
+
+- **`next lint` removed** — migrate to Biome or ESLint flat config before upgrading
+- **Route and middleware changes** — review the [Next.js 16 beta migration guide](https://nextjs.org/blog/next-16) for breaking changes
+- **Run deprecation warnings** — `next build` in Next.js 15.5 surfaces warnings for features that will break in Next.js 16
+
+```bash
+# Check for deprecation warnings before upgrading
+npm run build 2>&1 | grep -i deprecat
+```
+
+**Recommended pre-upgrade checklist:**
+1. Migrate from `next lint` to Biome or ESLint (see `setup.md`)
+2. Run `next build` and fix all deprecation warnings
+3. Review the [Next.js 16 upgrade guide](https://nextjs.org/blog/next-16)

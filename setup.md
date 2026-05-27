@@ -17,7 +17,7 @@ npx create-next-app@latest my-app \
 Flags explained:
 - `--typescript` — required for production
 - `--tailwind` — use Tailwind CSS v4
-- `--eslint` — adds ESLint config (`next/core-web-vitals`, `next/typescript`); in Next.js 15.5+, prefer installing ESLint directly and using `npx eslint` instead of the deprecated `next lint`
+- `--eslint` — adds ESLint config; in Next.js 15.5+, prefer Biome or direct ESLint over the deprecated `next lint`
 - `--app` — App Router (not Pages Router)
 - `--src-dir` — put code in `src/` directory
 - `--import-alias "@/*"` — `@/*` maps to `src/*`
@@ -233,30 +233,142 @@ type User = z.infer<typeof UserSchema>
 npm install -D @rtk-query/codegen-openapi
 ```
 
-## ESLint Configuration
+## Linting and Formatting
 
-In Next.js 15.5+, `next lint` is deprecated. Use ESLint directly instead:
+**Important:** As of Next.js 15.5, `next lint` is deprecated and will be removed in Next.js 16. Use one of the alternatives below instead.
+
+### Option 1: Biome (Recommended — Fastest)
+
+[Biome](https://biomejs.dev) is a fast linter and formatter for JavaScript/TypeScript, written in Rust. It's 10–100x faster than ESLint for large codebases.
 
 ```bash
-npm install -D eslint @eslint/js typescript-eslint
-npx eslint .
+npm install -D @biomejs/biome
+npx biome init  # Creates biome.json
 ```
 
-### Recommended `.eslintrc.json`
-
 ```json
+// biome.json
 {
-  "extends": [
-    "next/core-web-vitals",
-    "next/typescript"
-  ],
-  "rules": {
-    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+  "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
+  "organizeImports": { "enabled": true },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "warn"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "formatWithErrors": false,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "jsxAttributeApi": "react"
   }
 }
 ```
 
-**Why `next lint` was deprecated:** It wraps ESLint with a simplified CLI that hides some options. Using `npx eslint` directly gives full control and clearer output.
+**Run Biome:**
+```bash
+npx biome check .        # Lint + format check
+npx biome check --write  # Lint + auto-fix
+npx biome format .       # Format only
+```
+
+Add to `package.json` scripts:
+```json
+{
+  "scripts": {
+    "lint": "biome check --write",
+    "format": "biome format --write"
+  }
+}
+```
+
+### Option 2: ESLint (Flat Config — Next.js 15.5+)
+
+ESLint's flat config (`eslint.config.mjs`) is the modern approach and works with Next.js 15.5+ without `next lint`:
+
+```bash
+npm install -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks
+```
+
+```js
+// eslint.config.mjs
+import js from '@eslint/js'
+import tseslint from 'typescript-eslint'
+import reactHooks from 'eslint-plugin-react-hooks'
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: {
+      'react-hooks': reactHooks,
+    },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  {
+    ignores: ['.next/**', 'node_modules/**', 'dist/**'],
+  }
+)
+```
+
+**Run ESLint directly:**
+```bash
+npx eslint .
+```
+
+Add to `package.json` scripts:
+```json
+{
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  }
+}
+```
+
+**Why `next lint` was deprecated:** It wrapped ESLint with a simplified CLI that hid options, made upgrades harder to track, and added maintenance burden. Using ESLint or Biome directly gives full control and faster iteration.
+
+### Formatting with Prettier (if using ESLint for linting)
+
+```bash
+npm install -D prettier
+```
+
+```json
+// .prettierrc
+{
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "es5",
+  "printWidth": 100
+}
+```
+
+```json
+// package.json
+{
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  }
+}
+```
 
 ## Key Files Created
 
@@ -284,4 +396,5 @@ my-app/
 - **Tailwind v4** — use `@tailwindcss/vite` plugin for Vite, or the built-in Next.js Tailwind support
 - **ESM vs CJS** — prefer `"module": "ESNext"` + `"type": "module"` in package.json
 - **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15, Server Actions are stable
-- **`next lint` in Next.js 15.5+** — deprecated; use `npx eslint` directly instead
+- **`next lint` in Next.js 15.5+** — deprecated; use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly instead
+- **`next lint` removed in Next.js 16** — migrate to Biome or ESLint flat config before upgrading
