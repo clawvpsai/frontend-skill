@@ -1,12 +1,12 @@
 # Frontend Developer Skill
 
-Production-grade React + Next.js 15 frontend development for agents building modern web applications.
+Production-grade React + Next.js 16 frontend development for agents building modern web applications.
 
 ## Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 15 (App Router) |
+| Framework | Next.js 16 (App Router) |
 | Language | TypeScript 5.x (strict) |
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | State | Zustand (client) + React Query / TanStack Query |

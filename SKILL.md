@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-developer
-version: 1.1.0
+version: 1.2.0
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -41,13 +41,13 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 15** (latest — App Router, Server Components, Server Actions, Turbopack dev, Node.js middleware)
-- **React 19.2** (React Compiler stable, use() hook, useOptimistic, useFormStatus, useActionState)
-- **TypeScript 6.0** (strict by default, ES2025 target, import defer)
-- **Zod 4** (14x faster string parsing, strict/loose object modes, z.file())
-- **Tailwind CSS v4** + **shadcn/ui**
+- **Next.js 16.2.6** (latest — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware)
+- **React 19.2.6** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`)
+- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer)
+- **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
+- **Tailwind CSS v4.3** + **shadcn/ui**
 - **Vite 6** (for non-Next projects; Next uses Turbopack)
-- **Biome** (recommended linter/formatter — 10–100x faster than ESLint)
+- **Biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
 - **Node.js 22 LTS**
 
 ## Pro Tips
@@ -61,3 +61,19 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - Use Biome (`npx biome check`) for linting — 10–100x faster than ESLint
 
 Start with `setup.md` to initialize a project, then `components.md` for shadcn/ui patterns.
+
+## Next.js 16 Migration Notes
+
+Key breaking changes from Next.js 15 → 16:
+
+| Change | Impact |
+|---|---|
+| `images.minimumCacheTTL` default: 1min → **4 hours** | Image caching behavior change; set explicitly if you need 1min |
+| **Router scroll optimization** enabled by default | Previously scroll was reset on navigation; now preserved by default |
+| Flat config default in `@next/eslint-plugin-next` | ESLint config format change |
+| Deprecated `.turbo` config object removed | Use `turbopack` key in `next.config.ts` instead |
+| `publicRuntimeConfig` / `serverRuntimeConfig` removed | Use environment variables directly |
+
+**Sources:**
+- [Next.js 16 release notes](https://nextjs.org/blog/next-16)
+- [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)

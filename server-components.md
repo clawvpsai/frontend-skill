@@ -82,11 +82,11 @@ const posts = await getUserPosts(id)
 const [user, posts] = await Promise.all([getUser(id), getUserPosts(id)])
 ```
 
-## Next.js 15 Caching — Important Changes
+## Next.js 16 Caching — Important Changes (from Next.js 15)
 
-In Next.js 15, the default caching behavior for `fetch` changed. **Dynamic is the new default** — data is fetched on every request unless explicitly cached.
+The default caching behavior for `fetch` changed in Next.js 15 and persists in Next.js 16. **Dynamic is the new default** — data is fetched on every request unless explicitly cached.
 
-### Cache Options in Next.js 15
+### Cache Options in Next.js 16
 
 ```tsx
 // Dynamic (no cache) — every request fetches fresh data
@@ -111,7 +111,7 @@ const data = await fetch('https://api.example.com/real-time', {
 })
 ```
 
-**Summary of changes in Next.js 15:**
+**Summary of Next.js 15 caching changes (still valid in Next.js 16):**
 - `cache: 'no-store'` is now the default behavior (previously needed explicit opt-out)
 - `cache: 'force-cache'` (previously `cache: 'true'`) for static data
 - `revalidateTag` and `revalidatePath` still work as before

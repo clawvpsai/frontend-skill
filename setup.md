@@ -17,12 +17,12 @@ npx create-next-app@latest my-app \
 Flags explained:
 - `--typescript` — required for production
 - `--tailwind` — use Tailwind CSS v4
-- `--eslint` — adds ESLint config; in Next.js 15.5+, prefer Biome or direct ESLint over the deprecated `next lint`
+- `--eslint` — adds ESLint config; in Next.js 16, use Biome or direct ESLint since `next lint` is removed
 - `--app` — App Router (not Pages Router)
 - `--src-dir` — put code in `src/` directory
 - `--import-alias "@/*"` — `@/*` maps to `src/*`
 
-**Note:** Turbopack is now stable for development in Next.js 15 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds still use Webpack (or Turbopack in beta as of Next.js 15.5).
+**Note:** Turbopack is now stable for development in Next.js 16 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds use Turbopack by default.
 
 ### Vite (React SPA, non-Next)
 
@@ -48,8 +48,8 @@ npm install -D tailwindcss @tailwindcss/vite
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2025",
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -110,11 +110,7 @@ const nextConfig: NextConfig = {
 }
 ```
 
-**Note:** In Next.js 15, Server Actions are stable — no `experimental.serverActions` block needed. Previously required config options like `allowedOrigins` are no longer necessary.
-
-### `next-env.d.ts`
-
-Auto-generated. Do not edit. Contains Next.js TypeScript declarations.
+**Note:** In Next.js 15+, Server Actions are stable — no `experimental.serverActions` block needed.
 
 ## Environment Variables
 
@@ -235,11 +231,11 @@ npm install -D @rtk-query/codegen-openapi
 
 ## Linting and Formatting
 
-**Important:** As of Next.js 15.5, `next lint` is deprecated and will be removed in Next.js 16. Use one of the alternatives below instead.
+**Important:** In Next.js 16, `next lint` is **removed**. Use Biome or ESLint directly.
 
-### Option 1: Biome (Recommended — Fastest)
+### Option 1: Biome 2.x (Recommended — Fastest)
 
-[Biome](https://biomejs.dev) is a fast linter and formatter for JavaScript/TypeScript, written in Rust. It's 10–100x faster than ESLint for large codebases.
+[Biome](https://biomejs.dev) is a fast linter and formatter for JavaScript/TypeScript, written in Rust. It's 10–100x faster than ESLint for large codebases. **Biome 2.x has breaking changes from 1.x** — config format and some rule names changed.
 
 ```bash
 npm install -D @biomejs/biome
@@ -249,7 +245,12 @@ npx biome init  # Creates biome.json
 ```json
 // biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "organizeImports": { "enabled": true },
   "linter": {
     "enabled": true,
@@ -293,9 +294,14 @@ Add to `package.json` scripts:
 }
 ```
 
-### Option 2: ESLint (Flat Config — Next.js 15.5+)
+**Biome 2.x migration from 1.x:**
+- Config still uses `biome.json` but schema URL must update to `2.x`
+- `vcs` top-level key is new in v2 — enables git integration for ignored files
+- Most rules unchanged; check [Biome v2 migration guide](https://biomejs.dev/migration-guide/) for details
 
-ESLint's flat config (`eslint.config.mjs`) is the modern approach and works with Next.js 15.5+ without `next lint`:
+### Option 2: ESLint (Flat Config — Next.js 16)
+
+ESLint's flat config (`eslint.config.mjs`) is the modern approach and works with Next.js 16:
 
 ```bash
 npm install -D eslint @eslint/js typescript-eslint eslint-plugin-react-hooks
@@ -342,7 +348,7 @@ Add to `package.json` scripts:
 }
 ```
 
-**Why `next lint` was deprecated:** It wrapped ESLint with a simplified CLI that hid options, made upgrades harder to track, and added maintenance burden. Using ESLint or Biome directly gives full control and faster iteration.
+**Why `next lint` was removed:** It wrapped ESLint with a simplified CLI that hid options, made upgrades harder to track, and added maintenance burden. Using ESLint or Biome directly gives full control and faster iteration.
 
 ### Formatting with Prettier (if using ESLint for linting)
 
@@ -392,9 +398,9 @@ my-app/
 
 ## Common Issues
 
-- **`moduleResolution: Bundler`** — required for Next.js 15, not `"Node"` or `"Node16"`
+- **`moduleResolution: Bundler`** — required for Next.js 16, not `"Node"` or `"Node16"`
 - **Tailwind v4** — use `@tailwindcss/vite` plugin for Vite, or the built-in Next.js Tailwind support
 - **ESM vs CJS** — prefer `"module": "ESNext"` + `"type": "module"` in package.json
-- **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15, Server Actions are stable
-- **`next lint` in Next.js 15.5+** — deprecated; use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly instead
-- **`next lint` removed in Next.js 16** — migrate to Biome or ESLint flat config before upgrading
+- **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15+, Server Actions are stable
+- **`next lint` in Next.js 16** — removed; use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly instead
+- **`target: "ES2022"`** — update to `"ES2025"` for Next.js 16 / React 19 compatibility

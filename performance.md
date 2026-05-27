@@ -294,10 +294,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
 ## Turbopack — Fast Development Bundler
 
-Next.js 15 ships Turbopack (Rust-based bundler) as the default development bundler:
+Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:
 
 ```bash
-# Development uses Turbopack automatically in Next.js 15
+# Development uses Turbopack automatically in Next.js 16
 npm run dev
 
 # Force Webpack if you hit Turbopack bugs

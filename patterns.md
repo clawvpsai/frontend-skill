@@ -1,11 +1,11 @@
 # Patterns — Composite Recipes for Common Flows
 
-## Turbopack (Next.js 15)
+## Turbopack (Next.js 16)
 
-Turbopack is Next.js's Rust-based bundler and is now stable for development in Next.js 15. It replaces Webpack for development, offering significantly faster hot module replacement (HMR) and cold start times.
+Turbopack is Next.js's Rust-based bundler. In Next.js 16, Turbopack is stable for both development and production builds. It replaces Webpack for development, offering significantly faster hot module replacement (HMR) and cold start times.
 
 ```bash
-# Use Turbopack in development (Next.js 15 default)
+# Use Turbopack in development (Next.js 16 default)
 npm run dev
 
 # Force Turbopack explicitly
@@ -15,9 +15,9 @@ next dev --turbopack
 next dev --webpack
 ```
 
-**Current status (Next.js 15.5):**
+**Current status (Next.js 16.2.6):**
 - ✅ Stable for development — hot reload, fast refresh, error overlay
-- 🧪 Beta for production builds (`next build --turbopack`) — 2x–5x faster builds than Webpack; used in production on vercel.com and nextjs.org serving 1.2B+ requests
+- ✅ Stable for production builds (`next build --turbopack`) — 2x–5x faster builds than Webpack; used in production on vercel.com and nextjs.org serving 1.2B+ requests
 - ✅ App Router and Pages Router both supported
 - ⚠️ Some edge-case features may still differ from Webpack; check the [migration guide](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack)
 
@@ -440,9 +440,9 @@ export function ImageUpload() {
 ```
 
 
-## Deferred Operations with `after()` (Next.js 15)
+## Deferred Operations with `after()` (Next.js 16)
 
-Next.js 15 introduces `after()` from `next/server` — a way to run code **after** the response is sent to the user. This is ideal for non-critical operations that shouldn't block the response.
+Next.js 15+ introduces `after()` from `next/server` — a way to run code **after** the response is sent to the user. This is ideal for non-critical operations that shouldn't block the response.
 
 ```tsx
 // app/dashboard/page.tsx
