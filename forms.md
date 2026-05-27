@@ -142,6 +142,40 @@ export function ContactForm() {
 
 ## Zod Schema Patterns
 
+### Zod 4 — What's New
+
+Zod 4 is a major release with significant performance improvements (14x faster string parsing, 7x faster array parsing, 2.3x smaller bundle) and some breaking changes. The key migration items:
+
+```ts
+// ✅ Still works — z.infer<typeof schema> is still supported (aliased to z.output)
+type User = z.infer<typeof UserSchema>
+
+// ✅ New in Zod 4 — z.file() for file validation (replaces z.instanceof(File))
+const avatarSchema = z.file({
+  accept: ['image/jpeg', 'image/png'],
+  maxSize: 5 * 1024 * 1024,  // 5MB
+})
+
+// ✅ New in Zod 4 — z.templateLiteral() for template literal types
+const slugSchema = z.templateLiteral({ pattern: /^[a-z0-9-]+$/ })
+
+// ✅ New in Zod 4 — strict/loose object modes
+const strictSchema = z.object({
+  name: z.string(),
+  age: z.number(),
+}).strict()  // errors on extra keys
+
+const looseSchema = z.object({
+  name: z.string(),
+}).loose()   // allows extra keys, strips them in output
+```
+
+**Zod 4 breaking changes to watch:**
+- `z.instanceof(File)` and `z.instanceof(FileList)` are replaced by `z.file()`
+- String validators `.email()` and `.url()` are stricter by default
+- `z.union()` is deprecated in favor of `z.discriminatedUnion()` for unions with a common key
+- Some internal type inference behavior changed — run `npx tsc --noEmit` after upgrading
+
 ### String Validation
 
 ```ts
@@ -333,10 +367,12 @@ export function WizardForm() {
 ## File Upload Forms
 
 ```tsx
+// Zod 4 — use z.file() for file validation
 const uploadSchema = z.object({
-  file: typeof window === 'undefined' 
-    ? z.any()   // server-side: File appears as unknown
-    : z.instanceof(FileList).refine(files => files.length > 0, 'Required'),
+  file: z.file({
+    accept: ['image/jpeg', 'image/png', 'image/webp'],
+    maxSize: 5 * 1024 * 1024,  // 5MB
+  }),
   description: z.string().optional(),
 })
 
@@ -345,7 +381,7 @@ const form = useForm<z.infer<typeof uploadSchema>>({
 })
 
 async function onSubmit(values: z.infer<typeof uploadSchema>) {
-  const file = values.file[0]  // or values.file for single File
+  const file = values.file  // Zod 4: File object directly
   const formData = new FormData()
   formData.append('file', file)
   
@@ -357,8 +393,11 @@ async function onSubmit(values: z.infer<typeof uploadSchema>) {
 // Template ref for file input
 <input 
   type="file" 
-  {...form.register('file')} 
-  ref={e => form.setValue('file', e?.files ?? undefined)}  // handle manually
+  accept="image/*"
+  onChange={(e) => {
+    const file = e.target.files?.[0]
+    if (file) form.setValue('file', file)
+  }}
 />
 ```
 
@@ -411,3 +450,5 @@ const form = useForm({
 - **Not handling server-side validation errors** — map API errors to form errors with `form.setError()`
 - **`useActionState` from `react-dom`** — in React 19, import from `react`, not `react-dom`
 - **Using `onSubmit` with Server Actions** — prefer native `action={serverAction}` for progressive enhancement
+- **Zod 4: using `z.instanceof(File)`** — migrate to `z.file()` which has better types and size validation
+- **Zod 4: not running type check after upgrade** — `npx tsc --noEmit` to catch type inference changes

@@ -2,10 +2,12 @@
 
 ## Strict Configuration
 
+**TypeScript 6.0 has `strict: true` on by default.** You no longer need to explicitly set it — it's enabled automatically. You still need to opt into individual strictness options that aren't part of the `strict` umbrella:
+
 ```json
 {
   "compilerOptions": {
-    "strict": true,
+    "strict": true,  // implicit in TS 6.0, but still useful for explicit config
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noUnusedLocals": true,
@@ -14,8 +16,8 @@
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "target": "ES2025",         // TS 6.0 defaults to ES2025 (was ES2022)
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -24,6 +26,110 @@
   }
 }
 ```
+
+> **Note:** In TS 6.0, `target: "ES2025"` and `lib: ["ES2025", ...]` are now the defaults. If you set `target` manually, `lib` is inferred automatically. The `exactOptionalPropertyTypes` flag is also now enabled by default under `strict`.
+
+## TypeScript 6.0 — Key New Features
+
+TypeScript 6.0 was released March 2026 as the final JavaScript-based release before the Go-native TypeScript 7.0. Key changes:
+
+### `import defer` — Deferred Imports
+
+The `import defer` syntax allows you to declare that an import is not needed for the initial render, enabling faster initial page loads:
+
+```ts
+// Deferred import — loads in background after initial render
+import defer { heavy } from './heavy'
+
+async function Page() {
+  // heavy is a Promise on initial render — shows loading state
+  const mod = await heavy
+  return <HeavyComponent mod={mod} />
+}
+```
+
+**Use when:** A module is not needed for the initial render (modals, analytics, heavy UI widgets).
+
+### Subpath Imports
+
+TS 6.0 supports importing subpaths without `paths` mapping in `tsconfig.json`:
+
+```ts
+// Instead of paths mapping in tsconfig:
+import { Button } from '@/components/ui/button'
+import { formatDate } from '@/lib/date'
+
+// You can now use package subpaths directly:
+import { Button } from 'components/ui/button'       // from ./components/ui/button
+import { utils } from '@/lib/date'                   // still uses paths for @ alias
+```
+
+This works via Node.js subpath imports support in `package.json` `imports` field — TS 6.0 now recognizes these in `moduleResolution: "Bundler"`.
+
+### `--stableTypeOrdering` Flag
+
+TS 6.0 changes how union types are ordered internally (type IDs assigned in encounter order). The `--stableTypeOrdering` flag makes union ordering deterministic across runs, which is important for:
+
+- Reproducible builds
+- Deterministic type error messages in CI
+- Consistent serialization of types
+
+```json
+{
+  "compilerOptions": {
+    "stableTypeOrdering": true  // new in TS 6.0
+  }
+}
+```
+
+This flag will be the default behavior in TS 7.0. Setting it now makes migrating to 7.0 smoother.
+
+### Temporal API Types
+
+TypeScript 6.0 ships with full type definitions for the Temporal API (ECMAScript proposal for date/time):
+
+```ts
+// New Temporal.* types
+const now = Temporal.Now.plainDateTimeISO()
+const date = Temporal.PlainDate.from('2026-05-27')
+
+// Instead of Date — Temporal is unambiguous about time zones
+const meeting = Temporal.ZonedDateTime.from({
+  year: 2026,
+  month: 5,
+  day: 27,
+  hour: 14,
+  timeZone: 'Asia/Kolkata',
+})
+
+// Duration arithmetic
+const later = now.add({ days: 7 })
+const diff = later.difference(now)  // returns Temporal.Duration
+```
+
+**Why Temporal over `Date`:**
+- No ambiguity between UTC and local time
+- Plain date/time types that can't be confused
+- Better `Intl` integration
+- Nanosecond precision
+
+### TypeScript 6.0 Deprecations
+
+These legacy options are deprecated in 6.0 and will be removed in 7.0:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES3",      // ES2025 is minimum — no more legacy targets
+    "noImplicitReturns": false,  // deprecated — use explicit return types
+    "suppressExcessPropertyErrors": true  // deprecated — use strict object types
+  }
+}
+```
+
+If you see these in legacy code, migrate off them before TS 7.0.
+
+---
 
 ## Type Inference
 
@@ -175,6 +281,7 @@ type CreateUserParams = Parameters<typeof createUser>[0]
 ```ts
 import { z } from 'zod'
 
+// Zod v4 — z.infer<typeof schema> still works (aliased as z.output<typeof schema>)
 const UserSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
@@ -306,6 +413,31 @@ import type { User, Post } from '@/types'
 function processUser(user: import('@/types').User) { }
 ```
 
+### Import Defer (TypeScript 6.0)
+
+```ts
+// Deferred import — loads after initial render completes
+import defer { HeavyChart, HeavyModal } from './heavy'
+
+async function Dashboard() {
+  return (
+    <div>
+      <MainContent />  {/* Loaded immediately */}
+      {/* HeavyChart and HeavyModal load in background */}
+      <Suspense fallback={<ChartSkeleton />}>
+        <HeavyChart data={data} />
+      </Suspense>
+    </div>
+  )
+}
+```
+
+**When to use `import defer`:**
+- Heavy visualization libraries (chart, map, 3D)
+- Modal/dialog components
+- Analytics/tracking modules
+- Any module not needed for initial render
+
 ## Explicit Resource Management (`using`) — TypeScript 5.2
 
 TypeScript 5.2 introduces the `using` keyword and `Symbol.dispose` for deterministic resource cleanup — similar to C#'s `using` or Python's `with`:
@@ -404,3 +536,5 @@ function useWebSocket(url: string) {
 - **Not using `z.infer<>`** — define types with Zod, not twice
 - **`noUncheckedIndexedAccess` off** — turn it on, handle undefined
 - **`object` type** — use `Record<string, unknown>` or specific shapes instead
+- **Legacy TypeScript targets** — `target: "ES3"` or `"ES5"` is deprecated in 6.0; use ES2025 minimum
+- **Missing `stableTypeOrdering`** — set it now to prepare for TS 7.0

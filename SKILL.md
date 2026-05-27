@@ -43,7 +43,8 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 - **Next.js 15** (latest — App Router, Server Components, Server Actions)
 - **React 19** (concurrent features, use() hook, useFormStatus)
-- **TypeScript 5.x** (strict mode, no implicit any)
+- **TypeScript 6.0** (strict by default, ES2025 target, import defer)
+- **Zod 4** (14x faster string parsing, strict/loose object modes)
 - **Tailwind CSS v4** + **shadcn/ui**
 - **Vite 6** (for non-Next projects; Next uses Turbopack)
 - **Node.js 22 LTS**
