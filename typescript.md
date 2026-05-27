@@ -107,6 +107,33 @@ type A = Flatten<User[]>  // User
 type B = Flatten<string> // string
 ```
 
+### `NoInfer<T>` — Prevent Auto-Inference (TypeScript 5.4)
+
+`NoInfer<T>` prevents TypeScript from inferring a type parameter from a specific argument, giving you more control over inference:
+
+```ts
+// Without NoInfer — TypeScript infers T from both arguments
+function createSignal<T>(value: T, defaultValue: T): [() => T, (v: T) => void] {
+  // ...
+}
+
+// T is inferred as string | number from both args
+const [get, set] = createSignal('hello', 42) // T = string | number ❌
+
+// With NoInfer — T is inferred only from the first argument
+function createSignal<T>(value: T, defaultValue: NoInfer<T>): [() => T, (v: T) => void] {
+  // ...
+}
+
+const [get, set] = createSignal('hello', 'world') // T = string ✅
+const [get2, set2] = createSignal('hello', 42)    // Error: number not assignable to string ✅
+```
+
+**Common use cases:**
+- Factory functions where a default should not influence the type
+- API clients where the response type comes from the endpoint, not the mock default
+- `createContext` patterns where the default value shouldn't widen the type
+
 ## Utility Types
 
 ### Built-in Utilities
@@ -277,6 +304,96 @@ import type { User, Post } from '@/types'
 
 // Or use inline type imports
 function processUser(user: import('@/types').User) { }
+```
+
+## Explicit Resource Management (`using`) — TypeScript 5.2
+
+TypeScript 5.2 introduces the `using` keyword and `Symbol.dispose` for deterministic resource cleanup — similar to C#'s `using` or Python's `with`:
+
+```ts
+// A resource must implement Symbol.dispose or Symbol.asyncDispose
+class DatabaseConnection {
+  id: string
+  
+  constructor(id: string) {
+    this.id = id
+    console.log(`[DB] Opened connection ${id}`)
+  }
+  
+  query(sql: string) {
+    return `Result of: ${sql}`
+  }
+  
+  [Symbol.dispose]() {
+    console.log(`[DB] Closed connection ${this.id}`)
+  }
+}
+
+// Using — automatically calls [Symbol.dispose]() at end of scope
+function getUser() {
+  using db = new DatabaseConnection('users-db')
+  
+  const result = db.query('SELECT * FROM users')
+  // No need to manually call db.dispose() — it happens automatically
+  
+  return result
+}
+
+// Works with try/finally semantics — always cleans up, even on throw
+function transactional() {
+  using db = new DatabaseConnection('main')
+  
+  db.query('BEGIN')
+  try {
+    db.query('COMMIT')
+  } catch {
+    db.query('ROLLBACK') // still executes
+    throw
+  }
+  // db[Symbol.dispose]() called automatically here
+}
+```
+
+**Why `using` matters:**
+- Replaces manual `try/finally` cleanup patterns
+- Eliminates "forgot to close" bugs (DB connections, file handles, timers)
+- Works with any resource that implements `Symbol.dispose`
+- Async variant: `Symbol.asyncDispose` with `await using`
+
+```ts
+// Async resource cleanup
+class AsyncFileHandle {
+  [Symbol.asyncDispose]() {
+    return this.closeAsync() // returns a Promise
+  }
+}
+
+async function readFile() {
+  await using file = new AsyncFileHandle()
+  // file[Symbol.asyncDispose]() called automatically on scope exit
+}
+```
+
+**Common React/Next.js use cases:**
+- Closing WebSocket connections in cleanup
+- Releasing animation frame locks
+- Flushing pending writes to storage
+- Aborting in-flight requests (combine with AbortController)
+
+```ts
+// Example: WebSocket cleanup with using
+function useWebSocket(url: string) {
+  const ws = new WebSocket(url)
+  
+  using cleanup = {
+    [Symbol.dispose]() {
+      ws.close()
+    }
+  }
+  
+  // ... use ws
+  // ws.close() called automatically when cleanup goes out of scope
+}
 ```
 
 ## Common Mistakes
