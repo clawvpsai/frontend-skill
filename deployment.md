@@ -27,7 +27,7 @@ vercel --prod
       "source": "/(.*)",
       "headers": [
         { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
+        { "key": "X-Content-Type-Options", value: 'nosniff' }
       ]
     }
   ]
@@ -408,20 +408,44 @@ jobs:
 - **Port mismatch** — ensure `PORT` env var matches Nginx/docker config
 - **No health check** — Kubernetes/load balancers need `/api/health` to know if the app is ready
 
-## Preparing for Next.js 16
+## Next.js 16 Deployment Notes
 
-Next.js 16 beta is available. Key changes to watch:
+Next.js 16 is current. Key deployment considerations:
 
-- **`next lint` removed** — migrate to Biome or ESLint flat config before upgrading
-- **Route and middleware changes** — review the [Next.js 16 beta migration guide](https://nextjs.org/blog/next-16) for breaking changes
-- **Run deprecation warnings** — `next build` in Next.js 15.5 surfaces warnings for features that will break in Next.js 16
-
+### `next lint` Removed
+Use Biome or ESLint directly:
 ```bash
-# Check for deprecation warnings before upgrading
-npm run build 2>&1 | grep -i deprecat
+# Biome (recommended — fastest)
+npx biome check --write
+
+# ESLint
+npx eslint . --fix
 ```
 
-**Recommended pre-upgrade checklist:**
-1. Migrate from `next lint` to Biome or ESLint (see `setup.md`)
-2. Run `next build` and fix all deprecation warnings
-3. Review the [Next.js 16 upgrade guide](https://nextjs.org/blog/next-16)
+### Turbopack Production Builds
+Next.js 16 uses Turbopack for production builds by default:
+```bash
+# next build uses Turbopack automatically in Next.js 16
+npm run build
+
+# Force Webpack if needed (rare)
+NEXT_BUILD_USE_WEBPACK=1 npm run build
+```
+
+### PPR (Partial Prerendering) Deployment
+PPR is stable in Next.js 16. Enable it for improved TTFB:
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  cacheComponents: true,  // Enables PPR
+}
+```
+
+PPR requires Suspense boundaries around dynamic content — if you don't have them, Next.js will warn during build.
+
+### Caching Changes
+Next.js 16 removed implicit caching. For self-hosted deployments, ensure your caching strategy uses `use cache` + `cacheTag` for data functions. See `server-components.md` for details.
+
+**Sources:**
+- [Next.js 16 release notes](https://nextjs.org/blog/next-16)
+- [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying)

@@ -133,7 +133,31 @@ const nextConfig = {
 
 ## Caching Strategies
 
-### Route Handler Caching
+### `use cache` + `cacheTag` (Next.js 16)
+
+The `use cache` directive is the primary way to cache data in Next.js 16:
+
+```tsx
+// lib/data.ts
+import { cacheTag } from 'next/cache'
+
+export async function getPosts() {
+  'use cache'
+  cacheTag('posts')
+  return db.post.findMany()
+}
+```
+
+On-demand revalidation:
+
+```tsx
+import { revalidateTag } from 'next/cache'
+
+// After mutation — invalidate tagged cache
+revalidateTag('posts')
+```
+
+### Route Handler Caching (fetch-based)
 
 ```ts
 // app/api/posts/route.ts
@@ -148,43 +172,14 @@ export async function GET() {
 ### Cache Tags
 
 ```ts
-// Tag-based invalidation
-const posts = await fetch('https://api.example.com/posts', {
-  next: { tags: ['posts'] },  // Tag this request
-})
+// Tag-based invalidation — use with 'use cache' functions
+const posts = await getPosts() // getPosts uses cacheTag('posts')
 
 // Invalidate anywhere
 revalidateTag('posts')
 ```
 
-### `unstable_cache` for Non-Fetch Data
-
-For direct database calls or non-HTTP data sources, use `unstable_cache` (see [server-components.md](./server-components.md)):
-
-```tsx
-import { unstable_cache } from 'next/cache'
-
-export const getFeaturedPosts = unstable_cache(
-  () => db.post.findMany({ where: { featured: true }, take: 5 }),
-  ['featured-posts'],
-  { tags: ['posts'], revalidate: 3600 }
-)
-```
-
-### Revalidation Patterns
-
-```tsx
-import { revalidatePath, revalidateTag } from 'next/cache'
-
-// After creating a post
-revalidatePath('/posts')           // Invalidate list page
-revalidatePath('/posts/[slug]')     // Invalidate detail page
-revalidateTag('posts')             // Invalidate all tagged requests
-
-// After user update
-revalidatePath('/profile/[username]')
-revalidateTag('user-profile')
-```
+**Note:** The `next: { tags: [...] }` pattern on fetch still works, but `use cache` + `cacheTag` is the Next.js 16 preferred approach for server-side data functions.
 
 ## Bundle Optimization
 
@@ -240,17 +235,16 @@ export function Counter() {
 }
 ```
 
-## Partial Prerendering (PPR) — Experimental
+## Partial Prerendering (PPR) — Stable in Next.js 16
 
 Partial Prerendering (PPR) combines static rendering and dynamic rendering at the route segment level. Static parts are pre-rendered at build time (or revalidated), while dynamic parts stream in on request.
 
-**Enable PPR** in `next.config.ts`:
+**Status:** PPR is **stable** in Next.js 16. Enable it with `cacheComponents: true`:
 
 ```ts
+// next.config.ts
 const nextConfig: NextConfig = {
-  experimental: {
-    ppr: true,
-  },
+  cacheComponents: true,  // ✅ Stable in Next.js 16
 }
 ```
 
@@ -259,7 +253,7 @@ const nextConfig: NextConfig = {
 Wrap dynamic segments in `Suspense` boundaries — Next.js automatically identifies which parts are static (rendered at build time) and which are dynamic (streamed on request):
 
 ```tsx
-// app/layout.tsx — static shell (always cached)
+// app/layout.tsx — static shell + dynamic content
 import { Suspense } from 'react'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -278,6 +272,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 }
 ```
 
+**The static shell loads instantly from CDN** while dynamic content streams in — giving you sub-100ms TTFB for static pages with personalized content.
+
 ### When to Use PPR
 
 | Scenario | Use PPR? |
@@ -290,7 +286,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 - **ISR**: Entire page is static or revalidated together
 - **PPR**: Granular control — individual Suspense boundaries can have different caching strategies
 
-**Note:** PPR is experimental in Next.js 15. Check the [Next.js docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/ppr) for the latest status before using in production.
+**Sources:**
+- [Next.js PPR Platform Guide](https://nextjs.org/docs/app/guides/ppr-platform-guide)
+- [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 
 ## Turbopack — Fast Development Bundler
 
@@ -309,7 +307,7 @@ next dev --webpack
 - 10x faster HMR (hot module replacement) for large apps
 - Same behavior as Webpack for most Next.js features
 
-**Production builds** still use Webpack (Turbopack production is in progress).
+**Production builds** use Turbopack by default in Next.js 16 (`next build` uses Turbopack automatically).
 
 ## Font Optimization
 
@@ -368,7 +366,7 @@ const router = useRouter()
 - **Missing `priority` on above-the-fold images** — hurts LCP
 - **No skeleton fallback** — streaming without Suspense fallback = layout shift
 - **Client component bloat** — keeping too much in `'use client'` bundles all that JS
-- **Forgetting `revalidatePath`** — stale data after mutations
+- **Forgetting `revalidateTag`** — stale data after mutations with `use cache`
 - **Large `data` arrays passed as props** — paginate or virtualize long lists
 - **`useEffect` for initial data** — use server components or React Query instead
-- **Using `fetch` for DB data with caching** — use `unstable_cache` instead for non-HTTP data sources
+- **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` explicitly

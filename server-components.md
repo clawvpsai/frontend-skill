@@ -82,49 +82,132 @@ const posts = await getUserPosts(id)
 const [user, posts] = await Promise.all([getUser(id), getUserPosts(id)])
 ```
 
-## Next.js 16 Caching — Important Changes (from Next.js 15)
+## Next.js 16 Caching — `use cache` Directive
 
-The default caching behavior for `fetch` changed in Next.js 15 and persists in Next.js 16. **Dynamic is the new default** — data is fetched on every request unless explicitly cached.
+**Next.js 16 removed implicit caching entirely.** In Next.js 15, `fetch` had implicit caching behavior. In Next.js 16, everything runs dynamically by default — you must explicitly opt into caching with the `use cache` directive.
 
-### Cache Options in Next.js 16
+This is a fundamental shift: caching is now opt-in, not opt-out.
 
-```tsx
-// Dynamic (no cache) — every request fetches fresh data
-// This is NOW THE DEFAULT in Next.js 15
-const stats = await fetch('https://api.example.com/stats', {
-  cache: 'no-store',
-})
-```
+### `use cache` — The Primary Caching API (Next.js 16)
 
-```tsx
-// Static (cached) — revalidate every hour
-const posts = await fetch('https://api.example.com/posts', {
-  cache: 'force-cache',
-  next: { revalidate: 3600 },
-})
-```
-
-```tsx
-// Never cache (force dynamic)
-const data = await fetch('https://api.example.com/real-time', {
-  cache: 'no-store',
-})
-```
-
-**Summary of Next.js 15 caching changes (still valid in Next.js 16):**
-- `cache: 'no-store'` is now the default behavior (previously needed explicit opt-out)
-- `cache: 'force-cache'` (previously `cache: 'true'`) for static data
-- `revalidateTag` and `revalidatePath` still work as before
-
-### `unstable_cache` — Granular Function-Level Caching
-
-For non-`fetch` data sources (direct DB calls, external APIs without `fetch`), use `unstable_cache`:
+`use cache` is the new first-class way to cache data in Next.js 16. It replaces both `unstable_cache` and the old `fetch` with `next` options pattern. The compiler handles memoization automatically.
 
 ```tsx
 // lib/data.ts
+import { cacheTag } from 'next/cache'
+
+// Cache this function's return value for 1 hour
+// The compiler automatically memoizes repeated calls with the same arguments
+export async function getTopPosts(limit: number) {
+  'use cache'
+
+  const posts = await db.post.findMany({
+    where: { published: true },
+    orderBy: { views: 'desc' },
+    take: limit,
+  })
+
+  // Tag this cache entry for on-demand invalidation
+  cacheTag('posts')
+
+  return posts
+}
+```
+
+```tsx
+// In a server component:
+export default async function PopularPosts() {
+  const posts = await getTopPosts(10)
+  return <PostList posts={posts} />
+}
+```
+
+**How `use cache` works:**
+- The compiler analyzes the function and generates a cached version automatically
+- Cache keys are derived from function arguments — same args = same cached result
+- `cacheTag()` registers a tag for on-demand invalidation
+- `cacheLife()` sets the TTL (defaults to a sensible framework-determined value)
+
+```tsx
+// With explicit TTL using cacheLife()
+export async function getPopularPosts() {
+  'use cache'
+  cacheLife({ ttl: 3600 }) // cache for 1 hour
+
+  return db.post.findMany({ where: { featured: true } })
+}
+```
+
+**When to use `use cache`:**
+- Any function that fetches data (DB, external API, filesystem)
+- Use on the data function itself, not the page component
+- Works on exported functions from shared modules and inline in components
+
+### On-Demand Revalidation with `cacheTag` + `revalidateTag`
+
+```tsx
+// lib/data.ts — tag the cache entry
+import { cacheTag } from 'next/cache'
+
+export async function getPosts() {
+  'use cache'
+  cacheTag('posts')  // Tag this cache for revalidation
+  return db.post.findMany()
+}
+```
+
+```tsx
+// app/actions.ts — revalidate after mutation
+'use server'
+
+import { revalidateTag } from 'next/cache'
+import { createPostSchema } from '@/lib/validations'
+
+export async function createPost(formData: FormData) {
+  const parsed = createPostSchema.parse(Object.fromEntries(formData))
+  await db.post.create({ data: parsed })
+
+  // Invalidate all cached data tagged with 'posts'
+  revalidateTag('posts')
+}
+```
+
+### `use cache` for External APIs
+
+For external HTTP APIs, pass the fetch result directly:
+
+```tsx
+// lib/github.ts
+import { cacheTag } from 'next/cache'
+
+export async function getGitHubRepos(username: string) {
+  'use cache'
+
+  cacheTag(`github-${username}`)
+
+  const res = await fetch(`https://api.github.com/users/${username}/repos`, {
+    next: { revalidate: 3600 }, // still uses fetch's revalidate option
+  })
+
+  return res.json()
+}
+```
+
+### When to Use `use cache` vs `fetch` Directly
+
+| Pattern | Use When |
+|---|---|
+| `use cache` + `cacheTag` | Any server-side data function (DB, file I/O, external API wrapped in a function) |
+| `fetch` directly in page | Quick, one-off external API fetches where fetch's `next` options are sufficient |
+
+### `unstable_cache` — Legacy Pattern (Still Works, Prefer `use cache`)
+
+`unstable_cache` still works in Next.js 16 for backward compatibility, but `use cache` is the preferred approach going forward:
+
+```tsx
+// ⚠️ Legacy — prefer 'use cache' in Next.js 16
 import { unstable_cache } from 'next/cache'
 
-// Cache this DB query with tags
 export const getTopPosts = unstable_cache(
   async (limit: number) => {
     return db.post.findMany({
@@ -133,23 +216,32 @@ export const getTopPosts = unstable_cache(
       take: limit,
     })
   },
-  ['top-posts'],           // cache key parts
-  { 
-    tags: ['posts'],       // for revalidation
-    revalidate: 3600,      // or use tags, not both
-  }
+  ['top-posts'],
+  { tags: ['posts'], revalidate: 3600 }
 )
+```
 
-// In a server component:
-export default async function PopularPosts() {
-  const posts = await getTopPosts(10)
-  return <PostList posts={posts} />
+### Dynamic Rendering (Default in Next.js 16)
+
+Every route is dynamic by default. Use `use cache` to opt into caching:
+
+```tsx
+// Dynamic (default) — every request fetches fresh data
+export default async function Dashboard() {
+  const stats = await getDashboardStats() // runs on every request
+  return <DashboardUI stats={stats} />
 }
 ```
 
-**When to use `unstable_cache` vs `fetch` with `next` option:**
-- Use `fetch` with `next: { tags: [...] }` when fetching from external HTTP APIs
-- Use `unstable_cache` for direct database calls or other non-fetch data sources
+### Route Segment Config (Still Valid)
+
+```tsx
+// Force static rendering — still uses 'use cache' implicitly for data
+export const dynamic = 'force-static'
+
+// Force dynamic — always runs at request time
+export const dynamic = 'force-dynamic'
+```
 
 ## Server → Client Data Passing
 
@@ -176,7 +268,7 @@ Server components can pass data to client components via props — but props mus
 
 ### Passing Promises (React 19 `use()` hook)
 
-In React 19 / Next.js 15, you can pass Promises from server to client:
+In React 19 / Next.js 15+, you can pass Promises from server to client:
 
 ```tsx
 // Server Component — passes a Promise, NOT the resolved data
@@ -376,7 +468,7 @@ Server Actions are functions that run on the server but can be called from clien
 'use server'
 
 import { z } from 'zod'
-import { revalidatePath } from 'next/cache'
+import { revalidateTag } from 'next/cache'
 
 const CreatePostSchema = z.object({
   title: z.string().min(1).max(200),
@@ -390,7 +482,8 @@ export async function createPost(formData: FormData) {
   })
 
   await db.post.create({ data: parsed })
-  revalidatePath('/posts')
+  // Use revalidateTag — Next.js 16 preferred revalidation method
+  revalidateTag('posts')
 }
 ```
 
@@ -429,7 +522,14 @@ export function CreatePostForm() {
 - **Trying to use `useState` in a server component** — add `'use client'` or lift state to parent
 - **Passing non-serializable props** — functions and refs can't cross the RSC boundary
 - **Sequential awaits when parallel is possible** — use `Promise.all` for independent fetches
-- **Forgetting `revalidatePath`** — after mutations with Server Actions, revalidate caches
-- **Relying on old fetch caching defaults** — in Next.js 15, `cache: 'no-store'` is the default; use `cache: 'force-cache'` with `revalidate` for static data
-- **Using `unstable_cache` for fetch-based data** — use `fetch` with `next: { tags: [...] }` instead
+- **Forgetting `revalidateTag`** — after mutations with Server Actions, invalidate cached data
+- **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` to opt into caching
+- **Using `unstable_cache` in new code** — use `use cache` + `cacheTag` instead in Next.js 16
 - **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it
+- **Reading cookies/headers inside `use cache`** — read them outside the cached scope and pass as arguments
+
+**Sources:**
+- [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
+- [Next.js 16 release notes](https://nextjs.org/blog/next-16)
+- [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
+- [Next.js `revalidateTag`](https://nextjs.org/docs/app/api-reference/functions/revalidateTag)
