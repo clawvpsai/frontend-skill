@@ -13,7 +13,7 @@ Two distinct types of state, two different tools:
 
 ## React Query Setup
 
-### `lib/api.ts`
+### `lib/api.ts` (TanStack Query v5)
 
 ```tsx
 import { QueryClient } from '@tanstack/react-query'

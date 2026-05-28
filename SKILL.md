@@ -46,8 +46,10 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **TypeScript 6.0.3** (strict by default, ES2025 target, import defer)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3** + **shadcn/ui**
-- **Vite 6** (for non-Next projects; Next uses Turbopack)
+- **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **Biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
+- **TanStack Query v5** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration)
+- **React Hook Form v7** + **@hookform/resolvers v5** (compatible with Zod v4)
 - **Node.js 22 LTS**
 
 ## Pro Tips

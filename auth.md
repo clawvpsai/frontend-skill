@@ -2,7 +2,7 @@
 
 ## NextAuth.js v5 Overview
 
-NextAuth v5 (beta) is the current recommended version. It uses JWT sessions by default and supports multiple providers.
+NextAuth v5 (beta, available via `next-auth@beta`) is the current recommended version for new projects. It uses JWT sessions by default and supports multiple providers.
 
 ```bash
 npm install next-auth@beta

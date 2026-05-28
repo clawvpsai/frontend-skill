@@ -11,7 +11,7 @@ Production-grade React + Next.js 16 frontend development for agents building mod
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | State | Zustand (client) + React Query / TanStack Query |
 | Forms | React Hook Form + Zod |
-| Build | Vite 6 (non-Next) / Turbopack (Next) |
+| Build | Vite 8 (non-Next) / Turbopack (Next) |
 | Testing | Vitest + Playwright |
 | Auth | NextAuth.js v5 |
 
