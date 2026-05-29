@@ -653,6 +653,213 @@ function GoodComponent({ items }: Props) {
 - [Next.js React Compiler config](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)
 - [React Compiler configuration](https://react.dev/reference/react-compiler/configuration)
 
+
+
+## React 19.2 New Primitives (October 2025)
+
+React 19.2 stabilizes several previously-experimental APIs and introduces new primitives for fine-grained reactivity and loading states.
+
+### `<Activity />` — Declarative Loading States
+
+`<Activity>` is React 19.2's new component for declaratively showing loading/activity states. It replaces the need for manual `isPending` state tracking in many cases:
+
+```tsx
+import { Activity } from 'react'
+
+function FollowButton({ userId }: { userId: string }) {
+  const [following, setFollowing] = useState(false)
+
+  return (
+    <Activity detection="subtree">
+      {({ isActivity }) => (
+        <Button
+          onClick={() => setFollowing(f => !f)}
+          disabled={isActivity}
+        >
+          {isActivity ? 'Loading...' : following ? 'Following' : 'Follow'}
+        </Button>
+      )}
+    </Activity>
+  )
+}
+```
+
+**Key props:**
+- `detection` — `'subtree'` (default) tracks any state change in the subtree; `'elements'` tracks only specific interactive elements
+- `children` — render prop receiving `{ isActivity: boolean, activity: ActivityDetails }`
+
+**When to use `<Activity>` vs `useFormStatus` / `isPending`:**
+- `<Activity>` — global activity detection for any pending state in a subtree
+- `useFormStatus` — specifically for form submission pending state
+- `isPending` (React Query) — for specific query/mutation pending states
+
+### `useEffectEvent` — Stable Event Handlers in Effects (React 19.2)
+
+`useEffectEvent` was previously experimental (`useEffectEvent` from `react experimental`) and is now **stable** in React 19.2. It solves the "stale closure" problem in `useEffect` — you can define event handlers inside `useEffect` that always see the latest values without needing them in the dependency array:
+
+```tsx
+'use client'
+
+import { useEffect, useEffectEvent } from 'react'
+
+function ChatRoom({ roomId }: { roomId: string }) {
+  const [status, setStatus] = useState<'connected' | 'disconnected'>('disconnected')
+
+  // ❌ Problem: messageHandler captures stale roomId if not in deps
+  // useEffect(() => {
+  //   const ws = new WebSocket(`wss://chat/${roomId}`)
+  //   ws.onmessage = (event) => {
+  //     // roomId is stale here if deps aren't managed carefully
+  //     handleMessage(roomId, event.data)
+  //   }
+  // }, [roomId])
+
+  // ✅ useEffectEvent — event handler that always sees current roomId
+  const handleMessage = useEffectEvent((message: string) => {
+    // This function can access current props/state without them being deps
+    console.log(`[Room ${roomId}]:`, message)
+  })
+
+  useEffect(() => {
+    const ws = new WebSocket(`wss://chat/${roomId}`)
+    setStatus('connected')
+
+    ws.onmessage = (event) => {
+      handleMessage(event.data) // Always sees current roomId
+    }
+
+    return () => {
+      ws.close()
+      setStatus('disconnected')
+    }
+  }, [roomId])
+
+  return <div className={status === 'connected' ? 'text-green-500' : 'text-gray-400'}>{status}</div>
+}
+```
+
+**Why `useEffectEvent` instead of just putting the function inside the effect?**
+- Putting logic inside `useEffect` makes it harder to test and reason about
+- `useEffectEvent` lets you keep the effect focused on subscription lifecycle while extracting event handlers that need current values
+
+**Rules:**
+- `useEffectEvent` can only be called inside `useEffect`
+- The event handler it returns can reference any current value without causing the effect to re-run
+- Unlike `useCallback`, there's no dependency array — it captures values at call time, not render time
+
+### `cacheSignal` — Reactive Cached Values
+
+`cacheSignal` creates a signal whose value is cached and recomputed only when accessed, not on every render:
+
+```tsx
+import { cacheSignal } from 'react'
+
+// Creates a cached computation — only recomputes when deps change
+const useUserData = cacheSignal((userId: string) => {
+  console.log('Fetching user:', userId) // Runs once per unique userId
+  return fetchUser(userId)
+})
+
+function UserProfile({ userId }: { userId: string }) {
+  // userData is cached — accessing multiple times doesn't trigger re-fetch
+  const userData = useUserData(userId)
+  const displayName = useUserData(userId) // Same cache, no re-fetch
+
+  return <div>{userData.name}</div>
+}
+```
+
+**When to use `cacheSignal`:**
+- Expensive computations that depend on props but shouldn't re-run on every parent render
+- Derived data that's shared across multiple component instances
+- Similar to `useMemo` but the cache is tied to the signal's internal tracking rather than a dependency array
+
+**vs `useMemo`:**
+- `useMemo` — explicit dependency array; recomputes when deps change
+- `cacheSignal` — lazy evaluation; only recomputes when `.get()` is called with a new combination of arguments
+
+### `cache()` — Function Memoization (React 19.2)
+
+`cache()` memoizes a function's return value based on its arguments — similar to `useMemo` but for standalone functions:
+
+```tsx
+import { cache } from 'react'
+
+// Memoized function — same args return cached result
+const getUserById = cache(async (id: string) => {
+  console.log('API call for:', id) // Only runs once per unique id
+  const res = await fetch(`/api/users/${id}`)
+  return res.json()
+})
+
+// In server components:
+async function UserCard({ id }: { id: string }) {
+  const user = await getUserById(id) // First call: fetches
+  // Next UserCard with same id: returns cached result
+  return <div>{user.name}</div>
+}
+
+// In client components:
+function UserCard({ id }: { id: string }) {
+  const userPromise = getUserById(id)
+  const user = use(userPromise) // Suspends until resolved
+  return <div>{user.name}</div>
+}
+```
+
+**When to use `cache()`:**
+- Shared data fetching functions used across multiple components
+- Server-side data access in RSC patterns where you want request-level memoization
+- Replacing ad-hoc memoization patterns with a cleaner API
+
+**Note:** `cache()` in React 19.2 is distinct from `use cache` in Next.js 16. React's `cache()` is a general-purpose memoization primitive; Next.js `use cache` is a framework-level caching directive with server-side persistence.
+
+### Combined Example: Activity + Cache + EffectEvent
+
+```tsx
+'use client'
+
+import { Activity, useEffectEvent, cache } from 'react'
+
+const fetchNotifications = cache(async (userId: string) => {
+  const res = await fetch(`/api/notifications?userId=${userId}`)
+  return res.json()
+})
+
+export function NotificationBell({ userId }: { userId: string }) {
+  const [unread, setUnread] = useState(0)
+
+  const markAsRead = useEffectEvent(async () => {
+    await fetch(`/api/notifications/read`, { method: 'POST' })
+    setUnread(0)
+  })
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const data = await fetchNotifications(userId)
+      setUnread(data.unread)
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [userId])
+
+  return (
+    <Activity detection="subtree">
+      {({ isActivity }) => (
+        <button onClick={markAsRead} disabled={isActivity}>
+          🔔 {isActivity ? '...' : unread > 0 ? `(${unread})` : ''}
+        </button>
+      )}
+    </Activity>
+  )
+}
+```
+
+**Sources:**
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
+- [React Activity component](https://react.dev/reference/react/Activity)
+- [React useEffectEvent](https://react.dev/reference/react/useEffectEvent)
+- [React cache API](https://react.dev/reference/react/cache)
+
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation
@@ -664,3 +871,4 @@ function GoodComponent({ items }: Props) {
 - **Passing server-side data to client without serialization** — Dates must be `.toISOString()`, non-serializable objects can't cross the RSC boundary
 - **`use()` with non-Promise** — `use()` only accepts Promises; for regular values just use them directly
 - **Mutating props/state with React Compiler** — the compiler skips components that mutate; fix mutations first
+- **`cache()` vs `use cache` confusion** — React's `cache()` is client-side function memoization; Next.js `use cache` is server-side persistence; don't confuse the two
