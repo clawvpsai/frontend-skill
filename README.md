@@ -7,7 +7,7 @@ Production-grade React + Next.js 16 frontend development for agents building mod
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 16 (App Router) |
-| Language | TypeScript 5.x (strict) |
+| Language | TypeScript 6.x (strict) |
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | State | Zustand (client) + React Query / TanStack Query |
 | Forms | React Hook Form + Zod |
@@ -21,14 +21,14 @@ This skill expects Node.js 20+ and npm/pnpm.
 
 ```bash
 # Create a new Next.js project
+# Turbopack is the default and stable in Next.js 16 — no flag needed
 npx create-next-app@latest my-app \
   --typescript \
   --tailwind \
   --eslint \
   --app \
   --src-dir \
-  --import-alias "@/*" \
-  --no-turbopack
+  --import-alias "@/*"
 
 cd my-app
 
