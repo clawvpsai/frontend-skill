@@ -1,4 +1,29 @@
-# Security — XSS, CSRF, CSP, Input Sanitization
+# Security — XSS, CSRF, CSP, Input Sanitization + Next.js Security
+
+## Next.js 16.2.6 Security Fixes (May 2026)
+
+Next.js 16.2.6 is a **security-focused release** patching multiple high and moderate severity vulnerabilities. If you're on an earlier version, upgrade immediately.
+
+### What Was Fixed
+
+| Severity | Advisory | Issue |
+|---|---|---|
+| **High** | GHSA-8h8q-6873-q5fj | Denial of Service with Server Components |
+| **High** | GHSA-267c-6grr-h53f | Middleware/Proxy bypass via segment-prefetch routes |
+| **High** | GHSA-26hh-7cqf-hhc6 | Incomplete fix follow-up for middleware bypass |
+| **High** | GHSA-mg66-mrh9-m8jx | DoS via connection exhaustion in Cache Components |
+| **High** | GHSA-492v-c6pp-mqqv | Middleware bypass via dynamic route parameter injection |
+| **High** | GHSA-c4j6-fc7j-m34r | SSRF via WebSocket upgrades |
+| **Moderate** | GHSA-ffhc-5mcf-pf4q | XSS in App Router via CSP nonces |
+| **Moderate** | GHSA-gx5p-jg67-6x7h | XSS in beforeInteractive scripts with untrusted input |
+| **Moderate** | GHSA-h64f-5h5j-jqjh | DoS in Image Optimization API |
+| **Moderate** | GHSA-wfc6-r584-vfw7 | Cache poisoning in RSC responses |
+| **Low** | GHSA-vfv6-92ff-j949 | Cache poisoning via collisions in RSC cache-busting |
+| **Low** | GHSA-3g8h-86w9-wvmq | Middleware redirect cache poisoning |
+
+**Upgrade:** `npm install next@latest` to get 16.2.6 or later.
+
+---
 
 ## XSS (Cross-Site Scripting)
 
@@ -92,6 +117,90 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+}
+```
+
+### Next.js CSP Nonce Considerations
+
+When using CSP with Next.js App Router, **do not use untrusted user input in CSP nonce generation**. The 16.2.6 patch fixes XSS via CSP nonces — ensure your nonce implementation reads from a server-generated seed, not from client-supplied values:
+
+```tsx
+// ❌ Never derive nonce from client-supplied input
+const nonce = request.headers.get('x-nonce') // ← attacker-controlled
+
+// ✅ Generate nonce server-side and pass via crypto.getRandomValues
+import { randomBytes } from 'crypto'
+
+function generateCspNonce(): string {
+  return randomBytes(16).toString('base64')
+}
+```
+
+### beforeInteractive Script XSS
+
+Avoid passing unsanitized user input to `beforeInteractive` scripts:
+
+```tsx
+// ❌ Dangerous — user input in beforeInteractive script
+<Script
+  src={`/analytics.js?campaign=${userProvidedParam}`}
+  strategy="beforeInteractive"
+/>
+
+// ✅ Validate or hardcode all beforeInteractive script sources
+<Script
+  src="/analytics.js"
+  strategy="beforeInteractive"
+/>
+```
+
+## Middleware Security
+
+### The Middleware Bypass Fixes (16.2.6)
+
+Next.js 16.2.6 patches multiple middleware/proxy bypass vulnerabilities. **Do not rely on middleware alone for security-critical decisions** — always validate server-side too.
+
+Key mitigations to ensure are in place:
+
+```ts
+// middleware.ts — validate EVERYTHING server-side, not just in middleware
+export async function middleware(request: NextRequest) {
+  // ❌ Incomplete — path check only
+  // if (request.nextUrl.pathname.startsWith('/admin')) { ... }
+
+  // ✅ Verify auth properly in middleware AND in route handlers
+  const session = await getSession(request)
+  
+  if (request.nextUrl.pathname.startsWith('/admin')) {
+    if (!session?.user?.role === 'admin') {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  }
+
+  return NextResponse.next()
+}
+```
+
+### WebSocket Upgrade SSRF
+
+If your app uses WebSocket upgrades, **validate all URLs server-side** before upgrading:
+
+```tsx
+// ❌ Dangerous — attacker can supply internal URLs
+const wsUrl = request.nextUrl.searchParams.get('ws')
+
+// ✅ Always validate WebSocket URLs
+const isAllowedWsUrl = (url: string) => {
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'wss:' && 
+           !parsed.hostname.includes('localhost') &&
+           !parsed.hostname.includes('127.0.0.1') &&
+           !parsed.hostname.startsWith('192.168.') &&
+           !parsed.hostname.startsWith('10.')
+  } catch {
+    return false
+  }
 }
 ```
 
@@ -250,3 +359,15 @@ NEXTAUTH_SECRET="..."
 - **Missing CSRF validation** — always validate Origin header in API routes
 - **Not validating user input on the server** — client validation is UX only, not security
 - **Storing passwords in plain text** — use bcrypt, always hash server-side
+- **Relying on middleware alone for auth** — always re-validate in route handlers
+- **Unvalidated user input in WebSocket upgrade URLs** — validate URLs before upgrading
+- **Unvalidated user input in beforeInteractive scripts** — hardcode script sources
+- **Deriving CSP nonces from client-supplied values** — generate server-side only
+
+**Sources:**
+- [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
+- [GHSA-8h8q-6873-q5fj: DoS with Server Components](https://github.com/vercel/next.js/security/advisories/GHSA-8h8q-6873-q5fj)
+- [GHSA-267c-6grr-h53f: Middleware/Proxy bypass](https://github.com/vercel/next.js/security/advisories/GHSA-267c-6grr-h53f)
+- [GHSA-c4j6-fc7j-m34r: SSRF via WebSocket upgrades](https://github.com/vercel/next.js/security/advisories/GHSA-c4j6-fc7j-m34r)
+- [GHSA-ffhc-5mcf-pf4q: XSS via CSP nonces](https://github.com/vercel/next.js/security/advisories/GHSA-ffhc-5mcf-pf4q)
+- [GHSA-wfc6-r584-vfw7: Cache poisoning in RSC](https://github.com/vercel/next.js/security/advisories/GHSA-wfc6-r584-vfw7)
