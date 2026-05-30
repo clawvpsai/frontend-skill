@@ -151,10 +151,15 @@ export async function getPosts() {
 On-demand revalidation:
 
 ```tsx
-import { revalidateTag } from 'next/cache'
+import { revalidateTag, updateTag } from 'next/cache'
 
-// After mutation — invalidate tagged cache
+// After mutation — revalidateTag schedules background refresh (fast, serves stale briefly)
+// Use for non-critical data, high-traffic pages
 revalidateTag('posts')
+
+// updateTag immediately expires the cache (strong consistency, slightly slower)
+// Use for critical data: inventory, auth, personalization
+updateTag('posts')
 ```
 
 ### Route Handler Caching (fetch-based)
@@ -366,7 +371,7 @@ const router = useRouter()
 - **Missing `priority` on above-the-fold images** — hurts LCP
 - **No skeleton fallback** — streaming without Suspense fallback = layout shift
 - **Client component bloat** — keeping too much in `'use client'` bundles all that JS
-- **Forgetting `revalidateTag`** — stale data after mutations with `use cache`
+- **Forgetting cache invalidation** — after mutations with `use cache`, use `revalidateTag` (background) or `updateTag` (immediate)
 - **Large `data` arrays passed as props** — paginate or virtualize long lists
 - **`useEffect` for initial data** — use server components or React Query instead
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` explicitly

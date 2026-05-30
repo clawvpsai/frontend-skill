@@ -143,32 +143,69 @@ export async function getPopularPosts() {
 - Use on the data function itself, not the page component
 - Works on exported functions from shared modules and inline in components
 
-### On-Demand Revalidation with `cacheTag` + `revalidateTag`
+### On-Demand Revalidation: `revalidateTag` vs `updateTag`
 
-```tsx
-// lib/data.ts — tag the cache entry
-import { cacheTag } from 'next/cache'
+Next.js 16 provides two distinct cache invalidation functions. Understanding when to use each matters for data freshness:
 
-export async function getPosts() {
-  'use cache'
-  cacheTag('posts')  // Tag this cache for revalidation
-  return db.post.findMany()
-}
-```
+#### `revalidateTag` — Background Refresh (Eventual Consistency)
+
+`revalidateTag` schedules the cached entry to be refreshed on the **next request** — the stale data is served while revalidation happens in the background:
 
 ```tsx
 // app/actions.ts — revalidate after mutation
 'use server'
 
 import { revalidateTag } from 'next/cache'
-import { createPostSchema } from '@/lib/validations'
 
 export async function createPost(formData: FormData) {
   const parsed = createPostSchema.parse(Object.fromEntries(formData))
   await db.post.create({ data: parsed })
 
-  // Invalidate all cached data tagged with 'posts'
+  // Schedule revalidation — stale data served until next request refetches
   revalidateTag('posts')
+}
+```
+
+**Use when:** Slight staleness is acceptable, and you want to avoid latency spikes from synchronous cache rebuilds.
+
+#### `updateTag` — Immediate Expiration (Strong Consistency)
+
+`updateTag` **immediately expires** the cached entry — the next request gets fresh data, no stale serving:
+
+```tsx
+// app/actions.ts — update after mutation
+'use server'
+
+import { updateTag } from 'next/cache'
+
+export async function createPost(formData: FormData) {
+  const parsed = createPostSchema.parse(Object.fromEntries(formData))
+  await db.post.create({ data: parsed })
+
+  // Immediately expire — next request gets fresh data
+  updateTag('posts')
+}
+```
+
+**Use when:** Data must be immediately consistent (e.g., inventory counts, financial data, user-generated content that affects authorization).
+
+#### Which to Use
+
+| Function | Behavior | Latency on Next Request | Use Case |
+|---|---|---|---|
+| `revalidateTag` | Background refresh | Fast (serves stale) | Non-critical data, high-traffic pages |
+| `updateTag` | Immediate expiration | Slower (refetches on next request) | Critical data, personalization, auth |
+
+**Important:** Both `revalidateTag` and `updateTag` can only be called from within **Server Actions**. For Route Handlers or other contexts, use `revalidateTag`.
+
+```tsx
+// lib/data.ts — tag the cache entry (used by both revalidateTag and updateTag)
+import { cacheTag } from 'next/cache'
+
+export async function getPosts() {
+  'use cache'
+  cacheTag('posts')  // Tag this cache for invalidation
+  return db.post.findMany()
 }
 ```
 
@@ -522,7 +559,7 @@ export function CreatePostForm() {
 - **Trying to use `useState` in a server component** — add `'use client'` or lift state to parent
 - **Passing non-serializable props** — functions and refs can't cross the RSC boundary
 - **Sequential awaits when parallel is possible** — use `Promise.all` for independent fetches
-- **Forgetting `revalidateTag`** — after mutations with Server Actions, invalidate cached data
+- **Forgetting cache invalidation** — after mutations, use `revalidateTag` (background refresh) or `updateTag` (immediate expiration) to keep data fresh
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` to opt into caching
 - **Using `unstable_cache` in new code** — use `use cache` + `cacheTag` instead in Next.js 16
 - **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it
@@ -533,3 +570,4 @@ export function CreatePostForm() {
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
 - [Next.js `revalidateTag`](https://nextjs.org/docs/app/api-reference/functions/revalidateTag)
+- [Next.js `updateTag`](https://nextjs.org/docs/app/api-reference/functions/updateTag)

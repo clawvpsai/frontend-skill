@@ -444,7 +444,30 @@ const nextConfig: NextConfig = {
 PPR requires Suspense boundaries around dynamic content — if you don't have them, Next.js will warn during build.
 
 ### Caching Changes
-Next.js 16 removed implicit caching. For self-hosted deployments, ensure your caching strategy uses `use cache` + `cacheTag` for data functions. See `server-components.md` for details.
+Next.js 16 removed implicit caching. For self-hosted deployments, ensure your caching strategy uses `use cache` + `cacheTag` for data functions. For invalidation, use `revalidateTag` (background refresh) or `updateTag` (immediate expiration). See `server-components.md` for details.
+
+### Next.js DevTools MCP Server (Next.js 16.2+)
+Next.js 16.2+ ships with a built-in MCP (Model Context Protocol) server for AI-assisted development. It enables AI coding assistants (Claude, Cursor, etc.) to interact directly with your Next.js project's dev server for tasks like:
+- Reading route configuration and file structure
+- Inspecting component trees and data fetching patterns
+- Running Next.js CLI commands and reading output
+- Analyzing bundle stats and performance metrics
+
+**Setup:**
+```bash
+# In your Next.js project, the MCP server starts automatically with:
+npm run dev
+
+# Or manually via the Next.js CLI:
+npx next dev --mcp
+
+# Configure AI clients (Claude Desktop, Cursor, etc.) to connect to:
+# localhost:3000/.next/mcp (or your dev server URL)
+```
+
+**Security note:** The MCP server exposes project introspection endpoints. Only enable it in local development, not in production deployments. Use `NEXT_MCP_ENABLED=false` to disable if needed.
+
+See: [Next.js DevTools MCP](https://mcpservers.org/servers/vercel/next-devtools-mcp)
 
 **Sources:**
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
