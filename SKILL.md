@@ -42,7 +42,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 ## Version Defaults
 
 - **Next.js 16.2.6** (latest — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable)
-- **React 19.2.6** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`)
+- **React 19.2.6** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`)
 - **TypeScript 6.0.3** (strict by default, ES2025 target, import defer)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3** + **shadcn/ui**
@@ -74,7 +74,7 @@ Key breaking changes from Next.js 15 → 16:
 | **`use cache` directive** replaces `unstable_cache` | New explicit caching API — mark data functions with `use cache` + `cacheTag` |
 | **Implicit caching removed** — everything is dynamic by default | Old `fetch` caching patterns deprecated; use `use cache` explicitly |
 | **PPR (Partial Prerendering) stable** — `cacheComponents: true` | Static shell + streaming dynamic content; no longer experimental |
-| `images.minimumCacheTTL` default: 1min → **4 hours** | Image caching behavior change; set explicitly if you need 1min |
+| images.minimumCacheTTL default: 1min → **4 hours** | Image caching behavior change; set explicitly if you need 1min |
 | **Router scroll optimization** enabled by default | Previously scroll was reset on navigation; now preserved by default |
 | Flat config default in `@next/eslint-plugin-next` | ESLint config format change |
 | Deprecated `.turbo` config object removed | Use `turbopack` key in `next.config.ts` instead |

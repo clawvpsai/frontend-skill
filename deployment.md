@@ -467,7 +467,9 @@ npx next dev --mcp
 
 **Security note:** The MCP server exposes project introspection endpoints. Only enable it in local development, not in production deployments. Use `NEXT_MCP_ENABLED=false` to disable if needed.
 
-See: [Next.js DevTools MCP](https://mcpservers.org/servers/vercel/next-devtools-mcp)
+**Package:** `next-devtools-mcp` v0.3.10 (verified on npm)
+
+See: [Next.js DevTools MCP guide](https://nextjs.org/docs/app/guides/mcp) · [MCP Servers directory](https://mcpservers.org/servers/vercel/next-devtools-mcp)
 
 ### Next.js 16.2 Adapter API (Stable)
 
@@ -479,45 +481,22 @@ Next.js 16.2 stabilizes the **Adapter API** — a first-class, documented interf
 
 #### How Adapters Work
 
-Adapters transform the Next.js build output for a specific deployment target:
+Adapters transform the Next.js build output for a specific deployment target. The most mature option for Cloudflare Workers:
 
 ```bash
-# Install an adapter for your target platform
-npm install @opennextjs/cloudflare   # Cloudflare Workers
-npm install @opennextjs/netlify     # Netlify
-npm install @opennextjs/aws         # AWS Lambda/ECS
+# Install the Cloudflare adapter (verified on npm as @opennextjs/cloudflare v1.19.11)
+npm install @opennextjs/cloudflare wrangler
 
 # Build with the adapter
 OPENNEXT_ADAPTER=@opennextjs/cloudflare npm run build
-```
 
-#### Using OpenNext (Reference Adapter)
-
-[OpenNext](https://opennext.js.org/) is the reference implementation for the Adapter API. It produces a standard build output that any platform can consume:
-
-```bash
-# Install OpenNext adapter
-npm install @opennextjs/adapter
-
-# Build
-npx @opennextjs/adapter build
-
-# Output goes to .opennext/ — deploy this to your target
-```
-
-**For Cloudflare Workers:**
-```bash
-npm install @opennextjs/cloudflare wrangler
-npx @opennextjs/adapter build --adapter cloudflare
+# Deploy to Cloudflare Workers
 wrangler deploy
 ```
 
-**For AWS:**
-```bash
-npm install @opennextjs/aws
-npx @opennextjs/adapter build --adapter aws
-# Deploy the .opennext/aws/ directory to Lambda, ECS, or EKS
-```
+**For other platforms** — check their official adapters (Vercel, Netlify, etc. maintain their own):
+- Cloudflare: `@opennextjs/cloudflare` (verified on npm)
+- Other platforms: refer to their official deployment guides
 
 #### Adapter API Reference
 
@@ -530,45 +509,12 @@ The adapter interface handles these concerns:
 | **Output** | Formats build artifacts for the target platform |
 | **Caching** | Integrates with the target's caching layer |
 
-```ts
-// adapter.ts — minimal adapter structure (for reference)
-import type { Adapter } from 'next/dist/compiled/@next/runtime'
-
-export default {
-  name: 'my-adapter',
-  version: 1,
-  
-  async build() {
-    // Transform build output for the target platform
-  },
-  
-  async start() {
-    // Start the runtime on the target
-  },
-} satisfies Adapter
-```
-
-**Note:** Most users will use a pre-built adapter (`@opennextjs/cloudflare`, `@opennextjs/netlify`, etc.) rather than writing their own. Only build a custom adapter if you're targeting a platform without an existing adapter.
-
-#### Migrating from Legacy Build Output
-
-If you're currently using custom build scripts or wrappers to deploy Next.js, the Adapter API provides a stable interface:
-
-```bash
-# Before (brittle — internal API)
-node scripts/custom-deploy.js
-
-# After (stable contract)
-npx @opennextjs/adapter build --adapter <platform>
-```
+**Note:** Platform-specific adapters (Cloudflare, Vercel, Netlify) are maintained by each platform's team. Only install adapters from sources you trust. For self-hosted VPS deployments, the standalone Docker/PM2 approach above is recommended.
 
 **Sources:**
-- [Next.js Adapter API docs](https://nextjs.org/docs/app/api-reference/adapters)
-- [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
-- [OpenNext adapter](https://opennext.js.org/)
-- [TypeScript.news: Next.js 16.2 Adapter API](https://typescript.news/articles/2026-04-04-next-js-16-2-stable-adapter-api-cross-platform)
-
-
-**Sources:**
+- [Next.js deployment guides](https://nextjs.org/docs/app/guides/deploying-to-platforms)
+- [Next.js self-hosting guide](https://nextjs.org/docs/app/guides/self-hosting)
+- [Next.js MCP guide](https://nextjs.org/docs/app/guides/mcp)
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
-- [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying)
+- [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
+- [OpenNext adapter for Cloudflare](https://opennext.js.org/)
