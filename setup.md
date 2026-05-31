@@ -299,6 +299,29 @@ Add to `package.json` scripts:
 - `vcs` top-level key is new in v2 — enables git integration for ignored files
 - Most rules unchanged; check [Biome v2 migration guide](https://biomejs.dev/migration-guide/) for details
 
+**`biome migrate` — Run After Every Upgrade:**
+
+Biome requires running a migration script after every version upgrade to update your config and suppressions for breaking changes:
+
+```bash
+# After upgrading Biome to any new version
+npx biome migrate --write
+
+# What it does:
+# 1. Updates biome.json schema URL to the new version
+# 2. Rewrites rule suppressions that changed between versions
+# 3. Flags config keys that need manual review
+```
+
+**Always run `biome migrate --write` after `npm install @biomejs/biome@latest`** — skipping it means Biome may error on config keys that changed between versions. Add it to your upgrade workflow:
+
+```bash
+npm install -D @biomejs/biome@latest
+npx biome migrate --write
+npx biome check --write  # Verify everything still passes
+```
+
+
 ### Option 2: ESLint (Flat Config — Next.js 16)
 
 ESLint's flat config (`eslint.config.mjs`) is the modern approach and works with Next.js 16:

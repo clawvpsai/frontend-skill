@@ -37,22 +37,113 @@ v4 is a rewrite with significant changes:
 }
 ```
 
-## Tailwind v4.3 — New Features
+## Tailwind v4.2/v4.3 — New Features
 
-v4.3 introduced first-party scrollbar styling, logical properties, zoom/tab-size utilities, and improved `@variant` support.
+v4.2 and v4.3 shipped quietly with significant new features: four new color palettes, a dedicated webpack plugin with 2x+ build speed improvements, block-size container queries, and first-party scrollbar/zoom/tab-size utilities.
 
-### Scrollbar Styling (First-Party)
+### New Color Palettes (v4.2)
+
+Four new neutral-adjacent palettes fill a gap between grays and other colors:
 
 ```tsx
-// Custom scrollbar — no need for arbitrary values or vendor prefixes
+// mauve — warm purple-gray
+bg-mauve-100  text-mauve-600  border-mauve-300
+
+// olive — desaturated green-gray
+bg-olive-100  text-olive-600  border-olive-300
+
+// mist — cool blue-gray
+bg-mist-100  text-mist-600  border-mist-300
+
+// taupe — warm brown-gray
+bg-taupe-100  text-taupe-600  border-taupe-300
+```
+
+Each palette has shades from 50 through 900 (same scale as slate/zinc). Use these instead of gray when you want warmth or coolness without going full color.
+
+### Webpack Plugin (v4.2)
+
+A dedicated Tailwind webpack plugin offers 2x+ faster build speeds for large projects:
+
+```ts
+// vite.config.ts — Vite (Next.js uses built-in, no plugin needed)
+import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  plugins: [tailwindcss()],
+})
+```
+
+**Note:** Next.js already uses its own built-in Tailwind integration — no additional plugin needed. The webpack plugin is primarily for non-Next.js webpack projects.
+
+### `@container-size` — Block-Size Container Queries (v4.3)
+
+v4.3 adds block-size (`cqb`/`cqh`) container queries via `@container-size`. Previously `@container` only supported inline-size queries. Now you can style based on the container's block dimension (height in horizontal writing mode):
+
+```tsx
+// Define a container that can be queried
+<div className="container-type-inline-size">
+  <div className="cqb-4">    {/* Shows when container block-size >= 4 (1rem) */}
+    <Sidebar />
+  </div>
+</div>
+
+// Available utilities:
+container-type-inline-size   // enables @container queries on inline (width) axis
+container-type-block-size     // enables @container queries on block (height) axis
+container-type-size          // enables both axes
+
+// Container query variants — inline-size (existing)
+@container              // shorthand for min-width: inline-size
+cqb-{size}              // min-block-size >= size
+cqb-{size}-{variant}    // responsive variants (sm, md, lg, etc.)
+
+// Container query variants — block-size (NEW in v4.3)
+cqh-{size}              // min-block-size >= size (queries container HEIGHT)
+cqh-{size}-{variant}    // responsive variants
+
+// Real-world example: content cards that adapt to container height
+<div className="container-type-block-size">
+  <Card className="cqh-48:h-48 cqh-64:h-64 cqh-96:h-96" />
+</div>
+```
+
+**Why `@container-size` over media queries?** Container queries respond to the parent container's size, not the viewport — better for reusable component libraries where the same component appears in different layout contexts.
+
+### Font-Features-* Utility (v4.2)
+
+Control OpenType font features directly in Tailwind:
+
+```tsx
+// OpenType features — use for advanced typography
+font-features-tnum    // tabular-nums — numbers align in columns
+font-features-liga    // ligatures — common ligatures like fi, fl
+font-features-kern    // kerning — letter-spacing optimization
+font-features-smcp    // small-caps
+font-features-onum    // old-style-nums — variable-width numbers like 1, 2
+
+// For code: use tabular-nums so digits align in columns
+<code className="font-features-tnum font-mono">0123456789</code>
+
+// For rich text: old-style nums look more natural in body copy
+<p className="font-features-onum">The price is $199.99</p>
+```
+
+### Scrollbar Styling (v4.3 — First-Party)
+
+Custom scrollbars without vendor prefixes or arbitrary values:
+
+```tsx
+// Custom scrollbar
 <div className="scrollbar scrollbar-thumb-rounded scrollbar-track-slate-100 dark:scrollbar-thumb-slate-700 dark:scrollbar-track-slate-800">
   {/* Scrollable content */}
 </div>
 
 // Available utilities:
-scrollbar          // display: scrollbar
-scrollbar-thin     // scrollbar-width: thin
-scrollbar-none     // scrollbar-width: none
+scrollbar              // display: scrollbar
+scrollbar-thin         // scrollbar-width: thin
+scrollbar-none         // scrollbar-width: none
 
 // Color — use any color token
 scrollbar-thumb-{color}-{shade}
@@ -98,7 +189,7 @@ rounded-s           // start (inline) corner rounded
 rounded-e           // end (inline) corner rounded
 ```
 
-### Zoom Utilities
+### Zoom Utilities (v4.3)
 
 ```tsx
 // Scale elements — useful for accessible focus indicators, tooltips
@@ -116,7 +207,7 @@ zoom-200      // transform: scale(2)
 <div className="zoom-125 origin-top-left">...</div>
 ```
 
-### Tab-Size Utilities
+### Tab-Size Utilities (v4.3)
 
 ```tsx
 // Control tab character rendering width
@@ -141,7 +232,7 @@ tab-16   // tab-size: 16
 <pre className="tab-4"><code>{code}</code></pre>
 ```
 
-### `@variant` Improvements
+### `@variant` Improvements (v4.3)
 
 v4.3 expanded `@variant` for custom pseudo-class and media query variants:
 
@@ -376,3 +467,7 @@ import { motion } from 'framer-motion'
 - **Missing `dark:` prefix** — always test dark mode, not just light
 - **Inline styles mixed with Tailwind** — pick one and stick to it
 - **Overly specific selectors** — Tailwind's cascade respects specificity; don't fight it
+
+**Sources:**
+- [Tailwind CSS v4.3 release notes](https://tailwindcss.com/blog/tailwindcss-v4-3)
+- [Tailwind CSS v4.2/v4.3 new features](https://app.daily.dev/posts/what-s-new-in-tailwind-css-v4-2-and-v4-3-oybkeyde7)

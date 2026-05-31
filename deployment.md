@@ -469,6 +469,106 @@ npx next dev --mcp
 
 See: [Next.js DevTools MCP](https://mcpservers.org/servers/vercel/next-devtools-mcp)
 
+### Next.js 16.2 Adapter API (Stable)
+
+Next.js 16.2 stabilizes the **Adapter API** — a first-class, documented interface for deploying Next.js to any platform. Previously, platforms like Cloudflare, Netlify, and AWS had to reverse-engineer Next.js's build output. Now they implement a standard adapter contract.
+
+**Who supports it:** Vercel, Netlify, Cloudflare Workers, AWS Amplify, Google Cloud — all signed the same public contract.
+
+**Why it matters:** Write once, deploy anywhere. No more platform-specific workarounds or fear of breaking changes when Next.js updates internal build output format.
+
+#### How Adapters Work
+
+Adapters transform the Next.js build output for a specific deployment target:
+
+```bash
+# Install an adapter for your target platform
+npm install @opennextjs/cloudflare   # Cloudflare Workers
+npm install @opennextjs/netlify     # Netlify
+npm install @opennextjs/aws         # AWS Lambda/ECS
+
+# Build with the adapter
+OPENNEXT_ADAPTER=@opennextjs/cloudflare npm run build
+```
+
+#### Using OpenNext (Reference Adapter)
+
+[OpenNext](https://opennext.js.org/) is the reference implementation for the Adapter API. It produces a standard build output that any platform can consume:
+
+```bash
+# Install OpenNext adapter
+npm install @opennextjs/adapter
+
+# Build
+npx @opennextjs/adapter build
+
+# Output goes to .opennext/ — deploy this to your target
+```
+
+**For Cloudflare Workers:**
+```bash
+npm install @opennextjs/cloudflare wrangler
+npx @opennextjs/adapter build --adapter cloudflare
+wrangler deploy
+```
+
+**For AWS:**
+```bash
+npm install @opennextjs/aws
+npx @opennextjs/adapter build --adapter aws
+# Deploy the .opennext/aws/ directory to Lambda, ECS, or EKS
+```
+
+#### Adapter API Reference
+
+The adapter interface handles these concerns:
+
+| Concern | What the Adapter Does |
+|---|---|
+| **Routing** | Maps incoming requests to Next.js route handlers |
+| **Runtime** | Wraps the Next.js runtime for the target environment |
+| **Output** | Formats build artifacts for the target platform |
+| **Caching** | Integrates with the target's caching layer |
+
+```ts
+// adapter.ts — minimal adapter structure (for reference)
+import type { Adapter } from 'next/dist/compiled/@next/runtime'
+
+export default {
+  name: 'my-adapter',
+  version: 1,
+  
+  async build() {
+    // Transform build output for the target platform
+  },
+  
+  async start() {
+    // Start the runtime on the target
+  },
+} satisfies Adapter
+```
+
+**Note:** Most users will use a pre-built adapter (`@opennextjs/cloudflare`, `@opennextjs/netlify`, etc.) rather than writing their own. Only build a custom adapter if you're targeting a platform without an existing adapter.
+
+#### Migrating from Legacy Build Output
+
+If you're currently using custom build scripts or wrappers to deploy Next.js, the Adapter API provides a stable interface:
+
+```bash
+# Before (brittle — internal API)
+node scripts/custom-deploy.js
+
+# After (stable contract)
+npx @opennextjs/adapter build --adapter <platform>
+```
+
+**Sources:**
+- [Next.js Adapter API docs](https://nextjs.org/docs/app/api-reference/adapters)
+- [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
+- [OpenNext adapter](https://opennext.js.org/)
+- [TypeScript.news: Next.js 16.2 Adapter API](https://typescript.news/articles/2026-04-04-next-js-16-2-stable-adapter-api-cross-platform)
+
+
 **Sources:**
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js deployment docs](https://nextjs.org/docs/app/building-your-application/deploying)
