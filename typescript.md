@@ -113,6 +113,123 @@ const diff = later.difference(now)  // returns Temporal.Duration
 - Better `Intl` integration
 - Nanosecond precision
 
+### Practical Temporal API Patterns
+
+Temporal has distinct types for different use cases. Here are the most useful patterns:
+
+**`Temporal.PlainDate` — Date without time (birthdays, anniversaries, schedules)**
+
+```ts
+// Parse and format dates
+const birthday = Temporal.PlainDate.from({ year: 1990, month: 5, day: 15 })
+const today = Temporal.Now.plainDateISO()
+
+// Age calculation
+const age = today.since(birthday).years  // no timezone confusion
+
+// Date arithmetic — add days, months, years
+const nextWeek = today.add({ days: 7 })
+const nextMonth = today.add({ months: 1 })
+
+// Comparison — no string parsing needed
+const isBefore = today.compare(birthday.add({ years: 18 })) < 0  // is under 18
+```
+
+**`Temporal.PlainTime` — Time without date (business hours, recurring events)**
+
+```ts
+const opensAt = Temporal.PlainTime.from({ hour: 9, minute: 0 })
+const closesAt = Temporal.PlainTime.from({ hour: 17, minute: 0 })
+const now = Temporal.Now.plainTimeISO()
+
+const isOpen = now.compare(opensAt) >= 0 && now.compare(closesAt) < 0
+```
+
+**`Temporal.PlainDateTime` — Date + time without timezone (local understanding)**
+
+```ts
+// Combine date and time
+const meeting = Temporal.PlainDateTime.from({
+  year: 2026,
+  month: 6,
+  day: 15,
+  hour: 14,
+  minute: 30,
+})
+
+// Format for display — use Intl with Temporal types
+const formatter = new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'long',
+  timeStyle: 'short',
+})
+
+// Convert to instant for display
+const instant = meeting.toZonedDateTimeISO('America/New_York')
+formatter.format(instant.toJSDate())  // "June 15, 2026 at 2:30 PM"
+```
+
+**`Temporal.ZonedDateTime` — Date + time with timezone (storage, transport, display)**
+
+```ts
+// Store in UTC, display in user's timezone
+const utcTime = Temporal.Now.zonedDateTimeISO('UTC')
+const localTime = utcTime.withTimeZone('Asia/Kolkata')
+
+// Parse from user input
+const userMeeting = Temporal.ZonedDateTime.from({
+  year: 2026,
+  month: 6,
+  day: 15,
+  hour: 14,
+  minute: 30,
+  timeZone: 'America/New_York',  // user's timezone from browser
+})
+
+// Convert for storage (always UTC)
+const utcForStorage = userMeeting.toInstant()
+
+// Duration between events in different timezones
+const event1 = Temporal.ZonedDateTime.from('2026-06-15T14:00:00[America/New_York]')
+const event2 = Temporal.ZonedDateTime.from('2026-06-15T20:00:00[Europe/London]')
+const gap = event2.since(event1)  // Temporal.Duration — correctly accounts for timezone offset
+```
+
+**`Temporal.Duration` — Time spans (durations, billing, subscriptions)**
+
+```ts
+const subscription = Temporal.Duration.from({ months: 1, days: 0 })
+const trial = Temporal.Duration.from({ days: 14 })
+
+// Check if trial expired
+const trialEnd = startDate.add(trial)
+const remaining = trialEnd.until(now)  // returns Duration
+const isExpired = remaining.isNegative()
+
+// Billing cycle — next charge date
+const nextBilling = lastBilling.add(subscription)
+```
+
+**Migrating from `Date` to Temporal in Next.js:**
+
+```ts
+// ❌ Old: Date — ambiguous timezone
+const createdAt = new Date(post.createdAt)
+const formatted = createdAt.toLocaleDateString('en-US', { timeZone: 'America/New_York' })
+
+// ✅ New: Temporal — unambiguous
+const createdAt = Temporal.Instant.fromEpochMilliseconds(post.createdAt.getTime())
+  .toZonedDateTimeISO('America/New_York')
+const formatted = new Intl.DateTimeFormat('en-US', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+}).format(createdAt.toJSDate())
+
+// Or store as ISO string in the database and parse directly
+const createdAt = Temporal.ZonedDateTime.from(post.createdAtISO)
+```
+
+**Note:** Most browsers don't support Temporal natively yet. Use the `temporal-polyfill` npm package or rely on TypeScript's type definitions alone — the types work without the runtime polyfill for type-checking purposes.
+
 ### TypeScript 6.0 Deprecations
 
 These legacy options are deprecated in 6.0 and will be removed in 7.0:

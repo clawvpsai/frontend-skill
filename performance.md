@@ -186,6 +186,64 @@ revalidateTag('posts')
 
 **Note:** The `next: { tags: [...] }` pattern on fetch still works, but `use cache` + `cacheTag` is the Next.js 16 preferred approach for server-side data functions.
 
+### `use cache` vs `cacheComponents` — Two Levels of Caching
+
+Next.js 16 has two distinct caching mechanisms that serve different purposes:
+
+| Concern | Mechanism | Level |
+|---|---|---|
+| **Data fetching** | `use cache` + `cacheTag` | Data layer — caches function return values |
+| **Render output** | `cacheComponents: true` (PPR) | Render layer — caches rendered HTML segments |
+
+**`use cache`** is for **data** — wrap any data-fetching function with `'use cache'` and the compiler memoizes its result:
+
+```tsx
+// Data — cached at function level
+export async function getUserPosts(userId: string) {
+  'use cache'
+  cacheTag(`user-posts-${userId}`)
+  return db.post.findMany({ where: { authorId: userId } })
+}
+```
+
+**`cacheComponents: true`** is for **rendering** — it enables PPR, which caches the rendered output of Suspense boundaries:
+
+```ts
+// next.config.ts — enables PPR (render-level caching via Suspense boundaries)
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+}
+```
+
+**They work together:** `use cache` caches the data, `cacheComponents` (PPR) caches the rendered component shell around that data. A common pattern:
+
+```tsx
+// With PPR + use cache:
+// 1. The static shell (<Header>, <Footer>) renders once and is cached
+// 2. Dynamic Suspense boundaries stream in
+// 3. Inside those boundaries, data functions with 'use cache' are cached separately
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        <Header />  {/* Static — cached by PPR */}
+        <Suspense fallback={<FeedSkeleton />}>
+          <Feed />  {/* Dynamic — streams; Feed uses 'use cache' internally */}
+        </Suspense>
+        <Footer />  {/* Static — cached by PPR */}
+      </body>
+    </html>
+  )
+}
+```
+
+**When to use each:**
+- Use `use cache` on **any data function** — DB queries, API calls, file reads
+- Use `cacheComponents: true` (PPR) for **pages with mixed static/dynamic content** — marketing pages, dashboards with personalized widgets
+
+**Rule:** Always use `use cache` for data. Enable `cacheComponents` (PPR) at the route level when you want the framework to cache rendered Suspense shells too.
+
 ## Bundle Optimization
 
 ### Dynamic Imports (Code Splitting)

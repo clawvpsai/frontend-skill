@@ -661,37 +661,92 @@ React 19.2 stabilizes several previously-experimental APIs and introduces new pr
 
 ### `<Activity />` — Declarative Loading States
 
-`<Activity>` is React 19.2's new component for declaratively showing loading/activity states. It replaces the need for manual `isPending` state tracking in many cases:
+`<Activity>` is React 19.2's new component for declaratively showing loading/activity states. It replaces the need for manual `isPending` state tracking when you want to detect any pending state in a subtree.
+
+**Key props:**
+- `detection` — `'subtree'` (default) tracks any state change in the entire subtree; `'elements'` tracks only mounted interactive elements that are pending
+- `children` — render prop receiving `{ isActivity: boolean, activity: ActivityDetails }`
+
+**`detection` variants explained:**
+
+| Mode | Behavior | Use When |
+|---|---|---|
+| `'subtree'` | Detects any pending state anywhere in the rendered subtree | General-purpose — default for most cases |
+| `'elements'` | Only tracks interactive elements that are actively pending | Fine-grained — button spinner on submit, toggle loading |
+
+**Practical example — Server Action with `<Activity>`:**
 
 ```tsx
-import { Activity } from 'react'
+// app/actions.ts
+'use server'
 
-function FollowButton({ userId }: { userId: string }) {
-  const [following, setFollowing] = useState(false)
+import { revalidateTag } from 'next/cache'
+
+export async function publishPost(postId: string) {
+  await db.post.update({ where: { id: postId }, data: { published: true } })
+  revalidateTag('posts')
+}
+```
+
+```tsx
+// components/post-actions.tsx
+'use client'
+
+import { Activity } from 'react'
+import { publishPost } from '@/app/actions'
+import { useActionState } from 'react'
+
+const initialState = { error: null as string | null }
+
+function PublishButton({ postId }: { postId: string }) {
+  // useActionState — React 19 hook for Server Action state
+  const [state, formAction, isPending] = useActionState(
+    async (prev: typeof initialState, formData: FormData) => {
+      try {
+        await publishPost(formData.get('postId') as string)
+        return { error: null }
+      } catch {
+        return { error: 'Failed to publish' }
+      }
+    },
+    initialState
+  )
 
   return (
-    <Activity detection="subtree">
-      {({ isActivity }) => (
-        <Button
-          onClick={() => setFollowing(f => !f)}
-          disabled={isActivity}
-        >
-          {isActivity ? 'Loading...' : following ? 'Following' : 'Follow'}
-        </Button>
-      )}
-    </Activity>
+    <form action={formAction}>
+      <input type="hidden" name="postId" value={postId} />
+      {/* Wrap in Activity to detect isPending from useActionState */}
+      <Activity detection="elements">
+        {({ isActivity }) => (
+          <button
+            type="submit"
+            disabled={isActivity}
+            className={isActivity ? 'opacity-50' : ''}
+          >
+            {isActivity ? 'Publishing...' : 'Publish'}
+          </button>
+        )}
+      </Activity>
+      {state.error && <p className="text-sm text-destructive">{state.error}</p>}
+    </form>
   )
 }
 ```
 
-**Key props:**
-- `detection` — `'subtree'` (default) tracks any state change in the subtree; `'elements'` tracks only specific interactive elements
-- `children` — render prop receiving `{ isActivity: boolean, activity: ActivityDetails }`
+**When to use `<Activity>` vs alternatives:**
 
-**When to use `<Activity>` vs `useFormStatus` / `isPending`:**
-- `<Activity>` — global activity detection for any pending state in a subtree
-- `useFormStatus` — specifically for form submission pending state
-- `isPending` (React Query) — for specific query/mutation pending states
+| Pattern | Best Use |
+|---|---|
+| `<Activity detection="subtree">` | Detect any loading in a large section (entire sidebar, full form) |
+| `<Activity detection="elements">` | Single interactive element — button loading state |
+| `useFormStatus` | Form-level pending state — submit button only |
+| `isPending` (React Query) | Query/mutation-specific loading — for one particular async operation |
+| Manual `isLoading` state | When you need precise control or multiple distinct loading states |
+
+**Common `<Activity>` mistakes:**
+- Wrapping too large a tree — `isActivity` becomes true for any pending child, causing cascading loading states
+- Using `'elements'` when you need to detect background loading — `'elements'` only tracks mounted pending elements
+- Confusing `<Activity>` with a spinner — it's a detection mechanism, not a UI component; use it to conditionally render your own loading UI
 
 ### `useEffectEvent` — Stable Event Handlers in Effects (React 19.2)
 
