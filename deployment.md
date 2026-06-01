@@ -154,87 +154,98 @@ app.prepare().then(() => {
 })
 ```
 
-## Middleware (Node.js Runtime)
+## proxy.ts (Next.js 16 — Request Proxy)
 
-Middleware now runs on the **Node.js runtime** by default as of Next.js 15.5 (previously ran on the Edge runtime). This means you have full access to Node.js APIs — `fs`, `crypto`, `Buffer`, `child_process`, etc.
+**In Next.js 16, `middleware.ts` is deprecated in favor of `proxy.ts`.** The rename reflects that this file intercepts and proxies requests. Both files work during the deprecation period, but `proxy.ts` is the forward-looking name. See `routing.md` for the full migration guide.
 
-### Basic Middleware Pattern
+### Basic proxy.ts Pattern
 
 ```ts
-// middleware.ts (project root)
+// proxy.ts (project root)
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export const proxy = async (request: NextRequest) => {
   // Add security headers
   const response = NextResponse.next()
-  
+
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
-  
+
   return response
 }
 
-export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
-}
+export const matcher = ['/((?!api|_next/static|_next/image|favicon.ico).*)']
 ```
 
 ### Protected Routes with Auth
 
 ```ts
-// middleware.ts
+// proxy.ts
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
 
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET!)
 
-export async function middleware(request: NextRequest) {
+export const proxy = async (request: NextRequest) => {
   const token = request.cookies.get('session')?.value
-  
+
   const protectedPaths = ['/dashboard', '/settings', '/admin']
-  const isProtected = protectedPaths.some(p => 
+  const isProtected = protectedPaths.some(p =>
     request.nextUrl.pathname.startsWith(p)
   )
-  
+
   if (isProtected) {
     if (!token) {
       return NextResponse.redirect(new URL('/login', request.url))
     }
-    
+
     try {
       await jwtVerify(token, JWT_SECRET)
     } catch {
       return NextResponse.redirect(new URL('/login', request.url))
     }
   }
-  
+
   return NextResponse.next()
 }
 
-export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+export const matcher = ['/((?!api|_next/static|_next/image|favicon.ico).*)']
+```
+
+**Key changes from `middleware.ts`:**
+- File renamed: `middleware.ts` → `proxy.ts`
+- Export renamed: `middleware` → `proxy`
+- Function must be `async` (required in Next.js 16)
+- `matcher` is a named export (can alternatively be placed in `next.config.ts`)
+
+**Matcher alternative — in `next.config.ts`:**
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  matcher: ['/dashboard/:path*', '/admin/:path*'],
 }
 ```
 
-### Why Node.js Middleware Matters
+### Node.js Runtime by Default
 
-| Edge Runtime (previous) | Node.js Runtime (Next.js 15.5+) |
+`proxy.ts` runs on the **Node.js runtime** by default (as of Next.js 15.5). This means full access to Node.js APIs — `fs`, `crypto`, `Buffer`, `child_process`, etc.
+
+| Edge Runtime | Node.js Runtime (Next.js 15.5+) |
 |---|---|
 | Limited APIs (fetch, crypto sub) | Full Node.js API access |
 | No `Buffer`, no `fs` | `Buffer`, `fs`, `crypto`, `child_process` |
 | Web Crypto API only | Node.js `crypto` module |
 | No native addons | Native addons work |
 
-This is particularly useful for:
-- Full **JWT verification** with Node.js crypto
-- **File-based operations** in middleware (rare, but needed)
-- **Custom authentication** strategies requiring Node APIs
-- **Compression** with native Node modules
+**Edge runtime** is still available if you specifically need edge characteristics (cold starts, global distribution) — add `export const runtime = 'edge'` to `proxy.ts`.
 
-**Note:** Edge runtime middleware is still available via `export const runtime = 'edge'` if you specifically need edge characteristics (cold starts, global distribution).
+**Sources:**
+- [Next.js 16 upgrade guide — proxy](https://nextjs.org/docs/app/guides/upgrading/version-16)
+- [Next.js proxy.ts migration](https://krishna-adhikari.com.np/blogs/next16-middleware-to-proxy)
 
 ## Nginx Reverse Proxy
 
@@ -407,6 +418,7 @@ jobs:
 - **Not setting `NEXTAUTH_URL`** in production — causes redirect loops
 - **Port mismatch** — ensure `PORT` env var matches Nginx/docker config
 - **No health check** — Kubernetes/load balancers need `/api/health` to know if the app is ready
+- **Using `middleware.ts` instead of `proxy.ts`** in Next.js 16 — the old filename works but is deprecated
 
 ## Next.js 16 Deployment Notes
 
