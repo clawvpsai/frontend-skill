@@ -355,3 +355,119 @@ router.prefetch('/dashboard')
 | Handles API requests (REST/GraphQL) | Renders UI |
 | Can use all HTTP methods | One export (default) |
 | No UI rendering | Server or Client Component |
+
+## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
+
+**In Next.js 16, `middleware.ts` is deprecated in favor of `proxy.ts`.** The rename reflects that this file intercepts and proxies requests — not just adds middleware headers. Both files work during the deprecation period, but `proxy.ts` is the forward-looking name.
+
+### Migration: `middleware.ts` → `proxy.ts`
+
+Rename your file and update the export:
+
+```ts
+// middleware.ts (Next.js 15 and below)
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export function middleware(request: NextRequest) {
+  const token = request.cookies.get('token')
+  if (!token && request.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  return NextResponse.next()
+}
+```
+
+```ts
+// proxy.ts (Next.js 16+)
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export const proxy = async (request: NextRequest) => {
+  const token = request.cookies.get('token')
+  if (!token && request.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', request.url))
+  }
+  return NextResponse.next()
+}
+```
+
+**Key changes:**
+- File renamed: `middleware.ts` → `proxy.ts`
+- Export renamed: `middleware` → `proxy`
+- Function must be `async` (required in Next.js 16)
+
+### `matcher` Config — Same Pattern, Different Place
+
+In Next.js 15, `matcher` was exported from `middleware.ts`. In Next.js 16, move it to `next.config.ts`:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  matcher: ['/dashboard/:path*', '/admin/:path*'],
+}
+```
+
+Or keep it in `proxy.ts` as a named export:
+
+```ts
+// proxy.ts
+export const matcher = ['/dashboard/:path*', '/admin/:path*']
+
+export const proxy = async (request: NextRequest) => {
+  // ...
+}
+```
+
+### What Goes in `proxy.ts`
+
+`proxy.ts` intercepts requests **before** they hit your app. Common use cases:
+
+- **Authentication redirects** — check auth token, redirect to login
+- **Geolocation routing** — route users to region-specific content
+- **A/B testing** — assign variant, set cookie
+- **Rate limiting headers** — add headers for downstream rate limiters
+- **CORS** — handle cross-origin requests
+
+```ts
+// proxy.ts — auth check pattern
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+const PUBLIC_PATHS = ['/login', '/register', '/api/health']
+
+export const proxy = async (request: NextRequest) => {
+  const { pathname } = request.nextUrl
+  
+  // Allow public paths
+  if (PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+  
+  // Check auth
+  const session = request.cookies.get('session')
+  if (!session) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+  
+  return NextResponse.next()
+}
+```
+
+### `matcher` Pattern Mistakes to Avoid
+
+The most common `matcher` mistake is using a regex that doesn't cover all variations:
+
+```ts
+// ❌ Wrong — doesn't match /dashboard or /dashboard/
+export const matcher = ['/dashboard/:path*']
+
+// ✅ Correct — covers all cases
+export const matcher = ['/dashboard/:path*', '/dashboard']
+```
+
+**Sources:**
+- [Next.js 16 upgrade guide — proxy](https://nextjs.org/docs/app/guides/upgrading/version-16)
+- [Next.js proxy.ts migration](https://krishna-adhikari.com.np/blogs/next16-middleware-to-proxy)

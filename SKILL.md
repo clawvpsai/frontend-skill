@@ -80,6 +80,7 @@ Key breaking changes from Next.js 15 → 16:
 | Deprecated `.turbo` config object removed | Use `turbopack` key in `next.config.ts` instead |
 | `publicRuntimeConfig` / `serverRuntimeConfig` removed | Use environment variables directly |
 | **`next lint` removed** | Use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly |
+| **`middleware.ts` deprecated → `proxy.ts`** | `middleware` export renamed to `proxy`; must be `async`; `matcher` moved to `next.config.ts` or exported from `proxy.ts` |
 
 **Sources:**
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
