@@ -26,6 +26,7 @@ npm install -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing
 ```ts
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
@@ -37,6 +38,11 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
     },
   },
 })
@@ -205,6 +211,123 @@ describe('GET /api/posts', () => {
 })
 ```
 
+### Testing Server Components
+
+Server Components render on the server and return JSX — they can be tested by checking their output:
+
+```tsx
+// app/posts/page.test.tsx — testing a Server Component
+import { describe, it, expect, vi } from 'vitest'
+import { render } from '@testing-library/react'
+import PostsPage from '../page'
+import { db } from '@/lib/db'
+
+vi.mock('@/lib/db', () => ({
+  db: {
+    post: {
+      findMany: vi.fn(),
+    },
+  },
+}))
+
+describe('PostsPage (Server Component)', () => {
+  it('renders posts', async () => {
+    vi.mocked(db.post.findMany).mockResolvedValue([
+      { id: '1', title: 'Post 1', content: 'Content 1', published: true, authorId: 'a1', createdAt: new Date(), updatedAt: new Date() },
+      { id: '2', title: 'Post 2', content: 'Content 2', published: true, authorId: 'a1', createdAt: new Date(), updatedAt: new Date() },
+    ])
+
+    // Server Components can be rendered with render()
+    const { getByText } = render(await PostsPage())
+    
+    expect(getByText('Post 1')).toBeInTheDocument()
+    expect(getByText('Post 2')).toBeInTheDocument()
+  })
+})
+```
+
+**Key insight:** Server Components are `async` functions in Next.js 15+. Use `render(await Component())` in tests — the `await` is necessary because the component fetches data.
+
+### Testing React 19 `useActionState`
+
+```tsx
+// components/contact-form.test.tsx
+import { describe, it, expect } from 'vitest'
+import { render, screen, userEvent, waitFor } from '@testing-library/react'
+import { ContactForm } from './contact-form'
+
+// Mock the server action
+vi.mock('@/app/actions', () => ({
+  submitContact: vi.fn(),
+}))
+
+describe('ContactForm with useActionState', () => {
+  it('shows pending state while submitting', async () => {
+    const { submitContact } = await import('@/app/actions')
+    vi.mocked(submitContact).mockImplementation(() => {
+      return new Promise(() => {}) // Never resolves — keeps pending state
+    })
+    
+    render(<ContactForm />)
+    
+    const submitButton = screen.getByRole('button', { name: /send message/i })
+    await userEvent.click(submitButton)
+    
+    // Button should show pending state
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /sending/i })).toBeDisabled()
+    })
+  })
+})
+```
+
+### Testing React 19 `useOptimistic`
+
+```tsx
+// components/like-button.test.tsx
+import { describe, it, expect } from 'vitest'
+import { render, screen, userEvent, waitFor } from '@testing-library/react'
+import { LikeButton } from './like-button'
+
+describe('LikeButton with useOptimistic', () => {
+  it('shows optimistic update immediately on click', async () => {
+    const user = userEvent.setup()
+    
+    render(<LikeButton post={{ id: '1', content: 'Test', likes: 10 }} />)
+    
+    const button = screen.getByRole('button')
+    
+    await user.click(button)
+    
+    // Should show 11 immediately (optimistic), before server responds
+    expect(screen.getByText('11 likes')).toBeInTheDocument()
+  })
+})
+```
+
+### Testing React 19 `<Activity>` (React 19.2)
+
+```tsx
+// components/submit-form.test.tsx
+import { describe, it, expect } from 'vitest'
+import { render, screen, userEvent, waitFor } from '@testing-library/react'
+import { SubmitForm } from './submit-form'
+
+describe('SubmitForm with Activity', () => {
+  it('shows activity indicator while submitting', async () => {
+    render(<SubmitForm />)
+    
+    const submitButton = screen.getByRole('button', { name: /submit/i })
+    await userEvent.click(submitButton)
+    
+    // Activity should detect pending state
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument() // or specific loading indicator
+    })
+  })
+})
+```
+
 ## Playwright (E2E)
 
 ```bash
@@ -343,6 +466,20 @@ it('shows correct relative time', async () => {
 })
 ```
 
+### Mocking Next.js `use cache`
+
+Server functions using `use cache` can be mocked like any other async function:
+
+```ts
+vi.mock('@/lib/data', () => ({
+  getTopPosts: vi.fn().mockResolvedValue([
+    { id: '1', title: 'Post 1', views: 1000 },
+  ]),
+}))
+
+// In your test, the mocked version is used instead of the 'use cache' version
+```
+
 ## Common Mistakes
 
 - **Testing implementation details** — test behavior, not how it's built
@@ -350,3 +487,13 @@ it('shows correct relative time', async () => {
 - **Overusing `act()`** — usually a sign that something else is wrong
 - **Not cleaning up mocks** — use `beforeEach` to clear mock state
 - **E2E tests as the primary strategy** — they're slow; unit tests catch most bugs faster
+- **Forgetting `await` for Server Components** — Server Components are `async`; use `render(await Component())`
+- **Not mocking `'use cache'` functions** — these run on the server; mock them in tests or use a test database
+- **Testing `use()` hook without mocking the Promise** — always ensure the Promise is properly mocked in the test environment
+- **`useOptimistic` not reverting on test failure** — ensure your mock actions don't inadvertently succeed; reset mocks between tests
+
+**Sources:**
+- [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
+- [Vitest docs](https://vitest.dev/)
+- [Playwright docs](https://playwright.dev/)
+- [Testing React 19 components](https://react.dev/learn/testing-react-components)
