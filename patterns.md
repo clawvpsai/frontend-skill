@@ -15,7 +15,7 @@ next dev --turbopack
 next dev --webpack
 ```
 
-**Current status (Next.js 16.2.6):**
+**Current status (Next.js 16.2.7):**
 - ✅ Stable for development — hot reload, fast refresh, error overlay
 - ✅ Stable for production builds (`next build --turbopack`) — 2x–5x faster builds than Webpack; used in production on vercel.com and nextjs.org serving 1.2B+ requests
 - ✅ App Router and Pages Router both supported
