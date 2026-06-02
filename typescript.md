@@ -33,22 +33,67 @@
 
 TypeScript 6.0 was released March 2026 as the final JavaScript-based release before the Go-native TypeScript 7.0. Key changes:
 
-### `import defer` — Deferred Imports
+### `import defer` — Deferred Imports (TypeScript 6.0)
 
-The `import defer` syntax allows you to declare that an import is not needed for the initial render, enabling faster initial page loads:
+`import defer` lets you declare that an import is not needed for the initial render — the module loads in the background while the page shell renders immediately:
 
 ```ts
-// Deferred import — loads in background after initial render
-import defer { heavy } from './heavy'
+// Deferred import — loads in background while page shell renders
+import defer { HeavyChart, HeavyModal } from './heavy'
 
-async function Page() {
-  // heavy is a Promise on initial render — shows loading state
-  const mod = await heavy
-  return <HeavyComponent mod={mod} />
+async function Dashboard() {
+  return (
+    <div>
+      <MainContent />  {/* Renders immediately */}
+      {/* HeavyChart and HeavyModal load in background */}
+      <Suspense fallback={<ChartSkeleton />}>
+        <HeavyChart data={data} />
+      </Suspense>
+    </div>
+  )
 }
 ```
 
-**Use when:** A module is not needed for the initial render (modals, analytics, heavy UI widgets).
+**Runtime behavior:** The deferred import resolves to a **module namespace** (not a React component). Await it to get the module object, then use its exports:
+
+```ts
+// heavy.ts — exports named components
+export function HeavyChart({ data }: { data: Data }) { ... }
+export function HeavyModal({ onClose }: Props) { ... }
+
+// dashboard.tsx — await the deferred import to get the module
+import defer { HeavyChart, HeavyModal } from './heavy'
+
+async function Dashboard() {
+  const mod = await HeavyChart  // await the Promise to get the module
+  return <mod.default data={data} />  // use like a module
+}
+```
+
+### `import defer` vs `React.lazy`
+
+| Concern | `import defer` | `React.lazy` |
+|---|---|---|
+| **Works in** | Server + Client Components | Client Components only |
+| **Module resolution** | TypeScript-level (build tool handles) | React-level (at runtime) |
+| **Loading state** | Uses `Suspense` | Uses `Suspense` |
+| **Bundle splitting** | Yes | Yes |
+| **Data fetching** | Yes (async module) | No |
+| **Tree shaking** | Full | Full |
+
+**`import defer` when:**
+- The module has mixed exports (components + utilities + data)
+- You want build-time optimization, not runtime lazy loading
+- You need the module in a Server Component (React.lazy doesn't work in RSC)
+
+**`React.lazy` when:**
+- Client-only components (React.lazy requires `'use client'`)
+- Simple component lazy-loading with a clean default export
+
+**Note:** `import defer` in TypeScript 6.0 uses the ECMAScript proposal syntax. The deferred import resolves to a Promise of the module namespace — `await` it to access exports. Works in both Server Components and Client Components.
+
+**Sources:**
+- [TypeScript 6.0 import defer](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
 
 ### Subpath Imports
 
