@@ -44,17 +44,22 @@ export function HeavyModal({ onClose }: Props) { ... }
 ```
 
 ```tsx
-// dashboard.tsx — use namespace import, then destructure after await
-import defer * as HeavyModule from './heavy'
+// components/dashboard.tsx
+'use client'  // import defer is a client-side bundle-splitting feature
 
-async function Dashboard() {
-  const { HeavyChart, HeavyModal } = await HeavyModule
+import { Suspense } from 'react'
 
+// Use namespace import — then destructure after await
+import defer * as HeavyModule from '@/lib/heavy-chart'
+
+export function Dashboard({ data }: { data: ChartData }) {
   return (
     <div>
-      <MainContent />  {/* Renders immediately */}
-      {/* HeavyChart and HeavyModal load in background */}
+      <Header />          {/* Loaded immediately — part of initial bundle */}
+      <StatsPanel />      {/* Loaded immediately */}
+
       <Suspense fallback={<ChartSkeleton />}>
+        {/* HeavyChart loads in background, after initial render */}
         <HeavyChart data={data} />
       </Suspense>
     </div>
@@ -63,6 +68,8 @@ async function Dashboard() {
 ```
 
 **Runtime behavior:** `import defer * as mod` creates a deferred module namespace. `await mod` resolves it to the module object, then destructure to get named exports. The `Suspense` boundary handles the loading state while the module loads in the background.
+
+**⚠️ Client-side only:** `import defer` is a **client-side** code-splitting feature. Its primary value is reducing the client-side JavaScript bundle. In Server Components, modules already load server-side — use React's `use()` hook with Promises for streaming data instead. The table above shows `import defer` "works" in Server Components, but the practical benefit is on the client.
 
 **Why namespace import?** With `import defer { HeavyChart }`, the binding `HeavyChart` is itself the deferred value (not a Promise to await). The recommended pattern is `import defer * as mod` so `await mod` gives you the full module to destructure:
 
@@ -80,7 +87,7 @@ const mod = await HeavyChart  // HeavyChart is the value, not a Promise of the m
 
 | Concern | `import defer` | `React.lazy` |
 |---|---|---|
-| **Works in** | Server + Client Components | Client Components only |
+| **Works in** | Client Components (primary), Server Components (limited benefit) | Client Components only |
 | **Module resolution** | TypeScript-level (build tool handles) | React-level (at runtime) |
 | **Loading state** | Uses `Suspense` | Uses `Suspense` |
 | **Bundle splitting** | Yes | Yes |
@@ -579,6 +586,49 @@ import type { User, Post } from '@/types'
 function processUser(user: import('@/types').User) { }
 ```
 
+### `import defer` vs Dynamic `import()` — When to Use Which
+
+| Pattern | Mechanism | When to Use |
+|---|---|---|
+| `import defer` (TS 6.0) | Eagerly loaded, lazily executed; execution order preserved | Heavy modules needed soon after render but not for initial paint |
+| `import()` (dynamic) | Lazily loaded, lazily executed | Modules triggered by user interaction (modals, dropdowns) |
+| Server Component data | Fetched server-side, streamed via RSC | Data fetching for UI |
+
+**`import defer` in a real-world client component:**
+
+```tsx
+// components/product-page.tsx
+'use client'
+
+import { useState } from 'react'
+import { Suspense } from 'react'
+
+// Deferred import — recharts code split from initial bundle
+// Useful when a product page shows a chart below the fold
+import defer * as ProductChartModule from '@/components/product-chart'
+
+export function ProductPage({ product }: { product: Product }) {
+  const [showChart, setShowChart] = useState(false)
+
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+
+      <button onClick={() => setShowChart(true)}>
+        Show Analytics
+      </button>
+
+      {showChart && (
+        <Suspense fallback={<ChartSkeleton />}>
+          <ProductChartModule.ProductChart productId={product.id} />
+        </Suspense>
+      )}
+    </div>
+  )
+}
+```
+
 ## Explicit Resource Management (`using`) — TypeScript 5.2
 
 TypeScript 5.2 introduces the `using` keyword and `Symbol.dispose` for deterministic resource cleanup — similar to C#'s `using` or Python's `with`:
@@ -680,3 +730,4 @@ function useWebSocket(url: string) {
 - **Legacy TypeScript targets** — `target: "ES3"` or `"ES5"` is deprecated in 6.0; use ES2025 minimum
 - **Missing `stableTypeOrdering`** — set it now to prepare for TS 7.0
 - **`import defer` with named export in JSX** — use `import defer * as mod` then destructure: `const { Foo } = await mod`
+- **`import defer` in Server Components for data** — `import defer` is a bundle-splitting tool, not a data-fetching tool; use React's `use()` hook with Promises for streaming server-side data
