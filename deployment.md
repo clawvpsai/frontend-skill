@@ -46,6 +46,44 @@ vercel env add NEXTAUTH_SECRET
 
 For VPS deployment (e.g., ServerAvatar users who want full control):
 
+### `.dockerignore`
+
+Add a `.dockerignore` to prevent unwanted files from being copied into the Docker build context:
+
+```
+# Dependencies
+node_modules
+.npm
+
+# Next.js build artifacts
+.next
+out
+
+# Git
+.git
+.gitignore
+
+# Development files
+*.md
+*.log
+.env*
+.dockerignore
+Dockerfile
+docker-compose*
+
+# Testing
+coverage
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+
 ### Dockerfile
 
 ```dockerfile
@@ -53,10 +91,17 @@ For VPS deployment (e.g., ServerAvatar users who want full control):
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-COPY package*.json ./
+# Copy dependency manifests first — Docker caches this layer separately
+COPY package.json package-lock.json* ./
+
+# Install dependencies BEFORE copying source code
+# This layer only rebuilds when package*.json changes, not on every code change
 RUN npm ci
 
+# Now copy the rest of the source
 COPY . .
+
+# Build — this runs after deps are installed
 RUN npm run build
 
 # Stage 2: Runtime
@@ -123,6 +168,51 @@ volumes:
 docker-compose up -d
 docker-compose logs -f app
 ```
+
+### Docker Healthcheck
+
+Add a healthcheck so Docker, Kubernetes, and load balancers know when the app is ready:
+
+```yaml
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:password@db:5432/myapp"
+      NEXTAUTH_SECRET: "your-secret"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: myapp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+**Why `depends_on` with `condition: service_healthy`?**
+- Without it, `depends_on` only waits for the container to **start**, not to be **ready**
+- `service_healthy` waits for the healthcheck to pass before starting dependent containers
+- The app's healthcheck hits `/api/health` which verifies the DB connection
 
 ## Node Adapter (Traditional Server)
 

@@ -480,7 +480,194 @@ vi.mock('@/lib/data', () => ({
 // In your test, the mocked version is used instead of the 'use cache' version
 ```
 
+## Testing Zustand Stores
+
+Zustand stores can be tested directly without rendering components:
+
+```ts
+// stores/cart-store.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
+
+// Recreate the store inline for testing (or import and reset between tests)
+const createTestCartStore = () =>
+  create<{ items: { id: string; name: string; price: number }[]; addItem: (item: any) => void; removeItem: (id: string) => void }>(
+    (set) => ({
+      items: [],
+      addItem: (item) => set((s) => ({ items: [...s.items, item] })),
+      removeItem: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
+    })
+  )
+
+describe('Cart Store', () => {
+  it('starts with empty cart', () => {
+    const store = createTestCartStore()
+    expect(store.getState().items).toEqual([])
+  })
+
+  it('adds an item', () => {
+    const store = createTestCartStore()
+    store.getState().addItem({ id: '1', name: 'Widget', price: 9.99 })
+    expect(store.getState().items).toHaveLength(1)
+    expect(store.getState().items[0].name).toBe('Widget')
+  })
+
+  it('removes an item', () => {
+    const store = createTestCartStore()
+    store.getState().addItem({ id: '1', name: 'Widget', price: 9.99 })
+    store.getState().removeItem('1')
+    expect(store.getState().items).toHaveLength(0)
+  })
+
+  it('notifies subscribers on state change', () => {
+    const store = createTestCartStore()
+    const listener = vi.fn()
+    store.subscribe(listener)
+
+    store.getState().addItem({ id: '1', name: 'Widget', price: 9.99 })
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(listener).toHaveBeenCalledWith(
+      expect.objectContaining({ items: expect.arrayContaining([expect.objectContaining({ id: '1' })]) })
+    )
+  })
+})
+```
+
+### Testing Zustand with Immer Middleware
+
+```ts
+// stores/editor-store.test.ts
+import { describe, it, expect } from 'vitest'
+import { create } from 'zustand'
+import { immer } from 'zustand/middleware/immer'
+
+const createEditorStore = () =>
+  create<{ content: string; history: string[]; setContent: (c: string) => void }>()(
+    immer((set) => ({
+      content: '',
+      history: [],
+      setContent: (c) =>
+        set((s) => {
+          s.history.push(s.content)
+          s.content = c
+        }),
+    }))
+  )
+
+describe('Editor Store (Immer)', () => {
+  it('tracks history on content change', () => {
+    const store = createEditorStore()
+    store.getState().setContent('Hello')
+    store.getState().setContent('World')
+    expect(store.getState().history).toEqual(['', 'Hello'])
+    expect(store.getState().content).toBe('World')
+  })
+})
+```
+
+### Testing Zustand with `persist` Middleware
+
+When testing stores with `persist`, temporarily disable storage:
+
+```ts
+import { useCartStore } from '@/stores/cart-store'
+
+describe('CartStore with persistence', () => {
+  it('persists to localStorage', () => {
+    // Set a storage mock
+    const store = create<{ items: any[]; addItem: (i: any) => void }>()(
+      persist(
+        (set) => ({ items: [], addItem: (i) => set((s) => ({ items: [...s.items, i] })) }),
+        { name: 'test-cart' }
+      )
+    )
+
+    store.getState().addItem({ id: '1', name: 'Test' })
+    
+    // Read from the storage (default is localStorage)
+    const stored = JSON.parse(localStorage.getItem('test-cart') ?? '{}')
+    expect(stored.state?.items).toHaveLength(1)
+  })
+})
+```
+
+## Testing React Query Mutations
+
+React Query mutations have different testing needs than queries — focus on success, error, and loading state:
+
+```ts
+// components/create-post.test.tsx
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, userEvent, waitFor } from '@testing-library/react'
+import { CreatePostForm } from './create-post-form'
+import * as actions from '@/app/actions'
+
+// Mock the server action
+vi.mock('@/app/actions', () => ({
+  createPost: vi.fn(),
+}))
+
+describe('CreatePostForm — mutation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows success and resets form on success', async () => {
+    vi.mocked(actions.createPost).mockResolvedValue({ success: true })
+    const user = userEvent.setup()
+
+    render(<CreatePostForm />)
+
+    await user.fill(screen.getByPlaceholderText(/title/i), 'My Post')
+    await user.fill(screen.getByPlaceholderText(/content/i), 'Post content')
+    await user.click(screen.getByRole('button', { name: /create post/i }))
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/title/i)).toHaveValue('')
+    })
+  })
+
+  it('shows error message on failure', async () => {
+    vi.mocked(actions.createPost).mockResolvedValue({
+      error: { root: ['Failed to create post'] },
+    })
+    const user = userEvent.setup()
+
+    render(<CreatePostForm />)
+
+    await user.fill(screen.getByPlaceholderText(/title/i), 'My Post')
+    await user.fill(screen.getByPlaceholderText(/content/i), 'Post content')
+    await user.click(screen.getByRole('button', { name: /create post/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/failed to create post/i)).toBeInTheDocument()
+    })
+  })
+})
+```
+
+### Testing React Query Error States
+
+```ts
+it('handles server action errors gracefully', async () => {
+  vi.mocked(actions.createPost).mockRejectedValue(new Error('Network error'))
+  const user = userEvent.setup()
+
+  render(<CreatePostForm />)
+
+  await user.fill(screen.getByPlaceholderText(/title/i), 'My Post')
+  await user.click(screen.getByRole('button', { name: /create post/i }))
+
+  await waitFor(() => {
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument()
+  })
+})
+```
+
 ## Common Mistakes
+
 
 - **Testing implementation details** — test behavior, not how it's built
 - **No `await` for async operations** — always `await` user events and async renders
@@ -491,6 +678,8 @@ vi.mock('@/lib/data', () => ({
 - **Not mocking `'use cache'` functions** — these run on the server; mock them in tests or use a test database
 - **Testing `use()` hook without mocking the Promise** — always ensure the Promise is properly mocked in the test environment
 - **`useOptimistic` not reverting on test failure** — ensure your mock actions don't inadvertently succeed; reset mocks between tests
+- **Testing Zustand without resetting state** — always call `vi.clearAllMocks()` and recreate store instances between tests to prevent state leakage
+- **Testing React Query mutations with only success cases** — always test error paths and loading states too
 
 **Sources:**
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
