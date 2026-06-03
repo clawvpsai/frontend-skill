@@ -379,16 +379,20 @@ export function UserBadge() {
 ```
 
 ```tsx
+// components/dashboard-stats.tsx
+'use client'
+
 // Conditional consumption with use() — only in client components
 function Dashboard(props: { showStats: boolean }) {
   if (props.showStats) {
     const stats = use(StatsContext) // ✅ allowed in React 19
+    return <StatsPanel stats={stats} />
   }
   return <div>...</div>
 }
 ```
 
-**Note:** `use()` for Context is only available in Client Components. The component itself must have `'use client'`.
+**Note:** `use()` for Context is only available in Client Components. Both components above have `'use client'` — without it, the code will fail because `use()` for Context requires a client component.
 
 ## React 19 Document Metadata
 
@@ -564,6 +568,7 @@ export function CreatePostForm() {
 - **Using `unstable_cache` in new code** — use `use cache` + `cacheTag` instead in Next.js 16
 - **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it
 - **Reading cookies/headers inside `use cache`** — read them outside the cached scope and pass as arguments
+- **`use()` for Context without `'use client'`** — this only works in Client Components; always add `'use client'` when consuming Context with `use()`
 
 **Sources:**
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)

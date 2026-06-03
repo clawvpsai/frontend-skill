@@ -38,10 +38,18 @@ TypeScript 6.0 was released March 2026 as the final JavaScript-based release bef
 `import defer` lets you declare that an import is not needed for the initial render — the module loads in the background while the page shell renders immediately:
 
 ```ts
-// Deferred import — loads in background while page shell renders
-import defer { HeavyChart, HeavyModal } from './heavy'
+// heavy.ts — exports named components
+export function HeavyChart({ data }: { data: Data }) { ... }
+export function HeavyModal({ onClose }: Props) { ... }
+```
+
+```tsx
+// dashboard.tsx — use namespace import, then destructure after await
+import defer * as HeavyModule from './heavy'
 
 async function Dashboard() {
+  const { HeavyChart, HeavyModal } = await HeavyModule
+
   return (
     <div>
       <MainContent />  {/* Renders immediately */}
@@ -54,20 +62,18 @@ async function Dashboard() {
 }
 ```
 
-**Runtime behavior:** The deferred import resolves to a **module namespace** (not a React component). Await it to get the module object, then use its exports:
+**Runtime behavior:** `import defer * as mod` creates a deferred module namespace. `await mod` resolves it to the module object, then destructure to get named exports. The `Suspense` boundary handles the loading state while the module loads in the background.
+
+**Why namespace import?** With `import defer { HeavyChart }`, the binding `HeavyChart` is itself the deferred value (not a Promise to await). The recommended pattern is `import defer * as mod` so `await mod` gives you the full module to destructure:
 
 ```ts
-// heavy.ts — exports named components
-export function HeavyChart({ data }: { data: Data }) { ... }
-export function HeavyModal({ onClose }: Props) { ... }
+// ✅ Correct — namespace import + destructure
+import defer * as HeavyModule from './heavy'
+const { HeavyChart } = await HeavyModule
 
-// dashboard.tsx — await the deferred import to get the module
-import defer { HeavyChart, HeavyModal } from './heavy'
-
-async function Dashboard() {
-  const mod = await HeavyChart  // await the Promise to get the module
-  return <mod.default data={data} />  // use like a module
-}
+// ❌ Wrong — await on a deferred named export doesn't destructure properly
+import defer { HeavyChart } from './heavy'
+const mod = await HeavyChart  // HeavyChart is the value, not a Promise of the module
 ```
 
 ### `import defer` vs `React.lazy`
@@ -78,8 +84,8 @@ async function Dashboard() {
 | **Module resolution** | TypeScript-level (build tool handles) | React-level (at runtime) |
 | **Loading state** | Uses `Suspense` | Uses `Suspense` |
 | **Bundle splitting** | Yes | Yes |
-| **Data fetching** | Yes (async module) | No |
 | **Tree shaking** | Full | Full |
+| **Data fetching** | Yes (async module) | No |
 
 **`import defer` when:**
 - The module has mixed exports (components + utilities + data)
@@ -89,8 +95,6 @@ async function Dashboard() {
 **`React.lazy` when:**
 - Client-only components (React.lazy requires `'use client'`)
 - Simple component lazy-loading with a clean default export
-
-**Note:** `import defer` in TypeScript 6.0 uses the ECMAScript proposal syntax. The deferred import resolves to a Promise of the module namespace — `await` it to access exports. Works in both Server Components and Client Components.
 
 **Sources:**
 - [TypeScript 6.0 import defer](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
@@ -575,31 +579,6 @@ import type { User, Post } from '@/types'
 function processUser(user: import('@/types').User) { }
 ```
 
-### Import Defer (TypeScript 6.0)
-
-```ts
-// Deferred import — loads after initial render completes
-import defer { HeavyChart, HeavyModal } from './heavy'
-
-async function Dashboard() {
-  return (
-    <div>
-      <MainContent />  {/* Loaded immediately */}
-      {/* HeavyChart and HeavyModal load in background */}
-      <Suspense fallback={<ChartSkeleton />}>
-        <HeavyChart data={data} />
-      </Suspense>
-    </div>
-  )
-}
-```
-
-**When to use `import defer`:**
-- Heavy visualization libraries (chart, map, 3D)
-- Modal/dialog components
-- Analytics/tracking modules
-- Any module not needed for initial render
-
 ## Explicit Resource Management (`using`) — TypeScript 5.2
 
 TypeScript 5.2 introduces the `using` keyword and `Symbol.dispose` for deterministic resource cleanup — similar to C#'s `using` or Python's `with`:
@@ -700,3 +679,4 @@ function useWebSocket(url: string) {
 - **`object` type** — use `Record<string, unknown>` or specific shapes instead
 - **Legacy TypeScript targets** — `target: "ES3"` or `"ES5"` is deprecated in 6.0; use ES2025 minimum
 - **Missing `stableTypeOrdering`** — set it now to prepare for TS 7.0
+- **`import defer` with named export in JSX** — use `import defer * as mod` then destructure: `const { Foo } = await mod`
