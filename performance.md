@@ -353,6 +353,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 - [Next.js PPR Platform Guide](https://nextjs.org/docs/app/guides/ppr-platform-guide)
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 
+## App Shells (Next.js 16.3 canary)
+
+**Status:** App Shells is an emerging feature in Next.js 16.3 canary — not yet stable. This section is for forward-looking awareness.
+
+App Shells extend PPR by enabling **prefetched, cached shell renders** that are served from edge CDN before any dynamic content streams in. Unlike standard PPR where the static shell is rendered per-request, App Shells are rendered once and cached at the CDN edge — giving you sub-50ms TTFB for fully-personalized pages.
+
+**How it differs from PPR:**
+
+| Aspect | PPR | App Shells |
+|---|---|---|
+| Shell rendering | Per-request (after cache) | Prefetched and cached at edge |
+| TTFB for static parts | ~100ms | ~10-50ms |
+| Cache location | Origin cache | Edge CDN |
+| Maturity | Stable (Next.js 16.2+) | Canary (16.3+) |
+
+**When it becomes stable**, App Shells will be the recommended approach for pages with personalized content (user name, avatar, notification count) because the shell itself is cacheable while only the dynamic Suspense boundaries stream in per-user.
+
+**Enable in next.config.ts (when stable):**
+```ts
+const nextConfig: NextConfig = {
+  cacheComponents: true,       // Enables PPR
+  appShells: true,             // Enables App Shells (Next.js 16.3+)
+}
+```
+
+**Note:** App Shells require all static content to be wrapped in Suspense boundaries — if a component doesn't have a Suspense boundary, it's considered part of the shell and can't stream independently.
+
+See: [Next.js 16.3 canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.40)
 ## Turbopack — Fast Development Bundler
 
 Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:

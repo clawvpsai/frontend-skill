@@ -977,7 +977,105 @@ export function NotificationBell({ userId }: { userId: string }) {
 - [React Activity component](https://react.dev/reference/react/Activity)
 - [React useEffectEvent](https://react.dev/reference/react/useEffectEvent)
 - [React cache API](https://react.dev/reference/react/cache)
+## Practical Activity Patterns (React 19.2)
 
+Beyond the basic patterns above, here are production-ready Activity combinations:
+
+### Activity + useOptimistic — Follow/Following Button
+
+`useOptimistic` gives instant UI feedback; `Activity` detects when any async operation is in flight. Combining them gives you immediate visual response plus a reliable loading indicator:
+
+```tsx
+'use client'
+
+import { Activity, useOptimistic } from 'react'
+import { followUser, unfollowUser } from '@/app/actions'
+import { useActionState } from 'react'
+
+interface FollowButtonProps {
+  userId: string
+  isFollowing: boolean
+  followerCount: number
+}
+
+function FollowButton({ userId, isFollowing, followerCount }: FollowButtonProps) {
+  // useActionState tracks the actual server action result
+  const [state, formAction] = useActionState(
+    async (_prev: { following: boolean }, formData: FormData) => {
+      const action = formData.get('action') as 'follow' | 'unfollow'
+      if (action === 'follow') await followUser(userId)
+      else await unfollowUser(userId)
+      return { following: action === 'follow' }
+    },
+    { following: isFollowing }
+  )
+
+  // useOptimistic gives instant visual feedback before server confirms
+  const [optimistic, addOptimistic] = useOptimistic(
+    { following: isFollowing, count: followerCount },
+    (current, newFollowing: boolean) => ({
+      following: newFollowing,
+      count: current.count + (newFollowing ? 1 : -1),
+    })
+  )
+
+  function handleClick() {
+    const newFollowing = !optimistic.following
+    addOptimistic(newFollowing)
+    const fd = new FormData()
+    fd.set('action', newFollowing ? 'follow' : 'unfollow')
+    formAction(fd)
+  }
+
+  return (
+    <Activity detection="elements">
+      {({ isActivity }) => (
+        <button
+          onClick={handleClick}
+          disabled={isActivity}
+          className={optimistic.following ? 'bg-primary text-white' : 'border border-primary'}
+        >
+          {isActivity
+            ? '...'
+            : optimistic.following
+              ? `Following (${optimistic.count})`
+              : `Follow (${followerCount})`}
+        </button>
+      )}
+    </Activity>
+  )
+}
+```
+
+### Activity Hidden Mode — Prevent INP on Long Forms
+
+For forms where intermediate state changes hurt INP (Interaction to Next Paint), use `hidden` mode to defer all updates until the interaction completes:
+
+```tsx
+// When user submits, the entire form is locked and hidden until the server
+// confirms — no intermediate re-renders, optimal INP score
+<Activity detection="subtree" hidden>
+  {({ isActivity }) => (
+    <form action={submitFormAction}>
+      <input name="email" placeholder="Email" />
+      <textarea name="message" placeholder="Message..." />
+      {isActivity ? <Spinner /> : <SubmitButton />}
+    </form>
+  )}
+</Activity>
+```
+
+**When to use `hidden` vs `visible`:**
+
+| Mode | Behavior | INP Impact |
+|---|---|---|
+| `visible` (default) | Children remain visible during pending | Partial updates may hurt INP during long interactions |
+| `hidden` | Children unmounted during pending | ✅ Best INP — no intermediate repaints |
+
+**Rule of thumb:** Use `hidden` for any form that takes more than ~100ms to submit. Use `visible` for button-level interactions where partial loading states are acceptable.
+
+**Sources:**
+- [React Activity — hidden mode and INP](https://react.dev/reference/react/Activity)
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation

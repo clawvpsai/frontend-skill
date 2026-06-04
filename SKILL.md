@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-developer
-version: 1.3.0
+version: 1.4.0
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
