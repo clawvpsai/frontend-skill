@@ -205,23 +205,323 @@ return NextResponse.json({ error: 'Message' }, { status: 400 })
 
 ### Streaming Responses
 
+#### Streaming JSON Lines (JSONL)
+
+For AI/LLM integrations, data pipelines, or long computations — stream newline-delimited JSON:
+
 ```ts
-// For AI/LLM integrations or long computations
+// app/api/stream-data/route.ts
 export async function GET() {
   const encoder = new TextEncoder()
+  
   const stream = new ReadableStream({
-    async start(controller) {
-      for (const chunk of data) {
-        controller.enqueue(encoder.encode(JSON.stringify(chunk) + '\n'))
-        await sleep(100)
+    async *asyncIterator() {
+      const items = await fetchLargeDataset()
+      for (const item of items) {
+        yield encoder.encode(JSON.stringify(item) + '\n')
       }
-      controller.close()
     },
   })
   
   return new Response(stream, {
-    headers: { 'Content-Type': 'application/jsonl' },
+    headers: {
+      'Content-Type': 'application/jsonl',
+      'Transfer-Encoding': 'chunked',
+      'Cache-Control': 'no-cache',
+    },
   })
+}
+```
+
+#### AI/LLM Streaming (OpenAI-compatible)
+
+For streaming AI responses (OpenAI, Anthropic, etc.):
+
+```ts
+// app/api/chat/route.ts
+import { OpenAI } from 'openai'
+import { auth } from '@/auth'
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+export async function POST(request: Request) {
+  const session = await auth()
+  if (!session) return new Response('Unauthorized', { status: 401 })
+
+  const { messages } = await request.json()
+  
+  const stream = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages,
+    stream: true,
+  })
+
+  // Stream the OpenAI response directly to the client
+  return new Response(stream.toReadableStream(), {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}
+```
+
+#### Client-Side Streaming Consume
+
+```tsx
+// components/chat-stream.tsx
+'use client'
+
+import { useState } from 'react'
+
+export function ChatStream() {
+  const [messages, setMessages] = useState<Array<{ role: string; content: string }>>([])
+  const [input, setInput] = useState('')
+  const [streamText, setStreamText] = useState('')
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    const userMessage = { role: 'user', content: input }
+    setMessages(prev => [...prev, userMessage])
+    setInput('')
+    setStreamText('')
+
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [...messages, userMessage] }),
+    })
+
+    if (!res.ok) return
+
+    const reader = res.body?.getReader()
+    const decoder = new TextDecoder()
+
+    if (reader) {
+      let done = false
+      while (!done) {
+        const { value, done: doneReading } = await reader.read()
+        done = doneReading
+        if (value) {
+          const chunk = decoder.decode(value)
+          setStreamText(prev => prev + chunk)
+        }
+      }
+    }
+  }
+
+  return (
+    <div>
+      <div className="whitespace-pre-wrap">{streamText}</div>
+      <form onSubmit={handleSubmit}>
+        <input value={input} onChange={e => setInput(e.target.value)} />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  )
+}
+```
+
+### Server-Sent Events (SSE)
+
+SSE is one-way server-to-client streaming — simpler than WebSockets, works over HTTP/2, auto-reconnects. Ideal for notifications, live updates, progress bars.
+
+**Server side:**
+
+```ts
+// app/api/notifications/stream/route.ts
+export async function GET(request: Request) {
+  const encoder = new TextEncoder()
+  
+  const stream = new ReadableStream({
+    start(controller) {
+      // Send initial connection message
+      controller.enqueue(encoder.encode('event: connected\ndata: {}\n\n'))
+
+      // Subscribe to notification events
+      const unsubscribe = subscribeToNotifications((notification) => {
+        const data = `event: notification\ndata: ${JSON.stringify(notification)}\n\n`
+        controller.enqueue(encoder.encode(data))
+      })
+
+      // Clean up when client disconnects
+      request.signal.addEventListener('abort', () => {
+        unsubscribe()
+        controller.close()
+      })
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',  // Disable Nginx buffering
+    },
+  })
+}
+```
+
+**Client side:**
+
+```tsx
+// components/notification-listener.tsx
+'use client'
+
+import { useEffect, useRef } from 'react'
+
+export function NotificationListener({ onNotification }: { onNotification: (n: Notification) => void }) {
+  const esRef = useRef<EventSource | null>(null)
+
+  useEffect(() => {
+    const es = new EventSource('/api/notifications/stream')
+    esRef.current = es
+
+    es.addEventListener('notification', (e) => {
+      const notification = JSON.parse(e.data)
+      onNotification(notification)
+    })
+
+    es.addEventListener('connected', () => {
+      console.log('SSE connected')
+    })
+
+    es.onerror = () => {
+      // EventSource auto-reconnects; you can add custom backoff here
+      console.error('SSE error — reconnecting...')
+    }
+
+    return () => {
+      es.close()
+    }
+  }, [onNotification])
+
+  return null  // Invisible component — manages the EventSource
+}
+```
+
+**SSE vs WebSockets vs Streaming:**
+
+| Pattern | Direction | Best For | Auto-Reconnect |
+|---|---|---|---|
+| SSE | Server → Client | Notifications, live updates, progress | ✅ Yes |
+| WebSockets | Bidirectional | Real-time chat, games, collaborative | ❌ Manual |
+| Fetch + ReadableStream | Client → Server → Stream | AI/LLM responses, file downloads | ❌ N/A |
+| Server Actions | Client → Server | Form submits, data mutations | ❌ N/A |
+
+**SSE Gotchas:**
+- `X-Accel-Buffering: 'no'` — required if behind Nginx, otherwise Nginx buffers and delays SSE
+- Browser `EventSource` auto-reconnects on disconnect — useful for resilient connections
+- SSE works over HTTP/2 — prefer HTTP/2 to avoid connection limits
+- If you need bidirectional communication, use WebSockets instead
+
+## WebSockets (via Custom Server)
+
+Next.js Route Handlers don't natively support WebSockets. For real-time bidirectional communication, use a custom server or a dedicated WebSocket provider (Socket.io, Pusher, Ably, Liveblocks).
+
+### Option 1: Custom Server with WebSocket
+
+For Next.js + WebSocket on the same port, use a custom server:
+
+```ts
+// server.ts — custom server with WebSocket support
+import { createServer } from 'http'
+import { parse } from 'url'
+import next from 'next'
+import { WebSocketServer, WebSocket } from 'ws'
+
+const dev = process.env.NODE_ENV !== 'production'
+const app = next({ dev })
+const handle = app.getRequestHandler()
+
+app.prepare().then(() => {
+  const server = createServer((req, res) => {
+    const parsedUrl = parse(req.url!, true)
+    handle(req, res, parsedUrl)
+  })
+
+  // Attach WebSocket server
+  const wss = new WebSocketServer({ server, path: '/ws' })
+
+  wss.on('connection', (ws: WebSocket, req) => {
+    console.log('WebSocket connected')
+
+    ws.on('message', (data) => {
+      // Handle incoming message
+      const message = JSON.parse(data.toString())
+      console.log('Received:', message)
+
+      // Broadcast to all clients
+      wss.clients.forEach((client) => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify(message))
+        }
+      })
+    })
+
+    ws.on('close', () => {
+      console.log('WebSocket disconnected')
+    })
+  })
+
+  server.listen(3000, () => {
+    console.log('> Ready on http://localhost:3000')
+  })
+})
+```
+
+**Dockerfile for custom server:**
+
+```dockerfile
+# Stage 1: Build
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+# Stage 2: Runtime
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+### Option 2: Third-Party Real-Time Providers
+
+For production, prefer managed real-time services over self-hosted WebSockets:
+
+| Provider | Best For | SDK |
+|---|---|---|
+| **Pusher** | General real-time (notifications, chat) | `pusher-js` |
+| **Ably** | High-scale messaging, presence | `ably` |
+| **Liveblocks** | Collaborative editing (Yjs integration) | `@liveblocks/client` |
+| **PartyKit** | Cloudflare Workers-based, serverless WebSockets | `partysocket` |
+| **Socket.io** | Self-hosted, familiar API | `socket.io` |
+
+**PartyKit example (serverless WebSockets on Cloudflare):**
+
+```ts
+// party/index.ts — deploys to Cloudflare Workers
+import { Party } from '@party/partykit'
+
+export default class MyParty extends Party {
+  onConnect(conn) {
+    console.log('Connected:', conn.id)
+    conn.send(JSON.stringify({ type: 'welcome', message: 'Hello!' }))
+  }
+
+  onMessage(message, sender) {
+    // Broadcast to all except sender
+    this.broadcast(message, [sender])
+  }
 }
 ```
 
@@ -298,7 +598,7 @@ await db.post.create({ data: { title, content } })
 
 // ✅ Always validate
 const body = await request.json()
-const parsed = CreatePostSchema.safeParse(body)
+const parsed = CreateUserSchema.safeParse(body)
 if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 400 })
 ```
 
@@ -309,3 +609,7 @@ if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 
 - **Not returning proper status codes** — 201 for create, 204 for delete, 404 for not found
 - **Forgetting to revalidate** — After mutations, call `revalidatePath()` or `revalidateTag()`
 - **CORS issues** — Remember route handlers need explicit CORS headers
+- **SSE behind Nginx without `X-Accel-Buffering: no`** — Nginx buffers SSE, breaking real-time delivery
+- **Using WebSockets when SSE suffices** — SSE is simpler, auto-reconnects, works over HTTP/2; use only when bidirectional is needed
+- **WebSocket auth** — authenticate on connection (first message or query param), not via headers which aren't sent during WebSocket upgrade
+- **Streaming without `Transfer-Encoding: chunked`** — always set this header for streaming responses
