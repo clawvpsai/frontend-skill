@@ -563,6 +563,99 @@ export async function getUserData() {
 - [Next.js 16.3 canary prefetch controls](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
 - [Next.js 16 prefetch traffic issue](https://blog.path-finder.jp/troubleshooting/next-js-16-prefetch-traffic-guide-2026-en/)
 
+
+## React 19.2 — PPR Resume APIs + DevTools Performance Tracks
+
+React 19.2 (October 2025) introduced two significant additions for streaming SSR and debugging.
+
+### PPR Resume APIs — Streaming HTML Recovery
+
+React 19.2 adds `resume` and `prerender` APIs that enable **Partial Pre-Rendering with Web Streams** — you can resume a prerender that was postponed, streaming the completed HTML while the rest renders. This is the foundation Next.js 16's PPR feature is built on.
+
+These APIs are for framework authors and advanced use cases — Next.js handles PPR automatically. But understanding them helps when debugging streaming behavior.
+
+#### `prerender` + `resume` (Web Streams — Browsers)
+
+```tsx
+import { prerender } from 'react-dom/server'
+import { resume } from 'react-dom/server'
+
+// 1. Start a prerender (generates HTML shell + postponed state)
+const { prelude, postponed } = await prerender(<App />, {
+  signal,  // AbortSignal to cancel the prerender
+})
+
+// 2. Stream the shell to the client immediately
+// prelude is a ReadableStream — pipe to the response
+response.body = prelude
+
+// 3. Later, when the suspended content is ready, resume:
+const { resumePrelude } = await resume(<App />, { postponed, signal })
+// resumePrelude is another ReadableStream — continue piping
+```
+
+**What this enables:** The browser receives the static shell instantly, while postponed (suspended) parts stream in as they resolve — no blocking on the full render.
+
+#### `prerender` + `resumeAndPrerender` (Node Streams)
+
+```tsx
+import { prerender } from 'react-dom/server'
+import { resumeAndPrerender } from 'react-dom/server'
+
+// Node.js pattern — pipe through a writable stream
+const { prelude } = await prerender(<App />, { signal })
+const { resumePrelude } = await resumeAndPrerender(<App />, { postponed, signal })
+
+// Pipe both to the response
+passThrough.write(prelude)
+for await (const chunk of resumePrelude) {
+  passThrough.write(chunk)
+}
+```
+
+#### `resumeToPipeableStream` + `resumeAndPrerenderToNodeStream`
+
+For Node.js HTTP responses using `PipeableStream`:
+
+```tsx
+import { resumeToPipeableStream } from 'react-dom/server'
+
+// Same as resumeAndPrerender but for pipeable streams
+const { resumePrelude } = await resumeAndPrerenderToNodeStream(<App />, {
+  postponed,
+  signal,
+  onError(error) { console.error(error) },
+})
+
+resumePrelude.pipe(res)
+```
+
+**When to use these directly:**
+- You are building a framework like Next.js
+- You need fine-grained control over streaming behavior beyond what Next.js provides
+- Most production apps should use Next.js's built-in PPR (`cacheComponents: true`) instead
+
+### React Performance Tracks (DevTools)
+
+React 19.2 adds **React Performance Tracks** — React-specific timing data visible directly in the browser's Performance panel timeline. This lets you see React's render scheduling, Suspense boundaries, and effect timing alongside native browser events.
+
+**What appears in the timeline:**
+- React render phases (work in progress, commit)
+- Suspense boundary shows (when content is loading vs revealed)
+- Effect execution timing
+- State updates and their propagation
+
+**To use:**
+1. Open Chrome DevTools → Performance tab
+2. Start a recording and interact with your React app
+3. Look for "React" tracks alongside "Frames", "Network", etc.
+
+**This replaces the need for separate React DevTools profiling** for basic render debugging — you can now see React's impact on your app's performance directly in the browser's native Performance panel.
+
+**Sources:**
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
+- [React prerender/resume APIs](https://react.dev/reference/react-dom/server)
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |

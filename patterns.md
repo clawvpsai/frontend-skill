@@ -1076,6 +1076,68 @@ For forms where intermediate state changes hurt INP (Interaction to Next Paint),
 
 **Sources:**
 - [React Activity — hidden mode and INP](https://react.dev/reference/react/Activity)
+
+## `captureOwnerStack` — Debug Component Ownership (React 19.1)
+
+React 19.1 introduced `captureOwnerStack` — a development-only API that captures the "owner chain" for a component. An owner stack shows **which components are responsible for rendering a particular component**, making it easier to trace why something rendered.
+
+This is distinct from a "component stack" which shows the tree hierarchy. Owner stacks show the call chain through `createElement` — useful when debugging why unexpected renders occur.
+
+```tsx
+import { captureOwnerStack } from 'react'
+
+function MyComponent() {
+  const ownerStack = captureOwnerStack()
+  console.log('Owner stack:', ownerStack)
+  // Output: "  at Card\n  at Dashboard\n  at App"
+
+  return <div>Content</div>
+}
+```
+
+**When to use `captureOwnerStack`:**
+- Debugging unexpected renders — trace back through owners
+- Understanding component responsibility in complex trees
+- Logging in error boundaries to show what caused an error
+
+**Note:** `captureOwnerStack` is **development-only**. It returns `null` in production builds. Don't use it in production code — it's purely for debugging during development.
+
+**Common patterns:**
+
+```tsx
+// In an error boundary — log the owner stack alongside the error
+class ErrorBoundary extends Component {
+  componentDidCatch(error, info) {
+    const ownerStack = captureOwnerStack()
+    console.error('Error caused by:', ownerStack)
+    // Shows which component chain caused the render that threw
+  }
+}
+```
+
+```tsx
+// In development — log owner stacks for expensive renders
+function ExpensiveList({ items }: { items: Item[] }) {
+  if (process.env.NODE_ENV === 'development') {
+    const owner = captureOwnerStack()
+    console.log('[ExpensiveList] rendered by:', owner)
+  }
+  // ... render logic
+}
+```
+
+**Owner Stack vs Component Stack:**
+
+| Concern | Owner Stack | Component Stack |
+|---|---|---|
+| Shows | Which components **caused** this render (via `createElement` calls) | Which components **contain** this component (tree hierarchy) |
+| Use when | Debugging **why** something rendered | Debugging **where** in the tree an error occurred |
+| Format | Call chain of responsible components | Breadcrumb of parent components |
+
+**Sources:**
+- [React 19.1 release notes](https://react.dev/blog/2025/03/28/react-19)
+- [React captureOwnerStack reference](https://react.dev/reference/react/captureOwnerStack)
+
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation
