@@ -97,7 +97,7 @@ const mod = await HeavyChart  // HeavyChart is the value, not a Promise of the m
 **`import defer` when:**
 - The module has mixed exports (components + utilities + data)
 - You want build-time optimization, not runtime lazy loading
-- You need the module in a Server Component (React.lazy doesn't work in RSC)
+- You want to reduce the initial client bundle size for a module used below the fold
 
 **`React.lazy` when:**
 - Client-only components (React.lazy requires `'use client'`)
