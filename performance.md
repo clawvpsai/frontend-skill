@@ -380,7 +380,7 @@ const nextConfig: NextConfig = {
 
 **Note:** App Shells require all static content to be wrapped in Suspense boundaries — if a component doesn't have a Suspense boundary, it's considered part of the shell and can't stream independently.
 
-See: [Next.js 16.3 canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.40)
+See: [Next.js 16.3 canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
 ## Turbopack — Fast Development Bundler
 
 Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:
@@ -429,19 +429,139 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ## Prefetching
 
+Next.js 16 introduced `<Link prefetch>` prop options for fine-grained control over when and how prefetching occurs. This became critical after the **Next.js 16 Prefetch Traffic Issue** — teams upgrading from Next.js 15 to 16 reported doubled origin request volume and significantly higher tail latency because Next.js 16 began aggressively prefetching all visible links by default.
+
+### Prefetch Prop Options
+
 ```tsx
 import Link from 'next/link'
 
-// Automatically prefetches on hover
-<Link href="/dashboard">
+// prefetch="full" (default in Next.js 16) — prefetches full page on hover
+// ⚠️ This caused the traffic issue: every visible link triggers a full prefetch
+<Link href="/dashboard" prefetch="full">
   Dashboard
 </Link>
 
-// Prefetch manually
-import { useRouter } from 'next/navigation'
-const router = useRouter()
-<button onClick={() => router.prefetch('/dashboard')}>Go to Dashboard</button>
+// prefetch="none" — no prefetching at all
+// Use for: navigation links that rarely get clicked (footer links, secondary nav)
+<Link href="/privacy" prefetch="none">
+  Privacy Policy
+</Link>
+
+// prefetch="viewport" — prefetches when the link enters the viewport
+// Useful for: below-the-fold links that become visible on scroll
+<Link href="/blog" prefetch="viewport">
+  Read our blog
+</Link>
 ```
+
+**When to use each:**
+
+| Option | Trigger | Bandwidth Cost | Use When |
+|---|---|---|---|
+| `prefetch="full"` (default) | Hover | High | Primary navigation — users almost always click |
+| `prefetch="viewport"` | Scroll into view | Medium | Below-the-fold links that users scroll to |
+| `prefetch="none"` | None | None | Rarely-clicked links, external links, footer |
+
+### Diagnosing Prefetch Traffic Issues
+
+If your Next.js 16 app has higher origin request volume after upgrading, check these signs:
+
+```bash
+# Symptoms to look for:
+# - Origin requests doubled after Next.js 15 → 16 upgrade
+# - High tail latency (p99) despite low average latency
+# - Prefetch requests hitting your origin for rarely-visited pages
+
+# Check in your analytics:
+# 1. Compare request graphs before/after upgrade
+# 2. Look for requests to pages that aren't in the top navigation
+# 3. Prefetch requests look like GET /[route] with a Next.js prefetch header
+```
+
+### Fixing Prefetch Traffic
+
+**Step 1: Audit your links** — identify which `<Link>` components don't need prefetch:
+
+```tsx
+// ❌ Prefetching footer links, legal pages — wastes bandwidth
+<footer>
+  <Link href="/privacy">Privacy</Link>
+  <Link href="/terms">Terms</Link>
+  <Link href="/sitemap">Sitemap</Link>
+</footer>
+
+// ✅ Disable prefetch for low-priority links
+<footer>
+  <Link href="/privacy" prefetch="none">Privacy</Link>
+  <Link href="/terms" prefetch="none">Terms</Link>
+  <Link href="/sitemap" prefetch="none">Sitemap</Link>
+</footer>
+```
+
+**Step 2: Use `viewport` prefetch for below-the-fold content** — prefetches only when scrolled into view:
+
+```tsx
+// ✅ "Related articles" at the bottom of a blog post — prefetch when visible
+// Only triggers prefetch when the user scrolls down to that section
+<Link href="/blog/related-article" prefetch="viewport">
+  Related Article
+</Link>
+```
+
+**Step 3: Global default via next.config.ts** (Next.js 16.3+):
+
+```ts
+// next.config.ts — set a less aggressive default
+const nextConfig: NextConfig = {
+  // Change the default prefetch behavior for all <Link> components
+  // "full" = default (prefetch on hover), "none" = opt-in per link
+  // Note: this is a Next.js 16.3+ option
+}
+```
+
+**Step 4: Measure** — after changes, compare your origin request graph to before the upgrade. The goal is returning to pre-upgrade request volumes.
+
+### `router.prefetch()` — Programmatic Prefetch
+
+```tsx
+'use client'
+import { useRouter } from 'next/navigation'
+
+export function PrefetchOnHover({ href }: { href: string }) {
+  const router = useRouter()
+
+  return (
+    <button
+      onMouseEnter={() => router.prefetch(href)}
+      onClick={() => router.push(href)}
+    >
+      Go somewhere
+    </button>
+  )
+}
+```
+
+### Prefetch Cache Deduplication (Next.js 16.3 canary)
+
+Next.js 16.3 canary introduced **deduplication improvements** for the `use cache` directive — multiple components fetching the same cached data now share a single origin request instead of each triggering their own. This directly addresses the doubled-request issue when `use cache` is used extensively:
+
+```tsx
+// Next.js 16.3+ — dedup means this data fetch is shared across components
+// Instead of 3 components each triggering a fetch, Next.js coalesces into 1
+export async function getUserData() {
+  'use cache'
+  cacheTag('user-data')
+  return db.user.findFirst()
+}
+```
+
+**Note:** Prefetch cache dedup is available in **Next.js 16.3 canary** and later. For stable Next.js 16.2.x, use explicit prefetch controls on `<Link>` to manage traffic.
+
+**Sources:**
+- [Next.js Prefetching Guide](https://nextjs.org/docs/app/guides/prefetching)
+- [Next.js 16.3 canary prefetch controls](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
+- [Next.js 16 prefetch traffic issue](https://blog.path-finder.jp/troubleshooting/next-js-16-prefetch-traffic-guide-2026-en/)
 
 ## Web Vitals
 
@@ -461,3 +581,4 @@ const router = useRouter()
 - **Large `data` arrays passed as props** — paginate or virtualize long lists
 - **`useEffect` for initial data** — use server components or React Query instead
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` explicitly
+- **All `<Link>` using default `prefetch="full"`** — causes doubled origin requests in Next.js 16; disable prefetch for footer links and low-priority routes
