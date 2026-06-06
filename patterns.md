@@ -1201,6 +1201,116 @@ function ExpensiveList({ items }: { items: Item[] }) {
 - [React 19.1 release notes](https://react.dev/blog/2025/03/28/react-19)
 - [React captureOwnerStack reference](https://react.dev/reference/react/captureOwnerStack)
 
+## View Transitions API (React 19.2)
+
+React 19.2 adds support for the **View Transitions API** — a browser-native way to animate between page states or UI updates with smooth, choreographed transitions.
+
+### Browser-Native API (Works Everywhere)
+
+The core API is `document.startViewTransition()`:
+
+```tsx
+'use client'
+
+function Modal({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) {
+  function handleToggle() {
+    if (isOpen) {
+      document.startViewTransition(() => {
+        onClose()
+      })
+    } else {
+      onOpen()
+    }
+  }
+
+  return (
+    <>
+      <button onClick={handleToggle}>{isOpen ? 'Close' : 'Open'} Modal</button>
+      {isOpen && <div className="modal">{children}</div>}
+    </>
+  )
+}
+```
+
+### With React State
+
+```tsx
+'use client'
+import { useState } from 'react'
+
+function ProductGallery({ images }: { images: string[] }) {
+  const [selected, setSelected] = useState(0)
+
+  function handleSelect(index: number) {
+    document.startViewTransition(() => {
+      setSelected(index)
+    })
+  }
+
+  return (
+    <div>
+      <img
+        src={images[selected]}
+        style={{ viewTransitionName: 'product-image' }}
+        alt="Product"
+      />
+      <div className="thumbnails">
+        {images.map((src, i) => (
+          <button key={i} onClick={() => handleSelect(i)}>
+            <img src={src} alt={`Thumbnail ${i}`} />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+### CSS View Transition Names
+
+For named transitions (to animate specific elements across state changes), use `view-transition-name`:
+
+```css
+/* In your CSS file */
+.product-image {
+  view-transition-name: product-image;
+}
+
+/* Disable transitions for specific elements */
+.no-transition {
+  view-transition-name: none;
+}
+```
+
+### Next.js 16 Integration
+
+For Next.js 16 page transitions, use the `ViewTransition` component from `next/navigation`:
+
+```tsx
+// app/layout.tsx
+import { ViewTransition } from 'next/navigation'
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <ViewTransition>
+      {children}
+    </ViewTransition>
+  )
+}
+```
+
+This wraps all `<Link>` navigations in View Transitions automatically.
+
+### Browser Support
+
+The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2+. For unsupported browsers, the transitions gracefully degrade — the navigation/state change still happens, just without animation.
+
+**Sources:**
+- [CSS View Transitions Module Level 1](https://www.w3.org/TR/css-view-transitions-1/)
+- [View Transitions API — MDN](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API)
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
+- [Next.js View Transitions (next/navigation)](https://nextjs.org/docs/app/api-reference/components/link)
+
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation

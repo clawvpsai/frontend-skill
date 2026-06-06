@@ -131,6 +131,23 @@ const nextConfig = {
 />
 ```
 
+### Image Caching — `minimumCacheTTL` Default Changed (Next.js 16)
+
+**Next.js 16 changed the default `images.minimumCacheTTL`** from 1 minute to **4 hours**. This significantly reduces origin requests for sites with many images.
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  images: {
+    // Next.js 16 default is now 4 hours (14400 seconds)
+    // If you need the old 1-minute behavior:
+    minimumCacheTTL: 60,
+  },
+}
+```
+
+**When to change it:** If your images change frequently (e.g., user-generated content with new uploads), set `minimumCacheTTL: 60` to revert to 1-minute caching. For most sites, the 4-hour default is ideal.
+
 ## Caching Strategies
 
 ### `use cache` + `cacheTag` (Next.js 16)
