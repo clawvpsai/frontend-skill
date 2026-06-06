@@ -23,6 +23,41 @@ Next.js 16.2.6 is a **security-focused release** patching multiple high and mode
 
 **Upgrade:** `npm install next@latest` to get 16.2.6 or later.
 
+
+## React 19.2.4 Security Fixes (January 2026)
+
+React 19.2.4 patches **three critical vulnerabilities** in React Server Components (RSC), affecting React 19.0 through 19.2.2. These were discovered after the initial React2Shell patches and affect any framework using RSC (Next.js, Remix, etc.).
+
+### What Was Fixed
+
+| CVE | Severity | Issue |
+|---|---|---|
+| CVE-2025-55184 | Critical | Source code exposure via crafted request to React Server Components |
+| CVE-2025-67779 | Critical | Denial of Service via unbounded resource consumption in RSC |
+| CVE-2025-55183 | High | Additional RSC parsing vulnerability (follow-up to December 2025 fixes) |
+
+**Affected versions:** React 19.0.0 through 19.2.2  
+**Fixed in:** React 19.2.4 (January 26, 2026)  
+**Upgrade:** `npm install react@latest react-dom@latest`
+
+### What Attackers Could Do
+
+- **CVE-2025-55184**: Send a specially crafted request to trigger RSC parsing that leaks server-side source code (environment variables, secrets, internal logic)
+- **CVE-2025-67779**: Exploit RSC's request handling to cause unbounded memory/CPU consumption (DoS)
+- **CVE-2025-55183**: Additional RSC parsing flaw enabling further attacks on patched systems
+
+### Mitigation
+
+If you cannot upgrade immediately:
+
+1. **Upgrade to React 19.2.4** — `npm install react@latest react-dom@latest`
+2. **Audit RSC usage** — review `app/**/*.tsx` for Server Components that handle user-supplied data
+3. **Rate limit RSC endpoints** — add rate limiting to any API that processes RSC payloads from untrusted sources
+4. **Environment variable hygiene** — avoid using `process.env` directly in Server Components; use Next.js's env config patterns instead
+
+**Sources:**
+- [React blog: Denial of Service and Source Code Exposure in RSC](https://react.dev/blog/2025/12/11/denial-of-service-and-source-code-exposure-in-react-server-components)
+- [Ox Security: React CVEs analysis](https://www.ox.security/blog/react-cve-2025-55184-67779-55183-react-19-vulnerabilities/)
 ---
 
 ## XSS (Cross-Site Scripting)

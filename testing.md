@@ -678,6 +678,7 @@ it('handles server action errors gracefully', async () => {
 - **Not mocking `'use cache'` functions** — these run on the server; mock them in tests or use a test database
 - **Testing `use()` hook without mocking the Promise** — always ensure the Promise is properly mocked in the test environment
 - **`useOptimistic` not reverting on test failure** — ensure your mock actions don't inadvertently succeed; reset mocks between tests
+- **v4 auto-act in Zustand v5 tests** — v5 removed auto-`act()` wrapping; always wrap state updates in `act()` from `react-dom/test-utils`
 - **Testing Zustand without resetting state** — always call `vi.clearAllMocks()` and recreate store instances between tests to prevent state leakage
 - **Testing React Query mutations with only success cases** — always test error paths and loading states too
 
