@@ -733,6 +733,182 @@ function useWebSocket(url: string) {
 }
 ```
 
+
+## TypeScript 7 — Go Compiler + Breaking Changes
+
+TypeScript 7.0 Beta arrived April 2026 as the first release built on a **Go-based compiler** (`tsgo`), replacing the original TypeScript compiler written in TypeScript. The stable release targets mid-2026. Key motivation: 10x faster type-checking through native code and shared-memory parallelism.
+
+**Current status:** Beta — not yet stable. Test in a branch before adopting in production.
+
+### The Go Compiler (`tsgo`)
+
+The new compiler binary is `tsgo` (vs the old `tsc`). It is shipped as the official `tsc` replacement when TypeScript 7 goes stable. Key architectural changes:
+
+- **No V8 overhead** — runs as native code, not on the JavaScript engine
+- **Automatic parallelization** — parses, type-checks, and emits across files simultaneously
+- **Same API** — `tsgo` accepts the same CLI flags as `tsc`; most projects migrate without code changes
+- **Same `tsconfig.json`** — no new config format; just swap the binary
+
+```bash
+# Install TS 7 beta
+npm install -D typescript@beta
+
+# Check version — should show 7.x with "G" indicator
+npx tsc --version
+# → 7.0.0-beta
+
+# Run type-checking (no build output)
+npx tsc --noEmit
+```
+
+### Breaking Changes (TS 7)
+
+TS 7 contains breaking changes from the new compiler and intentional strictness improvements:
+
+#### `strict: true` is now implicit — no explicit opt-in needed
+
+In TS 6, `strict: true` was the recommended setting. In TS 7, strict mode is **always on**:
+
+```json
+{
+  "compilerOptions": {
+    // "strict": true no longer needed — always on
+    // But still useful to explicitly set for clarity in older codebases
+  }
+}
+```
+
+**Migration:** If you had individual strict flags disabled (e.g., `strictNullChecks: false`), you must fix those types before upgrading to TS 7. Remove any `strict: false` override.
+
+#### ES5 Target Removed — Minimum is ES2020
+
+```json
+{
+  "compilerOptions": {
+    // ❌ Error in TS 7 — ES5 no longer supported
+    // "target": "ES5"
+
+    // Minimum is ES2020
+    "target": "ES2020"  // or ES2022, ES2025, etc.
+  }
+}
+```
+
+**Migration:** If you target ES5 (common for legacy browser support), update to `ES2020` minimum. This reflects the browser landscape in 2026 where ES2020+ support is universal. If you need to support IE11, you'll need a transpiler (Babel/esbuild) in addition to TS 7.
+
+#### `@types` packages no longer auto-installed/loaded
+
+TS 7 does not automatically pull in `@types/*` packages from npm. If you use a library without bundled types, you must install the `@types` package explicitly:
+
+```bash
+# Before TS 7 — @types/node was auto-installed for Node.js projects
+# After TS 7 — must install explicitly
+npm install -D @types/node
+```
+
+**Migration:** Audit your dependencies for `@types` packages. Add explicit `npm install -D @types/<package>` for any library that previously worked via auto-installed types.
+
+```json
+{
+  "compilerOptions": {
+    "types": ["node"]  // explicitly include; replaces auto-discovery
+  }
+}
+```
+
+#### `outFile` Compiler Option Removed
+
+```json
+{
+  "compilerOptions": {
+    // ❌ Removed in TS 7 — bundling should be handled by a bundler
+    // "outFile": "./dist/bundle.js"
+  }
+}
+```
+
+**Migration:** Use a proper bundler (Vite, esbuild, Rollup, Turbopack) for file concatenation. TS's `outFile` was a legacy option from the early TypeScript days.
+
+#### AMD, UMD, SystemJS Module Systems Removed
+
+```json
+{
+  "compilerOptions": {
+    // ❌ Removed in TS 7 — these module systems are obsolete
+    // "module": "AMD"
+    // "module": "UMD"
+    // "module": "System"
+
+    // Use these instead
+    "module": "ESNext"    // ES modules (recommended)
+    "module": "CommonJS"  // Node.js CJS (still supported)
+  }
+}
+```
+
+**Migration:** If you use AMD/UMD/SystemJS (rare in modern projects), migrate to ESM or CommonJS.
+
+#### Classic Node Module Resolution Removed
+
+```json
+{
+  "compilerOptions": {
+    // ❌ Removed in TS 7 — Node.js itself has supported "Node16" since v12
+    // "moduleResolution": "Classic"
+
+    // Use instead
+    "moduleResolution": "Bundler"  // recommended for Next.js, Vite, etc.
+    // or
+    "moduleResolution": "Node16"   // for pure Node.js projects
+  }
+}
+```
+
+### TS 7 Migration Checklist
+
+Before upgrading from TS 6 to TS 7:
+
+```bash
+# 1. Audit and fix strictness violations
+npx tsc --noEmit 2>&1 | grep "error TS" | head -50
+
+# 2. Check for ES5 target
+grep -r '"target": "ES5"\|"target": "ES3"\|"target": "ES2015"' tsconfig*.json
+# → Update to ES2020 minimum
+
+# 3. Check for removed module options
+grep -r '"module": "AMD"\|"module": "UMD"\|"module": "System"' tsconfig*.json
+# → Migrate to ESNext or CommonJS
+
+# 4. Check for Classic moduleResolution
+grep -r '"moduleResolution": "Classic"' tsconfig*.json
+# → Update to "Bundler" or "Node16"
+
+# 5. Audit @types dependencies (ensure explicit)
+npm ls @types/node @types/react  # check what's installed
+# → Add any missing @types packages explicitly
+
+# 6. Test with beta
+npm install -D typescript@beta
+npx tsc --noEmit
+```
+
+### What Stays the Same
+
+The following continue to work as before — no migration needed:
+
+- **`tsconfig.json` structure** — same format, same options (except removed ones above)
+- **JavaScript/JSX support** — `jsx: "react-jsx"` still works
+- **Path aliases** — `paths` in tsconfig unchanged
+- **All existing type syntax** — generics, utility types, conditional types all work
+- **`skipLibCheck`** — still recommended
+- **`noUncheckedIndexedAccess`** — still available
+- **IDE support** — VS Code, JetBrains IDEs support TS 7 beta via extensions
+
+**Sources:**
+- [TypeScript 7.0 Beta — Go-based foundation](https://visualstudiomagazine.com/articles/2026/04/21/typescript-7-0-beta-arrives-on-go-based-foundation-with-10x-speed-claim.aspx)
+- [TypeScript 7 Progress — December 2025](https://devnewsletter.com/p/state-of-typescript-2026/)
+- [TypeScript 7 Migration Guide](https://codingdunia.com/blog/typescript-7-migration-guide/)
 ## Common Mistakes
 
 - **`any` type** — use `unknown` instead when the type is truly unknown, then narrow
