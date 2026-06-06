@@ -50,7 +50,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **Biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
 - **TanStack Query v5** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration)
 - **React Hook Form v7** + **@hookform/resolvers v5** (compatible with Zod v4)
-- **Node.js 22 LTS**
+- **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
 ## Pro Tips
 

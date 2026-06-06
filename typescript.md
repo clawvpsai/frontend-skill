@@ -35,7 +35,7 @@ TypeScript 6.0 was released March 2026 as the final JavaScript-based release bef
 
 ### `import defer` — Deferred Imports (TypeScript 6.0)
 
-`import defer` lets you declare that an import is not needed for the initial render — the module loads in the background while the page shell renders immediately:
+`import defer` lets you declare that an import is not needed for the initial render — the module loads in the background while the page shell renders immediately. It's a TypeScript-level construct that works with React's Suspense boundary for loading states.
 
 ```ts
 // heavy.ts — exports named components
@@ -43,44 +43,58 @@ export function HeavyChart({ data }: { data: Data }) { ... }
 export function HeavyModal({ onClose }: Props) { ... }
 ```
 
+**The correct pattern — `await` the deferred module before using its exports:**
+
 ```tsx
 // components/dashboard.tsx
-'use client'  // import defer is a client-side bundle-splitting feature
+'use client'
 
 import { Suspense } from 'react'
-
-// Use namespace import — then destructure after await
 import defer * as HeavyModule from '@/lib/heavy-chart'
 
 export function Dashboard({ data }: { data: ChartData }) {
   return (
     <div>
-      <Header />          {/* Loaded immediately — part of initial bundle */}
+      <Header />          {/* Loaded immediately */}
       <StatsPanel />      {/* Loaded immediately */}
 
       <Suspense fallback={<ChartSkeleton />}>
-        {/* HeavyChart loads in background, after initial render */}
-        <HeavyChart data={data} />
+        <DeferredChart data={data} />
       </Suspense>
     </div>
   )
 }
+
+// Separate async component — awaits the deferred module before using exports
+async function DeferredChart({ data }: { data: ChartData }) {
+  // await HeavyModule resolves the deferred namespace, then destructure
+  const { HeavyChart, HeavyModal } = await HeavyModule
+  return <HeavyChart data={data} />
+}
 ```
 
-**Runtime behavior:** `import defer * as mod` creates a deferred module namespace. `await mod` resolves it to the module object, then destructure to get named exports. The `Suspense` boundary handles the loading state while the module loads in the background.
+**❌ The common mistake — using a deferred export without awaiting:**
 
-**⚠️ Client-side only:** `import defer` is a **client-side** code-splitting feature. Its primary value is reducing the client-side JavaScript bundle. In Server Components, modules already load server-side — use React's `use()` hook with Promises for streaming data instead. The table above shows `import defer` "works" in Server Components, but the practical benefit is on the client.
+```tsx
+// WRONG — HeavyChart is not resolved yet, this throws
+<Suspense fallback={<ChartSkeleton />}>
+  <HeavyChart data={data} />
+</Suspense>
+```
+
+**Key insight:** The `await` must happen inside an async component that gets wrapped in Suspense. The outer component (`Dashboard`) renders immediately; only the inner async component (`DeferredChart`) suspends. The deferred module must be awaited before destructuring.
+
+**⚠️ Client-side only:** `import defer` is a **client-side** code-splitting feature. In Server Components, modules already load server-side — use React's `use()` hook with Promises for streaming data instead.
 
 **Why namespace import?** With `import defer { HeavyChart }`, the binding `HeavyChart` is itself the deferred value (not a Promise to await). The recommended pattern is `import defer * as mod` so `await mod` gives you the full module to destructure:
 
 ```ts
-// ✅ Correct — namespace import + destructure
-import defer * as HeavyModule from './heavy'
-const { HeavyChart } = await HeavyModule
+// ✅ Correct — await the namespace, then destructure
+const { HeavyChart } = await (await HeavyModule)
 
 // ❌ Wrong — await on a deferred named export doesn't destructure properly
 import defer { HeavyChart } from './heavy'
-const mod = await HeavyChart  // HeavyChart is the value, not a Promise of the module
+const mod = await HeavyChart  // HeavyChart is the value itself, not a Promise
 ```
 
 ### `import defer` vs `React.lazy`
