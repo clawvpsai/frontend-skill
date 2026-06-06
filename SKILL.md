@@ -41,7 +41,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.7** (latest — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable)
+- **Next.js 16.2.6** (latest — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable)
 - **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`)
 - **TypeScript 6.0.3** (strict by default, ES2025 target, import defer)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
