@@ -1079,6 +1079,90 @@ For forms where intermediate state changes hurt INP (Interaction to Next Paint),
 **Sources:**
 - [React Activity — hidden mode and INP](https://react.dev/reference/react/Activity)
 
+### Activity + Server Action + Error Boundary — Complete Pattern
+
+A complete, production-ready pattern combining `<Activity>` with Server Actions and an error boundary for graceful error handling. This shows the recommended way to structure a publish button where errors are displayed inline:
+
+```tsx
+// app/actions.ts
+'use server'
+
+import { revalidateTag } from 'next/cache'
+
+export async function publishPost(postId: string): Promise<{ error: string | null }> {
+  try {
+    await db.post.update({ where: { id: postId }, data: { published: true } })
+    revalidateTag('posts')
+    return { error: null }
+  } catch {
+    return { error: 'Failed to publish post. Please try again.' }
+  }
+}
+```
+
+```tsx
+// components/post-actions.tsx
+'use client'
+
+import { Activity } from 'react'
+import { publishPost } from '@/app/actions'
+import { useActionState } from 'react'
+import { AlertCircle, CheckCircle } from 'lucide-react'
+
+const initialState = { error: null as string | null }
+
+function PublishButton({ postId }: { postId: string }) {
+  const [state, formAction] = useActionState(
+    async (_prev: typeof initialState, _formData: FormData) => {
+      return await publishPost(postId)
+    },
+    initialState
+  )
+
+  return (
+    <Activity detection="elements">
+      {({ isActivity }) => (
+        <div className="flex flex-col gap-2">
+          <button
+            type="submit"
+            formAction={formAction}
+            disabled={isActivity}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md disabled:opacity-50"
+          >
+            {isActivity ? (
+              <>Publishing...</>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4" />
+                Publish
+              </>
+            )}
+          </button>
+          {state.error && (
+            <div className="flex items-center gap-2 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              {state.error}
+            </div>
+          )}
+        </div>
+      )}
+    </Activity>
+  )
+}
+```
+
+**Key points:**
+- Server Action returns `{ error: string | null }` — allows the component to display errors inline without throwing
+- `useActionState` captures the result; `<Activity>` detects the pending state from the action
+- `<Activity detection="elements">` tracks the button's pending state specifically
+- Error display is inline (not an Error Boundary replacement), so the rest of the UI remains interactive
+- For critical errors requiring full-UI replacement, wrap in an Error Boundary
+
+**When to use this vs the Follow/Following pattern:**
+- This pattern — single action, inline errors, no optimistic state needed
+- Follow/Following pattern — toggle action with immediate optimistic feedback
+
+
 ## `captureOwnerStack` — Debug Component Ownership (React 19.1)
 
 React 19.1 introduced `captureOwnerStack` — a development-only API that captures the "owner chain" for a component. An owner stack shows **which components are responsible for rendering a particular component**, making it easier to trace why something rendered.
@@ -1262,3 +1346,5 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **`use()` with non-Promise** — `use()` only accepts Promises; for regular values just use them directly
 - **Mutating props/state with React Compiler** — the compiler skips components that mutate; fix mutations first
 - **`cache()` vs `use cache` confusion** — React's `cache()` is client-side function memoization; Next.js `use cache` is server-side persistence; don't confuse the two
+- **Activity detection mismatch** — use `detection="elements"` for single interactive elements (buttons, toggles); use `detection="subtree"` for detecting any pending state in child components (entire forms, list items); using `subtree` on a single button causes `isActivity` to fire on any unrelated child pending state
+
