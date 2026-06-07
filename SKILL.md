@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-developer
-version: 1.4.1
+version: 1.4.2
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -11,20 +11,20 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Topic | File | When to Use |
 |---|---|---|
 | Project setup, TypeScript, Vite, Biome, env vars | `setup.md` | Starting a new project |
-| React components, shadcn/ui, composition | `components.md` | Building UI |
-| Server vs Client components, data fetching, `use cache` | `server-components.md` | Next.js App Router |
-| Routing, layouts, loading, error boundaries | `routing.md` | Navigation & page structure |
+| React components, shadcn/ui, composition, ref forwarding | `components.md` | Building UI |
+| Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
+| Routing, layouts, loading, error boundaries, `proxy.ts` | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
-| Zustand, React Query, data fetching | `state.md` | State & server state |
-| Auth patterns, NextAuth.js, JWT | `auth.md` | User auth & sessions |
-| Route handlers, Server Actions, API routes | `api.md` | Backend API endpoints |
+| Zustand, React Query, TanStack Query v5 patterns | `state.md` | State & server state |
+| Auth patterns, NextAuth.js, JWT, session management | `auth.md` | User auth & sessions |
+| Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
-| Streaming, Suspense, image optimization, PPR | `performance.md` | Speed & UX |
-| Vercel, Docker, Node adapter, self-hosted | `deployment.md` | Going live |
+| Streaming, Suspense, image optimization, PPR, App Shells, prefetch controls | `performance.md` | Speed & UX |
+| Vercel, Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest, Playwright, component tests | `testing.md` | Test-driven dev |
-| Strict TypeScript, generics, utilities | `typescript.md` | Type safety |
-| Turbopack, React Compiler, advanced patterns | `patterns.md` | Composite recipes |
+| Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
+| React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions | `patterns.md` | Composite recipes |
 | Zustand, React Query, data fetching | `zustand.md` | Client state management |
 
 ## Critical Rules (Never Forget)
@@ -41,9 +41,9 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.6** (latest — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable)
-- **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`)
-- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer)
+- **Next.js 16.2.6** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch controls)
+- **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
+- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3** + **shadcn/ui**
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
@@ -74,7 +74,6 @@ Key breaking changes from Next.js 15 → 16:
 | **`use cache` directive** replaces `unstable_cache` | New explicit caching API — mark data functions with `use cache` + `cacheTag` |
 | **Implicit caching removed** — everything is dynamic by default | Old `fetch` caching patterns deprecated; use `use cache` explicitly |
 | **PPR (Partial Prerendering) stable** — `cacheComponents: true` | Static shell + streaming dynamic content; no longer experimental |
-| images.minimumCacheTTL default: 1min → **4 hours** | Image caching behavior change; set explicitly if you need 1min |
 | **Router scroll optimization** enabled by default | Previously scroll was reset on navigation; now preserved by default |
 | Flat config default in `@next/eslint-plugin-next` | ESLint config format change |
 | Deprecated `.turbo` config object removed | Use `turbopack` key in `next.config.ts` instead |
@@ -87,3 +86,4 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
+- [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
