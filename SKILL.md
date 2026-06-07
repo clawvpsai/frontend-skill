@@ -1,6 +1,6 @@
 ---
 name: Frontend
-slug: frontend-developer
+slug: frontend-skill
 version: 1.4.2
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
@@ -41,15 +41,15 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.6** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js middleware, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch controls)
+- **Next.js 16.2.7** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch dedup)
 - **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
-- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available)
+- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
-- **Tailwind CSS v4.3** + **shadcn/ui**
+- **Tailwind CSS v4.3.0** + **shadcn/ui**
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **Biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
-- **TanStack Query v5** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration)
-- **React Hook Form v7** + **@hookform/resolvers v5** (compatible with Zod v4)
+- **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
+- **React Hook Form v7.77.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
 ## Pro Tips
@@ -85,5 +85,5 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
-- [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
+- [Next.js 16.2.7 release](https://github.com/vercel/next.js/releases/tag/v16.2.7)
 - [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
