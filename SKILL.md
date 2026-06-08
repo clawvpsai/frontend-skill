@@ -47,9 +47,9 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3.0** + **shadcn/ui**
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
-- **Biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
+- **@biomejs/biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
-- **React Hook Form v7.77.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4)
+- **React Hook Form v7.78.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
 ## Pro Tips
