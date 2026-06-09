@@ -38,6 +38,92 @@ const nextConfig: NextConfig = {
 }
 ```
 
+## App Shell Prefetch — Next.js 16.3+ (Partial Prefetching)
+
+Next.js 16.3 changed the **default prefetch behavior** for `<Link>` components. Previously, hovering a link triggered a full route prefetch (all segments). Now, Next.js 16.3 defaults to **App Shell prefetching** — only the layout, loading UI, and critical shell assets are prefetched, while route segment data is deferred until actual navigation.
+
+**Why App Shell prefetch?**
+- Reduces unnecessary data transfer on hover (only prefetches the shell, not full page data)
+- Full page is fetched on click/navigation — same end result, less wasted prefetch bandwidth
+- Particularly beneficial for data-heavy pages where full prefetch was expensive
+
+**Prefetch configuration options (Next.js 16.3+):**
+
+| Prefetch Mode | Behavior | Use When |
+|---|---|---|
+| `prefetch="app-shell"` (default in 16.3+) | Only App Shell prefetched on hover | Most cases — cheaper, sufficient for fast navigation |
+| `prefetch="full"` | Entire route prefetched on hover | Critical user journeys (checkout, sign-up) |
+| `prefetch={false}` | No prefetch | Rarely-used links, authenticated pages |
+
+```tsx
+// Default in Next.js 16.3+ — App Shell only
+<Link href="/blog/my-post">Read more</Link>
+
+// Full prefetch for high-value conversion paths
+<Link href="/checkout" prefetch="full">Checkout now</Link>
+
+// No prefetch — for rarely-accessed or authenticated routes
+<Link href="/admin/settings" prefetch={false}>Settings</Link>
+```
+
+**Programmatic prefetch with custom granularity:**
+
+```tsx
+import { useRouter } from 'next/navigation'
+
+function PrefetchButton({ href }: { href: string }) {
+  const router = useRouter()
+
+  function handleHover() {
+    // Full prefetch on hover for this specific link
+    router.prefetch(href, { kind: 'full' })
+  }
+
+  return <Link href={href} onMouseEnter={handleHover}>{href}</Link>
+}
+```
+
+**`use cache` directive — improved deduping (Next.js 16.3):**
+
+Next.js 16.3 also improves deduping of concurrent `use cache` invocations. When the same cached function is called multiple times during a single request (e.g., from multiple components), Next.js now properly deduplicates the calls — only one execution, shared result:
+
+```tsx
+// Before Next.js 16.3 — could execute twice if called from two components simultaneously
+// Next.js 16.3+ — deduplicates concurrent calls, executes once
+import { useCache } from 'react'
+
+const getUser = useCache(async (id: string) => {
+  'use cache'
+  return await db.user.findUnique({ where: { id } })
+})
+
+// Called from two components simultaneously — only one DB query in 16.3+
+const user1 = await getUser('user-123')
+const user2 = await getUser('user-123') // Returns cached result from first call
+```
+
+**When this matters:**
+- Data-heavy pages with multiple components reading the same cached data
+- Reducing database load on navigation
+- Particularly impactful in dashboard/feed patterns where many components share reference data
+
+**`prefetch` prop on Route Segments (Next.js 16.3):**
+
+Route segment config also supports prefetch control at the route level:
+
+```tsx
+// app/dashboard/page.tsx
+export const prefetch = 'app-shell' as const // or 'full' | false
+```
+
+This sets the default prefetch behavior for all `<Link>` components pointing to this route.
+
+**Sources:**
+- [Next.js 16.3.0-canary release notes](https://typescript.news/articles/2026-04-18-next-js-16-3-0-canary-prefetch-cache-dev-overlay)
+- [Next.js prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
+- [Next.js 16.3.0-canary.26 — App Shell server response](https://newreleases.io/project/npm/next/release/16.3.0-canary.26)
+- [Next.js 16.3.0-canary.1 — Partial prefetch default](https://newreleases.io/project/npm/next/release/16.3.0-canary.1)
+
 ## Search with Debounce + URL Sync + React Query
 
 ```tsx

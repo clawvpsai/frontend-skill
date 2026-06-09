@@ -359,6 +359,169 @@ export default function UserPage() {
 }
 ```
 
+### `use()` + Error Boundary — Complete Pattern (React 19)
+
+When a Promise passed to `use()` **rejects**, React throws the error which propagates to the nearest Error Boundary. Here's a complete, production-ready pattern combining both:
+
+**Step 1 — A reusable Error Boundary component:**
+
+```tsx
+// components/error-boundary.tsx
+'use client'
+
+import { Component, type ReactNode } from 'react'
+
+interface ErrorBoundaryProps {
+  children: ReactNode
+  fallback: ReactNode // Rendered when an error is caught
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean
+  error: Error | null
+}
+
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error }
+  }
+
+  override render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
+}
+```
+
+**Step 2 — A safer fallback that doesn't re-throw:**
+
+```tsx
+// components/error-fallback.tsx
+'use client'
+
+interface ErrorFallbackProps {
+  error: Error
+  reset: () => void
+}
+
+export function ErrorFallback({ error, reset }: ErrorFallbackProps) {
+  return (
+    <div className="flex flex-col items-center gap-4 p-6 border border-destructive rounded-lg bg-destructive/5">
+      <div className="text-center">
+        <p className="text-sm font-medium text-destructive">Something went wrong</p>
+        <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+      </div>
+      <button
+        onClick={reset}
+        className="text-sm px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+      >
+        Try again
+      </button>
+    </div>
+  )
+}
+```
+
+**Step 3 — Using `use()` with Error Boundary and Suspense:**
+
+```tsx
+// app/users/[id]/page.tsx — Server Component
+import { Suspense } from 'react'
+import { ErrorBoundary } from '@/components/error-boundary'
+import { ErrorFallback } from '@/components/error-fallback'
+import { UserProfile } from '@/components/user-profile'
+import { UserSkeleton } from '@/components/user-skeleton'
+import { getUser } from '@/lib/data'
+
+export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const userPromise = getUser(id) // Can throw — wrapped in ErrorBoundary
+
+  return (
+    <ErrorBoundary
+      fallback={<ErrorFallback error={new Error('Failed to load user')} reset={() => {}} />}
+    >
+      <Suspense fallback={<UserSkeleton />}>
+        <UserProfile userPromise={userPromise} />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+**Key points:**
+- **Suspense** handles the **loading** state (Promise pending)
+- **ErrorBoundary** handles the **rejected** state (Promise threw)
+- Without both, a rejected Promise would crash the entire component tree
+- The ErrorBoundary must be **outside** the Suspense — if it's inside, the Suspense catches the error first
+
+**Resetting the Error Boundary after recovery:**
+
+```tsx
+// app/users/[id]/page.tsx — with reset capability
+'use client'
+
+import { useState } from 'react'
+import { ErrorBoundary } from '@/components/error-boundary'
+import { ErrorFallback } from '@/components/error-fallback'
+
+function UserSection({ userId }: { userId: string }) {
+  const [key, setKey] = useState(0)
+
+  function handleReset() {
+    setKey(k => k + 1) // Remount children by changing key
+  }
+
+  return (
+    <ErrorBoundary
+      fallback={<ErrorFallback error={new Error('Failed to load user')} reset={handleReset} />}
+    >
+      <UserProfileWithKey userId={userId} key={key} />
+    </ErrorBoundary>
+  )
+}
+```
+
+**Using `react-error-boundary` library (recommended for complex apps):**
+
+```tsx
+import { ErrorBoundary } from 'react-error-boundary'
+
+function UserPage({ userId }: { userId: string }) {
+  return (
+    <ErrorBoundary
+      fallbackRender={({ error, resetErrorBoundary }) => (
+        <div>
+          <p>Failed: {error.message}</p>
+          <button onClick={resetErrorBoundary}>Retry</button>
+        </div>
+      )}
+    >
+      <Suspense fallback={<Skeleton />}>
+        <UserProfile userPromise={getUser(userId)} />
+      </Suspense>
+    </ErrorBoundary>
+  )
+}
+```
+
+**`use()` rejection vs synchronous errors:**
+- `use(promise)` **throws** if the promise rejects — caught by Error Boundary
+- Synchronous errors thrown during render are also caught by Error Boundary
+- Both paths lead to the same Error Boundary `fallback` UI
+
+**Sources:**
+- [React `use()` hook reference](https://react.dev/reference/react/use)
+- [React error boundaries](https://react.dev/reference/react/Component#catching-rendering-errors-with-error-boundaries)
+- [React 19 `use()` error handling](https://react.dev/learn/error-bounds)
+
 ### Consuming Context with `use()` (React 19)
 
 React 19's `use()` hook can consume Context, even in components that can't use hooks at the top level:
