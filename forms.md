@@ -11,6 +11,46 @@
 
 **Together:** RHF handles the form, Zod validates, TypeScript types flow through automatically.
 
+## React Hook Form 8.0 Beta — Coming Soon
+
+React Hook Form 8.0 is in beta (8.0.0-beta.2) with one major API change:
+`createForm()` replaces `useForm()` as the recommended entry point. The v7 API (`useForm`, `register`, `Controller`) still works in v8 — it is not removed — but `createForm` is the new recommended pattern for new projects.
+
+**Key changes in RHF 8.0 beta:**
+
+```tsx
+// ❌ v7 style — still works in v8 but createForm is preferred
+import { useForm } from 'react-hook-form'
+
+function MyForm() {
+  const { register, handleSubmit } = useForm<FormData>()
+  // ...
+}
+
+// ✅ v8 style — createForm (recommended)
+import { createForm } from 'react-hook-form'
+
+const useMyForm = createForm({
+  defaultValues: { name: '', email: '' },
+  validate: zodResolver(formSchema),
+})
+
+function MyForm() {
+  const { register, handleSubmit } = useMyForm()
+  // ...
+}
+```
+
+**Why `createForm`?** It creates a typed hook factory upfront, making TypeScript inference cleaner across deeply nested form structures. The returned hook is reusable across multiple form instances.
+
+**Migration:** Upgrade from v7 to v8 with `npm install react-hook-form@beta`. The `useForm` API is fully backward-compatible — no breaking changes to existing forms. Only new `createForm` projects should prefer the new pattern.
+
+**Note:** RHF 8.0 beta supports React 19.2 and requires React 16.8+. It is not yet stable for production.
+
+**Sources:**
+- [React Hook Form 8.0 beta announcement](https://react-hook-form.com/)
+- [createForm RFC discussion](https://github.com/react-hook-form/react-hook-form/discussions)
+
 ## Basic Setup
 
 ```bash
@@ -452,3 +492,7 @@ const form = useForm({
 - **Using `onSubmit` with Server Actions** — prefer native `action={serverAction}` for progressive enhancement
 - **Zod 4: using `z.instanceof(File)`** — migrate to `z.file()` which has better types and size validation
 - **Zod 4: not running type check after upgrade** — `npx tsc --noEmit` to catch type inference changes
+
+- **RHF 8:  as new entry point** — if you start a new project with RHF 8 beta, use  instead of  for the cleaner typed API; existing  projects don't need to migrate
+
+- **RHF 8: `createForm` as new entry point** — if you start a new project with RHF 8 beta, use `createForm` instead of `useForm` for the cleaner typed API; existing `useForm` projects do not need to migrate

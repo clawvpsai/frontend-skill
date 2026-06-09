@@ -90,9 +90,9 @@ Next.js 16.3 also improves deduping of concurrent `use cache` invocations. When 
 ```tsx
 // Before Next.js 16.3 — could execute twice if called from two components simultaneously
 // Next.js 16.3+ — deduplicates concurrent calls, executes once
-import { useCache } from 'react'
+import { cache } from 'react'
 
-const getUser = useCache(async (id: string) => {
+const getUser = cache(async (id: string) => {
   'use cache'
   return await db.user.findUnique({ where: { id } })
 })
