@@ -1,5 +1,9 @@
 # Server Components — RSC Mental Model
 
+> **React 19.2.7 patch (June 1, 2026):** v19.2.7 fixes a regression in Server Actions where `FormData` entries were not being passed correctly — affecting forms that submit multiple values or file uploads via Server Actions. If you use Server Actions for form submission, upgrade: `npm install react@latest react-dom@latest`. All v19.2.x versions now have this fix.
+>
+> **Sources:** [React 19.2.7 release](https://github.com/facebook/react/releases/tag/v19.2.7)
+
 ## The Core Distinction
 
 | Server Components | Client Components |
@@ -142,6 +146,8 @@ export async function getPopularPosts() {
 - Any function that fetches data (DB, external API, filesystem)
 - Use on the data function itself, not the page component
 - Works on exported functions from shared modules and inline in components
+
+**`use cache` persistence across deploys:** In Next.js 16, cached data persists across deployments — the deployment timestamp does not automatically invalidate the cache. This is intentional: stale-while-revalidate behavior means users may briefly see old data after a deploy. To invalidate cache on deploy, call `revalidateTag` or `updateTag` in a post-deploy hook or CI pipeline, or set a short `cacheLife({ ttl: ... })` TTL.
 
 ### On-Demand Revalidation: `revalidateTag` vs `updateTag`
 
@@ -535,7 +541,7 @@ import { ThemeContext } from '@/contexts/theme-context'
 
 export function UserBadge() {
   // Unlike useContext(), use() works inside conditional statements
-  // and during render (though with caveats — only for Suspense-compatible data)
+  // and during Render (though with caveats — only for Suspense-compatible data)
   const theme = use(ThemeContext)
   return <span className={theme === 'dark' ? 'text-white' : 'text-black'}>{theme}</span>
 }
@@ -732,6 +738,7 @@ export function CreatePostForm() {
 - **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it
 - **Reading cookies/headers inside `use cache`** — read them outside the cached scope and pass as arguments
 - **`use()` for Context without `'use client'`** — this only works in Client Components; always add `'use client'` when consuming Context with `use()`
+- **`use cache` surviving deploys without explicit invalidation** — cache persists across deployments; add deploy-time invalidation if fresh data is needed immediately after deploy
 
 **Sources:**
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
@@ -739,3 +746,4 @@ export function CreatePostForm() {
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
 - [Next.js `revalidateTag`](https://nextjs.org/docs/app/api-reference/functions/revalidateTag)
 - [Next.js `updateTag`](https://nextjs.org/docs/app/api-reference/functions/updateTag)
+- [React 19.2.7 release](https://github.com/facebook/react/releases/tag/v19.2.7)

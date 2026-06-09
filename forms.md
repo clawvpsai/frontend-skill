@@ -1,4 +1,6 @@
 # Forms — React Hook Form + Zod
+> **React 19.2.7 patch (June 1, 2026):** If your Server Action forms submit multiple fields or files and values are missing on the server, upgrade to React 19.2.7: `npm install react@latest react-dom@latest`. v19.2.7 fixes a regression where `FormData` entries were not being passed correctly to Server Actions.
+
 
 ## The Mental Model
 
