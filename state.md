@@ -512,6 +512,142 @@ Follow this pattern for consistent, cache-friendly keys:
 - [TanStack Query v5 best practices](https://tanstackship.com/blog/tanstack-query-v5-best-practices)
 - [Query Key Factory docs](https://tanstack.com/query/v5/docs/framework/react/community/lukemorales-query-key-factory)
 
+## Zustand v5 — Key Migration Differences from v4
+
+Zustand v5 (5.0.14+) has three breaking changes from v4 that commonly cause test failures and runtime errors:
+
+### `subscribeWithSelector` — Separate Middleware Import
+
+In v5, `subscribeWithSelector` is no longer built into `create` — import it separately:
+
+```ts
+// ❌ v4 pattern — broken in v5
+import { create } from 'zustand'
+
+const useStore = create((set) => ({
+  count: 0,
+  inc: () => set(s => ({ count: s.count + 1 })),
+}))
+useStore.subscribe((state) => { /* selector — broken: selector required */ })
+
+// ✅ v5 pattern — import the middleware
+import { create } from 'zustand'
+import { subscribeWithSelector } from 'zustand/middleware'
+
+const useStore = create(
+  subscribeWithSelector((set) => ({
+    count: 0,
+    inc: () => set(s => ({ count: s.count + 1 })),
+  }))
+)
+useStore.subscribe((state) => { /* selector — now works */ })
+```
+
+### Testing: No Auto-`act()` Wrapping
+
+v4 auto-wrapped state updates in React Testing Library's `act()` during tests. v5 removes this — you must wrap updates manually:
+
+```ts
+// ❌ v4 pattern — act() was auto-wrapped (broken in v5 tests)
+await user.click(button)
+expect(screen.getByText('1')).toBeInTheDocument()
+
+// ✅ v5 pattern — wrap updates in act() manually
+import { act } from 'react-dom/test-utils'
+
+await act(async () => { user.click(button) })
+expect(screen.getByText('1')).toBeInTheDocument()
+```
+
+See `testing.md` for full Zustand v5 testing patterns.
+
+### `combine` — Explicit Type Required
+
+```ts
+// ❌ v4 — implicit type (broken in v5)
+import { combine } from 'zustand/middleware'
+const useStore = create(
+  combine({ count: 0 }, (set) => ({ inc: () => set(s => ({ count: s.count + 1 })) }))
+)
+
+// ✅ v5 — explicit type parameter
+const useStore = create(
+  combine({ count: 0 } as { count: number }, (set) => ({
+    inc: () => set(s => ({ count: s.count + 1 })),
+  }))
+)
+```
+
+## Async Actions in Zustand — Loading/Error State
+
+For async operations managed in Zustand (e.g., polling, WebSocket updates, local-only mutations):
+
+```tsx
+interface AsyncStore {
+  user: User | null
+  isLoading: boolean
+  error: string | null
+  fetchUser: (id: string) => Promise<void>
+}
+
+export const useUserStore = create<AsyncStore>((set) => ({
+  user: null,
+  isLoading: false,
+  error: null,
+
+  fetchUser: async (id) => {
+    set({ isLoading: true, error: null })
+    try {
+      const user = await api.getUser(id)
+      set({ user, isLoading: false })
+    } catch (err) {
+      set({ error: (err as Error).message, isLoading: false })
+    }
+  },
+}))
+```
+
+**When to use Zustand async vs React Query:**
+- **Zustand async** — data tied to a UI action; one subscriber owns the fetch lifecycle
+- **React Query** — cached, shared server data with automatic refetching, background sync, pagination
+
+## Resetting Zustand State
+
+Reset to initial state — useful for auth logout, form clear, wizard restart:
+
+```tsx
+interface Store {
+  count: number
+  step: number
+  data: Partial<FormData>
+  reset: () => void
+}
+
+const initialState = {
+  count: 0,
+  step: 1,
+  data: {},
+}
+
+export const useStore = create<Store>((set) => ({
+  ...initialState,
+
+  reset: () => set(initialState),
+}))
+```
+
+**Use in logout flow:**
+
+```tsx
+// On sign-out, reset all client stores
+async function signOut() {
+  await nextAuthSignOut()
+  useUIStore.getState().reset()
+  useCartStore.getState().reset()
+  router.push('/login')
+}
+```
+
 ## Common Mistakes
 
 - **Using useState for server data** — use React Query instead
@@ -520,3 +656,6 @@ Follow this pattern for consistent, cache-friendly keys:
 - **Not handling loading/error states** — always check `isLoading`/`isError`/`isPending`
 - **Overfetching with `enabled: false`** — remember to enable queries when conditions change
 - **Mutations inside render** — mutations are side effects, always in event handlers or `useEffect`
+- **v4 `subscribeWithSelector` in v5** — import from `zustand/middleware` explicitly in v5
+- **v4 test auto-act in v5** — wrap state updates in `act()` manually; v5 removed auto-wrapping
+- **Mutating state directly** — always use `set(state => ({ ... }))` or Immer middleware

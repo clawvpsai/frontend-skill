@@ -25,7 +25,6 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Vitest, Playwright, component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
 | React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions | `patterns.md` | Composite recipes |
-| Zustand, React Query, data fetching | `zustand.md` | Client state management |
 
 ## Critical Rules (Never Forget)
 
