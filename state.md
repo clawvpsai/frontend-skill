@@ -216,8 +216,96 @@ export function LikeButton({ post }: { post: Post }) {
 
 **When to use which:**
 - `useOptimistic` — best for simple like/subscribe/toggle patterns where you want instant feedback
-- `useMutation` optimistic pattern — better for complex updates that need full rollback control, or when you need to optimistically add/remove items from a list
+```
 
+### Optimistic List Operations with `useOptimistic`
+
+`useOptimistic` works for list operations too — not just single-item updates. The key is the reducer pattern: provide the current state and the action, return the new optimistic state:
+
+```tsx
+'use client'
+
+import { useOptimistic, useState, useRef } from 'react'
+import { addComment, deleteComment } from '@/app/actions'
+
+interface Comment {
+  id: string
+  text: string
+  author: string
+  createdAt: Date
+}
+
+type OptimisticAction =
+  | { type: 'add'; comment: Comment }
+  | { type: 'delete'; id: string }
+
+// Optimistic state + dispatcher
+const [optimisticComments, dispatchOptimistic] = useOptimistic(
+  comments,  // current state
+  (state: Comment[], action: OptimisticAction): Comment[] => {
+    switch (action.type) {
+      case 'add':
+        return [...state, action.comment]
+      case 'delete':
+        return state.filter(c => c.id !== action.id)
+      default:
+        return state
+    }
+  }
+)
+
+// Add optimistically
+async function handleAddComment(text: string) {
+  const tempId = `temp-${Date.now()}`
+  const optimisticComment: Comment = {
+    id: tempId,
+    text,
+    author: 'You',
+    createdAt: new Date(),
+  }
+
+  // Apply optimistic update immediately
+  dispatchOptimistic({ type: 'add', comment: optimisticComment })
+
+  try {
+    const result = await addComment({ text })
+    // On success, the server responds — the temp item stays until the list re-fetches
+  } catch {
+    // React automatically reverts to the last committed state on error
+  }
+}
+
+// Delete optimistically
+async function handleDeleteComment(id: string) {
+  dispatchOptimistic({ type: 'delete', id })
+
+  try {
+    await deleteComment(id)
+  } catch {
+    // React reverts — deleted item reappears
+  }
+}
+
+// Render uses optimisticComments, not comments
+return (
+  <div>
+    {optimisticComments.map(c => (
+      <CommentItem
+        key={c.id}
+        comment={c}
+        onDelete={() => handleDeleteComment(c.id)}
+      />
+    ))}
+  </div>
+)
+```
+
+**Why use `useOptimistic` for lists:**
+- User sees the change instantly — no flicker, no loading spinner
+- If the server action fails, React reverts to the last committed state automatically
+- Works with React Query's `invalidateQueries` — after `onSettled`, the list refetches and replaces the optimistic item with the real one
+
+**Caveat:** Temporary IDs (`temp-${Date.now()}`) prevent key conflicts during the brief window before the server responds. This prevents React from reusing the wrong DOM node when the real item arrives.
 ## Zustand Setup
 
 ```bash
