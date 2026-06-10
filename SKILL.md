@@ -41,7 +41,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.7** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch dedup)
+- **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch dedup)
 - **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
@@ -85,5 +85,5 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
-- [Next.js 16.2.7 release](https://github.com/vercel/next.js/releases/tag/v16.2.7)
+- [Next.js 16.2.9 release](https://github.com/vercel/next.js/releases/tag/v16.2.9)
 - [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)

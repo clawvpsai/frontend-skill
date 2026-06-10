@@ -1391,6 +1391,170 @@ For named transitions (to animate specific elements across state changes), use `
 }
 ```
 
+### Dynamic `viewTransitionName` — List to Detail Animations
+
+The most powerful View Transitions pattern is animating from a card in a grid to a detail page. Use a **dynamic** `viewTransitionName` so each card's image participates in the transition:
+
+```tsx
+// app/products/page.tsx — product grid
+'use client'
+
+import Link from 'next/link'
+import { ProductCard } from '@/components/product-card'
+
+export function ProductGrid({ products }: { products: Product[] }) {
+  return (
+    <div className="grid grid-cols-3 gap-4">
+      {products.map(product => (
+        <Link key={product.id} href={`/products/${product.id}`}>
+          <ProductCard product={product} />
+        </Link>
+      ))}
+    </div>
+  )
+}
+```
+
+```tsx
+// components/product-card.tsx
+'use client'
+
+interface ProductCardProps {
+  product: { id: string; name: string; image: string }
+}
+
+export function ProductCard({ product }: ProductCardProps) {
+  return (
+    <div className="group cursor-pointer">
+      <img
+        src={product.image}
+        alt={product.name}
+        // Dynamic viewTransitionName — each card animates independently
+        style={{ viewTransitionName: `product-image-${product.id}` }}
+        className="w-full aspect-square object-cover rounded-lg"
+      />
+      <p className="mt-2 font-medium">{product.name}</p>
+    </div>
+  )
+}
+```
+
+```tsx
+// app/products/[id]/page.tsx — detail page
+import { ProductDetail } from '@/components/product-detail'
+
+export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const product = await getProduct(id)
+
+  return (
+    <ProductDetail
+      product={product}
+      // Same dynamic name — browser matches and animates between them
+      viewTransitionName={`product-image-${id}`}
+    />
+  )
+}
+```
+
+```tsx
+// components/product-detail.tsx
+'use client'
+
+interface ProductDetailProps {
+  product: { id: string; name: string; image: string; description: string }
+  viewTransitionName: string
+}
+
+export function ProductDetail({ product, viewTransitionName }: ProductDetailProps) {
+  return (
+    <div className="max-w-2xl mx-auto">
+      <img
+        src={product.image}
+        alt={product.name}
+        style={{ viewTransitionName }}
+        className="w-full aspect-square object-cover rounded-lg"
+      />
+      <h1 className="text-3xl font-bold mt-4">{product.name}</h1>
+      <p className="mt-2 text-muted-foreground">{product.description}</p>
+    </div>
+  )
+}
+```
+
+**How it works:** The browser matches `view-transition-name: product-image-{id}` between the grid card and detail page. When the user navigates from the grid to the detail, the browser morphs the image from its grid position to its detail-page position — automatically.
+
+### Async `startViewTransition` — Await DOM Updates
+
+By default, `startViewTransition` runs the callback synchronously before the transition. For transitions that need to wait for data or DOM updates, use the async variant:
+
+```tsx
+async function handleAddToCart() {
+  // Option 1: wrap async work in startViewTransition
+  await document.startViewTransition(async () => {
+    await addToCart(productId)
+    await fetch('/api/cart/refresh', { method: 'POST' })
+    // DOM has been updated when the transition starts
+  }).finished
+
+  // Option 2: update DOM first, then transition
+  setCartItems([...cartItems, newItem])
+  document.startViewTransition(() => {
+    // DOM is already updated — this runs synchronously
+  })
+}
+```
+
+**When to use async:** When the state update itself triggers async work (e.g., Server Action, fetcher) that you want to complete before the transition visually begins.
+
+### View Transitions CSS — Timing and Keyframes
+
+Control the transition animation with CSS:
+
+```css
+/* In globals.css or component CSS */
+
+/* Default: both old and new animate (crossfade) */
+::view-transition-old(product-image),
+::view-transition-new(product-image) {
+  animation-duration: 300ms;
+  animation-timing-function: ease-out;
+}
+
+/* Slide-in for new content (common pattern) */
+::view-transition-new(product-image) {
+  animation: none;
+  clip-path: inset(0);  /* Start from left */
+}
+::view-transition-new(product-image) {
+  animation: slide-in 300ms ease-out;
+}
+
+@keyframes slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+/* Fade only (simpler) */
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 200ms;
+}
+::view-transition-old(*) {
+  animation: fade-out 200ms ease-out forwards;
+}
+::view-transition-new(*) {
+  animation: fade-in 200ms ease-out forwards;
+}
+
+@keyframes fade-out {
+  to { opacity: 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+```
+
 ### Next.js 16 Integration
 
 For Next.js 16 page transitions, use the `ViewTransition` component from `next/navigation`:
@@ -1433,4 +1597,7 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **Mutating props/state with React Compiler** — the compiler skips components that mutate; fix mutations first
 - **`cache()` vs `use cache` confusion** — React's `cache()` is client-side function memoization; Next.js `use cache` is server-side persistence; don't confuse the two
 - **Activity detection mismatch** — use `detection="elements"` for single interactive elements (buttons, toggles); use `detection="subtree"` for detecting any pending state in child components (entire forms, list items); using `subtree` on a single button causes `isActivity` to fire on any unrelated child pending state
+- **View Transitions without `::view-transition-*` CSS** — `view-transition-name` only declares the element's identity; without CSS `::view-transition-old`/`::view-transition-new` rules, the browser uses a default crossfade that may look abrupt or wrong for your use case; always add explicit transition CSS
+- **View Transitions with duplicate `viewTransitionName`** — two elements on the same page with the same `viewTransitionName` causes the browser to skip the transition silently; use unique names per element (`product-image-${id}` not just `product-image`)
+- **View Transitions in SSR without hydration guard** — `document.startViewTransition()` throws in SSR/Server Components; only call it inside event handlers or in Client Components, never during server render
 

@@ -563,6 +563,119 @@ function Dashboard(props: { showStats: boolean }) {
 
 **Note:** `use()` for Context is only available in Client Components. Both components above have `'use client'` — without it, the code will fail because `use()` for Context requires a client component.
 
+### Production Pattern: Server-Authed Context with `use()` (React 19)
+
+A common real-world pattern: fetch user/auth data in a Server Component, pass it through Context, consume it in deeply nested Client Components without prop drilling:
+
+```tsx
+// contexts/user-context.tsx
+'use client'
+
+import { createContext, use } from 'react'
+
+interface User {
+  id: string
+  name: string
+  email: string
+  avatarUrl: string | null
+  role: 'admin' | 'user' | 'guest'
+}
+
+// 1. Create context — value is the User or null
+export const UserContext = createContext<User | null>(null)
+
+// 2. Provider component wraps children with the context value
+// This is a Client Component that receives server data as props
+interface UserProviderProps {
+  children: React.ReactNode
+  user: User | null
+}
+
+export function UserProvider({ children, user }: UserProviderProps) {
+  return (
+    <UserContext.Provider value={user}>
+      {children}
+    </UserContext.Provider>
+  )
+}
+
+// 3. Consumer hook — uses use() to read context
+// Works anywhere in the tree without prop drilling
+export function useUser() {
+  const user = use(UserContext)
+  if (user === null) {
+    throw new Error('useUser must be used within a UserProvider with a resolved user')
+  }
+  return user
+}
+
+export function useOptionalUser() {
+  return use(UserContext)  // Can return null — no error thrown
+}
+```
+
+```tsx
+// app/layout.tsx — Server Component
+import { getServerUser } from '@/lib/auth'
+import { UserProvider } from '@/contexts/user-context'
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // 1. Fetch on the server — direct DB access, no API needed
+  const user = await getServerUser()
+
+  return (
+    <html lang="en">
+      <body>
+        {/* 2. Pass serializable user data to Client Provider */}
+        <UserProvider user={user}>
+          <Header />
+          {children}
+        </UserProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+```tsx
+// components/header.tsx — Client Component (no props needed!)
+'use client'
+
+import { useUser, useOptionalUser } from '@/contexts/user-context'
+
+export function Header() {
+  // No prop drilling — read directly from context
+  const user = useUser()
+  const optional = useOptionalUser()
+
+  return (
+    <header className="flex items-center gap-4 p-4 border-b">
+      <Logo />
+      <nav className="flex-1" />
+      {user.role === 'admin' && <AdminLink href="/admin" />}
+      <UserAvatar
+        src={user.avatarUrl}
+        alt={user.name}
+        fallback={user.name.slice(0, 2).toUpperCase()}
+      />
+    </header>
+  )
+}
+```
+
+**Why this pattern:**
+- **No prop drilling** — deeply nested components read auth data directly
+- **Server fetches, client consumes** — the Server Component fetches user data, Client Components read from context
+- **`use()` for conditional reads** — unlike `useContext()`, `use(Context)` can be called inside conditionals (inside the component body, not at the top level)
+- **Type-safe** — `useUser()` throws if called outside provider, enforcing correct usage
+
+**When NOT to use this pattern:**
+- For frequently changing data (use React Query instead)
+- For UI state only (use Zustand instead)
+- When the data is only needed 1–2 levels deep (prop drilling is fine for shallow trees)
+
+**Alternative: Zod + tRPC for type-safe auth** — For larger apps, consider tRPC with a typed `context` that infers the session user, which gives you end-to-end type safety without manual context wiring.
+
 ## React 19 Document Metadata
 
 React 19 introduces native support for rendering metadata elements (`<title>`, `<meta>`, `<link>`) directly in component JSX — no framework-specific API needed. This works in both server and client components.
