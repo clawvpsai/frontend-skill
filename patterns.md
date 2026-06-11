@@ -600,9 +600,9 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
 | `queue` (Redis/Bull) | Background jobs that need durability across restarts |
 | `useEffect` (client) | Client-side ops like analytics after hydration |
 
-## React 19 Compiler (React Compiler)
+## React Compiler 1.0 (React 19.2 + Next.js 16)
 
-The React Compiler (stable in React 19.2) is a build-time tool that automatically optimizes component rendering — eliminating the need for manual `useMemo` and `useCallback` in most cases. It analyzes your code and generates memoized versions of components and hooks.
+The React Compiler 1.0 (October 2025) is a build-time tool that automatically optimizes component rendering — eliminating the need for manual `useMemo` and `useCallback` in most cases. It analyzes your code and generates memoized versions of components and hooks.
 
 **How it works:** The compiler looks at your component code and determines which values are "expensive" and which are stable. It wraps those values in `useMemo`/`useCallback` automatically, so you don't have to.
 
@@ -735,6 +735,7 @@ function GoodComponent({ items }: Props) {
 | Strict performance requirements | ✅ Enable + keep ESLint plugin |
 
 **Sources:**
+- [React Compiler 1.0 release blog](https://react.dev/blog/2025/10/07/react-compiler-1)
 - [React Compiler docs](https://react.dev/reference/react-compiler)
 - [Next.js React Compiler config](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)
 - [React Compiler configuration](https://react.dev/reference/react-compiler/configuration)

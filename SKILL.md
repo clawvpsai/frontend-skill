@@ -19,7 +19,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Auth patterns, NextAuth.js, JWT, session management | `auth.md` | User auth & sessions |
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
-| Streaming, Suspense, image optimization, PPR, App Shells, prefetch controls | `performance.md` | Speed & UX |
+| Streaming, Suspense, image optimization, PPR, App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
 | Vercel, Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest, Playwright, component tests | `testing.md` | Test-driven dev |
@@ -41,14 +41,14 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 ## Version Defaults
 
 - **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch dedup)
-- **React 19.2.7** (React Compiler stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
+- **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3.0** + **shadcn/ui**
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
-- **@biomejs/biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1)
+- **@biomejs/biome 2.4.16** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
-- **React Hook Form v7.78.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4)
+- **React Hook Form v7.78.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
 ## Pro Tips
@@ -60,6 +60,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - Use `react-hook-form` + `zod` for all forms — never manage form state with useState
 - Enable React Compiler in `next.config.ts` with `reactCompiler: true` — eliminates most `useMemo`/`useCallback` manually
 - Use Biome (`npx biome check`) for linting — 10–100x faster than ESLint
+- Run `npx biome migrate --write` after every Biome upgrade to migrate your config for breaking changes
 - Use `use cache` for all server-side data fetching in Next.js 16 — it's the explicit opt-in caching model
 
 Start with `setup.md` to initialize a project, then `components.md` for shadcn/ui patterns.
@@ -86,3 +87,5 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
 - [Next.js 16.2.9 release](https://github.com/vercel/next.js/releases/tag/v16.2.9)
 - [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
+- [React Compiler 1.0 stable release](https://react.dev/blog/2025/10/07/react-compiler-1)
+- [Next.js React Compiler integration](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)
