@@ -93,6 +93,62 @@ export default defineConfig({
 })
 ```
 
+### React Compiler with Vite 8 + @vitejs/plugin-react v6
+
+**`@vitejs/plugin-react` v6 (2026) replaced Babel with oxc.** The old `react({ babel: { plugins: ['babel-plugin-react-compiler'] } })` pattern no longer works in v6. Use the `compiler` option instead:
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import path from 'path'
+
+export default defineConfig({
+  plugins: [
+    // React Compiler via oxc — the correct approach in plugin-react v6
+    react({
+      compiler: true,  // enables oxc-based React Compiler (babel approach no longer works)
+    }),
+    tailwindcss(),
+  ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+})
+```
+
+**`react({ compiler: true })` — The new way (plugin-react v6+):** Plugin-react v6 exposes a `compiler` option that uses `oxc-plugin-react-compiler` under the hood. This is the recommended approach for React 19 projects.
+
+**For React 18 + plugin-react v5**, you can still use the Babel pass approach:
+```ts
+react({ babel: { plugins: ['babel-plugin-react-compiler'] } })
+```
+
+**ESLint for development-time checking** (recommended alongside the build plugin):
+```bash
+npm install -D eslint-plugin-react-compiler
+```
+```js
+// eslint.config.mjs
+import reactCompiler from 'eslint-plugin-react-compiler'
+
+export default [
+  {
+    plugins: { 'react-compiler': reactCompiler },
+    rules: {
+      'react-compiler/react-compiler': 'warn',
+    },
+  },
+]
+```
+
+**Sources:**
+- [React Compiler + Vite 8 + plugin-react v6 guide](https://dev.to/recca0120/react-compiler-10-vite-8-the-right-way-to-install-after-vitejsplugin-react-v6-drops-babel-p0i)
+- [vite-plugin-react discussion #1240 — oxc-plugin-react-compiler](https://github.com/vitejs/vite-plugin-react/discussions/1240)
+
 ## Next.js Configuration
 
 ### `next.config.ts`
@@ -427,3 +483,4 @@ my-app/
 - **`experimental.serverActions` in next.config.ts** — remove it in Next.js 15+, Server Actions are stable
 - **`next lint` in Next.js 16** — removed; use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly instead
 - **`target: "ES2022"`** — update to `"ES2025"` for Next.js 16 / React 19 compatibility
+- **React Compiler + Vite 8 + plugin-react v6** — `react({ babel: { plugins: [...] } })` no longer works; use `react({ compiler: true })` instead (oxc-based)
