@@ -1,13 +1,13 @@
-# Auth — NextAuth.js v4 (Stable) + v5 (Beta)
+# Auth — NextAuth.js v4 (Legacy) + v5 (Production)
 
 ## Which Version to Use
 
 | Version | Status | When to Use |
 |---|---|---|
-| **v4 (4.24.x)** | ✅ Stable | Production apps; conservative teams; existing v4 projects |
-| **v5 (5.0.0-beta)** | 🧪 Beta | New projects willing to deal with beta; teams comfortable on the edge |
+| **v4 (4.24.x)** | ✅ Stable | Existing v4 projects only; prefer v5 for new projects |
+| **v5 (5.0.x)** | ✅ Production | New projects; recommended for all new Next.js apps |
 
-**Current state (June 2026):** NextAuth v5 has been in beta for over a year. While many production apps use it, v4 remains the safe choice for production. v5 has a stable API at this point — the main risk is breaking changes during the remaining beta period.
+**Current state (June 2026):** Auth.js v5 (NextAuth v5) is production-ready and widely adopted. v4 remains valid for existing projects but v5 is now the recommended choice for all new Next.js projects. The API is stable.
 
 ### v4 vs v5 — Key Differences
 
@@ -16,11 +16,11 @@
 | Package | `next-auth` | `next-auth` (same package, different import) |
 | Config file | `pages/api/auth/[...nextauth].ts` | `auth.ts` (root) |
 | Session type | `getSession()` | `auth()` |
-| Middleware | `withAuth` in `middleware.ts` | `auth()` function in `proxy.ts` |
+| Middleware | `withAuth` in `middleware.ts` | `auth()` function in `proxy.ts` (Next.js 16) |
 | Callbacks | `jwt`, `session` callbacks | Same (unchanged) |
 | Providers | Same set | Same set + new providers |
 
-## NextAuth.js v4 (Stable) — Recommended for Production
+## NextAuth.js v4 (Legacy) — Existing Projects Only
 
 ### Install
 

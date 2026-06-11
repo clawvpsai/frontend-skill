@@ -157,6 +157,11 @@ export default [
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // Enable Partial Prerendering (PPR) — stable in Next.js 16
+  // cacheComponents: true,
+  //   → PPR serves a static shell instantly; dynamic Suspense boundaries stream in
+  //   → Required for App Shells (16.3+)
+  //   → Recommended for all new Next.js 16 projects
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
