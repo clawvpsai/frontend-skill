@@ -306,7 +306,7 @@ npx biome init  # Creates biome.json
 ```json
 // biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -343,6 +343,14 @@ npx biome init  # Creates biome.json
 npx biome check .        # Lint + format check
 npx biome check --write  # Lint + auto-fix
 npx biome format .       # Format only
+```
+
+**Concise reporter (Biome 2.5+):** For compact single-line diagnostics:
+```bash
+npx biome check --reporter=concise
+# Output:
+# ! index.ts:2:10 lint/correctness/noUnusedImports: Several of these imports are unused.
+# × index.ts:8:5 lint/suspicious/noImplicitAnyLet: This variable implicitly has the 'any' type.
 ```
 
 Add to `package.json` scripts:
