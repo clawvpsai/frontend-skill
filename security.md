@@ -60,6 +60,31 @@ If you cannot upgrade immediately:
 - [Ox Security: React CVEs analysis](https://www.ox.security/blog/react-cve-2025-55184-67779-55183-react-19-vulnerabilities/)
 ---
 
+## TanStack npm Supply Chain Attack (May 11, 2026)
+
+On May 11, 2026, an attacker published 84 malicious versions across 42 @tanstack/* npm packages via a compromised npm publisher account. This affected @tanstack/react-query, @tanstack/query-core, and all other TanStack packages.
+
+**What happened:**
+- Attacker combined a compromised npm publisher with legitimate package ownership takeover tactics
+- 84 malicious versions published across 42 packages between 19:20 and 19:26 UTC
+- Packages appeared legitimate with correct metadata, signatures reassigned
+
+**Who was affected:**
+- Anyone who installed or updated @tanstack/* packages during the 6-minute window (May 11, 2026, 19:20–19:26 UTC)
+- GitHub Advisories: [GHSA-8xpr-6pg5-7r99](https://github.com/advisories/GHSA-8xpr-6pg5-7r99) and [GHSA-c2qf-rx4j-6f4g](https://github.com/advisories/GHSA-c2qf-rx4j-6f4g)
+
+**What to do:**
+1. **Audit lock files** — check if you pulled any @tanstack/* versions during the 6-minute window
+2. **Use npm ci** — `npm ci` respects package-lock.json, preventing new malicious versions from being installed
+3. **Pin versions** — use exact versions (`@tanstack/react-query@5.101.0`) in package.json, not ranges
+4. **Check package-lock.json** — look for unexpected @tanstack/* versions published between 19:20–19:26 UTC on May 11, 2026
+5. **Reinstall clean** — delete node_modules and package-lock.json, then `npm install` with known-good versions
+
+**TanStack confirmed the incident and published guidance.** See their official postmortem:
+- [TanStack npm supply-chain compromise postmortem](https://tanstack.com/blog/npm-supply-chain-compromise-postmortem)
+
+**This is a reminder:** Always use `npm ci` in CI/CD pipelines, pin exact versions, and consider using a software composition analysis (SCA) tool like Socket.dev or Snyk to detect supply chain attacks.
+
 ## XSS (Cross-Site Scripting)
 
 ### The Threat

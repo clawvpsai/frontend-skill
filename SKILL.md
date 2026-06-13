@@ -81,6 +81,8 @@ Key breaking changes from Next.js 15 → 16:
 | **`next lint` removed** | Use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly |
 | **`middleware.ts` deprecated → `proxy.ts`** | `middleware` export renamed to `proxy`; must be `async`; `matcher` moved to `next.config.ts` or exported from `proxy.ts` |
 
+**Upgrade:** `npx next upgrade` (Next.js 16.1+) — interactive upgrade command. Alternatively `npm install next@latest`.
+
 **Sources:**
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
