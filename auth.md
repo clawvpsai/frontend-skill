@@ -178,7 +178,7 @@ export const config = {
 
 ---
 
-## NextAuth.js v5 (Beta) — New Projects
+## NextAuth.js v5 — New Projects
 
 ```bash
 npm install next-auth@beta

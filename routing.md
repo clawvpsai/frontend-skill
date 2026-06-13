@@ -70,6 +70,55 @@ export default async function DocPage({ params }: { params: Promise<{ slug: stri
 // [[...slug]] vs [...slug]: the latter requires at least one segment
 ```
 
+### `generateStaticParams` — Static Generation (Build Time)
+
+For dynamic routes with known paths at build time, use `generateStaticParams` to pre-render those pages. This is faster than rendering on-demand:
+
+```tsx
+// app/blog/[slug]/page.tsx
+interface Props {
+  params: Promise<{ slug: string }>
+}
+
+// Tell Next.js which slugs to pre-render at build time
+export async function generateStaticParams() {
+  const posts = await getAllPostSlugs()  // Returns [{ slug: 'hello-world' }, { slug: '...' }]
+  return posts
+}
+
+export default async function BlogPostPage({ params }: Props) {
+  const { slug } = await params
+  const post = await getPostBySlug(slug)
+  
+  if (!post) notFound()
+  return <article>{post.content}</article>
+}
+```
+
+**When to use `generateStaticParams`:**
+- Blog posts, product pages, documentation — any content with a known set of URLs
+- Export from a dynamic route segment (`[slug]`, `[...slug]`, etc.)
+- Return value is an array of params objects: `[{ slug: 'value' }]` or `[{ slug: ['a', 'b'] }]` for catch-all routes
+
+**Without `generateStaticParams`:**
+- Dynamic pages render on first request (slower first visit)
+- With `revalidate`, they get ISR — cached but still generated on demand
+
+**With `generateStaticParams` + `revalidate`:**
+```tsx
+// Pre-rendered at build time, then revalidated every hour
+export const revalidate = 3600
+
+export async function generateStaticParams() {
+  return (await getAllPostSlugs())
+}
+```
+
+**Sources:**
+- [Next.js generateStaticParams](https://nextjs.org/docs/app/api-reference/functions/generate-static-params)
+
+
+
 ## Layouts
 
 ### Root Layout
@@ -332,6 +381,94 @@ import Link from 'next/link'
 ```
 
 **Never use `<a href="...">` for internal links** — it causes a full page reload.
+
+### `useSearchParams()` — Reading URL Query Params
+
+`useSearchParams()` gives you access to the current URL's query string in a Client Component. It must be wrapped in a Suspense boundary if the page uses it:
+
+```tsx
+// app/search/page.tsx — Server Component wrapper
+import { Suspense } from 'react'
+import { SearchResults } from '@/components/search-results'
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SearchResults />
+    </Suspense>
+  )
+}
+
+// components/search-results.tsx
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+
+export function SearchResults() {
+  const searchParams = useSearchParams()
+  const query = searchParams.get('q') ?? ''
+  const page = searchParams.get('page') ?? '1'
+  
+  return (
+    <div>
+      <p>Searching for: {query}</p>
+      <p>Page: {page}</p>
+    </div>
+  )
+}
+```
+
+**Why Suspense is required:**
+- In Next.js 16, `useSearchParams()` in a Client Component opts the entire route segment into dynamic rendering
+- Without a Suspense boundary, this causes the whole page to be dynamic — potentially hurting TTFB
+- Wrapping in Suspense isolates the dynamic portion, letting the static shell render at build time
+
+**Reading search params in Server Components:**
+```tsx
+// Server Components can read searchParams directly from page props
+interface Props {
+  searchParams: Promise<{ q?: string; page?: string }>
+}
+
+export default async function SearchPage({ searchParams }: Props) {
+  const { q = '', page = '1' } = await searchParams
+  // No Suspense needed — Server Components handle this natively
+  return <SearchResults query={q} page={page} />
+}
+```
+
+**Common pattern — URL-synced search:**
+```tsx
+'use client'
+
+import { useRouter, useSearchParams } from 'next/navigation'
+
+export function SearchInput() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const params = new URLSearchParams(searchParams)
+    if (e.target.value) {
+      params.set('q', e.target.value)
+    } else {
+      params.delete('q')
+    }
+    router.push(`?${params.toString()}`, { scroll: false })
+  }
+  
+  return (
+    <input
+      defaultValue={searchParams.get('q') ?? ''}
+      onChange={handleChange}
+      placeholder="Search..."
+    />
+  )
+}
+```
+
+**Sources:**
+- [Next.js useSearchParams](https://nextjs.org/docs/app/api-reference/hooks/use-search-params)
 
 ## Programmatic Navigation
 
