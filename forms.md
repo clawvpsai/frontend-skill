@@ -45,12 +45,112 @@ function MyForm() {
 
 **Why `createForm`?** It creates a typed hook factory upfront, making TypeScript inference cleaner across deeply nested form structures. The returned hook is reusable across multiple form instances.
 
-**Migration:** Upgrade from v7 to v8 with `npm install react-hook-form@beta`. The `useForm` API is fully backward-compatible — no breaking changes to existing forms. Only new `createForm` projects should prefer the new pattern.
+**Migration:** Upgrade from v7 to v8 with `npm install react-hook-form@beta`.
 
-**Note:** RHF 8.0 beta supports React 19.2 and requires React 16.8+. It is not yet stable for production.
+> ⚠️ **RHF 8.0 is beta — not yet stable for production.** The claim that `useForm` is "fully backward-compatible" is incorrect. There are 6 significant breaking changes listed below. Test in a branch before upgrading production apps.
+
+## React Hook Form 8.0 — Breaking Changes (Beta)
+
+RHF 8.0 beta introduces **6 breaking changes** that affect existing `useForm` users — not just new `createForm` users:
+
+### 1. `register` — Ref Now Passed Directly
+
+`register` now passes the actual input `ref` instead of a partial ref object. Most components work without changes, but refs tied to register may need updating:
+
+```tsx
+// Most inputs work without changes
+<input {...form.register('name')} />
+
+// If you manually handle ref: the ref is now the full input ref, not partial
+// Update any ref handler that expected { name, value, checked } partial
+```
+
+### 2. `useFieldArray` — `id` Renamed to `key`
+
+The internal render identifier changed from `id` to `key`:
+
+```tsx
+// v7
+const { fields } = useFieldArray({ name: 'items' })
+fields[0].id  // ← was the render key
+
+// v8
+const { fields } = useFieldArray({ name: 'items' })
+fields[0].key  // ← is now the render key
+
+// You can still store id/key as data in append() — only the render identifier changed
+```
+
+### 3. `useFieldArray` — `keyName` Prop Removed
+
+The `keyName` option is removed. The render key is always `key`:
+
+```tsx
+// v7
+const { fields } = useFieldArray({ name: 'items', keyName: 'myKey' })
+
+// v8 — keyName removed; use 'key' to access the render identifier
+const { fields } = useFieldArray({ name: 'items' })
+fields[0].key
+```
+
+### 4. `<Watch>` — `names` Prop Renamed to `name`
+
+The Watch component prop changed from `names` to `name`:
+
+```tsx
+// v7
+<Watch names={['firstName', 'lastName']} />
+
+// v8
+<Watch name={['firstName', 'lastName']} />
+```
+
+### 5. `watch` Callback API Removed — Use `subscribe`
+
+The `watch` subscription callback was removed. Use `subscribe` instead:
+
+```tsx
+// v7
+watch((value, { name, type }) => console.log(value))
+
+// v8 — use subscribe
+subscribe({ formValues: true }, ({ values }) => console.log(values))
+```
+
+### 6. `setValue` No Longer Updates `useFieldArray` Fields
+
+`setValue` no longer automatically updates field array items. Use `replace()` from `useFieldArray` instead:
+
+```tsx
+// v7
+setValue('items', newItems)
+
+// v8 — use replace from useFieldArray
+const { replace } = useFieldArray({ name: 'items' })
+replace(newItems)
+```
+
+### RHF 8.0 — New Features (Non-Breaking)
+
+Beyond breaking changes, v8 adds:
+- **React Compiler support** — works out of the box with the React Compiler; no extra config
+- **Flat field arrays** — simpler data structures for `useFieldArray`
+
+### RHF 8.0 Migration Checklist
+
+Before upgrading to v8 beta:
+- [ ] Audit `fields[].id` → `fields[].key` in all `useFieldArray` usages
+- [ ] Remove any `keyName` options in `useFieldArray` configs
+- [ ] Check `<Watch names={...}>` → `<Watch name={...}>`
+- [ ] Replace `watch(callback)` with `subscribe({ formValues: true }, callback)`
+- [ ] Replace `setValue('fieldArray', newArray)` with `replace()` from `useFieldArray`
+- [ ] Test form submission, validation, and field array operations extensively
+- [ ] Run `npm install react-hook-form@beta` in a test branch first
 
 **Sources:**
 - [React Hook Form 8.0 beta announcement](https://react-hook-form.com/)
+- [Migrate V7 to V8 guide](https://react-hook-form.com/migrate-v7-to-v8)
 - [createForm RFC discussion](https://github.com/react-hook-form/react-hook-form/discussions)
 
 ## Basic Setup
@@ -495,6 +595,4 @@ const form = useForm({
 - **Zod 4: using `z.instanceof(File)`** — migrate to `z.file()` which has better types and size validation
 - **Zod 4: not running type check after upgrade** — `npx tsc --noEmit` to catch type inference changes
 
-- **RHF 8:  as new entry point** — if you start a new project with RHF 8 beta, use  instead of  for the cleaner typed API; existing  projects don't need to migrate
-
-- **RHF 8: `createForm` as new entry point** — if you start a new project with RHF 8 beta, use `createForm` instead of `useForm` for the cleaner typed API; existing `useForm` projects do not need to migrate
+- **RHF 8: test breaking changes before upgrading** — v8 beta is not production-stable; the `useForm` API has breaking changes including `id`→`key` rename, `keyName` removal, `names`→`name` in Watch, `watch` callback→`subscribe`, and `setValue` no longer updating field arrays
