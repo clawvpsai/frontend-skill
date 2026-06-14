@@ -81,13 +81,14 @@ Key breaking changes from Next.js 15 → 16:
 | **`next lint` removed** | Use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly |
 | **`middleware.ts` deprecated → `proxy.ts`** | `middleware` export renamed to `proxy`; must be `async`; `matcher` moved to `next.config.ts` or exported from `proxy.ts` |
 
-**Upgrade:** `npx next upgrade` (Next.js 16.1+) — interactive upgrade command. Alternatively `npm install next@latest`.
+**Upgrade:** `npx @next/codemod@canary upgrade latest` (Next.js 16.2+) — automated upgrade CLI that handles codemods, config migrations, and breaking changes in one command. Alternatively `npx next upgrade` (interactive, Next.js 16.1+) or `npm install next@latest`.
 
 **Sources:**
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
 - [Next.js 16.2.9 release](https://github.com/vercel/next.js/releases/tag/v16.2.9)
+- [Next.js 16.2 — automated upgrade CLI](https://nextjs.org/blog/next-16-2)
 - [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
 - [React Compiler 1.0 stable release](https://react.dev/blog/2025/10/07/react-compiler-1)
 - [Next.js React Compiler integration](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)

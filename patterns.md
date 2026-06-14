@@ -38,6 +38,50 @@ const nextConfig: NextConfig = {
 }
 ```
 
+## Next.js 16.2 Debugging Improvements
+
+Next.js 16.2 introduced several major debugging and development experience improvements:
+
+### Hydration Diff Indicator
+
+Next.js 16.2 adds a **Hydration Diff Indicator** in the error overlay — when hydration fails, the overlay now shows exactly which attributes differ between the server-rendered HTML and the client output. This makes it dramatically faster to find server/client mismatches.
+
+**Common causes of hydration mismatches:**
+- `Date` or `Math.random()` used during render — these produce different values on server vs client
+- Browser-only APIs accessed during initial render without proper client guards
+- Conditional rendering based on `typeof window`
+
+### Server Function Logging
+
+Next.js 16.2 logs **Server Function execution** to the dev terminal — when a Server Action or Route Handler runs, you see which function was called, how long it took, and any errors.
+
+```
+[Server Function] POST /api/submit-form
+  ✓ Completed in 45ms
+  → Returned: { success: true, id: "abc123" }
+```
+
+**In the browser DevTools:**
+- Server Function calls appear as dedicated entries in the Network tab
+- You can replay requests, inspect inputs/outputs, and measure performance
+
+**Debugging tip:** Filter the Network tab by `Server Action` to see only Server Function network requests.
+
+### `--inspect` for `next start`
+
+Next.js 16.2 adds **`--inspect`** flag for production (`next start`):
+
+```bash
+# Attach Node.js debugger to production server
+next start --inspect
+```
+
+This lets you connect Chrome DevTools or VS Code to your production server for live debugging.
+
+**Sources:**
+- [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
+- [Next.js 16.2 Turbopack improvements](https://nextjs.org/blog/next-16-2-turbopack)
+
 ## App Shell Prefetch — Next.js 16.3+ (Canary Feature)
 
 **⚠️ Status:** App Shell Prefetch is a **Next.js 16.3 canary feature** — not yet stable. The current stable release (**Next.js 16.2.9**) still defaults to `prefetch="full"` (full route prefetch on hover). This section describes what is coming when 16.3 stabilizes.
