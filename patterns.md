@@ -120,29 +120,11 @@ Route segment config also supports prefetch control at the route level (availabl
 export const prefetch = 'app-shell' as const // or 'full' | false
 ```
 
-This sets the default prefetch behavior for all `<Link>` components pointing to this route.
-const user1 = await getUser('user-123')
-const user2 = await getUser('user-123') // Returns cached result from first call
-```
-
-**When this matters:**
-- Data-heavy pages with multiple components reading the same cached data
-- Reducing database load on navigation
-- Particularly impactful in dashboard/feed patterns where many components share reference data
-
-**`prefetch` prop on Route Segments (Next.js 16.3):**
-
-Route segment config also supports prefetch control at the route level:
-
-```tsx
-// app/dashboard/page.tsx
-export const prefetch = 'app-shell' as const // or 'full' | false
-```
 
 This sets the default prefetch behavior for all `<Link>` components pointing to this route.
 
 **Sources:**
-- [Next.js 16.3.0-canary release notes](https://typescript.news/articles/2026-04-18-next-js-16-3-0-canary-prefetch-cache-dev-overlay)
+- [Next.js 16.3.0-canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.50)
 - [Next.js prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
 - [Next.js 16.3.0-canary.26 — App Shell server response](https://newreleases.io/project/npm/next/release/16.3.0-canary.26)
 - [Next.js 16.3.0-canary.1 — Partial prefetch default](https://newreleases.io/project/npm/next/release/16.3.0-canary.1)
