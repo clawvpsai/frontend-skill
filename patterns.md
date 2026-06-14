@@ -173,6 +173,44 @@ This sets the default prefetch behavior for all `<Link>` components pointing to 
 - [Next.js 16.3.0-canary.26 — App Shell server response](https://newreleases.io/project/npm/next/release/16.3.0-canary.26)
 - [Next.js 16.3.0-canary.1 — Partial prefetch default](https://newreleases.io/project/npm/next/release/16.3.0-canary.1)
 
+### `unstable_instant` — Instant Client-Side Navigation (Canary)
+
+**⚠️ Status:** `unstable_instant` is a **canary-only feature** in Next.js 16.3. It enables instant client-side navigations (0ms perceived latency) by serving cached route content immediately from the prefetch cache, before the server RSC response even arrives.
+
+**How it works:** Export `unstable_instant` from a route to indicate that client-side navigations to this route should use the prefetch cache instantly, without waiting for the RSC response:
+
+```tsx
+// app/dashboard/page.tsx
+
+// Enable instant navigation — served from prefetch cache on navigate
+export const unstable_instant = true
+
+export default async function DashboardPage() {
+  // ... page content
+}
+```
+
+**When to use:**
+- Routes that are frequently navigated to after initial load
+- Dashboard, settings, and app-shell pages where instant feel is critical
+- Most effective when combined with `prefetch="app-shell"` on parent navigation
+
+**How it integrates with Cache Components:**
+When `cacheComponents: true` is enabled and `unstable_instant` is exported from a route:
+1. User hovers/clicks a link to the route
+2. Next.js immediately serves the cached prefetch (layout + static shell) — instant visual response
+3. RSC response arrives in background and patches the DOM for dynamic holes
+4. Result: navigation feels instant even on slow connections
+
+**⚠️ Limitations:**
+- Requires the route to have been prefetched already (link was in viewport or hovered before navigation)
+- Only works for client-side navigations (`<Link>`, `router.push()`) — not initial page loads
+- Canary-only: may change or be removed before stable
+
+**Sources:**
+- [Next.js instant navigation guide](https://nextjs.org/docs/app/guides/instant-navigation)
+- [Next.js 16.3.0-canary prefetch dedup improvement](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
+
 ## Search with Debounce + URL Sync + React Query
 
 ```tsx
@@ -946,8 +984,106 @@ function PublishButton({ postId }: { postId: string }) {
 - Using `'elements'` when you need to detect background loading — `'elements'` only tracks mounted pending elements
 - Confusing `<Activity>` with a spinner — it's a detection mechanism, not a UI component; use it to conditionally render your own loading UI
 
+### `cacheComponents` Migration — State Preservation & Route Behavior Changes
 
+When you enable `cacheComponents: true` in Next.js 16, several fundamental behaviors change that affect existing Next.js 15 code:
 
+#### State Now Persists Across Navigations (Not Cleared)
+
+With `cacheComponents`, Next.js wraps routes in React's `<Activity mode="hidden">` internally. This means **component state is preserved** when navigating away and restored when navigating back:
+
+```tsx
+// ❌ Old Next.js 15 behavior — state was cleared on navigation
+// User fills a form, navigates away, comes back — form is empty
+
+// ✅ New cacheComponents behavior — state is PRESERVED
+// User fills a form, navigates away, comes back — form still has values
+function ContactForm() {
+  const [message, setMessage] = useState('')
+  // With cacheComponents: this state survives navigation
+  return <textarea value={message} onChange={e => setMessage(e.target.value)} />
+}
+```
+
+**What this means for migrations:**
+- If you relied on navigation clearing stale state (e.g., resetting a search input, clearing a draft form), you now need **explicit reset logic**
+- Add cleanup in `useEffect` with an empty dependency array, or reset state when params change
+
+```tsx
+// Explicitly reset state when route params change (migration pattern)
+function SearchPage({ params }: { params: Promise<{ q: string }> }) {
+  const [query, setQuery] = useState('')
+  const { q } = use(params)
+
+  // Reset when the search query param changes
+  useEffect(() => {
+    setQuery(q ?? '')
+  }, [q])
+
+  return <input value={query} onChange={e => setQuery(e.target.value)} />
+}
+```
+
+#### Effects Clean Up and Re-Run on Route Restore
+
+When a route is hidden (not currently active), Next.js cleans up its Effects. When the user navigates back, Effects re-run from scratch:
+
+```tsx
+// This useEffect runs when route is VISITED, cleans up when route is HIDDEN
+useEffect(() => {
+  const ws = connectWebSocket()
+  return () => ws.close()  // Called when route is hidden
+}, [])
+```
+
+#### `cacheComponents` + Edge Runtime — Not Supported
+
+If you currently use `runtime = 'edge'` in your route segment config, **it is not compatible with `cacheComponents`**. You must remove it:
+
+```tsx
+// ❌ Next.js 15 — Edge runtime
+export const runtime = 'edge'
+
+// ✅ Next.js 16 with cacheComponents — Node.js runtime only (default)
+export default async function Page() { ... }
+```
+
+If you need edge-like behavior for specific routes, use Next.js 16's **Proxy** (`proxy.ts`) instead, which replaces `middleware.ts`.
+
+#### Dynamic Routes with `cacheComponents` — Wrap in Suspense
+
+Dynamic routes like `blog/[slug]` require special handling with `cacheComponents`. The dynamic data fetching part must be wrapped in `<Suspense>`:
+
+```tsx
+// app/blog/[slug]/page.tsx
+
+export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+
+  return (
+    <div>
+      <BlogHeader />  {/* Static — prerendered */}
+      <Suspense fallback={<PostSkeleton />}>
+        <BlogContent slug={slug} />  {/* Dynamic — streams in */}
+      </Suspense>
+    </div>
+  )
+}
+
+async function BlogContent({ slug }: { slug: string }) {
+  // This function uses cookies()/headers() or fetches user-specific data
+  // It must be wrapped in Suspense to avoid prerender errors
+  const post = await getPostBySlug(slug)
+  return <article>{post.content}</article>
+}
+```
+
+**Why:** With `cacheComponents`, Next.js prerenders everything at build time. If a component uses `cookies()`, `headers()`, or other dynamic APIs directly in the page, it will fail prerendering. Wrapping in `<Suspense>` marks it as dynamic.
+
+**Sources:**
+- [Next.js migrating to Cache Components guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components)
+- [Next.js preserving UI state](https://nextjs.org/docs/app/guides/preserving-ui-state)
+- [React Activity hidden mode](https://react.dev/reference/react/Activity#activity)
 
 ### `useEffectEvent` — Stable Event Handlers in Effects (React 19.2)
 

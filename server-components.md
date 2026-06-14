@@ -193,7 +193,7 @@ export async function createPost(formData: FormData) {
 }
 ```
 
-**Use when:** Data must be immediately consistent (e.g., inventory counts, financial data, user-generated content that affects authorization).
+ **Use when:** Data must be immediately consistent (e.g., inventory counts, financial data, user-generated content that affects authorization). Note: `updateTag` expires the entry immediately and revalidates in the background — the current request gets the stale value while the next gets fresh data.
 
 #### Which to Use
 
@@ -242,6 +242,95 @@ export async function getGitHubRepos(username: string) {
 |---|---|
 | `use cache` + `cacheTag` | Any server-side data function (DB, file I/O, external API wrapped in a function) |
 | `fetch` directly in page | Quick, one-off external API fetches where fetch's `next` options are sufficient |
+
+### `use cache: private` — Private Cached Data (Compliance Use)
+
+`use cache: private` is for compliance requirements where data cannot leave the server but needs to be cached. Unlike standard `use cache` (which can be stored in shared caches), `use cache: private` keeps the cached data private to that specific server instance.
+
+**When to use `use cache: private`:**
+- Regulatory/compliance requirements that mandate data stays on the same server (e.g., GDPR data residency)
+- When you cannot refactor code to pass runtime data (cookies, headers) as function arguments
+
+```tsx
+// lib/compliance-data.ts
+
+// ❌ Standard use cache — data may be stored in shared/distributed cache
+export async function getDashboardMetrics() {
+  'use cache'
+  // This cached data could be stored in a platform's distributed cache
+  return db.metrics.findMany()
+}
+
+// ✅ use cache: private — data stays on this server only
+export async function getDashboardMetrics() {
+  'use cache: private'
+  // This cached data is private to this server instance
+  return db.metrics.findMany()
+}
+```
+
+**Constraints:**
+- `use cache: private` still requires reading cookies/headers **outside** the cached scope and passing values as arguments
+- It does not bypass the constraint that cached functions must be deterministic — same args always return same result
+- Only use when compliance requires it; standard `use cache` is preferred for performance
+
+### `use cache: remote` — Distributed Cache (Platform Handler)
+
+`use cache: remote` allows platforms to provide a dedicated external cache handler (Redis, KV, etc.) instead of the default in-memory cache. This reduces load on your database for high-traffic cached data.
+
+**When to use `use cache: remote`:**
+- High-traffic cached data where in-memory cache isn't sufficient
+- When you want cache persistence across server restarts
+- Platform supports a distributed cache (Vercel KV, Cloudflare KV, etc.)
+
+```tsx
+// next.config.ts — configure the remote cache handler
+const nextConfig: NextConfig = {
+  cacheHandlers: {
+    remote: {
+      // Platform-specific configuration
+      // e.g., for Vercel: uses Vercel KV automatically
+    },
+  },
+}
+```
+
+**Trade-offs:**
+- Requires a network roundtrip to check the remote cache (higher latency than in-memory)
+- Typically incurs platform fees for the cache service
+- Not suitable for latency-sensitive paths; best for data that changes infrequently
+
+```tsx
+// lib/popular-posts.ts
+
+// Standard use cache — in-memory only
+export async function getTopPosts() {
+  'use cache'  // Fast, in-memory, server-local only
+  cacheLife({ ttl: 3600 })
+  return db.post.findMany({ orderBy: { views: 'desc' }, take: 10 })
+}
+
+// use cache: remote — uses platform's distributed cache
+// Lower latency spikes under high load, but higher baseline latency
+export async function getTopPosts() {
+  'use cache: remote'  // Network roundtrip to remote cache
+  cacheLife({ ttl: 3600 })
+  return db.post.findMany({ orderBy: { views: 'desc' }, take: 10 })
+}
+```
+
+**Quick reference — which cache variant:**
+
+| Directive | Storage | Latency | Use When |
+|---|---|---|---|
+| `use cache` | In-memory (server-local) | Lowest | Default — most cases |
+| `use cache: private` | In-memory (server-local, private) | Lowest | Compliance — data must not leave server |
+| `use cache: remote` | Platform cache (Redis/KV/etc.) | Higher | High traffic, persistent cache across restarts |
+
+**Sources:**
+- [Next.js `use cache: private` docs](https://nextjs.org/docs/app/api-reference/directives/use-cache-private)
+- [Next.js `use cache: remote` docs](https://nextjs.org/docs/app/api-reference/directives/use-cache-remote)
+- [Next.js `cacheHandlers` config](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheHandlers)
 
 ### `unstable_cache` — Legacy Pattern (Still Works, Prefer `use cache`)
 
