@@ -24,6 +24,145 @@ Flags explained:
 
 **Note:** Turbopack is now stable for development in Next.js 16 — no `--no-turbopack` flag needed. It's the default dev bundler. Production builds use Turbopack by default.
 
+
+**Next.js 16.2 prompts (March 2026):** `create-next-app@latest` now also asks about:
+- **Linter choice:** `ESLint` / `Biome` / `None` (default: `ESLint`; choose `Biome` for 10–100x faster linting)
+- **React Compiler:** `No` / `Yes` (recommended: `Yes` — eliminates most manual `useMemo`/`useCallback`)
+- **AGENTS.md:** `No` / `Yes` (default: `Yes` — see [Next.js 16.2 AI Improvements](#nextjs-162-ai-improvements-march-2026) below)
+
+## Next.js 16.2 AI Improvements (March 2026)
+
+Next.js 16.2 ships four features specifically designed for AI-assisted development. These are significant if you're an AI agent (like this skill's users) or you work alongside one.
+
+### 1. AGENTS.md in `create-next-app` (Default: Yes)
+
+`npx create-next-app@latest` now scaffolds an `AGENTS.md` file at the project root. This file instructs AI coding agents (Claude Code, Cursor, etc.) to read the bundled Next.js documentation from `node_modules/next/dist/docs/` *before* writing any code — giving agents version-matched, local documentation instead of fetching external data.
+
+Vercel's research found that bundled docs achieved a **100% pass rate** on Next.js evals vs. **79%** for skill-based approaches (where agents must decide when to search for docs).
+
+```bash
+# Created automatically by create-next-app — do not delete
+cat AGENTS.md
+# → "Read the docs bundled at node_modules/next/dist/docs/ before writing any code"
+```
+
+**For existing projects**, you can opt in manually by creating `AGENTS.md` with the same directive. Vercel's [research on AGENTS.md](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals) shows always-available context beats on-demand retrieval because agents often fail to recognize when they should search.
+
+### 2. Browser Log Forwarding
+
+Browser `console.error` / `console.warn` / unhandled errors are now forwarded to the **terminal** in real time during `next dev`. This lets AI agents debug client-side issues without running a headless browser.
+
+```bash
+npm run dev
+# → "console.error: TypeError: Cannot read properties of undefined (reading 'map') at ProductList (src/components/product-list.tsx:42:18)"
+```
+
+Forwarded log levels (configurable in `next.config.ts`):
+- `error` (always forwarded)
+- `warn`
+- `info` (opt-in)
+
+### 3. Dev Server Lock File
+
+Next.js writes the running dev server's PID, port, and URL to `.next/dev/lock`. A second `next dev` attempt reads it and prints an actionable error — preventing agents (and humans) from accidentally spinning up duplicate servers or corrupting build artifacts.
+
+```
+Error: Another next dev server is already running.
+
+- Local:        http://localhost:3000
+- PID:          12345
+- Dir:          /path/to/project
+- Log:          .next/dev/logs/next-development.log
+
+Run kill 12345 to stop it.
+```
+
+The lock also blocks two concurrent `next build` processes. If you need to override (stale lock after crash), delete `.next/dev/lock`.
+
+### 4. `@vercel/next-browser` — Experimental CLI for Agents
+
+[`@vercel/next-browser`](https://github.com/vercel-labs/next-browser) is an experimental CLI that exposes browser-level data (screenshots, network requests, console logs) plus framework-specific insights from React DevTools and the Next.js dev overlay — all as structured text via shell commands. An LLM can't read a DevTools panel, but it can run `next-browser tree` and parse the output.
+
+Install as a [skills.sh](https://skills.sh) skill:
+
+```bash
+npx skills add vercel-labs/next-browser
+```
+
+Then use `/next-browser` in Claude Code, Cursor, or any AI agent that supports skills. The CLI manages a Chromium instance with React DevTools pre-loaded.
+
+**Available commands (as of June 2026):**
+| Command | Purpose |
+|---|---|
+| `next-browser tree` | Inspect React component tree (props, hooks, state, source locations) |
+| `next-browser network` | Track requests since navigation, including Server Actions |
+| `next-browser logs` | Retrieve build + runtime issues from dev server |
+| `next-browser ppr` | Analyze PPR shells — identify static vs dynamic regions and blocked Suspense boundaries |
+| `next-browser screenshot` | Capture current viewport (or loading filmstrip) |
+| `next-browser errors` | Surface dev overlay errors with `Error.cause` chains |
+
+Each command is a one-shot request against a persistent browser session, so agents can query the app repeatedly without managing browser state. **Note:** `next-browser` is still experimental — APIs may change.
+
+**Sources:**
+- [Next.js 16.2: AI Improvements (official blog)](https://nextjs.org/blog/next-16-2-ai)
+- [Next.js AI Coding Agents guide](https://nextjs.org/docs/app/guides/ai-agents)
+- [`@vercel/next-browser` repo](https://github.com/vercel-labs/next-browser)
+- [Vercel research: AGENTS.md outperforms skills (100% vs 79%)](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals)
+
+## Next.js 16.1 Highlights (December 2025)
+
+If you're starting a new project today, you're getting these by default. Worth knowing what they do:
+
+### Turbopack File System Caching (Stable, Default On)
+
+Turbopack now persists compiler artifacts to disk under `.next/`. Restarting `next dev` is dramatically faster — the first route compile time goes from seconds to ~hundreds of milliseconds.
+
+| Project | Cold | Cached | Speedup |
+|---|---|---|---|
+| react.dev | 3.7s | 380ms | ~10× |
+| nextjs.org | 3.5s | 700ms | ~5× |
+| Large internal Vercel app | 15s | 1.1s | ~14× |
+
+No config needed — enabled by default since 16.1. The `experimental.turbopackFileSystemCacheForDev` / `...ForBuild` flags are no longer required (the dev cache is on; build cache is still experimental).
+
+**Source:** [Turbopack FileSystem Caching config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache)
+
+### `next dev --inspect` (and `next start --inspect` in 16.2)
+
+Attach the Node.js debugger to the dev server for profiling:
+
+```bash
+next dev --inspect
+# → "Debugger listening on ws://127.0.0.1:9229/..."
+# Open chrome://inspect in Chrome to attach
+```
+
+In Next.js 16.2 this also works with `next start` for production debugging.
+
+### Next.js Bundle Analyzer (Experimental)
+
+Inspect client and server bundles to find bloat:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    bundleAnalyzer: true,
+  },
+}
+```
+
+```bash
+ANALYZE=true npm run build
+# → Opens interactive HTML report
+```
+
+### Next.js DevTools MCP `get_routes` Tool
+
+The Next.js DevTools MCP server (shipped in 16.0, expanded in 16.1) now includes a `get_routes` tool that returns the full list of routes in your application. Useful for AI agents exploring a codebase.
+
+**Source:** [Next.js 16.1 release notes](https://nextjs.org/blog/next-16-1)
+
 ### Vite (React SPA, non-Next)
 
 ```bash
