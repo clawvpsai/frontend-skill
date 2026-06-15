@@ -42,9 +42,9 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 - **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; 16.3 canary available with App Shells + fine-grained prefetch dedup)
 - **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
-- **TypeScript 6.0.3** (strict by default, ES2025 target, import defer; TS 7 beta available with Go-based compiler)
+- **TypeScript 6.0.3** (strict by default, ES2026 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
-- **Tailwind CSS v4.3.0** + **shadcn/ui**
+- **Tailwind CSS v4.3.0** + **shadcn/ui** (CSS-first config via `@theme` directive — no tailwind.config.js by default)
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **@biomejs/biome 2.5.0** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)

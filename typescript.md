@@ -16,8 +16,8 @@
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "target": "ES2025",         // TS 6.0 defaults to ES2025 (was ES2022)
-    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "target": "ES2026",         // TS 6.0 defaults to ES2026 (was ES2022)
+    "lib": ["ES2026", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -299,6 +299,42 @@ const createdAt = Temporal.ZonedDateTime.from(post.createdAtISO)
 ```
 
 **Note:** Most browsers don't support Temporal natively yet. Use the `temporal-polyfill` npm package or rely on TypeScript's type definitions alone — the types work without the runtime polyfill for type-checking purposes.
+
+
+### ES2026 Built-in Types (TypeScript 6.0)
+
+TypeScript 6.0 includes types for ES2026 built-in methods:
+
+**`Map.getOrInsert()` and `Map.getOrInsertComputed()`**
+
+```ts
+const cache = new Map<string, User>()
+
+// getOrInsert — get existing or insert if missing (value eager)
+const user1 = cache.getOrInsert('alice', { id: '1', name: 'Alice' })
+// If 'alice' exists, returns existing. Otherwise inserts and returns the second arg.
+
+// getOrInsertComputed — get existing or compute+insert if missing (lazy)
+const user2 = cache.getOrInsertComputed('bob', () => ({ id: '2', name: 'Bob' }))
+// Callback only runs if 'bob' is not in the map — avoids unnecessary work.
+```
+
+**`RegExp.escape()`** — Escape special regex characters:
+
+```ts
+// Escape user input for use in a regex
+const userInput = 'foo.bar+baz'
+const escaped = RegExp.escape(userInput)  // "foo\\.bar\\+baz"
+
+// Now safe to concatenate into a dynamic regex
+const dynamicRegex = new RegExp(`^${escaped}$`, 'i')
+```
+
+These are enabled by setting `target: "ES2026"` (the TS 6.0 default) or adding `"lib": ["ES2026"]`.
+
+**Sources:**
+- [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
+
 
 ### TypeScript 6.0 Deprecations
 

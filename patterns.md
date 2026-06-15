@@ -2,7 +2,7 @@
 
 ## Turbopack (Next.js 16)
 
-Turbopack is Next.js's Rust-based bundler. In Next.js 16, Turbopack is stable for both development and production builds. It replaces Webpack for development, offering significantly faster hot module replacement (HMR) and cold start times.
+Turbopack is Next.js's Rust-based bundler. In Next.js 16, Turbopack is the default for new projects — stable for both development and production builds, and used in production on vercel.com and nextjs.org serving 1.2B+ requests. It replaces Webpack for development, offering significantly faster hot module replacement (HMR) and cold start times.
 
 ```bash
 # Use Turbopack in development (Next.js 16 default)
