@@ -1496,6 +1496,174 @@ function ExpensiveList({ items }: { items: Item[] }) {
 - [React 19.1 release notes](https://react.dev/blog/2025/03/28/react-19)
 - [React captureOwnerStack reference](https://react.dev/reference/react/captureOwnerStack)
 
+## React `<ViewTransition>` Component (React 19.2)
+
+React 19.2 provides a **`<ViewTransition>` component** — the idiomatic React way to use the View Transitions API. This is preferred over `document.startViewTransition()` because it hooks into React's render cycle automatically, handles SSR safely, and provides a declarative API with `enter`/`exit`/`default` animation class props.
+
+### Basic Usage
+
+Wrap any elements you want to animate with `<ViewTransition>` and give them the same `name` prop. When the wrapped content changes, React automatically starts a view transition:
+
+```tsx
+'use client'
+import { ViewTransition } from 'react'
+
+function ProductGallery({ images }: { images: string[] }) {
+  const [selected, setSelected] = useState(0)
+
+  return (
+    <div>
+      {/* Same name on both — React auto-transitions when selected changes */}
+      <ViewTransition name={`gallery-${selected}`}>
+        <img
+          key={selected}
+          src={images[selected]}
+          alt="Product gallery"
+          className="w-full h-64 object-cover rounded-lg"
+        />
+      </ViewTransition>
+
+      <div className="thumbnails">
+        {images.map((src, i) => (
+          <button key={i} onClick={() => setSelected(i)}>
+            <img src={src} alt={`Thumbnail ${i}`} />
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+```
+
+### Named View Transitions — Shared Element Animation
+
+For the classic "card to detail page" morph, use the same dynamic `name` on matching elements in different routes. The browser matches them automatically:
+
+```tsx
+// app/products/page.tsx — grid
+'use client'
+import { ViewTransition } from 'react'
+
+export function ProductCard({ product }: { product: Product }) {
+  return (
+    <Link href={`/products/${product.id}`}>
+      <ViewTransition name={`product-img-${product.id}`}>
+        <img
+          src={product.image}
+          alt={product.name}
+          className="w-full aspect-square object-cover rounded-lg"
+        />
+      </ViewTransition>
+      <p className="mt-2 font-medium">{product.name}</p>
+    </Link>
+  )
+}
+```
+
+```tsx
+// app/products/[id]/page.tsx — detail page
+'use client'
+import { ViewTransition } from 'react'
+
+export function ProductDetail({ product }: { product: Product }) {
+  return (
+    <ViewTransition name={`product-img-${product.id}`}>
+      <img
+        src={product.image}
+        alt={product.name}
+        className="w-full aspect-square object-cover rounded-lg"
+      />
+    </ViewTransition>
+  )
+}
+```
+
+**Browser matches** `product-img-{id}` between the two pages and morphs the image position/size automatically. Add CSS to customize the animation.
+
+### Animation Props — `enter`, `exit`, `default`
+
+Use animation class props to control what CSS classes are applied during each transition phase:
+
+```tsx
+<ViewTransition
+  name="modal-backdrop"
+  default="fade-in"     {/* Applied when transition activates (fallback/default) */}
+  enter="slide-up"       {/* Applied to entering element */}
+  exit="fade-out"        {/* Applied to exiting element */}
+>
+  <Modal />
+</ViewTransition>
+```
+
+```css
+/* Define animations via view-transition classes */
+.fade-in { animation: fadeIn 300ms ease-out; }
+.slide-up { animation: slideUp 300ms ease-out; }
+.fade-out { animation: fadeOut 200ms ease-out forwards; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fadeOut { to { opacity: 0; } }
+```
+
+**Default vs named transitions:**
+| Prop | When Applied |
+|---|---|
+| `default` | Applied when the transition activates with no specific type |
+| `enter` | Applied when element is entering (new) |
+| `exit` | Applied when element is exiting (old) |
+
+### `addTransitionType` — Router Integration
+
+React's `addTransitionType()` lets routers annotate transitions with semantic types (e.g., `navigation-forward`, `navigation-back`) so animations can differ by navigation direction:
+
+```tsx
+// In your router — annotate the transition type before navigating
+import { startTransition } from 'react'
+
+function navigateTo(href: string, direction: 'forward' | 'back') {
+  startTransition(() => {
+    addTransitionType(`navigation-${direction}`)
+    router.push(href)
+  })
+}
+```
+
+```tsx
+// In component — ViewTransition reads the type and applies different CSS classes
+<ViewTransition
+  name="page-content"
+  default={{ 'navigation-back': 'slide-right', 'navigation-forward': 'slide-left' }}
+>
+  {children}
+</ViewTransition>
+```
+
+**CSS:**
+```css
+.slide-left { animation: slideFromRight 300ms ease-out; }
+.slide-right { animation: slideFromLeft 300ms ease-out; }
+
+@keyframes slideFromRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes slideFromLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+```
+
+### SSR Safety
+
+**`<ViewTransition>` is SSR-safe** — it only activates `startViewTransition()` when running in a browser. Unlike `document.startViewTransition()` (which throws in SSR), the component gracefully skips the transition during server render.
+
+**When to use `<ViewTransition>` (component) vs `document.startViewTransition()` (browser API):**
+| Approach | Use When |
+|---|---|
+| **`<ViewTransition>` (React)** ✅ | React apps — automatically hooks into render cycle, SSR-safe, `enter`/`exit` props |
+| `document.startViewTransition()` | Need fine-grained control over when transition fires; non-React environments |
+
+**Sources:**
+- [React ViewTransition component reference](https://react.dev/reference/react/ViewTransition)
+- [React ViewTransition blog](https://react.dev/blog/2025/10/01/react-19-2)
+- [Kent C. Dodds — ViewTransition tutorial](https://www.epicreact.dev/use-react-view-transition-to-smoothly-transition-images-and-titles-lu6ks)
+- [Frontend at Scale — Experimenting with View Transitions](https://frontendatscale.com/issues/43/)
+
 ## View Transitions API (React 19.2)
 
 React 19.2 adds support for the **View Transitions API** — a browser-native way to animate between page states or UI updates with smooth, choreographed transitions.
@@ -1785,5 +1953,7 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **Activity detection mismatch** — use `detection="elements"` for single interactive elements (buttons, toggles); use `detection="subtree"` for detecting any pending state in child components (entire forms, list items); using `subtree` on a single button causes `isActivity` to fire on any unrelated child pending state
 - **View Transitions without `::view-transition-*` CSS** — `view-transition-name` only declares the element's identity; without CSS `::view-transition-old`/`::view-transition-new` rules, the browser uses a default crossfade that may look abrupt or wrong for your use case; always add explicit transition CSS
 - **View Transitions with duplicate `viewTransitionName`** — two elements on the same page with the same `viewTransitionName` causes the browser to skip the transition silently; use unique names per element (`product-image-${id}` not just `product-image`)
+- **`<ViewTransition>` missing `name` prop** — without a `name` prop, React doesn't know which elements should transition together; always use `name` for cross-page or state-change animations
 - **View Transitions in SSR without hydration guard** — `document.startViewTransition()` throws in SSR/Server Components; only call it inside event handlers or in Client Components, never during server render
+- **`useEffectEvent` as a dependency shortcut** — `useEffectEvent` is for extracting non-reactive logic from Effects; do NOT use it to silence the dependency linter when you should be adding proper dependencies; this hides bugs; instead, only extract logic that genuinely doesn't need to trigger re-runs
 
