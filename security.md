@@ -1,5 +1,38 @@
 # Security — XSS, CSRF, CSP, Input Sanitization + Next.js Security
 
+## CVE-2026-23869 — React RSC DoS (April 2026)
+
+A high-severity denial-of-service vulnerability (CVSS 7.5) in React Server Components was disclosed April 8, 2026. The bug lives in the React Flight protocol's deserialization — a specially crafted HTTP request to any App Router Server Function endpoint can trigger excessive CPU consumption, crashing the server.
+
+**Affected versions:**
+- React 19.0.0 through 19.0.4
+- React 19.1.0 through 19.1.5
+- React 19.2.0 through 19.2.4
+- All Next.js versions using App Router (13.x, 14.x, 15.x, 16.x)
+
+**Fixed in:** React 19.0.5, 19.1.6, 19.2.5 (April 2026)
+**Also patched in:** Next.js 16.2.6 (May 2026 security bundle)
+
+**Upgrade:** `npm install react@latest react-dom@latest` then `npm install next@latest`
+
+**Vercel WAF:** Vercel deployed automatic WAF rules to protect all Vercel-hosted projects, but you should still upgrade — WAF protection is not a substitute for patching.
+
+### How It Works
+
+The attacker sends a malformed RSC payload to a Server Function endpoint. When Next.js/React deserializes it via the Flight protocol, it triggers unbounded CPU usage. A single small request can take down the server.
+
+### Mitigation If You Can't Upgrade Immediately
+
+1. **Rate-limit Server Function endpoints** — limit requests per IP to routes handling RSC
+2. **Block RSC endpoints at the edge** — use your hosting provider's WAF to filter suspicious payloads
+3. **Disable Server Actions for unauthenticated users** — if possible, require auth before hitting any `'use server'` function
+
+**Sources:**
+- [Vercel: Summary of CVE-2026-23869](https://vercel.com/changelog/summary-of-cve-2026-23869)
+- [NVD: CVE-2026-23869](https://nvd.nist.gov/vuln/detail/CVE-2026-23869)
+- [Netlify: Next.js & React DoS vulnerability](https://www.netlify.com/changelog/2026-04-08-react-nextjs-dos-vulnerability/)
+- [Imperva: React2DoS analysis](https://www.imperva.com/blog/react2dos-cve-2026-23869-when-the-flight-protocol-crashes-at-takeoff/)
+
 ## Next.js 16.2.6 Security Fixes (May 2026)
 
 Next.js 16.2.6 is a **security-focused release** patching multiple high and moderate severity vulnerabilities. If you're on an earlier version, upgrade immediately.
@@ -36,8 +69,8 @@ React 19.2.4 patches **three critical vulnerabilities** in React Server Componen
 | CVE-2025-67779 | Critical | Denial of Service via unbounded resource consumption in RSC |
 | CVE-2025-55183 | High | Additional RSC parsing vulnerability (follow-up to December 2025 fixes) |
 
-**Affected versions:** React 19.0.0 through 19.2.2  
-**Fixed in:** React 19.2.4 (January 26, 2026)  
+**Affected versions:** React 19.0.0 through 19.2.2
+**Fixed in:** React 19.2.4 (January 26, 2026)
 **Upgrade:** `npm install react@latest react-dom@latest`
 
 ### What Attackers Could Do
@@ -125,7 +158,7 @@ return <div dangerouslySetInnerHTML={{ __html: sanitized }} />
 <img src={userInput} />
 
 // ✅ Always validate URLs
-const isSafeUrl = (url: string) => 
+const isSafeUrl = (url: string) =>
   url.startsWith('http://') || url.startsWith('https://')
 
 if (!isSafeUrl(linkUrl)) return '#'
@@ -230,7 +263,7 @@ export async function middleware(request: NextRequest) {
 
   // ✅ Verify auth properly in middleware AND in route handlers
   const session = await getSession(request)
-  
+
   if (request.nextUrl.pathname.startsWith('/admin')) {
     if (!session?.user?.role === 'admin') {
       return NextResponse.redirect(new URL('/login', request.url))
@@ -253,7 +286,7 @@ const wsUrl = request.nextUrl.searchParams.get('ws')
 const isAllowedWsUrl = (url: string) => {
   try {
     const parsed = new URL(url)
-    return parsed.protocol === 'wss:' && 
+    return parsed.protocol === 'wss:' &&
            !parsed.hostname.includes('localhost') &&
            !parsed.hostname.includes('127.0.0.1') &&
            !parsed.hostname.startsWith('192.168.') &&
@@ -281,7 +314,7 @@ NextAuth.js handles CSRF automatically via signed cookies and the `state` parame
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
   const host = request.headers.get('host')
-  
+
   // In production, verify origin matches expected domain
   if (process.env.NODE_ENV === 'production') {
     const allowedOrigins = ['https://myapp.com', 'https://www.myapp.com']
@@ -289,7 +322,7 @@ export async function POST(request: Request) {
       return new Response('Forbidden', { status: 403 })
     }
   }
-  
+
   // Process request...
 }
 ```
@@ -348,11 +381,11 @@ export async function updateProfile(formData: FormData) {
     bio: z.string().max(500).optional(),
     website: z.string().url().optional().or(z.literal('')),
   }).safeParse(Object.fromEntries(formData))
-  
+
   if (!parsed.success) {
     return { error: parsed.error.flatten().fieldErrors }
   }
-  
+
   // Now it's safe to use parsed.data
 }
 ```

@@ -232,6 +232,85 @@ tab-16   // tab-size: 16
 <pre className="tab-4"><code>{code}</code></pre>
 ```
 
+### `inert` HTML Attribute (v4)
+
+The HTML `inert` attribute makes an element and its descendants inert — they cannot be focused, selected, or interacted with. Unlike `disabled` (which only works on form elements), `inert` works on any element. This is the modern replacement for manually disabling groups of elements.
+
+**Browser support:** Chrome 102+, Safari 16.4+, Firefox 121+. Supported in all modern browsers.
+
+```tsx
+// Native HTML — inert makes the whole subtree non-interactive
+<div inert>
+  <button>Can't click this</button>
+  <input placeholder="Can't type here" />
+  <a href="/">Can't navigate here</a>
+</div>
+
+// Toggle inert programmatically
+function Modal({ isOpen, children }: { isOpen: boolean; children: React.ReactNode }) {
+  return (
+    <div className={isOpen ? undefined : 'inert'}>
+      {children}
+    </div>
+  )
+}
+
+// Tailwind v4 — use inert: variant for conditional styling
+// inert:applies styles when the element has inert attribute
+<div className="inert:opacity-50 inert:pointer-events-none">
+  <button>Visually dimmed and non-interactive</button>
+</div>
+```
+
+**Real-world pattern — accessible dialog backdrop:**
+
+```tsx
+'use client'
+
+import { useState } from 'react'
+
+function DialogDemo() {
+  const [isOpen, setIsOpen] = useState(false)
+
+  return (
+    <>
+      <button onClick={() => setIsOpen(true)}>Open Dialog</button>
+
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop — clicking it closes the dialog */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setIsOpen(false)}
+            aria-hidden="true"
+          />
+
+          {/* Dialog content — backdrop inert so focus stays inside */}
+          <div className="relative bg-white rounded-lg p-6">
+            <h2>Dialog Title</h2>
+            <p>You can only interact with this dialog.</p>
+            <button onClick={() => setIsOpen(false)}>Close</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+```
+
+**`inert` vs alternatives:**
+
+| Pattern | Scope | Use When |
+|---|---|---|
+| `disabled` | Form elements only (`<button>`, `<input>`, etc.) | Disabling individual form fields |
+| `inert` | Any element + all descendants | Dismissing/modaling a whole subtree, "putting away" a section |
+| `aria-hidden` | Visual only — still focusable | Hiding decorative elements |
+| `pointer-events-none` | Disables mouse/touch, still focusable | Temporarily disabling interactions without removing from DOM |
+
+**Sources:**
+- [MDN: HTML inert attribute](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/inert)
+- [Can I use: inert](https://caniuse.com/mdn-html_global_attribute_inert)
+
 ### `@variant` Improvements (v4.3)
 
 v4.3 expanded `@variant` for custom pseudo-class and media query variants:
