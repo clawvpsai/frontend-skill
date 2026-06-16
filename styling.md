@@ -328,6 +328,76 @@ v4.3 expanded `@variant` for custom pseudo-class and media query variants:
 </button>
 ```
 
+
+## Tailwind v4.3.1 — Patch (June 12, 2026)
+
+A small but useful patch release. v4.3.1 ships one new CLI flag, an `@apply` upgrade, and ~20 quality-of-life fixes — no breaking changes.
+
+### New: `--silent` Flag for `@tailwindcss/cli`
+
+Suppress all output from the CLI (useful for CI / Docker builds where Tailwind output is noise):
+
+```bash
+# Default: shows "Rebuilding..." messages
+npx @tailwindcss/cli -i input.css -o output.css --watch
+
+# With --silent: no output
+npx @tailwindcss/cli -i input.css -o output.css --watch --silent
+```
+
+### `@apply` Now Works With CSS Mixins
+
+You can now `@apply` CSS custom properties / mixins — previously the parser would reject them:
+
+```css
+/* Define a mixin */
+@theme {
+  --shadow-elevated: 0 4px 16px rgb(0 0 0 / 0.1);
+  --shadow-elevated-lg: 0 8px 32px rgb(0 0 0 / 0.15);
+}
+
+/* Apply it from a utility (NEW in v4.3.1) */
+@utility shadow-elevated-* {
+  box-shadow: --value(--shadow-elevated);
+}
+
+/* Or via @apply in a custom class */
+.card-elevated {
+  @apply bg-white p-4;
+  @apply shadow-[var(--shadow-elevated)];  /* now works */
+}
+```
+
+### Cleaner Spacing Output (m-0 / m-1)
+
+v4.3.1 generates cleaner CSS for the spacing scale. `m-0` used to generate `margin: calc(var(--spacing) * 0)` — now it generates `margin: 0`. Same for `m-1` → `margin: var(--spacing)` (no `* 1`). Smaller CSS bundle, easier to read in DevTools:
+
+```css
+/* Before v4.3.1 */
+.m-0  { margin: calc(var(--spacing) * 0); }
+.m-1  { margin: calc(var(--spacing) * 1); }
+.left-0 { left: calc(var(--spacing) * 0); }
+
+/* v4.3.1 */
+.m-0  { margin: 0; }
+.m-1  { margin: var(--spacing); }
+.left-0 { left: 0; }
+```
+
+### Other Notable v4.3.1 Fixes
+
+- **Sourcemap warnings** gone for `@tailwindcss/vite` (#20103)
+- **`@tailwindcss/webpack`** now installable in Rspack without forcing `webpack` peer dependency (#20027)
+- **`@source` globs preserve symlinks** and re-include files excluded by `@source not` (#20203)
+- **`@variant` usable inside `addBase`** (#19480)
+- **Calc canonicalization** no longer folds divisions that need high precision (e.g. `w-[calc(100%/3.5)]` stays readable) (#20221)
+- **`drop-shadow-*` colors** now work with custom shadow values containing `calc()` (#20080)
+- **`insetshadow-none` transitions** to other inset shadows work correctly (#20208)
+- **Twig `addClass`/`removeClass`** calls now extract class candidates (#20198)
+- **ESM type declarations** served to ESM importers of `@tailwindcss/postcss` (#20228)
+
+**Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.1`). Patch release — no code changes required.
+
 ## shadcn/ui Theming
 
 ### CSS Variables Pattern
@@ -548,5 +618,7 @@ import { motion } from 'framer-motion'
 - **Overly specific selectors** — Tailwind's cascade respects specificity; don't fight it
 
 **Sources:**
+- [Tailwind CSS v4.3.1 release notes (GitHub)](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.1)
+- [Tailwind Weekly: v4.3.1 highlights](https://tailwindweekly.com/issue-218/)
 - [Tailwind CSS v4.3 release notes](https://tailwindcss.com/blog/tailwindcss-v4-3)
 - [Tailwind CSS v4.2/v4.3 new features](https://app.daily.dev/posts/what-s-new-in-tailwind-css-v4-2-and-v4-3-oybkeyde7)

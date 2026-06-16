@@ -438,5 +438,131 @@ npx skills add shadcn/ui
 - **Package imports** (shadcn@4.7.0+) — use `package.json` `#...` aliases in `components.json` instead of `tsconfig.json` `compilerOptions.paths`
 - **Registry types**: `registry:base` ships an entire design system as a single payload; `registry:font` is now a first-class type
 - **`shadcn eject`** (May 2026) — pulls the registry's CSS into your codebase so you can own it fully
+- **GitHub Registries** (shadcn@4.10+, June 2026) — any public GitHub repo with a `registry.json` at the root is now installable directly. No registry server, no JSON publishing step.
 
 **Sources:** [shadcn CLI v4 changelog (March 2026)](https://ui.shadcn.com/docs/changelog/2026-03-cli-v4) · [shadcn changelog](https://ui.shadcn.com/docs/changelog) · [shadcn package imports (May 2026)](https://ui.shadcn.com/docs/changelog/2026-05-package-imports-target-aliases)
+
+## shadcn/ui GitHub Registries (June 2026)
+
+As of shadcn CLI v4.10 (June 8, 2026), **any public GitHub repository can be a registry**. Add a `registry.json` file at the root describing what to distribute, commit, and users install items directly from GitHub — no server, no build step, no manual JSON publishing.
+
+This is huge for teams that want to share design systems, conventions, agents skills, or internal component libraries without running a registry server.
+
+### Installing From a GitHub Registry
+
+```bash
+# Install a single item from a GitHub registry
+npx shadcn@latest add acme/toolkit/project-conventions
+
+# View an item before installing
+npx shadcn@latest view acme/toolkit/project-conventions
+
+# Install an item whose name contains slashes
+npx shadcn@latest add acme/toolkit/rules/agent
+
+# Pin to a tag or commit SHA
+npx shadcn@latest add acme/toolkit/project-conventions.0.0
+```
+
+The first two path segments are `<github-owner>/<github-repo>`. Any remaining segments are the registry item name (not a file path). Addresses ending in `.json` are treated as file paths.
+
+### Creating Your Own GitHub Registry
+
+**Step 1: Add `registry.json` at the repo root.**
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "acme",
+  "homepage": "https://acme.com",
+  "items": [
+    {
+      "name": "project-conventions",
+      "type": "registry:file",
+      "title": "Acme Project Conventions",
+      "description": "Coding conventions, AGENTS.md, and PR templates for Acme projects.",
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "type": "registry:file"
+        },
+        {
+          "path": "docs/conventions.md",
+          "type": "registry:file"
+        }
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Acme Button",
+      "description": "Acme-flavored button component",
+      "files": [
+        {
+          "path": "components/ui/button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Step 2: Compose large registries with `include`.**
+
+You can split a registry across multiple `registry.json` files (folder shorthand is NOT supported — must be explicit file paths):
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "acme",
+  "homepage": "https://acme.com",
+  "include": [
+    "components/ui/registry.json",
+    "hooks/registry.json",
+    "skills/registry.json"
+  ]
+}
+```
+
+Included `registry.json` files may omit `name` and `homepage` (only required on the root).
+
+**Step 3: Commit and push.**
+
+```bash
+git add registry.json
+git commit -m "add registry"
+git push
+```
+
+**Step 4: Users install from your repo.**
+
+```bash
+npx shadcn@latest add acme/toolkit/project-conventions
+```
+
+### Use Cases
+
+- **Internal design systems** — share your button, dialog, table components across all your projects without running a CDN
+- **Agent skills / AGENTS.md** — distribute `AGENTS.md`, `CLAUDE.md`, `.cursorrules` to every project from one GitHub repo
+- **Coding conventions** — share `docs/conventions.md`, ESLint configs, Biome configs
+- **Block libraries** — pre-built sections (hero, pricing, footer) installable as a unit
+- **Framework adapters** — publish once, install anywhere
+
+### Registry Item Types
+
+| Type | Purpose |
+|---|---|
+| `registry:ui` | Single component (e.g. button, dialog) — installs to `components/ui/` |
+| `registry:component` | Composite component, may include multiple files |
+| `registry:block` | Multi-file block (e.g. hero section with multiple components) |
+| `registry:file` | Raw file — AGENTS.md, configs, docs, anything |
+| `registry:base` | Full design system as a single payload (colors, fonts, utilities, components) |
+| `registry:font` | Font installation payload (first-class in v4) |
+| `registry:hook` | Custom React hooks |
+| `registry:theme` | Theme tokens (CSS variables) |
+| `registry:style` | Global styles |
+| `registry:lib` | Utility library file |
+
+**Sources:** [shadcn GitHub Registries changelog (June 2026)](https://ui.shadcn.com/docs/changelog/2026-06-github-registries) · [shadcn GitHub Registry docs](https://ui.shadcn.com/docs/registry/github) · [shadcn registry.json schema](https://ui.shadcn.com/docs/registry/registry-json)
+
