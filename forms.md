@@ -153,6 +153,76 @@ Before upgrading to v8 beta:
 - [Migrate V7 to V8 guide](https://react-hook-form.com/migrate-v7-to-v8)
 - [createForm RFC discussion](https://github.com/react-hook-form/react-hook-form/discussions)
 
+## React Hook Form 7.79.0 (June 13, 2026) — `useFieldArray` `disabled` Option
+
+React Hook Form 7.79.0 was released on **June 13, 2026** — the last stable v7 release before v8 ships (v8 is still in beta as `8.0.0-beta.2`). The headline change is a new `disabled` option on `useFieldArray` for **conditionally enabling entire field arrays** — useful for discriminated-union form shapes where one branch of a union has a list and another doesn't.
+
+### The New `disabled` Prop
+
+```tsx
+import { useForm, useFieldArray } from 'react-hook-form'
+
+type FormValues =
+  | { type: 'simple'; name: string }
+  | { type: 'items'; items: { name: string; qty: number }[] }
+
+function DynamicForm() {
+  const { control, watch, register } = useForm<FormValues>({
+    defaultValues: { type: 'simple', name: '' },
+  })
+  const type = watch('type')
+
+  // The `disabled` prop turns the entire field array off in one prop:
+  //  - `fields` becomes `[]` so iteration is a no-op
+  //  - All mutation methods (append, prepend, insert, remove, swap, move, update, replace) become no-ops
+  //  - The array is not registered with the form (no validation, no submission value)
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'items',
+    disabled: type !== 'items', // ← NEW in 7.79.0
+  })
+
+  return (
+    <>
+      <select {...register('type')}>
+        <option value="simple">Simple</option>
+        <option value="items">Items</option>
+      </select>
+
+      {type === 'items' && (
+        <>
+          {fields.map((field, i) => (
+            <div key={field.id}>
+              <input {...register(`items.${i}.name` as const)} />
+              <input type="number" {...register(`items.${i}.qty` as const)} />
+              <button type="button" onClick={() => remove(i)}>×</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => append({ name: '', qty: 1 })}>
+            Add item
+          </button>
+        </>
+      )}
+    </>
+  )
+}
+```
+
+**Before 7.79.0** you had to conditionally render the `useFieldArray` hook itself (only call it when `type === 'items'`), or wrap the array in a parent field path. That worked but lost the field IDs and re-mounted the whole array on toggle. The `disabled` prop keeps the hook mounted, preserves field identity, and lets the same component handle both branches of the union.
+
+### Other Fixes in 7.79.0
+
+- **`<Controller>` `onChange` promise** — `onChange` callbacks that return a `Promise` are no longer treated as sync (the return type is now correctly widened).
+- **`deepEqual` false positives** — fields that share a common object reference no longer incorrectly appear "changed" when comparing default values against current values.
+- **`shouldUseNativeValidation` for radio groups** — radio groups with native validation now behave natively (previously the browser tooltip fired on every field, not just the first invalid one).
+- **`createFormControl` + React Fast Refresh** — the form state is no longer wiped when a file containing `createFormControl` is hot-reloaded.
+- **StrictMode double-mount** — field values are preserved across the unmount/remount cycle in React 18 StrictMode (previously values were lost).
+- **`formState.errors` reactivity with React Compiler** — error changes now correctly trigger re-renders in child components when the React Compiler is enabled (fixes the issue where errors updated but the UI didn't reflect them).
+
+**Sources:**
+- [React Hook Form 7.79.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.79.0)
+- [useFieldArray API — `disabled` prop](https://react-hook-form.com/docs/usefieldarray#props)
+
 ## Basic Setup
 
 ```bash

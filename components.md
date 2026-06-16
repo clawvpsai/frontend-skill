@@ -442,6 +442,87 @@ npx skills add shadcn/ui
 
 **Sources:** [shadcn CLI v4 changelog (March 2026)](https://ui.shadcn.com/docs/changelog/2026-03-cli-v4) · [shadcn changelog](https://ui.shadcn.com/docs/changelog) · [shadcn package imports (May 2026)](https://ui.shadcn.com/docs/changelog/2026-05-package-imports-target-aliases)
 
+## shadcn eject (May 2026) — Take Ownership of the Registry CSS
+
+When you run `npx shadcn@latest init`, the CLI adds `@import "shadcn/tailwind.css"` to your global stylesheet. This import provides shared Tailwind v4 utilities that both Radix and Base UI shadcn variants depend on — custom variants like `data-open:` and `data-closed:`, utilities like `no-scrollbar`, and accordion animations.
+
+The `shadcn eject` command **inlines `shadcn/tailwind.css` into your global CSS file and removes the `shadcn` package from your `package.json` dependencies**. After ejecting, you own the CSS verbatim — future shadcn CLI updates to `shadcn/tailwind.css` will NOT apply automatically.
+
+```bash
+# Eject the shadcn/tailwind.css in your project
+npx shadcn@latest eject
+
+# In a monorepo — point at the workspace that contains components.json
+npx shadcn@latest eject -c packages/ui
+
+# Skip the confirmation prompt
+npx shadcn@latest eject -y
+
+# Mute output (useful in CI)
+npx shadcn@latest eject -s
+```
+
+**Options:**
+
+| Flag | Description |
+|---|---|
+| `-c, --cwd <cwd>` | Working directory (defaults to current). Use in monorepos. |
+| `-y, --yes` | Skip confirmation prompt. |
+| `-s, --silent` | Mute output. |
+| `-h, --help` | Display help. |
+
+**Before eject:**
+
+```css
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+```
+
+**After eject:**
+
+```css
+@import "tailwindcss";
+@import "tw-animate-css";
+/* ejected from shadcn@4.8.3 */
+@theme inline {
+  @keyframes accordion-down {
+    from { height: 0; }
+    to {
+      height: var(
+        --radix-accordion-content-height,
+        var(--accordion-panel-height, auto)
+      );
+    }
+  }
+}
+@custom-variant data-open {
+  &:where([data-state="open"]),
+  &:where([data-open]:not([data-open="false"])) {
+    @slot;
+  }
+}
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+```
+
+> ⚠️ **This action is irreversible.** After ejecting, you will not get shadcn CLI improvements to the shared CSS automatically — you will have to either manually merge them in or re-init from scratch. Only eject if you are certain you want to fully own the CSS and have no plans to keep up with shadcn updates.
+
+**When to eject:**
+- You want zero runtime dependencies on shadcn internals
+- You have internal CSS conventions that conflict with shadcn's shared utilities
+- You are forking shadcn and need the source visible in your repo
+- You are shipping to air-gapped / locked-down environments where pulling from npm at build time is restricted
+
+**When NOT to eject:**
+- You want to keep getting the latest shadcn improvements
+- You use the standard Radix or Base UI shadcn variants (the shared CSS is what they need)
+
+**Source:** [shadcn eject — May 2026 changelog](https://ui.shadcn.com/docs/changelog) · [shadcn CLI docs — eject command](https://ui.shadcn.com/docs/cli#eject)
+
 ## shadcn/ui GitHub Registries (June 2026)
 
 As of shadcn CLI v4.10 (June 8, 2026), **any public GitHub repository can be a registry**. Add a `registry.json` file at the root describing what to distribute, commit, and users install items directly from GitHub — no server, no build step, no manual JSON publishing.
