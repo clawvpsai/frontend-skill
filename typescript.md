@@ -16,8 +16,8 @@
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
-    "target": "ES2026",         // TS 6.0 defaults to ES2026 (was ES2022)
-    "lib": ["ES2026", "DOM", "DOM.Iterable"],
+    "target": "ES2025",         // TS 6.0 defaults to ES2025 (was ES2022)
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -301,9 +301,9 @@ const createdAt = Temporal.ZonedDateTime.from(post.createdAtISO)
 **Note:** Most browsers don't support Temporal natively yet. Use the `temporal-polyfill` npm package or rely on TypeScript's type definitions alone — the types work without the runtime polyfill for type-checking purposes.
 
 
-### ES2026 Built-in Types (TypeScript 6.0)
+### ES2025 Built-in Types (TypeScript 6.0)
 
-TypeScript 6.0 includes types for ES2026 built-in methods:
+TypeScript 6.0 includes types for ES2025 built-in methods:
 
 **`Map.getOrInsert()` and `Map.getOrInsertComputed()`**
 
@@ -330,7 +330,7 @@ const escaped = RegExp.escape(userInput)  // "foo\\.bar\\+baz"
 const dynamicRegex = new RegExp(`^${escaped}$`, 'i')
 ```
 
-These are enabled by setting `target: "ES2026"` (the TS 6.0 default) or adding `"lib": ["ES2026"]`.
+These are enabled by setting `target: "ES2025"` (the TS 6.0 default) or adding `"lib": ["ES2025"]`.
 
 **Sources:**
 - [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
@@ -351,6 +351,36 @@ These legacy options are deprecated in 6.0 and will be removed in 7.0:
 ```
 
 If you see these in legacy code, migrate off them before TS 7.0.
+
+### TypeScript 6.0 Default Changes
+
+TypeScript 6.0 ships new defaults that reflect modern JS reality. Most of these match what new projects already want, but legacy code may need explicit overrides:
+
+| Option | TS 5.x default | TS 6.0 default | What it means |
+|---|---|---|---|
+| `strict` | `false` | `true` | Strict mode is on by default — set `false` explicitly to opt out |
+| `module` | `esnext`/`commonjs` (auto) | `esnext` | ESM is the dominant module format |
+| `target` | `es5` (very old) | `es2025` | Floating current-year ES spec — most apps don’t need transpilation |
+| `libReplacement` | `true` | `false` | Stops auto-mapping `lib` names; speeds up `--watch` and editor scenarios |
+| `noUncheckedSideEffectImports` | `false` | `true` | Catches typos in side-effect-only imports (e.g. `import './styles.cs'`) |
+| `types` | auto-includes all `@types/*` | `[]` | Don’t vacuum up everything in `node_modules/@types` — only what’s explicitly listed. **This breaks a lot of legacy projects** but is 20–50% faster type-checking |
+
+**Migration impact:** When you upgrade to 6.0, your `tsconfig.json` may need:
+- Add `@types/node`, `@types/react`, etc. explicitly to `types: [...]` (instead of being auto-included)
+- Verify no side-effect imports have typos (e.g., missing file extensions)
+- If you were relying on `libReplacement`, set it to `true` explicitly to keep old behavior
+
+**Removed in 6.0 (no deprecation period):**
+- `outFile` — AMD/UMD/SystemJS bundling is gone
+- `baseUrl` — use `paths` directly with `moduleResolution: "Bundler"`
+- `--moduleResolution: "node"` (legacy Node.js resolver) — use `"bundler"` or `"node16"`/`"nodenext"`
+- `target: "es5"` and older — minimum is now `es2025`
+
+**Sources:**
+- [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html)
+- [Bytes #473: TypeScript 6.0 is your final warning](https://bytes.dev/archives/473)
+- [Socket: TypeScript 6.0 will be the last JavaScript-based major release](https://socket.dev/blog/typescript-6-0-will-be-the-last-javascript-based-major-release)
+- [Microsoft: Progress on TypeScript 7 (December 2025)](https://devblogs.microsoft.com/typescript/progress-on-typescript-7-december-2025/)
 
 ---
 

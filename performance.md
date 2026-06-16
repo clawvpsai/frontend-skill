@@ -417,6 +417,58 @@ next dev --webpack
 
 **Production builds** use Turbopack by default in Next.js 16 (`next build` uses Turbopack automatically).
 
+### Turbopack Configuration Reference (Next.js 16.2+)
+
+All Turbopack options live under the top-level `turbopack` key in `next.config.ts` (not `experimental.turbopack` anymore):
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  turbopack: {
+    // File system cache — persists compiler artifacts to .next/ for faster restarts
+    // Dev: default true. Build: default false (turn on for large apps).
+    fileSystemCacheForDev: true,
+    fileSystemCacheForBuild: true,
+
+    // Tree shaking modes
+    treeShaking: false,              // module-fragments mode (advanced); default reexports-only
+    removeUnusedImports: false,      // default true in build
+    removeUnusedExports: false,      // default true in build; requires removeUnusedImports
+    inferModuleSideEffects: true,    // local analysis for better tree shaking
+
+    // Other build options
+    minify: true,                    // default true in build
+    sourceMaps: true,                // default true in dev, productionBrowserSourceMaps in build
+    inputSourceMaps: true,           // extract source maps from input files
+    scopeHoisting: true,             // default true in build, always off in dev
+  },
+}
+```
+
+| Option | Dev default | Build default | What it does |
+|---|---|---|---|
+| `fileSystemCacheForDev` | `true` | n/a | Cache compiler artifacts to `.next/` — restart is much faster |
+| `fileSystemCacheForBuild` | n/a | `false` | Same for production builds — turn on for large apps |
+| `minify` | `false` | `true` | Minify output |
+| `sourceMaps` | `true` | `productionBrowserSourceMaps` | Emit source maps |
+| `treeShaking` | `false` | `false` | Advanced module-fragments mode (more aggressive than reexports-only) |
+| `removeUnusedImports` | `false` | `true` | Strip unused imports |
+| `removeUnusedExports` | `false` | `true` | Strip unused exports |
+| `inferModuleSideEffects` | `true` | `true` | Local analysis to detect side-effect-free modules |
+| `scopeHoisting` | `false` | `true` | Combine module scopes for smaller output |
+
+**When to override:**
+- Slow restart in dev? `fileSystemCacheForDev: true` (already default)
+- Slow build on large app? `fileSystemCacheForBuild: true` (turn on)
+- Aggressive bundle size? `treeShaking: true` + `removeUnusedImports: true`
+- Stale source maps? `sourceMaps: true` explicitly
+
+**Sources:**
+- [Turbopack API reference (Next.js docs)](https://nextjs.org/docs/app/api-reference/turbopack)
+- [Turbopack 16.2 improvements](https://nextjs.org/blog/next-16-2-turbopack)
+
 ## Font Optimization
 
 ```tsx

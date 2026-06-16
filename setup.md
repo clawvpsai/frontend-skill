@@ -163,6 +163,105 @@ The Next.js DevTools MCP server (shipped in 16.0, expanded in 16.1) now includes
 
 **Source:** [Next.js 16.1 release notes](https://nextjs.org/blog/next-16-1)
 
+## Next.js 16.2 Turbopack Improvements (March 2026)
+
+Turbopack (now the default Next.js 16 bundler) shipped a major update in 16.2. Most of these are zero-config and you get them for free when you upgrade. Devs upgrading from 16.1 reported **~80% faster dev startup** and **25–60% faster rendering**.
+
+### Server Fast Refresh (default on, no flag)
+
+Turbopack now only re-executes the module you changed — not the entire import chain. For most edits, the HMR cycle is effectively instant. Server Actions, Route Handlers, and proxy.ts do not yet participate (those run in the existing Node.js system); support is on the way.
+
+### Tree Shaking of Dynamic Imports
+
+Destructured dynamic imports are now tree-shaken the same way static imports are. Unused exports from a dynamic chunk are removed from the bundle:
+
+```ts
+// Before 16.2 — entire ./lib module was shipped even if only `cat` was used
+const { cat } = await import('./lib')
+
+// 16.2+ — unused exports are removed (same behavior as static import)
+const { cat } = await import('./lib')
+```
+
+This is a free win for code-split apps with mixed exports.
+
+### `postcss.config.ts` Support
+
+Turbopack now supports `postcss.config.ts` alongside the existing `.js` and `.cjs` variants. No action needed if you’re already on `.ts`; if you hit a type error on PostCSS plugin config, the fix is renaming the file.
+
+### Subresource Integrity (SRI)
+
+Generate cryptographic hashes of your JS files at build time, so browsers can verify scripts haven’t been tampered with. Useful for hard CSP without forcing all pages to be dynamic:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    sri: {
+      algorithm: 'sha256',  // sha256 or sha384
+    },
+  },
+}
+```
+
+Browser sees a `<script integrity="sha384-...">` attribute and refuses to run anything whose hash doesn’t match. Works alongside Turbopack builds.
+
+### Web Worker Origin (WASM in Workers)
+
+Turbopack now supports running WASM-based libraries inside Web Workers without a separate bundler step. Useful for image processing, encryption, or any CPU-heavy client logic that benefits from a worker thread.
+
+### Inline Loader Configuration (Import Attributes)
+
+Per-import loader configuration via the new import attributes syntax — override the default loader for a single import without changing global config:
+
+```ts
+// Override the loader for one import — e.g. force CSS modules
+import styles from './button.module.css' with { type: 'css' }
+```
+
+### Lightning CSS Configuration (Experimental)
+
+Experimental support for configuring LightningCSS directly in `next.config.ts`. LightningCSS is faster than PostCSS for most transformations (autoprefixing, minification, nesting). If you’re hitting PostCSS perf issues, this is the path forward:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    lightningcss: {
+      // target modern browsers, no legacy prefixes
+      targets: { chrome: 100, firefox: 100, safari: 16 },
+    },
+  },
+}
+```
+
+### Log Filtering — `ignoreIssue`
+
+Suppress noisy Turbopack warnings on a per-rule basis. Useful when a known library triggers a deprecation warning that doesn’t apply to your codebase:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  logging: {
+    ignoreIssue: [
+      '*next/font*local font not found*',  // pattern match
+      'SWC-WARN-001',                       // or specific issue code
+    ],
+  },
+}
+```
+
+`ignoreIssue` accepts glob patterns or specific issue codes. Use it sparingly — most warnings are real.
+
+### ImageResponse Performance (React)
+
+ImageResponse (used for OG image generation via `next/og`) is **2–20× faster** in 16.2 because React replaced the old `JSON.parse` reviver with a plain `JSON.parse()` plus a recursive walk. Free win for any app that generates dynamic OG images.
+
+**Sources:**
+- [Turbopack: What’s New in Next.js 16.2 (official)](https://nextjs.org/blog/next-16-2-turbopack)
+- [Next.js 16.2 Turbopack API reference](https://nextjs.org/docs/app/api-reference/turbopack)
+- [Roboto Studio: Next.js 16.2 for dummies (benchmarks)](https://roboto.studio/blog/nextjs-16-2-for-dummies)
+
 ### Vite (React SPA, non-Next)
 
 ```bash
