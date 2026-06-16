@@ -833,84 +833,123 @@ function GoodComponent({ items }: Props) {
 
 React 19.2 stabilizes several previously-experimental APIs and introduces new primitives for fine-grained reactivity and loading states.
 
-### `<Activity />` — Declarative Loading States
+### `<Activity />` — Hide UI Without Losing State
 
-`<Activity>` is React 19.2's new component for declaratively showing loading/activity states. It replaces the need for manual `isPending` state tracking when you want to detect any pending state in a subtree.
+`<Activity>` is React 19.2's new component primitive. It lets you **hide a part of the UI while preserving its state and DOM** — and optionally cleaning up its Effects. Think of it as `display: none` for a component subtree, with the side benefit that React restores everything when you show it again.
 
-**Key props:**
-- `detection` — `'subtree'` (default) tracks any state change in the entire subtree; `'elements'` tracks only mounted interactive elements that are pending
-- `children` — render prop receiving `{ isActivity: boolean, activity: ActivityDetails }`
+**Props:**
 
-**`detection` variants explained:**
-
-| Mode | Behavior | Use When |
+| Prop | Type | Description |
 |---|---|---|
-| `'subtree'` | Detects any pending state anywhere in the rendered subtree | General-purpose — default for most cases |
-| `'elements'` | Only tracks interactive elements that are actively pending | Fine-grained — button spinner on submit, toggle loading |
+| `children` | `ReactNode` | The UI to show/hide. Required. |
+| `mode` | `'visible' \| 'hidden'` | `'visible'` (default) renders children normally. `'hidden'` hides them with `display: none`, unmounts their Effects, but keeps their state and DOM around. |
 
-**`visible` / `hidden` modes — Activity visibility during pending (React 19.2):**
+That's it — there is no `detection` prop, no `isActivity` render-prop callback, no separate `visible={true}` boolean. The entire API surface is `children` + `mode`.
 
-React 19.2 introduced `visible` (default) and `hidden` modes for `<Activity>`. These control what happens to children while activity is detected:
-
-| Mode | Behavior | Use When |
-|---|---|---|
-| `'visible'` (default) | Children remain visible during pending; `isActivity` drives your loading UI | Most cases — buttons, forms, toggles |
-| `'hidden'` | Children are hidden (unmounted) during pending; `isActivity` still fires | Deferring heavy content, skeleton-to-content swaps |
-
-**`visible` mode (default) — children stay mounted:**
+**Basic example — preserve sidebar state when collapsed:**
 
 ```tsx
-// Visible — children remain interactive but may be dimmed
-<Activity detection="elements" visible={true}>
-  {({ isActivity }) => (
-    <button disabled={isActivity} className={isActivity ? 'opacity-50' : ''}>
-      {isActivity ? 'Saving...' : 'Save'}
-    </button>
-  )}
+'use client'
+
+import { Activity, useState } from 'react'
+
+export function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  return (
+    <div className="flex">
+      {/* Sidebar stays mounted and keeps its state (scroll position, expanded submenus,
+          unsaved form values) when hidden. Only the Effects are torn down. */}
+      <Activity mode={sidebarOpen ? 'visible' : 'hidden'}>
+        <Sidebar />
+      </Activity>
+      <main>
+        <button onClick={() => setSidebarOpen(o => !o)}>Toggle sidebar</button>
+      </main>
+    </div>
+  )
+}
+```
+
+**Pre-render content that's likely to become visible:**
+
+```tsx
+// Pre-render the heavy Posts tab at low priority before the user clicks it.
+// When they switch to it, it's already there.
+<Activity mode="hidden">
+  <PostsTab />
 </Activity>
 ```
 
-**`hidden` mode — children are unmounted during pending:**
+While hidden during initial render, children still render at a lower priority than the visible content, but **without mounting their Effects**. When `mode` flips to `'visible'`, Effects mount normally. This makes tab-switching feel instant without the hidden content doing work in the background.
+
+**Tab interface — preserve per-tab state:**
 
 ```tsx
-// Hidden — children are completely unmounted while pending
-// Useful for: complex forms that should not be interacted with during submission
-// or content that causes layout shift when partially loaded
-<Activity detection="subtree" hidden>
-  {({ isActivity, activity }) => (
+'use client'
+
+import { Activity, useState } from 'react'
+
+const tabs = [
+  { id: 'feed', component: Feed },
+  { id: 'messages', component: Messages },
+  { id: 'notifications', component: Notifications },
+] as const
+
+export function SocialSections() {
+  const [active, setActive] = useState<typeof tabs[number]['id']>('feed')
+
+  return (
     <>
-      <ComplexForm />                     {/* Unmounted while isActivity=true */}
-      {isActivity && <OverlaySpinner />}   {/* Only mounted when pending */}
+      <nav>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActive(t.id)}
+            className={active === t.id ? 'font-bold' : ''}
+          >
+            {t.id}
+          </button>
+        ))}
+      </nav>
+
+      {tabs.map(t => {
+        const Component = t.component
+        return (
+          <Activity key={t.id} mode={active === t.id ? 'visible' : 'hidden'}>
+            <Component />
+          </Activity>
+        )
+      })}
     </>
-  )}
-</Activity>
+  )
+}
 ```
 
-**Why `hidden` matters for INP (Interaction to Next Paint):**
-- In `visible` mode, partial updates during a long interaction (e.g., a slow form submit) can cause intermediate repaints that hurt INP
-- `hidden` defers all child updates until the interaction is complete, minimizing INP impact
-- Use `hidden` when children are expensive to update incrementally
+**Important behaviors of `mode="hidden"`:**
+- Children are hidden via `display: none` (not unmounted)
+- Their **Effects are destroyed** — subscriptions, intervals, WebSockets all clean up
+- Their **state is preserved** — useState values, refs, scroll position
+- Children **still re-render** in response to new props, but at a lower priority than visible content
+- When flipped back to `'visible'`, Effects re-mount and state is intact
 
-**Real-world pattern — form with `hidden` for INP optimization:**
+**Troubleshooting:**
 
-```tsx
-// A form that should be completely locked during submission
-<Activity detection="subtree" hidden>
-  {({ isActivity }) => (
-    <FormSection>
-      {/* All inputs, validation UI — completely unmounted during submit */}
-      {/* This prevents any intermediate state changes from affecting INP */}
-      <SubmitButton />
-    </FormSection>
-  )}
-</Activity>
-```
+- **"My hidden component has Effects that aren't running"** — That's by design. In `'hidden'` mode, Effects are torn down. Use a visible/invisible check inside the effect if you need it to keep running.
+- **"My hidden component has unwanted side effects"** — Same answer. Effects should be tied to the user actually seeing the UI. For analytics/tracking that should always fire, put them outside the Activity boundary.
+
+**`<Activity>` is NOT a loading-state mechanism.** For loading state, use `useFormStatus`, `useActionState`'s `isPending`, or React Query's `isLoading`. `<Activity>` is purely about *visibility vs. hidden*, not about *pending vs. done*.
+
+**Common mistakes:**
+- Treating Activity as a spinner (`isPending` replacement) — it's not; use it for tab/modal/sidebar state preservation only
+- Wrapping the entire app in a single `<Activity>` — defeats the purpose; the boundary should match a meaningful UI unit (tab, panel, modal, sidebar)
+- Expecting children to be completely frozen in `'hidden'` mode — they still re-render on prop changes (at lower priority)
 
 **Sources:**
-- [React 19.2 Activity component](https://react.dev/blog/2025/10/01/react-19-2)
 - [React Activity reference](https://react.dev/reference/react/Activity)
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
 
-**Practical example — Server Action with `<Activity>`:**
+**Practical example — Server Action inside an Activity boundary:**
 
 ```tsx
 // app/actions.ts
@@ -928,18 +967,19 @@ export async function publishPost(postId: string) {
 // components/post-actions.tsx
 'use client'
 
-import { Activity } from 'react'
-import { publishPost } from '@/app/actions'
 import { useActionState } from 'react'
+import { publishPost } from '@/app/actions'
 
 const initialState = { error: null as string | null }
 
+// Note: pending state for the button comes from useActionState's isPending,
+// not from <Activity>. <Activity> is for keeping the form UI around if the
+// user navigates away and back (with cacheComponents).
 function PublishButton({ postId }: { postId: string }) {
-  // useActionState — React 19 hook for Server Action state
   const [state, formAction, isPending] = useActionState(
-    async (prev: typeof initialState, formData: FormData) => {
+    async (_prev: typeof initialState, _formData: FormData) => {
       try {
-        await publishPost(formData.get('postId') as string)
+        await publishPost(postId)
         return { error: null }
       } catch {
         return { error: 'Failed to publish' }
@@ -950,19 +990,13 @@ function PublishButton({ postId }: { postId: string }) {
 
   return (
     <form action={formAction}>
-      <input type="hidden" name="postId" value={postId} />
-      {/* Wrap in Activity to detect isPending from useActionState */}
-      <Activity detection="elements">
-        {({ isActivity }) => (
-          <button
-            type="submit"
-            disabled={isActivity}
-            className={isActivity ? 'opacity-50' : ''}
-          >
-            {isActivity ? 'Publishing...' : 'Publish'}
-          </button>
-        )}
-      </Activity>
+      <button
+        type="submit"
+        disabled={isPending}
+        className={isPending ? 'opacity-50' : ''}
+      >
+        {isPending ? 'Publishing...' : 'Publish'}
+      </button>
       {state.error && <p className="text-sm text-destructive">{state.error}</p>}
     </form>
   )
@@ -973,16 +1007,16 @@ function PublishButton({ postId }: { postId: string }) {
 
 | Pattern | Best Use |
 |---|---|
-| `<Activity detection="subtree">` | Detect any loading in a large section (entire sidebar, full form) |
-| `<Activity detection="elements">` | Single interactive element — button loading state |
-| `useFormStatus` | Form-level pending state — submit button only |
-| `isPending` (React Query) | Query/mutation-specific loading — for one particular async operation |
-| Manual `isLoading` state | When you need precise control or multiple distinct loading states |
+| `<Activity mode="hidden">` | Preserve state for a tab/sidebar/modal that's currently hidden |
+| `useFormStatus` | Form-level pending state — for one submit button |
+| `useActionState` (`isPending`) | Server Action pending state — for one mutation |
+| `isPending` (React Query) | Query/mutation-specific loading |
+| Manual `isLoading` state | When you need precise control of multiple distinct loading states |
 
 **Common `<Activity>` mistakes:**
-- Wrapping too large a tree — `isActivity` becomes true for any pending child, causing cascading loading states
-- Using `'elements'` when you need to detect background loading — `'elements'` only tracks mounted pending elements
-- Confusing `<Activity>` with a spinner — it's a detection mechanism, not a UI component; use it to conditionally render your own loading UI
+- Using it as a loading spinner — it's not; use `useFormStatus` or `isPending`
+- Wrapping too large a tree — be specific to the UI unit (one tab, one panel, one modal)
+- Expecting it to run Effects in hidden mode — Effects are deliberately torn down
 
 ### `cacheComponents` Migration — State Preservation & Route Behavior Changes
 
@@ -1139,36 +1173,59 @@ function ChatRoom({ roomId }: { roomId: string }) {
 - The event handler it returns can reference any current value without causing the effect to re-run
 - Unlike `useCallback`, there's no dependency array — it captures values at call time, not render time
 
-### `cacheSignal` — Reactive Cached Values
+### `cacheSignal` — AbortSignal for Cached Renders (RSC)
 
-`cacheSignal` creates a signal whose value is cached and recomputed only when accessed, not on every render:
+`cacheSignal` returns an `AbortSignal` that aborts when React finishes a render — successfully, aborted, or failed. It's the proper way to tie async work to React's render lifetime in Server Components, so cancelled renders don't waste bandwidth or hold the process open.
+
+It is **not** a reactive memoization primitive. There is no `.read()` or `.get()` method.
+
+**Signature:**
+
+```ts
+const signal: AbortSignal | null = cacheSignal()
+```
+
+- Returns an `AbortSignal` when called **during rendering** in a Server Component
+- Returns `null` outside of rendering, or in Client Components (for now)
+
+**Use case — cancel in-flight fetches when render is superseded:**
 
 ```tsx
-import { cacheSignal } from 'react'
+// app/user/[id]/page.tsx — Server Component
+import { cache, cacheSignal } from 'react'
 
-// Creates a cached computation — only recomputes when deps change
-const useUserData = cacheSignal((userId: string) => {
-  console.log('Fetching user:', userId) // Runs once per unique userId
-  return fetchUser(userId)
+// Wrap fetch in cache() to dedupe across components in the same render
+const fetchUser = cache(async (id: string, signal: AbortSignal) => {
+  const res = await fetch(`https://api.example.com/users/${id}`, { signal })
+  return res.json()
 })
 
-function UserProfile({ userId }: { userId: string }) {
-  // userData is cached — accessing multiple times doesn't trigger re-fetch
-  const userData = useUserData(userId)
-  const displayName = useUserData(userId) // Same cache, no re-fetch
+export default async function UserPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const signal = cacheSignal()
+  if (!signal) throw new Error('cacheSignal must be called during render')
 
-  return <div>{userData.name}</div>
+  const user = await fetchUser(id, signal)
+  return <div>{user.name}</div>
 }
 ```
 
-**When to use `cacheSignal`:**
-- Expensive computations that depend on props but shouldn't re-run on every parent render
-- Derived data that's shared across multiple component instances
-- Similar to `useMemo` but the cache is tied to the signal's internal tracking rather than a dependency array
+If the user navigates away mid-fetch, React aborts the render → the `AbortSignal` fires → the `fetch` is cancelled and the connection is released.
 
-**vs `useMemo`:**
-- `useMemo` — explicit dependency array; recomputes when deps change
-- `cacheSignal` — lazy evaluation; only recomputes when `.get()` is called with a new combination of arguments
+**Pitfall — the request must be started inside the render that owns the signal:**
+
+```tsx
+// 🚩 Pitfall: starting the fetch outside the render means cacheSignal() can't cancel it
+const response = fetch(url, { signal: cacheSignal() })
+
+export default async function Page() {
+  await response  // Will not be aborted when render ends
+  return <div>...</div>
+}
+```
+
+**Sources:**
+- [React cacheSignal reference](https://react.dev/reference/react/cacheSignal)
 
 ### `cache()` — Function Memoization (React 19.2)
 
@@ -1211,8 +1268,10 @@ function UserCard({ id }: { id: string }) {
 ```tsx
 'use client'
 
-import { Activity, useEffectEvent, cache } from 'react'
+import { Activity, useEffectEvent, cache, useEffect, useState } from 'react'
 
+// cache() is a React primitive that memoizes a function per request.
+// Same args in the same render = same return value (server or client).
 const fetchNotifications = cache(async (userId: string) => {
   const res = await fetch(`/api/notifications?userId=${userId}`)
   return res.json()
@@ -1220,7 +1279,10 @@ const fetchNotifications = cache(async (userId: string) => {
 
 export function NotificationBell({ userId }: { userId: string }) {
   const [unread, setUnread] = useState(0)
+  const [panelOpen, setPanelOpen] = useState(false)
 
+  // useEffectEvent — event handler that always sees current userId without
+  // forcing the polling effect to reconnect
   const markAsRead = useEffectEvent(async () => {
     await fetch(`/api/notifications/read`, { method: 'POST' })
     setUnread(0)
@@ -1235,13 +1297,15 @@ export function NotificationBell({ userId }: { userId: string }) {
   }, [userId])
 
   return (
-    <Activity detection="subtree">
-      {({ isActivity }) => (
-        <button onClick={markAsRead} disabled={isActivity}>
-          🔔 {isActivity ? '...' : unread > 0 ? `(${unread})` : ''}
-        </button>
-      )}
-    </Activity>
+    <>
+      {/* Activity preserves the panel's state (scroll, filters) when it's closed */}
+      <Activity mode={panelOpen ? 'visible' : 'hidden'}>
+        <NotificationPanel onMarkAsRead={markAsRead} />
+      </Activity>
+      <button onClick={() => setPanelOpen(o => !o)}>
+        🔔 {unread > 0 ? `(${unread})` : ''}
+      </button>
+    </>
   )
 }
 ```
@@ -1253,18 +1317,17 @@ export function NotificationBell({ userId }: { userId: string }) {
 - [React cache API](https://react.dev/reference/react/cache)
 ## Practical Activity Patterns (React 19.2)
 
-Beyond the basic patterns above, here are production-ready Activity combinations:
+Beyond the basic patterns above, here are production-ready Activity combinations. Remember: `<Activity>` is a visibility primitive, **not** a loading-state detector. The `isPending` / `isLoading` flags come from `useActionState`, `useFormStatus`, or React Query.
 
 ### Activity + useOptimistic — Follow/Following Button
 
-`useOptimistic` gives instant UI feedback; `Activity` detects when any async operation is in flight. Combining them gives you immediate visual response plus a reliable loading indicator:
+`useOptimistic` gives instant UI feedback; `useActionState` provides the real pending flag. `<Activity>` is not needed here — it would just preserve button state on a hidden tab. The pending UI is driven entirely by `isPending`:
 
 ```tsx
 'use client'
 
-import { Activity, useOptimistic } from 'react'
+import { useActionState, useOptimistic } from 'react'
 import { followUser, unfollowUser } from '@/app/actions'
-import { useActionState } from 'react'
 
 interface FollowButtonProps {
   userId: string
@@ -1273,8 +1336,8 @@ interface FollowButtonProps {
 }
 
 function FollowButton({ userId, isFollowing, followerCount }: FollowButtonProps) {
-  // useActionState tracks the actual server action result
-  const [state, formAction] = useActionState(
+  // useActionState — pending flag comes from here
+  const [, formAction, isPending] = useActionState(
     async (_prev: { following: boolean }, formData: FormData) => {
       const action = formData.get('action') as 'follow' | 'unfollow'
       if (action === 'follow') await followUser(userId)
@@ -1284,7 +1347,7 @@ function FollowButton({ userId, isFollowing, followerCount }: FollowButtonProps)
     { following: isFollowing }
   )
 
-  // useOptimistic gives instant visual feedback before server confirms
+  // useOptimistic — instant visual feedback before server confirms
   const [optimistic, addOptimistic] = useOptimistic(
     { following: isFollowing, count: followerCount },
     (current, newFollowing: boolean) => ({
@@ -1302,58 +1365,85 @@ function FollowButton({ userId, isFollowing, followerCount }: FollowButtonProps)
   }
 
   return (
-    <Activity detection="elements">
-      {({ isActivity }) => (
-        <button
-          onClick={handleClick}
-          disabled={isActivity}
-          className={optimistic.following ? 'bg-primary text-white' : 'border border-primary'}
-        >
-          {isActivity
-            ? '...'
-            : optimistic.following
-              ? `Following (${optimistic.count})`
-              : `Follow (${followerCount})`}
-        </button>
-      )}
-    </Activity>
+    <button
+      onClick={handleClick}
+      disabled={isPending}
+      className={optimistic.following ? 'bg-primary text-white' : 'border border-primary'}
+    >
+      {isPending
+        ? '...'
+        : optimistic.following
+          ? `Following (${optimistic.count})`
+          : `Follow (${followerCount})`}
+    </button>
   )
 }
 ```
 
-### Activity Hidden Mode — Prevent INP on Long Forms
+### Activity for Hidden Tabs — Preserve State + Save CPU
 
-For forms where intermediate state changes hurt INP (Interaction to Next Paint), use `hidden` mode to defer all updates until the interaction completes:
+Where `<Activity>` **does** shine: keeping a heavy tab's state and DOM around without paying the cost of its Effects running. Use it to defer work that the user might trigger later:
 
 ```tsx
-// When user submits, the entire form is locked and hidden until the server
-// confirms — no intermediate re-renders, optimal INP score
-<Activity detection="subtree" hidden>
-  {({ isActivity }) => (
-    <form action={submitFormAction}>
-      <input name="email" placeholder="Email" />
-      <textarea name="message" placeholder="Message..." />
-      {isActivity ? <Spinner /> : <SubmitButton />}
-    </form>
-  )}
-</Activity>
+'use client'
+
+import { Activity, useState, useEffect } from 'react'
+
+// A "heavy" tab that subscribes to a websocket, polls a feed, and holds scroll state
+function ActivityFeed({ userId }: { userId: string }) {
+  const [posts, setPosts] = useState<Post[]>([])
+  const [scrollPos, setScrollPos] = useState(0)
+
+  useEffect(() => {
+    const ws = new WebSocket(`/feed?userId=${userId}`)
+    ws.onmessage = (e) => setPosts(prev => [JSON.parse(e.data), ...prev])
+    return () => ws.close()
+  }, [userId])
+
+  return <FeedList posts={posts} initialScroll={scrollPos} onScroll={setScrollPos} />
+}
+
+function ProfileTab({ userId }: { userId: string }) {
+  return <ProfileDetails userId={userId} />
+}
+
+export function Dashboard({ userId }: { userId: string }) {
+  const [tab, setTab] = useState<'feed' | 'profile'>('feed')
+
+  return (
+    <div>
+      <nav>
+        <button onClick={() => setTab('feed')}>Feed</button>
+        <button onClick={() => setTab('profile')}>Profile</button>
+      </nav>
+
+      {/* When hidden: scroll position, form drafts, expanded threads all survive.
+          The websocket is closed (Effect cleaned up), so no background traffic. */}
+      <Activity mode={tab === 'feed' ? 'visible' : 'hidden'}>
+        <ActivityFeed userId={userId} />
+      </Activity>
+      <Activity mode={tab === 'profile' ? 'visible' : 'hidden'}>
+        <ProfileTab userId={userId} />
+      </Activity>
+    </div>
+  )
+}
 ```
 
-**When to use `hidden` vs `visible`:**
+**Why this matters for INP (Interaction to Next Paint):**
+- A naive implementation that always renders both tabs keeps both websockets open, both intervals running, both event listeners attached
+- `<Activity mode="hidden">` tears down Effects for hidden tabs → no wasted CPU, no duplicate subscriptions
+- When the user switches back, state is restored instantly without a network round-trip
 
-| Mode | Behavior | INP Impact |
-|---|---|---|
-| `visible` (default) | Children remain visible during pending | Partial updates may hurt INP during long interactions |
-| `hidden` | Children unmounted during pending | ✅ Best INP — no intermediate repaints |
-
-**Rule of thumb:** Use `hidden` for any form that takes more than ~100ms to submit. Use `visible` for button-level interactions where partial loading states are acceptable.
+**Rule of thumb:** Use `<Activity mode="hidden">` for any tab/panel/modal that's expensive to keep alive and likely to be revisited.
 
 **Sources:**
-- [React Activity — hidden mode and INP](https://react.dev/reference/react/Activity)
+- [React Activity reference](https://react.dev/reference/react/Activity)
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
 
 ### Activity + Server Action + Error Boundary — Complete Pattern
 
-A complete, production-ready pattern combining `<Activity>` with Server Actions and an error boundary for graceful error handling. This shows the recommended way to structure a publish button where errors are displayed inline:
+A complete, production-ready pattern for a publish button. The pending state comes from `useActionState`; `<Activity>` is used (optionally) to keep the form mounted in a sidebar/drawer that's not always visible:
 
 ```tsx
 // app/actions.ts
@@ -1376,15 +1466,14 @@ export async function publishPost(postId: string): Promise<{ error: string | nul
 // components/post-actions.tsx
 'use client'
 
-import { Activity } from 'react'
+import { Activity, useActionState } from 'react'
 import { publishPost } from '@/app/actions'
-import { useActionState } from 'react'
 import { AlertCircle, CheckCircle } from 'lucide-react'
 
 const initialState = { error: null as string | null }
 
-function PublishButton({ postId }: { postId: string }) {
-  const [state, formAction] = useActionState(
+function PublishButton({ postId, inDrawer, onClose }: { postId: string; inDrawer: boolean; onClose: () => void }) {
+  const [state, formAction, isPending] = useActionState(
     async (_prev: typeof initialState, _formData: FormData) => {
       return await publishPost(postId)
     },
@@ -1392,32 +1481,32 @@ function PublishButton({ postId }: { postId: string }) {
   )
 
   return (
-    <Activity detection="elements">
-      {({ isActivity }) => (
-        <div className="flex flex-col gap-2">
-          <button
-            type="submit"
-            formAction={formAction}
-            disabled={isActivity}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md disabled:opacity-50"
-          >
-            {isActivity ? (
-              <>Publishing...</>
-            ) : (
-              <>
-                <CheckCircle className="h-4 w-4" />
-                Publish
-              </>
-            )}
-          </button>
-          {state.error && (
-            <div className="flex items-center gap-2 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              {state.error}
-            </div>
+    // Activity preserves the form state (and any validation errors) when the
+    // drawer is closed. Effects for the form are torn down while hidden.
+    <Activity mode={inDrawer ? 'visible' : 'hidden'}>
+      <div className="flex flex-col gap-2">
+        <button
+          type="submit"
+          formAction={formAction}
+          disabled={isPending}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md disabled:opacity-50"
+        >
+          {isPending ? (
+            <>Publishing...</>
+          ) : (
+            <>
+              <CheckCircle className="h-4 w-4" />
+              Publish
+            </>
           )}
-        </div>
-      )}
+        </button>
+        {state.error && (
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="h-4 w-4" />
+            {state.error}
+          </div>
+        )}
+      </div>
     </Activity>
   )
 }
@@ -1425,14 +1514,10 @@ function PublishButton({ postId }: { postId: string }) {
 
 **Key points:**
 - Server Action returns `{ error: string | null }` — allows the component to display errors inline without throwing
-- `useActionState` captures the result; `<Activity>` detects the pending state from the action
-- `<Activity detection="elements">` tracks the button's pending state specifically
+- `isPending` comes from `useActionState`, not from `<Activity>`
+- `<Activity mode="hidden">` is used to preserve the form's state when the parent drawer/tab is closed — it's a UX nicety, not a loading mechanism
 - Error display is inline (not an Error Boundary replacement), so the rest of the UI remains interactive
 - For critical errors requiring full-UI replacement, wrap in an Error Boundary
-
-**When to use this vs the Follow/Following pattern:**
-- This pattern — single action, inline errors, no optimistic state needed
-- Follow/Following pattern — toggle action with immediate optimistic feedback
 
 
 ## `captureOwnerStack` — Debug Component Ownership (React 19.1)
@@ -1950,7 +2035,9 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **`use()` with non-Promise** — `use()` only accepts Promises; for regular values just use them directly
 - **Mutating props/state with React Compiler** — the compiler skips components that mutate; fix mutations first
 - **`cache()` vs `use cache` confusion** — React's `cache()` is client-side function memoization; Next.js `use cache` is server-side persistence; don't confuse the two
-- **Activity detection mismatch** — use `detection="elements"` for single interactive elements (buttons, toggles); use `detection="subtree"` for detecting any pending state in child components (entire forms, list items); using `subtree` on a single button causes `isActivity` to fire on any unrelated child pending state
+- **Using `<Activity>` as a loading spinner** — `<Activity>` only toggles visibility (`display: none`); it is NOT a pending/loading detector. For loading state, use `useActionState`'s `isPending`, `useFormStatus`, or React Query's `isLoading`. Inventing a `detection`/`isActivity` prop pattern from older notes will not work.
+- **Expecting Effects to run inside `mode="hidden"`** — Effects are deliberately torn down when hidden. Move analytics, telemetry, and "always on" subscriptions outside the Activity boundary.
+- **Wrapping the entire app in a single `<Activity>`** — defeats the purpose; the boundary should match a meaningful UI unit (one tab, one panel, one sidebar, one modal).
 - **View Transitions without `::view-transition-*` CSS** — `view-transition-name` only declares the element's identity; without CSS `::view-transition-old`/`::view-transition-new` rules, the browser uses a default crossfade that may look abrupt or wrong for your use case; always add explicit transition CSS
 - **View Transitions with duplicate `viewTransitionName`** — two elements on the same page with the same `viewTransitionName` causes the browser to skip the transition silently; use unique names per element (`product-image-${id}` not just `product-image`)
 - **`<ViewTransition>` missing `name` prop** — without a `name` prop, React doesn't know which elements should transition together; always use `name` for cross-page or state-change animations

@@ -346,3 +346,97 @@ export function LoginForm() {
 - **Memoize expensive computations** — `useMemo(() => expensive(data), [data])`
 - **Don't over-abstract** — extract when you have 3+ usages, not 2
 - **Keep server components lean** — no business logic, just rendering
+
+## React 19.2 `<Activity>` — Hide UI Without Losing State
+
+`<Activity>` is a new component primitive for hiding part of the UI while preserving its state and DOM. The full API is just two props: `children` and `mode` (`'visible' | 'hidden'`). There is no `detection` prop, no `isActivity` render prop, no `visible={true}` boolean.
+
+```tsx
+import { Activity } from 'react'
+
+// Sidebar stays mounted but its Effects are torn down when hidden.
+// When toggled back to 'visible', state and scroll position are intact.
+function App() {
+  const [open, setOpen] = useState(true)
+  return (
+    <Activity mode={open ? 'visible' : 'hidden'}>
+      <Sidebar />
+    </Activity>
+  )
+}
+```
+
+**When to use `<Activity>`:** tab/panel/modal/drawer state preservation; pre-rendering heavy content at lower priority. **When NOT to use it:** as a loading-state detector (use `useFormStatus` or `useActionState`'s `isPending`).
+
+See `patterns.md` for the full API, troubleshooting, and production patterns.
+
+**Sources:** [React Activity reference](https://react.dev/reference/react/Activity) · [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
+
+## React Compiler — Stop Memoizing by Hand
+
+With `reactCompiler: true` in `next.config.ts` (Next.js 16+), the React Compiler automatically inserts memoization at the expression level. This means **most manual `useMemo`, `useCallback`, and `React.memo` calls become unnecessary**:
+
+```tsx
+// ❌ Pre-React-Compiler: manual memoization everywhere
+const filteredItems = useMemo(
+  () => items.filter(i => i.category === filter),
+  [items, filter]
+)
+const handleClick = useCallback(
+  (id: string) => console.log(id),
+  []
+)
+const MemoCard = React.memo(Card)
+
+// ✅ With React Compiler enabled: plain code, identical perf
+const filteredItems = items.filter(i => i.category === filter)
+const handleClick = (id: string) => console.log(id)
+function Card({ item }: { item: Item }) { /* ... */ }
+```
+
+The compiler memoizes at a finer granularity than humans do (it can memoize across early returns and conditional branches) and never gets a dependency array wrong.
+
+**Still use `useMemo` / `useCallback` when:**
+- **Crossing component boundaries the compiler can't see** — e.g. functions passed into third-party libraries that aren't compiled (e.g. `chart.setOptions(opts)` in an Effect)
+- **Referential identity matters for non-React APIs** — WebSocket subscriptions, event emitter listeners, imperative DOM libraries
+- **The component is opted out of compilation** — file-level `'use no memo'` directive, or the compiler emits a "skipped" warning for that component
+
+**Don't use them when:**
+- "Just in case" — the compiler will handle it
+- Stable callbacks for memoized children — the compiler memoizes the children too
+- Inside a fully compiled tree — let the compiler decide
+
+**Sources:** [React Compiler docs](https://react.dev/reference/react-compiler) · [Why React 19's Compiler Changes Everything for Senior Devs (SitePoint)](https://www.sitepoint.com/why-react-19-s-compiler-changes-everything-for-senior-devs/)
+
+## shadcn/ui CLI v4 (March 2026)
+
+shadcn CLI v4 is built for coding agents and includes several new commands worth knowing about.
+
+```bash
+# Add a component with diff preview (good for upgrades)
+npx shadcn@latest add button --diff
+
+# Get a snapshot of your project (framework, version, installed components) — great for AI agents
+npx shadcn@latest info
+
+# Dry-run a registry install (see what would change without writing files)
+npx shadcn@latest add dialog --dry-run
+
+# Use a preset when scaffolding
+npx shadcn@latest init --preset adtk27v
+
+# Install shadcn/ui skills for your coding agent (one command, knows the registry + CLI)
+npx skills add shadcn/ui
+```
+
+**New in CLI v4:**
+- **shadcn/skills** — drop-in agent skill that teaches coding agents how to use the shadcn CLI and registry correctly
+- **Presets** — scaffold a project or switch design systems with `--preset <id>`
+- **Dry-run mode** — preview what `add` would do
+- **`--diff` flag** — see changes before merging registry updates
+- **`shadcn info`** — full project context for agents
+- **Package imports** (shadcn@4.7.0+) — use `package.json` `#...` aliases in `components.json` instead of `tsconfig.json` `compilerOptions.paths`
+- **Registry types**: `registry:base` ships an entire design system as a single payload; `registry:font` is now a first-class type
+- **`shadcn eject`** (May 2026) — pulls the registry's CSS into your codebase so you can own it fully
+
+**Sources:** [shadcn CLI v4 changelog (March 2026)](https://ui.shadcn.com/docs/changelog/2026-03-cli-v4) · [shadcn changelog](https://ui.shadcn.com/docs/changelog) · [shadcn package imports (May 2026)](https://ui.shadcn.com/docs/changelog/2026-05-package-imports-target-aliases)
