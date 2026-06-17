@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.11
+version: 1.4.12
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -22,7 +22,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Streaming, Suspense, image optimization, PPR, App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
 | Vercel, Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
-| Vitest, Playwright, component tests | `testing.md` | Test-driven dev |
+| Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + Playwright + component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
 | React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions | `patterns.md` | Composite recipes |
 
@@ -48,6 +48,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **@biomejs/biome 2.5.0** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
+- **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; Vitest 5 in beta)
 - **React Hook Form v7.79.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
@@ -99,3 +100,6 @@ Key breaking changes from Next.js 15 → 16:
 - [React Compiler 1.0 stable release](https://react.dev/blog/2025/10/07/react-compiler-1)
 - [Next.js React Compiler integration](https://nextjs.org/docs/app/api-reference/config/next-config-js/reactCompiler)
 - [Vercel research: AGENTS.md outperforms skills (100% vs 79%)](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals)
+- [Vitest 4.0 announcement (Oct 21, 2025) — Browser Mode stable + Visual Regression + Playwright Trace](https://voidzero.dev/posts/announcing-vitest-4)
+- [Vitest Visual Regression Testing docs](https://vitest.dev/guide/browser/visual-regression-testing)
+- [Vitest 3 → 4 migration guide](https://vitest.dev/guide/migration.html)

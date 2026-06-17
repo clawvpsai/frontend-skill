@@ -1,5 +1,7 @@
 # Testing — Vitest + Playwright
 
+> **Vitest 4.0 (October 21, 2025)** brought Browser Mode stable, Visual Regression testing (`toMatchScreenshot`), and Playwright Trace support. This file uses Vitest 4 patterns. For Vitest 3 → 4 migration, see [Migration Guide](https://vitest.dev/guide/migration.html).
+
 ## Testing Pyramid
 
 ```
@@ -18,7 +20,7 @@
 ## Vitest Setup
 
 ```bash
-npm install -D vitest @vitejs/plugin-react jsdom @testing-library/react @testing-library/jest-dom
+npm install -D vitest@4 @vitejs/plugin-react @vitest/browser @testing-library/react @testing-library/jest-dom
 ```
 
 ### `vitest.config.ts`
@@ -31,7 +33,7 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: 'jsdom',
+    environment: 'jsdom',  // or 'happy-dom' — or use Browser Mode (see below)
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
@@ -666,6 +668,202 @@ it('handles server action errors gracefully', async () => {
 })
 ```
 
+## Vitest 4 — Browser Mode (Stable)
+
+Vitest 4.0 (Oct 21, 2025) marked Browser Mode as **stable** — real browser tests replace jsdom for components that need actual browser APIs (clipboard, layout, computed styles, IntersectionObserver, etc.). Setup is via a separate `vitest.browser.config.ts` so unit (jsdom) and browser tests can coexist.
+
+### Init
+
+```bash
+# Adds vitest.browser.config.ts + @vitest/browser + framework adapter
+npx vitest init browser
+```
+
+Choose: TypeScript → playwright → chromium → React → install Playwright browsers.
+
+### `vitest.browser.config.ts`
+
+```ts
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import { playwright } from '@vitest/browser-playwright'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    browser: {
+      enabled: true,
+      headless: true,
+      provider: playwright(),
+      instances: [{ browser: 'chromium' }],
+      viewport: { width: 1280, height: 720 },
+    },
+  },
+})
+```
+
+### Writing a Browser Mode test
+
+```ts
+// counter.browser.test.tsx
+import { render } from 'vitest-browser-react'
+import { expect, test } from 'vitest'
+import { Counter } from './counter'
+
+test('renders the initial count from a real browser', async () => {
+  const screen = await render(<Counter initialCount={5} />)
+  await expect.element(screen.getByRole('button', { name: /5/i })).toBeInTheDocument()
+})
+```
+
+### Running
+
+```bash
+# Unit / integration tests (jsdom)
+npm run test
+
+# Browser mode tests (real Chromium via Playwright)
+npm run test:browser          # alias to: vitest run --config=vitest.browser.config.ts
+```
+
+**When to use Browser Mode vs jsdom:**
+
+| Need | Use |
+|---|---|
+| 99% of component logic, hooks, state | jsdom (default) — faster, no browser launch |
+| Real layout / CSS / computed styles | Browser Mode |
+| `IntersectionObserver`, `ResizeObserver`, `Clipboard` | Browser Mode |
+| Visual regression testing (see next section) | Browser Mode (required) |
+| `getBoundingClientRect`, `matchMedia` | Browser Mode |
+| Service workers, Web Workers | Browser Mode |
+
+## Vitest 4 — Visual Regression Testing
+
+`toMatchScreenshot` ships in Vitest 4.0 — pixel-by-pixel screenshot diffs integrated into the test runner. Requires Browser Mode (above).
+
+### Basic visual test
+
+```ts
+// components/hero.browser.test.tsx
+import { render } from 'vitest-browser-react'
+import { expect, test } from 'vitest'
+import { Hero } from './hero'
+
+test('hero section looks correct', async () => {
+  const screen = await render(<Hero title="Hello" />)
+  await expect(screen.getByTestId('hero')).toMatchScreenshot('hero-default')
+})
+```
+
+### Global config — `vitest.browser.config.ts`
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      expect: {
+        toMatchScreenshot: {
+          comparatorName: 'pixelmatch',
+          comparatorOptions: {
+            threshold: 0.2,                   // 0–1, how different can colors be
+            allowedMismatchedPixelRatio: 0.01, // 1% of pixels can differ
+          },
+        },
+      },
+    },
+  },
+})
+```
+
+### Per-test overrides
+
+```ts
+// More lax comparison for text-heavy elements (font hinting varies by OS)
+await expect(btn).toMatchScreenshot('button-hover', {
+  allowedMismatchedPixelRatio: 0.1,
+})
+```
+
+### Workflow
+
+1. **First run** — Vitest creates a baseline at `__screenshots__/<test>.<browser>-<platform>.png` and **fails** the test with a message: `"No existing reference screenshot found; a new one was created. Review it before running tests again."`
+2. **Inspect** the baseline — make sure it looks right.
+3. **Commit** the `__screenshots__/` folder to git.
+4. **Subsequent runs** — Vitest captures the actual screenshot and diffs against the baseline. On mismatch, the report includes:
+   - **Reference** (the expected baseline)
+   - **Actual** (what was captured)
+   - **Diff** (highlighted pixel differences — for visual triage)
+
+### Updating baselines
+
+```bash
+# Re-record all baselines after intentional UI changes
+vitest run --update --config=vitest.browser.config.ts
+```
+
+**Common pitfalls:**
+- **Forget to commit `__screenshots__/`** — without baselines, every test fails on first CI run
+- **Animations + non-deterministic rendering** — disable animations or use `prefers-reduced-motion` in tests
+- **Font rendering differs by OS** — use `allowedMismatchedPixelRatio: 0.01` (1%) or higher for cross-OS CI
+- **Don't run in parallel with viewport changes** — lock viewport in the config
+
+## Vitest 4 — Playwright Trace Support
+
+Vitest 4.0 can emit **Playwright Traces** for failed browser tests, so you can replay them in the Playwright Trace Viewer (`npx playwright show-trace trace.zip`).
+
+```ts
+// vitest.browser.config.ts
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      provider: playwright(),
+      trace: {
+        mode: 'on-first-retry',   // 'on' | 'off' | 'retain-on-failure' | 'on-first-retry'
+        attachments: true,        // include screenshots + snapshots
+      },
+    },
+  },
+})
+```
+
+When a test fails, the trace lives in `test-results/` — open it locally:
+```bash
+npx playwright show-trace test-results/my-test-chromium/trace.zip
+```
+
+## Vitest 3 → 4 Migration Notes
+
+Most projects upgrade with **zero code changes** — the public API is the same. The big internal change is `vite-node` → Vite's **Module Runner** ([Vite docs](https://vite.dev/guide/api-environment-runtimes.html)).
+
+### Breaking changes (action required)
+
+1. **`VITE_NODE_DEPS_MODULE_DIRECTORIES` → `VITEST_MODULE_DIRECTORIES`** — env var rename
+2. **`deps.optimizer.web` → `deps.optimizer.client`** — config key rename (and now any name can be used per-environment)
+3. **`vitest/execute` entry point removed** — it was always internal
+4. **Custom environments** — drop `transformMode`, add `viteEnvironment` instead
+5. **`vitest/mocker` removed** — use `@vitest/mocker` directly
+6. **No more `__vitest_executor` injection** — `moduleRunner` is injected instead (only matters for custom environments)
+
+### New requirements
+
+- **Vite ≥ 6.0.0**
+- **Node.js ≥ 20.0.0** (Node 22 LTS / Node 24 LTS fine)
+
+### Auto-migration
+
+```bash
+# Vitest can auto-rewrite your config
+npx vitest migrate
+```
+
+### Upcoming (Vitest 5.0-beta)
+
+5.0 removes the remaining deprecated entry points (`vitest/coverage`, `vitest/reporters`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`). Use `vitest/node` and `vitest/runtime` instead. The migration is mechanical — see [migration guide](https://main.vitest.dev/guide/migration).
+
 ## Common Mistakes
 
 
@@ -681,9 +879,17 @@ it('handles server action errors gracefully', async () => {
 - **v4 auto-act in Zustand v5 tests** — v5 removed auto-`act()` wrapping; always wrap state updates in `act()` from `react-dom/test-utils`
 - **Testing Zustand without resetting state** — always call `vi.clearAllMocks()` and recreate store instances between tests to prevent state leakage
 - **Testing React Query mutations with only success cases** — always test error paths and loading states too
+- **Visual regression tests without committed baselines** — Vitest creates a baseline on first run and the test fails; commit `__screenshots__/` to git or every CI run will fail
+- **Running Browser Mode tests without `npx playwright install`** — provider needs the browser binaries; CI must run this first
+- **Mixing `environment: 'jsdom'` with `browser.enabled: true`** — pick one per config file; browser mode does not use `environment`
 
 **Sources:**
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
 - [Vitest docs](https://vitest.dev/)
+- [Vitest 4.0 announcement — VoidZero](https://voidzero.dev/posts/announcing-vitest-4) (Browser Mode stable, Visual Regression, Playwright Trace)
+- [Vitest Browser Mode guide](https://vitest.dev/guide/browser/)
+- [Vitest Visual Regression Testing](https://vitest.dev/guide/browser/visual-regression-testing)
+- [Vitest 3 → 4 migration guide](https://vitest.dev/guide/migration.html)
+- [Vitest 5 migration guide (beta)](https://main.vitest.dev/guide/migration)
 - [Playwright docs](https://playwright.dev/)
 - [Testing React 19 components](https://react.dev/learn/testing-react-components)
