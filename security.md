@@ -249,6 +249,7 @@ The only reliable distinguishing features are the **npm maintainer** and the **p
 5. **Run an SCA tool** — Socket.dev, Snyk, or GitHub's Dependabot security updates catch newly-published malicious versions within minutes
 6. **Postinstall hooks are RCE** — if you have an npm `postinstall` script you didn't write, treat it as a code execution backdoor. Use `npm config set ignore-scripts true` for untrusted installs
 7. **Watch for typosquats** — `easy-day-js` ≠ `dayjs`. Tools like `socket npm install <pkg>` flag lookalike packages at install time
+8. **Use `minimumReleaseAge` (pnpm 11+ / npm 11.16+)** — define a minimum age (in minutes) that must pass between a package version's publish time and the moment your lockfile / install will pull it. A 7-day delay blocks nearly every short-lived supply-chain attack from the last 8 years, because malicious versions are usually detected and unpublished within hours. Configure in `.npmrc` (`minimum-release-age=10080` = 7 days) or `pnpm-workspace.yaml` (`minimumReleaseAge: 10080`). [pnpm docs](https://pnpm.io/supply-chain-security) · [OpenAI confirmed](https://openai.com/index/our-response-to-the-tanstack-npm-supply-chain-attack/) in their May 13, 2026 post-mortem on the TanStack compromise that they were deploying this control fleet-wide after two employee devices were impacted.
 
 **The pattern is accelerating:** TanStack (May 11) → node-ipc malicious versions (May 15) → Mini Shai-Hulud variants (June 1) → Mastra (June 17). Every npm scope is a target. Lock down contributor access and pin everything.
 
@@ -258,6 +259,155 @@ The only reliable distinguishing features are the **npm maintainer** and the **p
 - [Snyk advisory — easy-day-js embedded malicious code (SNYK-JS-EASYDAYJS-17353313)](https://security.snyk.io/package/npm/easy-day-js)
 - [Kodem Security — IOCs and first-hour response playbook](https://www.kodemsecurity.com/resources/mastra-npm-packages-compromised-easy-day-js-supply-chain-attack-iocs-and-response-runbook)
 - [Mastra issue #18045 — incident tracking](https://github.com/mastra-ai/mastra/issues/18045)
+
+
+## Node.js June 2026 Security Release (June 17, 2026)
+
+The Node.js project shipped a coordinated security release on **Wednesday, June 17, 2026** (announced June 18) covering all supported release lines: **Node 22 (LTS), Node 24 (LTS), and Node 26 (current)**. The highest severity is **HIGH** (CVE-2026-48933 — WebCrypto AES DoS). Frontend apps on Next.js / standalone Node / Docker / self-hosted workers all need to be on the patched line. The exact patch versions are **Node 22.23.0**, **Node 24.17.0**, and **Node 26.3.1** — the previous latest for each line is vulnerable.
+
+### CVEs Fixed
+
+| CVE | Severity | Component | Impact | Affected lines |
+|---|---|---|---|---|
+| [CVE-2026-48933](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **HIGH** | `crypto.webcrypto` (WebCrypto AES) | Integer overflow in `subtle.encrypt()` when the input length is a multiple of 2 GiB → **remote process abort (DoS)** | 22, 24, 26 |
+| [CVE-2026-48937](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **MEDIUM** | `node:http2` server | After a `GOAWAY` frame is sent in response to an invalid protocol error, the server keeps accepting new data → connection / memory exhaustion | 22, 24 |
+| [CVE-2026-48936](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **LOW** | `--permission` flag | Unix-domain-socket server can be started without `--allow-net`, completing a previous partial fix for CVE-2026-21636 | 26 only |
+| [CVE-2026-48931](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **LOW** | `http.Agent` | TOCTOU race lets a client accept a response that was sent **before** its request — response queue poisoning | 22, 24, 26 |
+
+### Bundled Dependency Upgrades (all release lines)
+
+The release also rolls forward the bundled HTTP/2 / TLS / fetch stack:
+
+- `llhttp` → **9.4.2**
+- `nghttp2` → **1.69.0**
+- `openssl` → **3.5.7**
+- `undici` → **8.5.0** (Node 26.3.1), **7.28.0** (Node 24.17.0), **6.27.0** (Node 22.23.0)
+
+If you pin Node via `engines` or `.nvmrc`, bump the patch: `22.23.0` / `24.17.0` / `26.3.1` (or any later). On Vercel, the `engines.node` field is honored by `@vercel/node` and triggers an automatic redeploy to a fresh Lambda runtime.
+
+### Which Apps Are Exposed
+
+- **Self-hosted Next.js** (`next start`, `output: 'standalone'`, Docker) — direct exposure. Bump the base image (`node:22.23.0-bookworm-slim`, `node:24.17.0-bookworm-slim`, or `node:26.3.1-bookworm-slim`).
+- **Server Actions / Route Handlers that call `crypto.subtle.encrypt()` with attacker-controllable input** — exposed. The HIGH CVE is a remote DoS via the standard `subtle.encrypt()` API. If you accept untrusted input into WebCrypto (rare for frontend-only apps, common in workers / middleware that proxy crypto), you are exposed.
+- **`node:http2` servers** (rare in Next.js apps, common in custom server gateways) — exposed.
+- **Vercel / Netlify / Cloudflare managed runtimes** — the platform rolls forward; you don't control the version, but you can pin via `engines.node` to get a deterministic runtime.
+- **`http.Agent` clients with high concurrency** — race condition is theoretical for typical SPA fetches but real for HTTP/2 multiplexed clients.
+
+### Why the HIGH CVE Matters for Frontend Apps
+
+CVE-2026-48933 is a **remote DoS in the standard `WebCrypto` API** — `globalThis.crypto.subtle.encrypt()` crashes the process if the input buffer length is exactly a multiple of 2 GiB (`2**31` bytes). Any code path that pipes user-controlled data into `subtle.encrypt()` (E2E-encrypted form fields, in-browser / server-side WebAuthn flows, custom JWT signing) can be crashed with a single request. Pin the Node patch version in CI, and add a length cap in your WebCrypto wrapper (defense in depth).
+
+```ts
+// ✅ Defense in depth — cap input before calling subtle.encrypt
+const MAX_PLAINTEXT = 16 * 1024 * 1024 // 16 MiB; never let untrusted input approach 2 GiB
+export async function safeEncrypt(data: ArrayBuffer, key: CryptoKey) {
+  if (data.byteLength === 0 || data.byteLength > MAX_PLAINTEXT) {
+    throw new RangeError('Invalid payload size')
+  }
+  return crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data)
+}
+```
+
+**Sources:**
+- [Node.js — Thursday, June 18, 2026 Security Releases](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
+- [Node.js pre-alert on X (June 11, 2026)](https://x.com/nodejs/status/2064916362460295539)
+- [Node.js release schedule / LTS lines](https://nodejs.org/en/about/previous-releases)
+
+## Server Actions Are Public POST Endpoints (2026 Architectural Principle)
+
+**This is the most important Server Actions security pattern in 2026, and it applies to every `'use server'` function in the codebase.** Multiple authoritative 2026 sources (Next.js official docs, Vercel, Makerkit, Authgear, BuildMVPFast) converge on the same rule: **authenticate and authorize *inside* every Server Action body. Never rely on page-level checks, never rely on middleware as your authorization layer.**
+
+From the [Next.js data security docs](https://nextjs.org/docs/app/guides/data-security):
+> By default, when a Server Action is created and exported, it is reachable via a direct POST request, not just through your application's UI. This means, even if a Server Action or utility function is not imported elsewhere in your code, it can still be called externally. […] However, you should still treat Server Actions as reachable via direct POST requests and verify authentication and authorization inside each one.
+
+And from the [Next.js authentication guide](https://nextjs.org/docs/app/guides/authentication):
+> A common pattern in SPAs is to `return null` in a layout or a top-level component if a user is not authorized. This pattern is **not recommended** since Next.js applications have multiple entry points, which will not prevent nested route segments and Server Actions from being accessed. Ensure that any Server Actions called from these components also perform their own authorization checks, as client-side UI restrictions alone are not sufficient for security.
+
+Vercel's own [postmortem on CVE-2025-29927](https://vercel.com/blog/postmortem-on-next-js-middleware-bypass) reaches the same conclusion: **middleware is fine for coarse redirects. It is not your authorization layer.**
+
+### The Two-Lock Pattern (auth + authorization)
+
+Every Server Action needs **two** independent checks, not one:
+
+1. **Authentication** — `const session = await auth()` (or `getSession()`). Confirms *who* is calling.
+2. **Authorization** — confirms *this* user is allowed to act on *this specific* resource. Skip this and you have an **IDOR** (Insecure Direct Object Reference): an attacker passes `postId=42` they don't own, and the action happily acts on it.
+
+```ts
+// app/actions/deletePost.ts
+'use server'
+
+import { z } from 'zod'
+import { auth } from '@/lib/auth'
+import { db } from '@/lib/db'
+
+const DeletePostSchema = z.object({
+  postId: z.string().cuid2(),
+})
+
+// ✅ Authenticate AND authorize inside the action body
+export async function deletePost(input: unknown) {
+  const session = await auth()
+  if (!session?.user) throw new Error('Unauthorized')
+
+  const { postId } = DeletePostSchema.parse(input)
+
+  // ✅ Authorization via ownership — pass the userId into the WHERE clause
+  // (not a separate findUnique + check; that's racy and leaks existence)
+  const { count } = await db.post.deleteMany({
+    where: { id: postId, authorId: session.user.id },
+  })
+  if (count === 0) {
+    // Don't leak existence: 404 vs 403 are different signals
+    throw new Error('Not found')
+  }
+
+  revalidatePath('/posts')
+  return { success: true }
+}
+```
+
+```ts
+// ❌ WRONG — only authenticates; IDOR. Any logged-in user can delete any post.
+export async function deletePost(input: unknown) {
+  const session = await auth()
+  if (!session?.user) throw new Error('Unauthorized')
+  const { postId } = DeletePostSchema.parse(input)
+  await db.post.delete({ where: { id: postId } })  // ← no ownership check
+}
+```
+
+```ts
+// ❌ WRONG — page-level auth check, but the action is a separate entry point
+// app/posts/[id]/page.tsx
+export default async function PostPage({ params }) {
+  const session = await auth()
+  if (!session) redirect('/login')
+  const post = await db.post.findUnique({ where: { id: (await params).id } })
+  if (post.authorId !== session.user.id) notFound()
+  return <Post post={post} />
+}
+// Attacker skips the page entirely and POSTs to the Server Action ID — page check never runs.
+```
+
+### Pre-Ship Checklist for Every Server Action
+
+1. **`auth()` + ownership check inside the action body** — every time, no exceptions
+2. **Validate every input with a Zod schema** — parse into an allowlist of fields
+3. **Return DTOs, not raw rows** — `toJSON()` or a mapper function; never `return db.user.findUnique(...)`
+4. **Don't treat middleware as your authorization layer** — coarse gating only (redirects, A/B buckets)
+5. **Rate-limit sensitive actions** — auth, OTP, password reset, anything expensive. Use Vercel's `unstable_after` or an Upstash Redis token bucket
+6. **Set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`** — required if you run more than one instance (otherwise the action IDs are encrypted with a per-instance ephemeral key, breaking the fleet)
+7. **Run production mode in production** — `next dev` is debug-friendly but exposes source maps and stack traces
+8. **Keep Next.js patched** — Server Actions share the React Server Components protocol that was exploited by CVE-2025-66478 (React2Shell, CVSS 10) and CVE-2025-55184/67779/55183. The 16.2.6 patch (May 2026) bundles 13 framework-level fixes
+
+**Sources:**
+- [Next.js docs — Data fetching: Server Actions security](https://nextjs.org/docs/app/guides/data-security)
+- [Next.js docs — Authentication: Server Actions](https://nextjs.org/docs/app/guides/authentication)
+- [Vercel — Postmortem on the Next.js middleware bypass (CVE-2025-29927)](https://vercel.com/blog/postmortem-on-next-js-middleware-bypass)
+- [Authgear — Next.js Security Best Practices 2026](https://www.authgear.com/post/nextjs-security-best-practices/)
+- [Makerkit — Next.js Server Actions Security: 5 Vulnerabilities (Next 16.2.6)](https://makerkit.dev/blog/tutorials/secure-nextjs-server-actions)
+- [BuildMVPFast — Server Actions Security: Real Vulnerabilities (June 18, 2026)](https://www.buildmvpfast.com/blog/nextjs-server-actions-security-vulnerabilities-2026)
+- [OWASP — Insecure Direct Object Reference Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html)
 
 
 ## XSS (Cross-Site Scripting)
@@ -602,6 +752,13 @@ NEXTAUTH_SECRET="..."
 - **Dormant npm maintainer accounts in your org** — TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17) all exploited stale contributor access. Audit npm scope ownership quarterly and remove former maintainers immediately
 - **Trusting `npm audit` to catch active supply chain attacks** — the Mastra `easy-day-js` typosquat copied `dayjs`'s metadata perfectly and `npm audit` showed nothing. Use Socket.dev or Snyk for behavioral analysis, not just CVE matching
 - **Vitest Browser Mode on a network-exposed host (--browser.api.host=0.0.0.0)** — exposes API token, project root, and CDP RPC; CVSS 9.8 RCE on pre-4.1.8 versions. Keep Browser Mode on localhost and upgrade to vitest ≥ 4.1.8
+- **Relying on page-level auth checks for Server Actions** — Server Actions are separate entry points reachable via direct POST. A page redirect does not protect them. Always run `auth()` + ownership check inside the action body, never trust a parent's auth state
+- **Authentication without authorization in Server Actions (IDOR)** — `auth()` only checks *who* the caller is. The action also needs to verify *this user is allowed to act on this specific resource* (ownership, team membership, role, or explicit permission). Without it, any logged-in user can pass any `id` they want
+- **Using `findUnique` + JS check for ownership in Server Actions** — races (TOCTOU between the read and the write) and leaks the row's existence to unauthorized actors. Use `deleteMany` / `updateMany` with the ownership filter in the `where` clause, then check the returned `count`. A 0 count means "not found" or "not yours" — return the same error in both cases
+- **Server Action that returns raw DB rows** — leaks `passwordHash`, `internalNote`, `stripeCustomerId`, soft-delete flags, `updatedAt`, etc. Return a DTO (Data Transfer Object) or use `toJSON()` on the model. This is a top-3 OWASP API risk (Broken Object Property Level Authorization)
+- **Missing `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` on multi-instance deployments** — Server Action IDs are encrypted with a per-instance ephemeral key by default. Two instances can't share action IDs. Generate a stable secret (`openssl rand -base64 32`) and set it in the deploy environment
+- **Running pre-June-17-2026 Node.js in production** — Node 22.x (pre-22.23.0), Node 24.x (pre-24.17.0), and Node 26.x (pre-26.3.1) are vulnerable to CVE-2026-48933 (HIGH, WebCrypto AES DoS) and 3 other CVEs. Bump the base image tag or `engines.node` now
+- **WebCrypto without input size cap** — `crypto.subtle.encrypt()` crashes the Node process when the input length is a multiple of 2 GiB (CVE-2026-48933). Even on a patched Node, defense in depth: cap plaintext size before encryption so untrusted input can never approach 2 GiB
 
 **Sources:**
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
