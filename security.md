@@ -118,6 +118,71 @@ On May 11, 2026, an attacker published 84 malicious versions across 42 @tanstack
 
 **This is a reminder:** Always use `npm ci` in CI/CD pipelines, pin exact versions, and consider using a software composition analysis (SCA) tool like Socket.dev or Snyk to detect supply chain attacks.
 
+## Vitest Browser Mode CVEs (May–June 2026)
+
+Three **critical** vulnerabilities were published against Vitest's Browser Mode between May 19 and June 1, 2026. Vitest 4.0 made Browser Mode stable, and the skill explicitly recommends it for layout / visual regression / `IntersectionObserver` / etc. — so this is the most likely dev-time attack surface introduced by following the skill.
+
+| CVE | GHSA | Severity | CVSS | Fixed in | Issue |
+|---|---|---|---|---|---|
+| CVE-2026-53633 | [GHSA-g8mr-85jm-7xhm](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm) | **Critical** | 9.8 | vitest 4.1.8, 3.2.6, 5.0.0-beta.4 | `cdp()` API proxy → CDP `Page.setDownloadBehavior` overwrites `vite.config.ts` → RCE when browser API is network-exposed |
+| (advisory-only) | [GHSA-2h32-95rg-cppp](https://github.com/vitest-dev/vitest/security/advisories/GHSA-2h32-95rg-cppp) | **Critical** | 9.6 | vitest 4.1.6, 5.0.0-beta.3 | Unsanitized `otelCarrier` query param injected into inline module script → recovers `VITEST_API_TOKEN` → chained RCE |
+| (advisory-only) | [GHSA-5xrq-8626-4rwp](https://github.com/vitest-dev/vitest/security/advisories/GHSA-5xrq-8626-4rwp) | **Critical** | 9.8 | vitest 4.1.0 (Windows) | `__vitest_attachment__` path traversal (`\\?\..\`) → arbitrary file read + RCE when Vitest UI server is exposed via `--api.host` |
+
+**The skill recommends `vitest@4.1.9` in Version Defaults, which is safe** — the 4.1.8 patch (June 1, 2026) is the most recent fix in the line. Run `npm ls vitest @vitest/browser` to confirm. If a user is locked to an older patch line, upgrade `vitest` **and** `@vitest/browser` together (they share the same version number and the fix is in the matching version).
+
+### How the CDP RCE Works (GHSA-g8mr-85jm-7xhm)
+
+1. Vitest Browser Mode exposes a `cdp()` RPC that forwards **raw** Chrome DevTools Protocol commands to the browser over the Vitest WebSocket.
+2. The fix-gate (`browser.api.allowWrite` / `api.allowWrite` / `browser.api.allowExec` / `api.allowExec`) was supposed to block privileged CDP calls, but it didn't actually cover `cdp()` itself.
+3. With the browser API exposed to the network (e.g. `--browser.api.host=0.0.0.0` — sometimes done in CI or remote dev containers), the generated browser runner page leaks the API token, active session id, project name, and project root path.
+4. Attacker calls CDP `Page.setDownloadBehavior` to set the download dir to the project root, then CDP `Runtime.evaluate` to download a `vite.config.ts` they control. Vitest reloads the config and runs it in Node → RCE.
+
+**Even with `allowWrite: false` and `allowExec: false` set, this CVE was exploitable in 4.1.7 and below.** Only the 4.1.8+ patch closes the gap.
+
+### Safe Browser Mode Configuration (Vitest 4.1.0+)
+
+Vitest 4.1.0 added two security gates that *are* respected post-4.1.8. Use them in `vitest.browser.config.ts`:
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      provider: playwright(),
+      api: {
+        // Default: true if api.host === 'localhost', false otherwise.
+        // Setting explicitly to false in CI / shared dev environments
+        // blocks the cdp() RPC, saveTestFile, and rerun APIs.
+        allowWrite: false,
+        allowExec: false,
+      },
+      // Don't bind to all interfaces unless you really need to.
+      // host: '127.0.0.1' (default) keeps the browser API local-only.
+    },
+  },
+})
+```
+
+**Operational rules:**
+- **Never run Browser Mode on a network-exposed host** (Docker port-forward, public VM, dev container with `0.0.0.0` binding). The browser API was not designed for hostile network exposure.
+- **CI: keep `allowWrite: false`, `allowExec: false`** — visual-regression tests don't need either.
+- **Local dev: the defaults are safe** (localhost-only host ⇒ `allowWrite: true`, `allowExec: true`). If you need to share a session with a colleague, tunnel via SSH instead of binding to `0.0.0.0`.
+- **If upgrading Vitest, also upgrade `@vitest/browser` and `@vitest/browser-playwright` (or `@vitest/browser-webdriverio`)** — they share the same version number and the fix is in the matching version.
+
+### Vitest UI Server (Windows)
+
+If you're on Windows, the Vitest UI server is vulnerable to arbitrary file read + RCE via the `__vitest_attachment__` endpoint when `--api.host` binds to anything other than localhost. 4.1.0+ fixes this. **On Windows, never run `vitest --ui --api.host=0.0.0.0`** — use `localhost` only, or run the UI inside a Linux container.
+
+**Sources:**
+- [GHSA-g8mr-85jm-7xhm — CDP RCE (CVSS 9.8)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)
+- [GHSA-2h32-95rg-cppp — otelCarrier XSS → RCE (CVSS 9.6)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-2h32-95rg-cppp)
+- [GHSA-5xrq-8626-4rwp — Vitest UI arbitrary file read + RCE on Windows (CVSS 9.8)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-5xrq-8626-4rwp)
+- [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
+- [Vitest 4.1.8 release notes — cdp() client disabled when allowWrite/allowExec: false](https://github.com/vitest-dev/vitest/releases/tag/v4.1.8)
+- [Vitest 4.1.6 release notes — otel carrier simplified](https://github.com/vitest-dev/vitest/releases/tag/v4.1.6)
+
 ## XSS (Cross-Site Scripting)
 
 ### The Threat
@@ -456,6 +521,7 @@ NEXTAUTH_SECRET="..."
 - **Unvalidated user input in WebSocket upgrade URLs** — validate URLs before upgrading
 - **Unvalidated user input in beforeInteractive scripts** — hardcode script sources
 - **Deriving CSP nonces from client-supplied values** — generate server-side only
+- **Vitest Browser Mode on a network-exposed host (--browser.api.host=0.0.0.0)** — exposes API token, project root, and CDP RPC; CVSS 9.8 RCE on pre-4.1.8 versions. Keep Browser Mode on localhost and upgrade to vitest ≥ 4.1.8
 
 **Sources:**
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)

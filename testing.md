@@ -737,6 +737,37 @@ npm run test:browser          # alias to: vitest run --config=vitest.browser.con
 | `getBoundingClientRect`, `matchMedia` | Browser Mode |
 | Service workers, Web Workers | Browser Mode |
 
+
+### Browser Mode — Security Hardening (Vitest 4.1.0+)
+
+The Browser Mode API is a privileged dev tool — it can write to project files, run arbitrary test files, and (in 4.1.7 and below) forward raw Chrome DevTools Protocol commands. **Three critical CVEs were published against it in May–June 2026** (CDP RCE 9.8, otelCarrier XSS 9.6, Windows file read 9.8). Full advisory breakdown is in `security.md` under "Vitest Browser Mode CVEs (May–June 2026)". Short version:
+
+1. **Always run on vitest ≥ 4.1.8** (skill default is 4.1.9 — safe). The 4.1.8 patch closes the `cdp()` API bypass.
+2. **Keep Browser Mode on localhost** — don't bind `--browser.api.host=0.0.0.0` in CI or dev containers. The browser API leaks the API token and project root, which is the attack surface for all three CVEs.
+3. **Use the new `browser.api.allowWrite` / `allowExec` gates (4.1.0+)** in `vitest.browser.config.ts` for CI:
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    browser: {
+      enabled: true,
+      provider: playwright(),
+      api: {
+        // Default: true on localhost, false if host is bound to all interfaces.
+        // In CI / shared environments, set explicitly to block cdp(),
+        // saveTestFile, and rerun APIs.
+        allowWrite: false,
+        allowExec: false,
+      },
+    },
+  },
+})
+```
+
+If you need to share a Browser Mode session with a teammate, tunnel via SSH instead of binding to `0.0.0.0`.
+
 ## Vitest 4 — Visual Regression Testing
 
 `toMatchScreenshot` ships in Vitest 4.0 — pixel-by-pixel screenshot diffs integrated into the test runner. Requires Browser Mode (above).
@@ -882,6 +913,8 @@ npx vitest migrate
 - **Visual regression tests without committed baselines** — Vitest creates a baseline on first run and the test fails; commit `__screenshots__/` to git or every CI run will fail
 - **Running Browser Mode tests without `npx playwright install`** — provider needs the browser binaries; CI must run this first
 - **Mixing `environment: 'jsdom'` with `browser.enabled: true`** — pick one per config file; browser mode does not use `environment`
+- **Running Browser Mode on a network-exposed host (`--browser.api.host=0.0.0.0`)** — CVSS 9.8 RCE on vitest < 4.1.8 via the cdp() RPC + CDP `Page.setDownloadBehavior` chain. Keep Browser Mode on localhost, set `api.allowWrite: false, api.allowExec: false` in CI, upgrade to vitest ≥ 4.1.8. See `security.md` § Vitest Browser Mode CVEs.
+- **Mixing vitest and @vitest/browser versions** — cdp() fix in 4.1.8 only protects if @vitest/browser is also ≥ 4.1.8. Pin them to matching versions: `"vitest": "4.1.9", "@vitest/browser": "4.1.9"`
 
 **Sources:**
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
@@ -893,3 +926,5 @@ npx vitest migrate
 - [Vitest 5 migration guide (beta)](https://main.vitest.dev/guide/migration)
 - [Playwright docs](https://playwright.dev/)
 - [Testing React 19 components](https://react.dev/learn/testing-react-components)
+- [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
+- [GHSA-g8mr-85jm-7xhm — Vitest Browser Mode CDP RCE (CVSS 9.8)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)

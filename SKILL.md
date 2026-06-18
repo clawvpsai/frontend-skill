@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.13
+version: 1.4.14
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -48,7 +48,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **@biomejs/biome 2.5.0** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
-- **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; Vitest 5 in beta)
+- **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; **≥ 4.1.8 required for the CDP RCE fix (GHSA-g8mr-85jm-7xhm, CVSS 9.8)**; use `api.allowWrite: false, api.allowExec: false` in CI; Vitest 5 in beta)
 - **React Hook Form v7.79.0** + **@hookform/resolvers v5.4.0** (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
@@ -105,3 +105,7 @@ Key breaking changes from Next.js 15 → 16:
 - [Vitest 4.0 announcement (Oct 21, 2025) — Browser Mode stable + Visual Regression + Playwright Trace](https://voidzero.dev/posts/announcing-vitest-4)
 - [Vitest Visual Regression Testing docs](https://vitest.dev/guide/browser/visual-regression-testing)
 - [Vitest 3 → 4 migration guide](https://vitest.dev/guide/migration.html)
+- [GHSA-g8mr-85jm-7xhm — Vitest Browser Mode CDP RCE (CVSS 9.8, June 1, 2026)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)
+- [GHSA-2h32-95rg-cppp — Vitest otelCarrier XSS → RCE (CVSS 9.6, May 19, 2026)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-2h32-95rg-cppp)
+- [GHSA-5xrq-8626-4rwp — Vitest UI arbitrary file read + RCE on Windows (CVSS 9.8, May 19, 2026)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-5xrq-8626-4rwp)
+- [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
