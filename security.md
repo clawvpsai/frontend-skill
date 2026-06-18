@@ -183,6 +183,83 @@ If you're on Windows, the Vitest UI server is vulnerable to arbitrary file read 
 - [Vitest 4.1.8 release notes — cdp() client disabled when allowWrite/allowExec: false](https://github.com/vitest-dev/vitest/releases/tag/v4.1.8)
 - [Vitest 4.1.6 release notes — otel carrier simplified](https://github.com/vitest-dev/vitest/releases/tag/v4.1.6)
 
+## Mastra npm Scope Compromise (June 17, 2026)
+
+On June 17, 2026, an attacker republished the entire `@mastra` npm scope — **142+ packages** (Mastra AI agent framework) — by abusing a **former contributor account whose scope access was never revoked**. Each compromised package added `easy-day-js` (a typosquat of the popular `dayjs` date library) as a runtime dependency. `easy-day-js@1.11.22` contained an obfuscated `postinstall` hook (`setup.cjs`) that disabled TLS verification, downloaded a second-stage payload from a raw IP address, and ran a cross-platform cryptocurrency stealer + remote access trojan — then deleted itself to erase evidence.
+
+**This is the same attack pattern as the TanStack compromise (May 11, 2026) and the "Mini Shai-Hulud" campaigns** — compromised or stale maintainer credentials are used to mass-republish trusted packages with an injected malicious dependency.
+
+### Attack Timeline
+
+| Time (UTC) | Event |
+|---|---|
+| Jun 16 07:05 | Attacker npm account `sergey2016` publishes `easy-day-js@1.11.21` — a clean, fully functional `dayjs` clone with matching author metadata, version, homepage, repo, license, and keywords. Bait package. |
+| Jun 17 | Attacker publishes `easy-day-js@1.11.22` — same metadata, now with obfuscated `setup.cjs` postinstall dropper. |
+| Jun 17 | Attacker republishes 142+ `@mastra/*` packages (including `@mastra/core@1.42.1`, `mastra@1.13.1`, `create-mastra@1.13.1`), each adding `easy-day-js` as a `^1.11.21` dependency — pulling in the malicious `1.11.22`. |
+| Jun 17 (discovery) | StepSecurity / Snyk / Hacker News publish coordinated disclosure. Mastra removes the unauthorized npm owner and ships clean forward-rolled versions. |
+
+### Indicators of Compromise (IOCs)
+
+- **Malicious package:** `easy-day-js` versions `1.11.21` and `1.11.22` (Snyk advisory [SNYK-JS-EASYDAYJS-17353313](https://security.snyk.io/package/npm/easy-day-js))
+- **Stage-2 download:** `https://23.254.164.92:8000/update/49890878`
+- **Stage-2 beacon:** `23.254.164.123:443`
+- **Attacker npm account:** `sergey2016` (registered with `sergey2016@tutamail.com`)
+- **Dropper file:** `setup.cjs` (~4,572 bytes, obfuscated) in the `easy-day-js` tarball
+- **Affected ecosystem:** Entire `@mastra` npm scope — `@mastra/core` alone had ~4M downloads/month
+
+### How the Typosquat Bypassed Visual Inspection
+
+The `easy-day-js` package copied `dayjs`'s metadata wholesale to look legitimate in casual review:
+
+| Attribute | Legitimate `dayjs` | Malicious `easy-day-js` |
+|---|---|---|
+| Version | `1.11.x` | `1.11.21` → `1.11.22` (mirrored) |
+| Author metadata | `iamkun` | `iamkun` (copied) |
+| Homepage | `https://day.js.org` | `https://day.js.org` (copied) |
+| Repository | `github.com/iamkun/dayjs` | `github.com/iamkun/dayjs` (copied) |
+| License | `MIT` | `MIT` (copied) |
+| Keywords | `dayjs, date, time, moment` | `dayjs, date, time, moment` (copied) |
+| Postinstall hook | None | `node setup.cjs --no-warnings` ⚠️ |
+| Maintainer | `iamkun` | `sergey2016` ⚠️ (the only obvious signal) |
+
+The only reliable distinguishing features are the **npm maintainer** and the **presence of `setup.cjs` in the tarball**. A `package.json` review or `npm audit` would not have flagged it.
+
+### Why It Worked (Same Pattern as TanStack)
+
+- **Dormant contributor account** still had publish rights on the `@mastra` scope
+- **Trusted scope identity** — packages were republished under the legitimate `@mastra` namespace, so consumers saw no change in the package name
+- **Clean bait version** (`1.11.21`) established credibility before the malicious `1.11.22` was published
+- **Wide version range** (`^1.11.21`) ensured the malicious patch was pulled in automatically
+
+### What to Do If You Installed `@mastra` Packages on June 17, 2026
+
+1. **Treat the environment as compromised** — the postinstall hook ran at `npm install` time
+2. **Rotate all credentials** that were present in the install environment: npm tokens, GitHub PATs, AWS/GCP keys, Vercel/Cloudflare tokens, SSH keys, `.npmrc` auth, signing keys, `~/.aws/credentials`, CI secrets
+3. **Audit for the IOCs** above (stage-2 IPs, `easy-day-js` artifacts, `sergey2016` account references)
+4. **Reinstall from clean versions** — delete `node_modules` and `package-lock.json`, then `npm install` after rotating
+5. **Check for persistence** — the payload included a remote access trojan; run an AV/malware scan
+6. **Forward-rolled packages** are now safe to install; pin to specific safe versions
+
+### Defensive Measures (For All npm Projects)
+
+1. **Use `npm ci` in CI/CD** — respects `package-lock.json`, prevents newly-published malicious versions from being installed mid-build
+2. **Pin exact versions** — use `@tanstack/react-query@5.101.0` (no `^`/`~`) for high-value packages, especially in `dependencies` (not just `devDependencies`)
+3. **Audit npm publish rights** — remove former maintainers from your org's npm scope immediately when they leave; treat npm scope access as production credential, not commit access
+4. **Lock the lockfile** — enable `package-lock.json` in git and review all `package-lock.json` diffs in PRs (the TanStack attack showed up immediately in the lockfile)
+5. **Run an SCA tool** — Socket.dev, Snyk, or GitHub's Dependabot security updates catch newly-published malicious versions within minutes
+6. **Postinstall hooks are RCE** — if you have an npm `postinstall` script you didn't write, treat it as a code execution backdoor. Use `npm config set ignore-scripts true` for untrusted installs
+7. **Watch for typosquats** — `easy-day-js` ≠ `dayjs`. Tools like `socket npm install <pkg>` flag lookalike packages at install time
+
+**The pattern is accelerating:** TanStack (May 11) → node-ipc malicious versions (May 15) → Mini Shai-Hulud variants (June 1) → Mastra (June 17). Every npm scope is a target. Lock down contributor access and pin everything.
+
+**Sources:**
+- [StepSecurity — Mastra npm supply chain attack analysis](https://www.stepsecurity.io/blog/mastra-npm-packages-compromised-using-easy-day-js)
+- [Snyk — Mastra npm Scope Takeover (full technical writeup)](https://snyk.io/blog/a-forgotten-contributor-account-compromised-the-entire-mastra-npm-package-scope/)
+- [Snyk advisory — easy-day-js embedded malicious code (SNYK-JS-EASYDAYJS-17353313)](https://security.snyk.io/package/npm/easy-day-js)
+- [Kodem Security — IOCs and first-hour response playbook](https://www.kodemsecurity.com/resources/mastra-npm-packages-compromised-easy-day-js-supply-chain-attack-iocs-and-response-runbook)
+- [Mastra issue #18045 — incident tracking](https://github.com/mastra-ai/mastra/issues/18045)
+
+
 ## XSS (Cross-Site Scripting)
 
 ### The Threat
@@ -521,6 +598,9 @@ NEXTAUTH_SECRET="..."
 - **Unvalidated user input in WebSocket upgrade URLs** — validate URLs before upgrading
 - **Unvalidated user input in beforeInteractive scripts** — hardcode script sources
 - **Deriving CSP nonces from client-supplied values** — generate server-side only
+- **Caret-ranged deps for high-value packages** — `^1.11.21` (as used in the Mastra attack) auto-pulls in any new minor/patch. Pin exact versions for security-critical deps, or use `npm ci` everywhere
+- **Dormant npm maintainer accounts in your org** — TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17) all exploited stale contributor access. Audit npm scope ownership quarterly and remove former maintainers immediately
+- **Trusting `npm audit` to catch active supply chain attacks** — the Mastra `easy-day-js` typosquat copied `dayjs`'s metadata perfectly and `npm audit` showed nothing. Use Socket.dev or Snyk for behavioral analysis, not just CVE matching
 - **Vitest Browser Mode on a network-exposed host (--browser.api.host=0.0.0.0)** — exposes API token, project root, and CDP RPC; CVSS 9.8 RCE on pre-4.1.8 versions. Keep Browser Mode on localhost and upgrade to vitest ≥ 4.1.8
 
 **Sources:**

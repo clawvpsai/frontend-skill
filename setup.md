@@ -360,6 +360,19 @@ export default defineConfig({
 
 **`react({ compiler: true })` — The new way (plugin-react v6+):** Plugin-react v6 exposes a `compiler` option that uses `oxc-plugin-react-compiler` under the hood. This is the recommended approach for React 19 projects.
 
+### VoidZero → Cloudflare (June 4, 2026)
+
+The company behind Vite, Vitest, Rolldown, Oxc, and Vite+ (VoidZero, founded by Evan You) **joined Cloudflare on June 4, 2026**. The relevant points for Vite/Vitest users:
+
+- **Vite, Vitest, Rolldown, Oxc, and Vite+ remain MIT-licensed and open source** — license, governance, and roadmap are unchanged
+- **Evan You and the VoidZero team continue to lead all projects** — same maintainers, same contribution model
+- **Cloudflare commits engineering and resources to the projects**, not redirects them away
+- **Vite stays vendor-agnostic** — apps built with Vite run anywhere and continue to do so
+- **Short term:** nothing changes for Vite/Vitest users
+- **Long term:** Cloudflare's Vite plugin and the Cloudflare CLI will deepen Vite integration; Vite will get new "provider-agnostic primitives for full-stack apps and agents" that work on any platform; the Void platform will be open-sourced
+
+This is the same playbook Cloudflare used for the Astro acquisition earlier in 2026 — open source remains, team keeps shipping the same roadmap, and Cloudflare is one more major contributor (not a hijacker). The relevant implication for this skill: Vite 8 / Vitest 4 / Vitest 5 betas continue to be safe picks. Cloudflare-published improvements (deeper Workers integration, better Environment API primitives) will benefit non-Cloudflare deployments too.
+
 **For React 18 + plugin-react v5**, you can still use the Babel pass approach:
 ```ts
 react({ babel: { plugins: ['babel-plugin-react-compiler'] } })

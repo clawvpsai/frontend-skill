@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.14
+version: 1.4.15
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -109,3 +109,7 @@ Key breaking changes from Next.js 15 → 16:
 - [GHSA-2h32-95rg-cppp — Vitest otelCarrier XSS → RCE (CVSS 9.6, May 19, 2026)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-2h32-95rg-cppp)
 - [GHSA-5xrq-8626-4rwp — Vitest UI arbitrary file read + RCE on Windows (CVSS 9.8, May 19, 2026)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-5xrq-8626-4rwp)
 - [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
+- [VoidZero is joining Cloudflare (June 4, 2026) — Vite, Vitest, Rolldown, Oxc, Vite+ remain MIT and community-driven](https://blog.cloudflare.com/voidzero-joins-cloudflare/)
+- [VoidZero's own announcement (Evan You)](https://voidzero.dev/posts/voidzero-cloudflare)
+- [StepSecurity — Mastra npm supply chain attack (June 17, 2026) — 142+ packages, easy-day-js typosquat, easy-day-js@1.11.22 RCE](https://www.stepsecurity.io/blog/mastra-npm-packages-compromised-using-easy-day-js)
+- [Snyk — Mastra npm Scope Takeover (June 16, 2026) — forgotten contributor account, postinstall dropper, RAT + crypto stealer](https://snyk.io/blog/a-forgotten-contributor-account-compromised-the-entire-mastra-npm-package-scope/)
