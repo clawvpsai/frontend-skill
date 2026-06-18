@@ -155,7 +155,7 @@ Next.js 16 provides two distinct cache invalidation functions. Understanding whe
 
 #### `revalidateTag` — Background Refresh (Eventual Consistency)
 
-`revalidateTag` schedules the cached entry to be refreshed on the **next request** — the stale data is served while revalidation happens in the background:
+`revalidateTag(tag, profile)` schedules the cached entry to be refreshed on the **next request** — the stale data is served while revalidation happens in the background. The second `profile` argument is **required as of Next.js 16.2** — the single-argument form is deprecated. Pass `'max'` (recommended, stale-while-revalidate), any other [`cacheLife` profile name](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheLife), or `{ expire: number }` for a custom expiration:
 
 ```tsx
 // app/actions.ts — revalidate after mutation
@@ -168,9 +168,19 @@ export async function createPost(formData: FormData) {
   await db.post.create({ data: parsed })
 
   // Schedule revalidation — stale data served until next request refetches
-  revalidateTag('posts')
+  // 'max' = framework's longest cacheLife profile (recommended for most cases)
+  revalidateTag('posts', 'max')
 }
 ```
+
+**`profile` argument options** (Next.js 16.2+):
+
+| Profile | Behavior | When to use |
+|---|---|---|
+| `'max'` (recommended) | Stale-while-revalidate — serves stale, refreshes in background | Most cases: product listings, blog posts, dashboards |
+| `'hours'` / `'days'` / `'minutes'` (default profiles) | Same stale-while-revalidate semantics with the matching time window | When you want profile-aligned freshness |
+| `{ expire: 60 }` | Custom: stale served for 60s, then blocking revalidate on next request | Specific SLA-bound data |
+| (no profile) — deprecated | Blocking immediate revalidate on next request | Migrate to `updateTag` or `'max'` |
 
 **Use when:** Slight staleness is acceptable, and you want to avoid latency spikes from synchronous cache rebuilds.
 
@@ -199,7 +209,7 @@ export async function createPost(formData: FormData) {
 
 | Function | Behavior | Latency on Next Request | Use Case |
 |---|---|---|---|
-| `revalidateTag` | Background refresh | Fast (serves stale) | Non-critical data, high-traffic pages |
+| `revalidateTag(tag, 'max')` | Background refresh (stale-while-revalidate) | Fast (serves stale) | Non-critical data, high-traffic pages |
 | `updateTag` | Immediate expiration | Slower (refetches on next request) | Critical data, personalization, auth |
 
 **Important:** Both `revalidateTag` and `updateTag` can only be called from within **Server Actions**. For Route Handlers or other contexts, use `revalidateTag`.
@@ -895,7 +905,7 @@ export async function createPost(formData: FormData) {
 
   await db.post.create({ data: parsed })
   // Use revalidateTag — Next.js 16 preferred revalidation method
-  revalidateTag('posts')
+  revalidateTag('posts', 'max')
 }
 ```
 
@@ -935,6 +945,7 @@ export function CreatePostForm() {
 - **Passing non-serializable props** — functions and refs can't cross the RSC boundary
 - **Sequential awaits when parallel is possible** — use `Promise.all` for independent fetches
 - **Forgetting cache invalidation** — after mutations, use `revalidateTag` (background refresh) or `updateTag` (immediate expiration) to keep data fresh
+- **`revalidateTag('posts')` without a profile** — single-arg form is deprecated as of Next.js 16.2. Use `revalidateTag('posts', 'max')` for stale-while-revalidate (recommended), or another `cacheLife` profile name, or `{ expire: number }`. Only use `updateTag` when you need immediate expiration for strong-consistency data.
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` to opt into caching
 - **Using `unstable_cache` in new code** — use `use cache` + `cacheTag` instead in Next.js 16
 - **`use()` without an Error Boundary** — if the Promise rejects, `use()` throws; you need an Error Boundary to catch it

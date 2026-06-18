@@ -170,9 +170,10 @@ On-demand revalidation:
 ```tsx
 import { revalidateTag, updateTag } from 'next/cache'
 
-// After mutation — revalidateTag schedules background refresh (fast, serves stale briefly)
+// After mutation — revalidateTag with 'max' profile = stale-while-revalidate
+// (single-arg form is deprecated; use the profile parameter)
 // Use for non-critical data, high-traffic pages
-revalidateTag('posts')
+revalidateTag('posts', 'max')
 
 // updateTag immediately expires the cache (strong consistency, slightly slower)
 // Use for critical data: inventory, auth, personalization
@@ -198,7 +199,7 @@ export async function GET() {
 const posts = await getPosts() // getPosts uses cacheTag('posts')
 
 // Invalidate anywhere
-revalidateTag('posts')
+revalidateTag('posts', 'max')
 ```
 
 **Note:** The `next: { tags: [...] }` pattern on fetch still works, but `use cache` + `cacheTag` is the Next.js 16 preferred approach for server-side data functions.

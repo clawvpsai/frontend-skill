@@ -608,6 +608,7 @@ if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 
 - **Missing `await` on params** — In Next.js 15, route handler params are Promises
 - **Not returning proper status codes** — 201 for create, 204 for delete, 404 for not found
 - **Forgetting to revalidate** — After mutations, call `revalidatePath()` or `revalidateTag()`
+- **`revalidateTag('posts')` without a profile** — single-arg form is deprecated as of Next.js 16.2. Use `revalidateTag('posts', 'max')` (or another `cacheLife` profile name, or `{ expire: number }`). See `server-components.md` for the full profile options table.
 - **CORS issues** — Remember route handlers need explicit CORS headers
 - **SSE behind Nginx without `X-Accel-Buffering: no`** — Nginx buffers SSE, breaking real-time delivery
 - **Using WebSockets when SSE suffices** — SSE is simpler, auto-reconnects, works over HTTP/2; use only when bidirectional is needed

@@ -959,7 +959,7 @@ import { revalidateTag } from 'next/cache'
 
 export async function publishPost(postId: string) {
   await db.post.update({ where: { id: postId }, data: { published: true } })
-  revalidateTag('posts')
+  revalidateTag('posts', 'max')
 }
 ```
 
@@ -1454,7 +1454,7 @@ import { revalidateTag } from 'next/cache'
 export async function publishPost(postId: string): Promise<{ error: string | null }> {
   try {
     await db.post.update({ where: { id: postId }, data: { published: true } })
-    revalidateTag('posts')
+    revalidateTag('posts', 'max')
     return { error: null }
   } catch {
     return { error: 'Failed to publish post. Please try again.' }

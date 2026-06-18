@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.12
+version: 1.4.13
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -88,6 +88,8 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js `cacheTag`](https://nextjs.org/docs/app/api-reference/functions/cacheTag)
+- [Next.js `revalidateTag` — required `profile` argument](https://nextjs.org/docs/app/api-reference/functions/revalidateTag) (May 2026 update)
+- [Next.js `cacheLife` profiles reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheLife)
 - [Next.js 16.2.9 release](https://github.com/vercel/next.js/releases/tag/v16.2.9)
 - [Next.js 16.2 — automated upgrade CLI](https://nextjs.org/blog/next-16-2)
 - [Next.js 16.2 — AI Improvements (AGENTS.md, browser log forwarding, dev server lock file, next-browser)](https://nextjs.org/blog/next-16-2-ai)
