@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.17
+version: 1.4.18
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -113,7 +113,7 @@ Key breaking changes from Next.js 15 → 16:
 - [VoidZero's own announcement (Evan You)](https://voidzero.dev/posts/voidzero-cloudflare)
 - [StepSecurity — Mastra npm supply chain attack (June 17, 2026) — 142+ packages, easy-day-js typosquat, easy-day-js@1.11.22 RCE](https://www.stepsecurity.io/blog/mastra-npm-packages-compromised-using-easy-day-js)
 - [Snyk — Mastra npm Scope Takeover (June 16, 2026) — forgotten contributor account, postinstall dropper, RAT + crypto stealer](https://snyk.io/blog/a-forgotten-contributor-account-compromised-the-entire-mastra-npm-package-scope/)
-- [Node.js — Thursday, June 18, 2026 Security Releases (CVE-2026-48933 HIGH WebCrypto DoS, +3 CVEs)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
+- [Node.js — Thursday, June 18, 2026 Security Releases (12 CVEs, 2 HIGH: CVE-2026-48933 WebCrypto DoS + CVE-2026-48618 TLS wildcard bypass via Unicode normalization)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 - [Next.js docs — Data fetching: Server Actions security (public POST endpoints)](https://nextjs.org/docs/app/guides/data-security)
 - [Next.js docs — Authentication: Server Actions (return null in layout is not recommended)](https://nextjs.org/docs/app/guides/authentication)
 - [BuildMVPFast — Server Actions Security: Real Vulnerabilities (June 18, 2026)](https://www.buildmvpfast.com/blog/nextjs-server-actions-security-vulnerabilities-2026)
@@ -124,3 +124,7 @@ Key breaking changes from Next.js 15 → 16:
 - [Authgear — Next.js Security Best Practices 2026](https://www.authgear.com/post/nextjs-security-best-practices/)
 - [pnpm — minimumReleaseAge (supply-chain defense, blocks short-lived malicious publishes)](https://pnpm.io/supply-chain-security)
 - [OpenAI — Our response to the TanStack npm supply chain attack (May 13, 2026)](https://openai.com/index/our-response-to-the-tanstack-npm-supply-chain-attack/)
+
+- [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
+- [Introducing eve — Vercel's open-source agent framework (June 17, 2026) — durable execution + sandbox + approvals + subagents + evals](https://vercel.com/blog/introducing-eve)
+- [Vercel Ship 2026 recap — Agent Stack, eve, Vercel Connect, Vercel Agent (private beta), Claude Managed Agents](https://vercel.com/blog/vercel-ship-2026-recap)

@@ -338,16 +338,45 @@ The only reliable distinguishing features are the **npm maintainer** and the **p
 
 ## Node.js June 2026 Security Release (June 17, 2026)
 
-The Node.js project shipped a coordinated security release on **Wednesday, June 17, 2026** (announced June 18) covering all supported release lines: **Node 22 (LTS), Node 24 (LTS), and Node 26 (current)**. The highest severity is **HIGH** (CVE-2026-48933 — WebCrypto AES DoS). Frontend apps on Next.js / standalone Node / Docker / self-hosted workers all need to be on the patched line. The exact patch versions are **Node 22.23.0**, **Node 24.17.0**, and **Node 26.3.1** — the previous latest for each line is vulnerable.
+The Node.js project shipped a coordinated security release on **Wednesday, June 17, 2026** (announced June 18) covering all supported release lines: **Node 22 (LTS), Node 24 (LTS), and Node 26 (current)**. The release patches **12 CVEs** in total, with **2 rated HIGH** — one in `crypto.webcrypto` (WebCrypto AES DoS) and one in `tls` (wildcard-cert verification bypass). Frontend apps on Next.js / standalone Node / Docker / self-hosted workers all need to be on the patched line. The exact patch versions are **Node 22.23.0**, **Node 24.17.0**, and **Node 26.3.1** — the previous latest for each line is vulnerable.
 
 ### CVEs Fixed
 
 | CVE | Severity | Component | Impact | Affected lines |
 |---|---|---|---|---|
 | [CVE-2026-48933](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **HIGH** | `crypto.webcrypto` (WebCrypto AES) | Integer overflow in `subtle.encrypt()` when the input length is a multiple of 2 GiB → **remote process abort (DoS)** | 22, 24, 26 |
+| [CVE-2026-48618](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **HIGH** | `tls` hostname verification | Unicode dot-separator normalization mismatch between resolver and verifier → **TLS wildcard-depth authentication bypass** (a hostname can pass `tls.checkServerIdentity()` against a `*.example.com` cert while resolving to a different host) | 22, 24, 26 |
 | [CVE-2026-48937](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **MEDIUM** | `node:http2` server | After a `GOAWAY` frame is sent in response to an invalid protocol error, the server keeps accepting new data → connection / memory exhaustion | 22, 24 |
 | [CVE-2026-48936](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **LOW** | `--permission` flag | Unix-domain-socket server can be started without `--allow-net`, completing a previous partial fix for CVE-2026-21636 | 26 only |
 | [CVE-2026-48931](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) | **LOW** | `http.Agent` | TOCTOU race lets a client accept a response that was sent **before** its request — response queue poisoning | 22, 24, 26 |
+| _(7 more MEDIUM / LOW CVEs in this batch)_ | MEDIUM/LOW | TLS, HTTP/2, proxy, DNS, nghttp2, Permission Model | See the [Node.js June 2026 advisory](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases) for the full list (6 MEDIUM + 1 additional LOW, depending on release line) | varies |
+
+### Why the Second HIGH (CVE-2026-48618) Matters for Frontend Apps
+
+Any Next.js app that does **outbound HTTPS to APIs whose certificates use wildcards** (`*.example.com`, `*.amazonaws.com`, `*.s3.amazonaws.com`, etc.) and relies on Node's built-in `tls.checkServerIdentity()` is exposed. The bug is a Unicode dot-separator normalization mismatch: an attacker who can register a hostname that contains a Unicode "dot-like" character (e.g. U+3002, U+FF0E, U+FF61) can make Node's resolver and verifier disagree about which host they're talking to. The result: `tls.checkServerIdentity()` passes the check against a wildcard cert, but the underlying connection resolves to a host the attacker controls.
+
+**At-risk population:**
+- Next.js Route Handlers / Server Actions that call third-party APIs over HTTPS using the built-in `fetch` + `tls` stack (almost all apps — Vercel, Stripe, GitHub, Slack, etc. all use wildcard certs)
+- Custom HTTPS clients that override `checkServerIdentity` (sometimes done to disable cert checks in dev — **don't**)
+- Apps using AWS SDK, OpenAI SDK, Anthropic SDK, etc. — all rely on the same underlying `tls` module
+
+**Less exposed:**
+- Apps that terminate TLS at a reverse proxy (nginx, Cloudflare, Vercel's edge) and talk plaintext to Node internally — Node's TLS verifier is never invoked
+- Apps using a third-party HTTP client that does its own cert verification (rare)
+
+**Mitigation:** bump to the patched Node version **AND** add `unicode-sanitization` on any user-controlled hostname before passing it to `fetch` / `tls.connect` — don't trust that the URL is ASCII-clean. Code that does `new URL(req.body.host).hostname` and then `fetch(\`https://${host}/...\`)` is the canonical foot-gun here.
+
+```ts
+// ✅ Defense in depth — strip non-ASCII dots from hostnames before TLS
+const ASCII_DOT = /[\u3002\uFF0E\uFF61\u2024\u2025\u2026]/g
+function safeHost(input: string): string {
+  const url = new URL(input)
+  if (ASCII_DOT.test(url.hostname)) {
+    throw new Error(`Non-ASCII dot in hostname: ${url.hostname}`)
+  }
+  return url.hostname
+}
+```
 
 ### Bundled Dependency Upgrades (all release lines)
 
@@ -364,6 +393,7 @@ If you pin Node via `engines` or `.nvmrc`, bump the patch: `22.23.0` / `24.17.0`
 
 - **Self-hosted Next.js** (`next start`, `output: 'standalone'`, Docker) — direct exposure. Bump the base image (`node:22.23.0-bookworm-slim`, `node:24.17.0-bookworm-slim`, or `node:26.3.1-bookworm-slim`).
 - **Server Actions / Route Handlers that call `crypto.subtle.encrypt()` with attacker-controllable input** — exposed. The HIGH CVE is a remote DoS via the standard `subtle.encrypt()` API. If you accept untrusted input into WebCrypto (rare for frontend-only apps, common in workers / middleware that proxy crypto), you are exposed.
+- **Any Node process that does outbound HTTPS to hosts with wildcard certs** — exposed to CVE-2026-48618 (HIGH). This is the common case for almost every app (Vercel APIs, GitHub, Stripe, AWS, OpenAI, etc.). The fix is the same: bump the Node patch version.
 - **`node:http2` servers** (rare in Next.js apps, common in custom server gateways) — exposed.
 - **Vercel / Netlify / Cloudflare managed runtimes** — the platform rolls forward; you don't control the version, but you can pin via `engines.node` to get a deterministic runtime.
 - **`http.Agent` clients with high concurrency** — race condition is theoretical for typical SPA fetches but real for HTTP/2 multiplexed clients.
@@ -371,6 +401,8 @@ If you pin Node via `engines` or `.nvmrc`, bump the patch: `22.23.0` / `24.17.0`
 ### Why the HIGH CVE Matters for Frontend Apps
 
 CVE-2026-48933 is a **remote DoS in the standard `WebCrypto` API** — `globalThis.crypto.subtle.encrypt()` crashes the process if the input buffer length is exactly a multiple of 2 GiB (`2**31` bytes). Any code path that pipes user-controlled data into `subtle.encrypt()` (E2E-encrypted form fields, in-browser / server-side WebAuthn flows, custom JWT signing) can be crashed with a single request. Pin the Node patch version in CI, and add a length cap in your WebCrypto wrapper (defense in depth).
+
+CVE-2026-48618 is a **TLS hostname-verification bypass** — a Unicode dot-separator normalization mismatch lets an attacker present a hostname that passes `tls.checkServerIdentity()` against a `*.example.com` cert but resolves to a different host. Any Next.js Route Handler / Server Action that does outbound HTTPS via `fetch` is exposed. Pin the Node patch version in CI, and add a Unicode-dot sanitizer in any code path that builds a `URL` from user input (defense in depth).
 
 ```ts
 // ✅ Defense in depth — cap input before calling subtle.encrypt
@@ -387,6 +419,8 @@ export async function safeEncrypt(data: ArrayBuffer, key: CryptoKey) {
 - [Node.js — Thursday, June 18, 2026 Security Releases](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 - [Node.js pre-alert on X (June 11, 2026)](https://x.com/nodejs/status/2064916362460295539)
 - [Node.js release schedule / LTS lines](https://nodejs.org/en/about/previous-releases)
+- [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
+- [CVE-2026-48618 — TLS wildcard bypass via Unicode normalization (Node.js advisory)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 
 ## Server Actions Are Public POST Endpoints (2026 Architectural Principle)
 
@@ -832,8 +866,10 @@ NEXTAUTH_SECRET="..."
 - **Using `findUnique` + JS check for ownership in Server Actions** — races (TOCTOU between the read and the write) and leaks the row's existence to unauthorized actors. Use `deleteMany` / `updateMany` with the ownership filter in the `where` clause, then check the returned `count`. A 0 count means "not found" or "not yours" — return the same error in both cases
 - **Server Action that returns raw DB rows** — leaks `passwordHash`, `internalNote`, `stripeCustomerId`, soft-delete flags, `updatedAt`, etc. Return a DTO (Data Transfer Object) or use `toJSON()` on the model. This is a top-3 OWASP API risk (Broken Object Property Level Authorization)
 - **Missing `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` on multi-instance deployments** — Server Action IDs are encrypted with a per-instance ephemeral key by default. Two instances can't share action IDs. Generate a stable secret (`openssl rand -base64 32`) and set it in the deploy environment
-- **Running pre-June-17-2026 Node.js in production** — Node 22.x (pre-22.23.0), Node 24.x (pre-24.17.0), and Node 26.x (pre-26.3.1) are vulnerable to CVE-2026-48933 (HIGH, WebCrypto AES DoS) and 3 other CVEs. Bump the base image tag or `engines.node` now
+- **Running pre-June-17-2026 Node.js in production** — Node 22.x (pre-22.23.0), Node 24.x (pre-24.17.0), and Node 26.x (pre-26.3.1) are vulnerable to **12 CVEs** including **2 HIGH**: CVE-2026-48933 (WebCrypto AES DoS) and CVE-2026-48618 (TLS wildcard-cert bypass via Unicode normalization). Bump the base image tag or `engines.node` now
 - **WebCrypto without input size cap** — `crypto.subtle.encrypt()` crashes the Node process when the input length is a multiple of 2 GiB (CVE-2026-48933). Even on a patched Node, defense in depth: cap plaintext size before encryption so untrusted input can never approach 2 GiB
+- **Outbound HTTPS calls to wildcard-cert hosts without hostname validation** — CVE-2026-48618 lets Unicode dot separators (U+3002, U+FF0E, U+FF61) pass `tls.checkServerIdentity()` against `*.example.com` while resolving to a different host. If you build a URL from user input, validate the hostname is ASCII-clean and reject Unicode dots at the boundary
+- **Calling `fetch` with a hostname derived from user input** — even on a patched Node, the canonical TLS-bypass / SSRF pattern is `const host = new URL(req.body.url).hostname; await fetch(\`https://${host}/api\`)`; an attacker can supply `evil。example.com` (with U+3002) and slip past any `*.example.com` check. Use a URL allowlist, not string interpolation
 
 **Sources:**
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)

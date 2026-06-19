@@ -102,6 +102,7 @@ Server Actions are functions that run on the server and can be called from clien
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { z } from 'zod'
+import { auth } from '@/auth'
 import { db } from '@/lib/db'
 
 const CreatePostSchema = z.object({
@@ -111,14 +112,27 @@ const CreatePostSchema = z.object({
 })
 
 export async function createPost(formData: FormData) {
+  // Server Actions are public POST endpoints — authenticate and authorize
+  // INSIDE the action body. Page-level checks do not protect this endpoint.
+  // See security.md → "Server Actions Are Public POST Endpoints (2026)"
+  const session = await auth()
+  if (!session?.user) {
+    redirect('/login')
+  }
+
   const parsed = CreatePostSchema.parse({
     title: formData.get('title'),
     content: formData.get('content'),
     published: formData.get('published') === 'on',
   })
-  
-  await db.post.create({ data: { ...parsed, authorId: 'current-user-id' } })
-  
+
+  // The authorId MUST come from the authenticated session, never from formData
+  // or a hardcoded placeholder — the previous pattern (`authorId: 'current-user-id'`)
+  // was a critical IDOR footgun.
+  await db.post.create({
+    data: { ...parsed, authorId: session.user.id },
+  })
+
   revalidatePath('/posts')
   redirect('/posts')
 }

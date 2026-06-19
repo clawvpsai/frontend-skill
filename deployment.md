@@ -51,6 +51,132 @@ If your Next.js app or agent needs to call third-party APIs (Slack, GitHub, Snow
 - Docs: https://vercel.com/docs/connect
 - Launched at: [Vercel Ship 2026](https://vercel.com/blog/vercel-ship-2026-recap)
 
+## eve — Vercel Agent Framework (June 17, 2026)
+
+**eve** is Vercel's open-source agent framework, launched at Ship 2026 and built on top of [Vercel Workflows](https://vercel.com/docs/workflows), [Vercel Sandbox](https://vercel.com/docs/sandbox), [AI Gateway](https://vercel.com/ai-gateway), and [Vercel Connect](https://vercel.com/connect). It is "filesystem-first": an agent is just a directory of files, and eve compiles it into a Vercel Function that runs with durable execution, sandboxed compute, human-in-the-loop approvals, subagents, and evals built in. It is the framework Vercel uses internally to run its own agents (d0, Vercel Agent, etc.).
+
+> **Status:** Public beta. APIs, docs, and behavior may change before GA.
+
+### The Smallest Agent
+
+```bash
+# Scaffold a new agent
+npx eve@latest init my-agent
+cd my-agent
+npm run dev
+```
+
+The minimum viable agent is **two files**:
+
+```
+my-agent/
+└── agent/
+    ├── agent.ts            # Optional: model + runtime config
+    └── instructions.md     # Required: the always-on system prompt
+```
+
+```ts
+// agent/agent.ts
+import { defineAgent } from "eve";
+export default defineAgent({
+  model: "anthropic/claude-opus-4.8",
+});
+```
+
+```markdown
+<!-- agent/instructions.md -->
+You are a research assistant. Always cite sources. Be concise.
+```
+
+That is it — `npm run dev` starts a local agent. The HTTP API is at `POST /eve/v1/session` to create a session, then `POST /eve/v1/session/:id/turn` to send a message.
+
+### Adding Tools
+
+Each file in `agent/tools/` is one tool. The filename becomes the tool name the model sees:
+
+```ts
+// agent/tools/get_weather.ts
+import { defineTool } from "eve/tools";
+import { z } from "zod";
+
+export default defineTool({
+  description: "Get the current weather for a city.",
+  inputSchema: z.object({
+    city: z.string(),
+  }),
+  async execute(input) {
+    return { city: input.city, condition: "Sunny", temperatureF: 72 };
+  },
+});
+```
+
+No registration step. Drop a file in `tools/`, the model sees `get_weather`, the framework wires it up.
+
+### Adding Channels
+
+```bash
+# Add a channel to surface your agent where your users are
+npx eve@latest add channel-slack
+npx eve@latest add channel-web-nextjs
+npx eve@latest add channel-discord
+```
+
+Each channel is just another file in `agent/channels/`. Slack renders approvals as buttons, Web Chat renders inline, Discord gets typing indicators — same agent, channel-appropriate affordances.
+
+### Adding Skills (Markdown Playbooks)
+
+```markdown
+<!-- agent/skills/debugging.md -->
+# Debugging a failed deploy
+
+## Step 1
+Run `vercel logs --follow` to capture the last 100 lines of production logs.
+```
+
+Skills are loaded **only when relevant** (skill matching is framework-driven), so the model gets focused guidance without carrying the full playbook in every prompt. Same pattern as [Vercel's Chat SDK skills](https://vercel.com/blog/chat-sdk-brings-agents-to-your-users) (`npx skills add vercel/chat`).
+
+### What eve Gives You (vs. rolling your own)
+
+| Concern | DIY (LangChain / Vercel AI SDK + glue) | eve |
+|---|---|---|
+| Durable execution | Roll your own queue / DB checkpoints | [Vercel Workflows](https://vercel.com/docs/workflows), built in |
+| Sandboxed code execution | Fly machines / Modal / E2B | [Vercel Sandbox](https://vercel.com/docs/sandbox), built in |
+| Per-user tool credentials | Roll your own token vault | [Vercel Connect](https://vercel.com/connect), built in |
+| Model routing + fallbacks | Wire it up yourself | [AI Gateway](https://vercel.com/ai-gateway), built in |
+| Human-in-the-loop approvals | Build the UI + state machine | Built in (renders as channel-native buttons) |
+| Subagents | Roll your own dispatcher | Built in (other agent directories as children) |
+| Evals | DIY | Built in |
+| Observability | DIY | [Vercel Observability](https://vercel.com/docs/observability) — sessions, turns, tools, token usage |
+| Deploy | Configure a server | `vercel deploy` (it is a Vercel project) |
+
+### When to Reach for eve
+
+- ✅ You are building a production agent that needs to survive deploys, call external APIs on behalf of users, and ship to channels (Slack, Discord, Web Chat)
+- ✅ You want a Vercel-native stack (Workflows + Sandbox + Connect + AI Gateway) without gluing it together
+- ✅ You have many agents and want a shared framework
+- ❌ You are prototyping a one-off LLM call (use the [Vercel AI SDK](https://sdk.vercel.ai) directly)
+- ❌ You need a model fine-tuning / RL framework (eve is for agents, not training)
+- ❌ You need on-prem / air-gapped deployment (eve deploys to Vercel; local dev runs on Docker / microsandbox / just-bash)
+
+### Connect to Existing Next.js App
+
+```bash
+# Add eve to an existing Next.js project
+npm install eve@latest
+mkdir -p agent
+echo "You are a helpful assistant." > agent/instructions.md
+```
+
+The agent lives alongside your Next.js routes. The same project can serve both the marketing site (Next.js) and the agent (eve), and they share `vercel deploy`.
+
+**Sources:**
+- [Introducing eve (Vercel blog, June 17, 2026)](https://vercel.com/blog/introducing-eve)
+- [Vercel Ship 2026 recap](https://vercel.com/blog/vercel-ship-2026-recap)
+- [eve docs (vercel.com/docs/eve)](https://vercel.com/docs/eve)
+- [eve on GitHub (vercel/eve)](https://github.com/vercel/eve)
+- [The Agent Stack (Vercel blog)](https://vercel.com/blog/agent-stack)
+- [Chat SDK — agents across Slack, Discord, GitHub, etc.](https://vercel.com/blog/chat-sdk-brings-agents-to-your-users)
+
 ## Docker (Self-Hosted / VPS)
 
 For VPS deployment (e.g., ServerAvatar users who want full control):
