@@ -1,5 +1,80 @@
 # Security — XSS, CSRF, CSP, Input Sanitization + Next.js Security
 
+## Why This Matters in 2026
+
+The defensive posture in this file is calibrated to a specific shift: **attackers are now faster than the disclosure cycle**. Per ProjectDiscovery's "The Vulnerability Curve Bent With the AI Curve" (June 18, 2026), median time-to-exploit collapsed from **63 days (2018) → 5 days (2023) → negative (2024+)**, meaning vulnerabilities are now exploited *before* a CVE is published. At the same time, total published CVEs jumped from ~18,000/year in 2018 to a projected ~50,000/year in 2025–2026.
+
+The implication: dependency hygiene, supply-chain vetting, and the "patch fast" reflex in this file are not paranoia — they are the only window defenders have. A package added to your `package.json` with a caret range can be pwned the same day. A typo in a Server Action ownership check is exploitable before your WAF rule is live.
+
+Concrete rules of thumb that fall out of this:
+
+- **Pin exact versions for security-critical deps** — `^1.11.21` lets an attacker bump the minor. Use exact versions or `npm ci` with a lockfile review.
+- **Audit dormant maintainer accounts in your org scopes quarterly** — TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17) all exploited stale contributor access.
+- **Behavioral analysis > `npm audit`** — the Mastra `easy-day-js` typosquat had a clean `npm audit` profile. Use Socket.dev or Snyk for behavior, not just CVE matching.
+- **Run `auth()` + ownership check inside Server Actions** — Server Actions are public POST endpoints reachable directly. Page-level checks do not protect them.
+- **Treat WebCrypto, RSC, and middleware as the highest-value patch surface** — these are the most-cited vulnerable primitives in 2026 Next.js/React CVEs.
+
+**Source:** [ProjectDiscovery — The Vulnerability Curve Bent With the AI Curve (June 18, 2026)](https://projectdiscovery.io/blog/the-vulnerability-curve-bent-with-the-ai-curve)
+
+## Vercel Connect (June 17, 2026) — Scoped, Short-Lived Tokens for Agents
+
+Launched at Vercel Ship 2026 (London, June 17, 2026), **Vercel Connect** is a new primitive in the Agent Stack that gives agents scoped, short-lived access to third-party APIs (Slack, GitHub, Snowflake, Salesforce, Notion, Linear, plus any OAuth/API service) **without** storing long-lived provider secrets in environment variables or your database.
+
+### Why It Matters for Frontend Skills
+
+If you (or an agent) are calling external APIs from a Next.js route, Server Action, or background worker, the standard pattern is to read a `SLACK_BOT_TOKEN` or `GITHUB_TOKEN` from `process.env`. That token is:
+
+1. **Long-lived** — leaked once, valid forever (until manually rotated)
+2. **Broad-scoped** — covers every action the agent might ever take
+3. **Untraceable** — no record of which user authorized which action
+
+Vercel Connect replaces that with **per-task, user-authorized, scoped tokens**. Your code calls a connector, the connector mints a short-lived token scoped only to the permissions the user explicitly granted, and the call is auditable end-to-end (user → agent → service).
+
+### Pattern
+
+```ts
+// app/api/post-to-slack/route.ts
+import { connect } from '@vercel/connect';
+
+export async function POST(req: Request) {
+  const user = await auth(); // your existing auth check
+  if (!user) return new Response('Unauthorized', { status: 401 });
+
+  // Mint a Slack token scoped to this single request, on behalf of this user
+  const token = await connect.slack.tokenFor({ userId: user.id });
+
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ channel: req.body.channel, text: req.body.text }),
+  });
+
+  return Response.json(await res.json());
+}
+```
+
+No `SLACK_BOT_TOKEN` in `.env`. No standing secret. Every token request is logged with the user that triggered it.
+
+### When to Use Vercel Connect
+
+- ✅ Agent calls third-party APIs (Slack, GitHub, Linear, Notion, etc.) on behalf of users
+- ✅ Background jobs that need per-tenant credentials
+- ✅ MCP servers that broker access to a user's data
+- ❌ Your app's own database (use your normal auth, not Connect)
+- ❌ Single-tenant backend services where a service account is appropriate
+
+**Status:** Public beta. Supported providers at launch: Slack, GitHub, Snowflake, Salesforce, Notion, Linear. Any other service via OAuth or API.
+
+**Sources:**
+- [Vercel Ship 2026 recap](https://vercel.com/blog/vercel-ship-2026-recap)
+- [The Agent Stack (June 17, 2026)](https://vercel.com/blog/agent-stack)
+- [Introducing Vercel Connect](https://vercel.com/blog/introducing-vercel-connect)
+- [Vercel Connect KB guide](https://vercel.com/kb/guide/vercel-connect)
+- [Vercel Connect docs](https://vercel.com/docs/connect)
+
 ## CVE-2026-23869 — React RSC DoS (April 2026)
 
 A high-severity denial-of-service vulnerability (CVSS 7.5) in React Server Components was disclosed April 8, 2026. The bug lives in the React Flight protocol's deserialization — a specially crafted HTTP request to any App Router Server Function endpoint can trigger excessive CPU consumption, crashing the server.

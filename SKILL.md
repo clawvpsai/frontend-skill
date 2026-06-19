@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.16
+version: 1.4.17
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -118,6 +118,9 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js docs — Authentication: Server Actions (return null in layout is not recommended)](https://nextjs.org/docs/app/guides/authentication)
 - [BuildMVPFast — Server Actions Security: Real Vulnerabilities (June 18, 2026)](https://www.buildmvpfast.com/blog/nextjs-server-actions-security-vulnerabilities-2026)
 - [Makerkit — Server Actions Security: 5 Vulnerabilities (Next 16.2.6)](https://makerkit.dev/blog/tutorials/secure-nextjs-server-actions)
+- [Vercel Ship 2026 recap (June 17, 2026) — Agent Stack, Vercel Connect, Vercel Agent (private beta)](https://vercel.com/blog/vercel-ship-2026-recap)
+- [Vercel Connect — scoped, short-lived tokens for agents (June 17, 2026)](https://vercel.com/blog/introducing-vercel-connect)
+- [ProjectDiscovery — The Vulnerability Curve Bent With the AI Curve (June 18, 2026)](https://projectdiscovery.io/blog/the-vulnerability-curve-bent-with-the-ai-curve)
 - [Authgear — Next.js Security Best Practices 2026](https://www.authgear.com/post/nextjs-security-best-practices/)
 - [pnpm — minimumReleaseAge (supply-chain defense, blocks short-lived malicious publishes)](https://pnpm.io/supply-chain-security)
 - [OpenAI — Our response to the TanStack npm supply chain attack (May 13, 2026)](https://openai.com/index/our-response-to-the-tanstack-npm-supply-chain-attack/)

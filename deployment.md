@@ -42,6 +42,15 @@ vercel env add NEXT_PUBLIC_API_URL
 vercel env add NEXTAUTH_SECRET
 ```
 
+## Vercel Connect (June 17, 2026) — Agent Tokens
+
+If your Next.js app or agent needs to call third-party APIs (Slack, GitHub, Snowflake, Salesforce, Notion, Linear) **on behalf of users**, prefer Vercel Connect over storing provider tokens in `.env`. Connect mints short-lived, user-scoped, audit-logged tokens at request time. See `security.md` for the full pattern and rationale.
+
+- Public beta as of Ship 2026
+- Providers: Slack, GitHub, Snowflake, Salesforce, Notion, Linear (+ any OAuth/API)
+- Docs: https://vercel.com/docs/connect
+- Launched at: [Vercel Ship 2026](https://vercel.com/blog/vercel-ship-2026-recap)
+
 ## Docker (Self-Hosted / VPS)
 
 For VPS deployment (e.g., ServerAvatar users who want full control):
