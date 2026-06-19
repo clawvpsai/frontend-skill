@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.18
+version: 1.4.19
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -20,7 +20,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
 | Streaming, Suspense, image optimization, PPR, App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
-| Vercel, Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
+| Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + Playwright + component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
@@ -126,5 +126,13 @@ Key breaking changes from Next.js 15 → 16:
 - [OpenAI — Our response to the TanStack npm supply chain attack (May 13, 2026)](https://openai.com/index/our-response-to-the-tanstack-npm-supply-chain-attack/)
 
 - [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
+- [GitHub Advisory: undici WebSocket client DoS via fragment count bypass (CVE-2026-11525, June 19, 2026)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [GitHub Advisory: undici HTTP header injection via Set-Cookie percent-decoding (CVE-2026-12151, June 19, 2026)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [GitHub Advisory: undici Set-Cookie SameSite attribute downgrade (CVE-2026-9679, June 19, 2026)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [undici on npm (current: 8.5.0, 7.28.0 LTS)](https://www.npmjs.com/package/undici)
+- [Chat SDK: bring agents to your users (Vercel blog, March 19, 2026)](https://vercel.com/blog/chat-sdk-brings-agents-to-your-users)
+- [Chat SDK on npm (chat@4.31.0, June 16, 2026)](https://www.npmjs.com/package/chat)
+- [Chat SDK docs (chat-sdk.dev)](https://chat-sdk.dev/docs)
+- [Chat SDK adapter directory (10+ official + vendor-official adapters)](https://chat-sdk.dev/adapters)
 - [Introducing eve — Vercel's open-source agent framework (June 17, 2026) — durable execution + sandbox + approvals + subagents + evals](https://vercel.com/blog/introducing-eve)
 - [Vercel Ship 2026 recap — Agent Stack, eve, Vercel Connect, Vercel Agent (private beta), Claude Managed Agents](https://vercel.com/blog/vercel-ship-2026-recap)

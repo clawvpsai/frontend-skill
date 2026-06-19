@@ -177,6 +177,106 @@ The agent lives alongside your Next.js routes. The same project can serve both t
 - [The Agent Stack (Vercel blog)](https://vercel.com/blog/agent-stack)
 - [Chat SDK — agents across Slack, Discord, GitHub, etc.](https://vercel.com/blog/chat-sdk-brings-agents-to-your-users)
 
+## Chat SDK — Multi-Platform Chat Bots (Ship 2026)
+
+**Chat SDK** (`npm i chat`) is the third pillar of the [Agent Stack](https://vercel.com/blog/agent-stack), alongside [eve](#eve--vercel-agent-framework-june-17-2026) and [Vercel Connect](#vercel-connect-june-17-2026--agent-tokens). It's a single TypeScript library for shipping the same chat bot to **Slack, Microsoft Teams, Google Chat, Discord, WhatsApp, Telegram, GitHub, and Linear** without rewriting platform-specific code. Open-sourced in February 2026, GA-positioned at Ship 2026 (June 17). Current version: **`chat@4.31.0`** (published June 16, 2026), with 70+ npm dependents.
+
+### The Smallest Bot
+
+```bash
+npx create-chat-sdk@latest my-bot
+cd my-bot
+npm run dev
+```
+
+The CLI scaffolds a working Next.js bot (webhook route, `Chat` class config, `.env.example`) and lets you `npx chat-sdk add slack` (or `teams`, `discord`, `github`, etc.) to install platform adapters. The minimum viable bot is a single file:
+
+```ts
+// app/api/chat/route.ts
+import { Chat } from "chat";
+import { createSlackAdapter } from "@chat-adapter/slack";
+import { createRedisState } from "@chat-adapter/state-redis";
+
+const bot = new Chat({
+  userName: "mybot",
+  adapters: { slack: createSlackAdapter() },
+  state: createRedisState(),
+});
+
+bot.onNewMention(async (thread, message) => {
+  await thread.post(`Echo: ${message.text}`);
+});
+```
+
+This single route handles Slack mentions, thread replies, edits, and the markdown-to-native formatting conversion for free. Add another platform by installing the adapter — no code changes:
+
+```ts
+// app/api/chat/route.ts
+import { createDiscordAdapter } from "@chat-adapter/discord";
+import { createTeamsAdapter } from "@chat-adapter/teams";
+
+const bot = new Chat({
+  userName: "mybot",
+  adapters: {
+    slack: createSlackAdapter(),
+    discord: createDiscordAdapter(),
+    teams: createTeamsAdapter(),
+  },
+  state: createRedisState(),
+});
+```
+
+### Architecture
+
+| Layer | Package | Purpose |
+|---|---|---|
+| Core | `chat` | Event routing, message lifecycle, JSX cards, emoji helpers, type-safe message formatting |
+| Platform adapters | `@chat-adapter/{slack,teams,discord,whatsapp,telegram,github,linear,gchat}` | Webhook verification, platform API calls, native streaming |
+| State adapters | `@chat-adapter/state-{redis,postgres,filesystem}` | Subscriptions, distributed locking, message dedup (default TTL 5 min) |
+
+State adapters are **required** for production. `filesystem` is fine for dev; `redis` / `postgres` for multi-instance / serverless.
+
+### When Chat SDK Is the Right Tool
+
+- ✅ You want a single codebase that runs on Slack, Discord, Teams, GitHub, Linear, etc.
+- ✅ You're building an AI agent that needs to live where users already work
+- ✅ You need native streaming (Slack Block Kit streaming, Teams DM native) without per-platform work
+- ❌ You only need one platform and don't care about future portability — direct Slack/Discord SDKs are fine
+- ❌ You need real-time bidirectional WebSocket UX (e.g., voice agents) — Chat SDK is webhook-first, not socket-first
+
+### Chat SDK + eve
+
+Chat SDK composes with eve: eve handles the agent's reasoning loop, sandbox, and approvals; Chat SDK handles "where the user lives" (Slack, Teams, Discord). The combined pattern is "eve is the brain, Chat SDK is the channel":
+
+```ts
+// app/api/chat/route.ts
+import { Chat } from "chat";
+import { createSlackAdapter } from "@chat-adapter/slack";
+import { runAgent } from "eve"; // or your own agent loop
+
+const bot = new Chat({ userName: "agent", adapters: { slack: createSlackAdapter() } });
+
+bot.onNewMention(async (thread, message) => {
+  for await (const chunk of runAgent({ prompt: message.text })) {
+    await thread.post(chunk);  // streamed, markdown-aware
+  }
+});
+```
+
+### Claude Managed Agents on Vercel (Ship 2026 Day Session)
+
+At Ship 2026, Anthropic + Vercel demoed **Claude Managed Agents**: Anthropic hosts the agent loop, but every command the agent runs executes inside a Vercel Sandbox you own — keeping filesystem, processes, and network egress in your environment. Combined with Chat SDK, the pattern is: Chat SDK receives a Slack mention → forwards to Claude Managed Agent → Claude calls Vercel Sandbox to run code → streams the result back through Chat SDK. The user never leaves Slack; the agent code never leaves your Sandbox; the LLM never sees your secrets.
+
+**Sources:**
+- [Chat SDK: bring agents to your users (Vercel blog, March 19, 2026)](https://vercel.com/blog/chat-sdk-brings-agents-to-your-users)
+- [Chat SDK on npm (`chat@4.31.0`)](https://www.npmjs.com/package/chat)
+- [Chat SDK docs (chat-sdk.dev/docs)](https://chat-sdk.dev/docs)
+- [Chat SDK adapter directory](https://chat-sdk.dev/adapters)
+- [Vercel Ship 2026 recap (Agent Stack primitives)](https://vercel.com/blog/vercel-ship-2026-recap)
+- [The Agent Stack (Vercel blog, June 17, 2026)](https://vercel.com/blog/agent-stack)
+- [Chat SDK: tables + streaming markdown (Vercel changelog, March 6, 2026)](https://vercel.com/changelog/chat-sdk-adds-table-rendering-and-streaming-markdown)
+- [Claude Managed Agents on Vercel (Ship 2026 session)](https://vercel.com/blog/vercel-ship-2026-recap)
+
 ## Docker (Self-Hosted / VPS)
 
 For VPS deployment (e.g., ServerAvatar users who want full control):

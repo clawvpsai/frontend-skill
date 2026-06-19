@@ -422,6 +422,59 @@ export async function safeEncrypt(data: ArrayBuffer, key: CryptoKey) {
 - [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
 - [CVE-2026-48618 — TLS wildcard bypass via Unicode normalization (Node.js advisory)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 
+## undici CVEs (June 19, 2026)
+
+On **June 19, 2026** the GitHub Advisory Database published **three new CVEs** against the standalone `undici` npm package (the HTTP/1.1 client that powers Node.js's built-in `fetch` and most third-party SDKs). These are the same fixes that were just bundled into the Node.js June 18 release, but they are published as **separate npm advisories** — meaning the GitHub Advisory feed, Dependabot, and `npm audit` only flag them if you have `undici` in your dependency tree (directly or transitively), not if you're on a patched Node.
+
+| CVE | Severity | Component | Impact | Fixed in |
+|---|---|---|---|---|
+| [CVE-2026-11525](https://github.com/advisories?query=undici+type%3Areviewed) | **HIGH** | `undici` WebSocket client | DoS via fragment count bypass — attacker can crash a Node process with a crafted WebSocket frame | `undici` 7.28.0 / 8.5.0 |
+| [CVE-2026-12151](https://github.com/advisories?query=undici+type%3Areviewed) | MODERATE | `undici` `fetch` | HTTP header injection via `Set-Cookie` percent-decoding — a malicious server can inject arbitrary headers into the response | `undici` 7.28.0 / 8.5.0 |
+| [CVE-2026-9679](https://github.com/advisories?query=undici+type%3Areviewed) | LOW | `undici` `fetch` | `Set-Cookie` SameSite attribute downgrade via permissive substring matching | `undici` 7.28.0 / 8.5.0 |
+
+### Why This Matters Even Though the Node.js Patch Is Out
+
+Every Node 18+ app uses `undici` for `fetch` — but `process.versions.undici` (the version Node bundles) is what you get by default. If you have `undici` listed anywhere in `package.json` (direct, dev, or peer), or you import a package that depends on `undici` at install time, you may get the **npm-published version**, not the bundled one. Affected ecosystem packages include (in order of frequency seen in real apps):
+
+- `@aws-sdk/*` (AWS SDK v3 uses `undici` as its default HTTP handler)
+- `@anthropic-ai/sdk` and `openai` (both use `undici` for fetch when not in the browser)
+- `@supabase/supabase-js`, `@planetscale/database`, `@neondatabase/serverless`
+- `@prisma/client` (in some configurations)
+- `discord.js`, `tiktok-live-connector`, and any WebSocket-heavy client
+- `next-auth` / `@auth/core` (uses `undici` for OAuth provider calls in some adapter paths)
+
+If your `package.json` has no `undici` line but the SDKs above are in your tree, `npm ls undici` will show you what version `npm` actually resolved.
+
+### Three Things To Do Today
+
+1. **On a patched Node line, you're safe by default.** Node 22.23.0 / 24.17.0 / 26.3.1 ships `undici` 6.27.0 / 7.28.0 / 8.5.0 respectively — all three CVE-fix lines. Bump the base image tag or `engines.node`.
+2. **If you depend on a package that bundles its own `undici`**, `npm ls undici` to see the resolved version. If it's older than 6.27.0 / 7.28.0 / 8.5.0, add a top-level `overrides` (npm) or `pnpm.overrides` block:
+
+   ```jsonc
+   // package.json
+   {
+     "overrides": {
+       "undici": "^7.28.0"  // or "^8.5.0" if you want to track the 8.x line
+     }
+   }
+   ```
+
+   ```yaml
+   # pnpm-workspace.yaml
+   pnpm:
+     overrides:
+       undici: ^7.28.0
+   ```
+
+3. **For Server Actions and Route Handlers that call `fetch` with user-supplied URLs**, the same `safeHost()` Unicode-dot sanitizer from the Node.js section above applies — the `undici` 7.28.0+ `fetch` is still subject to `tls.checkServerIdentity()` and is still vulnerable to the wildcard-bypass class of bugs in unpatched Node. Defense in depth.
+
+**Sources:**
+- [GitHub Advisory: undici WebSocket client DoS via fragment count bypass (CVE-2026-11525)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [GitHub Advisory: undici HTTP header injection via Set-Cookie percent-decoding (CVE-2026-12151)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [GitHub Advisory: undici Set-Cookie SameSite attribute downgrade (CVE-2026-9679)](https://github.com/advisories?query=undici+type%3Areviewed)
+- [undici on npm (7.28.0 / 8.5.0 release notes)](https://www.npmjs.com/package/undici)
+- [Node.js June 18, 2026 Security Release (bundles the same undici fixes)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
+
 ## Server Actions Are Public POST Endpoints (2026 Architectural Principle)
 
 **This is the most important Server Actions security pattern in 2026, and it applies to every `'use server'` function in the codebase.** Multiple authoritative 2026 sources (Next.js official docs, Vercel, Makerkit, Authgear, BuildMVPFast) converge on the same rule: **authenticate and authorize *inside* every Server Action body. Never rely on page-level checks, never rely on middleware as your authorization layer.**
@@ -870,6 +923,7 @@ NEXTAUTH_SECRET="..."
 - **WebCrypto without input size cap** — `crypto.subtle.encrypt()` crashes the Node process when the input length is a multiple of 2 GiB (CVE-2026-48933). Even on a patched Node, defense in depth: cap plaintext size before encryption so untrusted input can never approach 2 GiB
 - **Outbound HTTPS calls to wildcard-cert hosts without hostname validation** — CVE-2026-48618 lets Unicode dot separators (U+3002, U+FF0E, U+FF61) pass `tls.checkServerIdentity()` against `*.example.com` while resolving to a different host. If you build a URL from user input, validate the hostname is ASCII-clean and reject Unicode dots at the boundary
 - **Calling `fetch` with a hostname derived from user input** — even on a patched Node, the canonical TLS-bypass / SSRF pattern is `const host = new URL(req.body.url).hostname; await fetch(\`https://${host}/api\`)`; an attacker can supply `evil。example.com` (with U+3002) and slip past any `*.example.com` check. Use a URL allowlist, not string interpolation
+- **Trusting the Node.js June 18 patch to cover all `undici` CVEs** — it only covers the version bundled with Node (`process.versions.undici`). If any package in your dependency tree pulls in its own `undici` (AWS SDK, OpenAI SDK, Anthropic SDK, Supabase, Prisma, NextAuth, WebSocket clients, etc.), `npm ls undici` may show an older version. Use `overrides` / `pnpm.overrides` to force a patched `undici` (7.28.0 / 8.5.0) across the whole tree
 
 **Sources:**
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
