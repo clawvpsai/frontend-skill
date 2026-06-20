@@ -9,7 +9,7 @@ The implication: dependency hygiene, supply-chain vetting, and the "patch fast" 
 Concrete rules of thumb that fall out of this:
 
 - **Pin exact versions for security-critical deps** — `^1.11.21` lets an attacker bump the minor. Use exact versions or `npm ci` with a lockfile review.
-- **Audit dormant maintainer accounts in your org scopes quarterly** — TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17) all exploited stale contributor access.
+- **Audit dormant maintainer accounts in your org scopes quarterly** — TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17), JetBrains Marketplace (June 16) all exploited stale contributor / publisher access.
 - **Behavioral analysis > `npm audit`** — the Mastra `easy-day-js` typosquat had a clean `npm audit` profile. Use Socket.dev or Snyk for behavior, not just CVE matching.
 - **Run `auth()` + ownership check inside Server Actions** — Server Actions are public POST endpoints reachable directly. Page-level checks do not protect them.
 - **Treat WebCrypto, RSC, and middleware as the highest-value patch surface** — these are the most-cited vulnerable primitives in 2026 Next.js/React CVEs.
@@ -475,7 +475,76 @@ If your `package.json` has no `undici` line but the SDKs above are in your tree,
 - [undici on npm (7.28.0 / 8.5.0 release notes)](https://www.npmjs.com/package/undici)
 - [Node.js June 18, 2026 Security Release (bundles the same undici fixes)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 
-## Server Actions Are Public POST Endpoints (2026 Architectural Principle)
+## JetBrains Marketplace Malicious Plugins (June 16, 2026)
+
+On **June 16, 2026**, Aikido Security disclosed a coordinated malware campaign on the JetBrains Marketplace: **at least 15 third-party IDE plugins** published under **7 vendor accounts**, all variants of the same codebase, that **silently exfiltrate AI provider API keys** (OpenAI, Anthropic, DeepSeek, SiliconFlow, Google AI) the moment you paste them into the plugin's settings panel. The campaign was **active for ~8 months** (first version shipped October 31, 2025; latest malicious version shipped June 10, 2026) and accumulated **~70,000 installs** across IntelliJ IDEA, PyCharm, WebStorm, GoLand, CLion, Android Studio, and other JetBrains-based IDEs. JetBrains has since purged all 15 plugins, banned the 7 publisher accounts, and triggered remote kill-switches — but anyone who installed one of them before June 17, 2026 should treat their AI provider keys as compromised.
+
+### Why This Matters in a Frontend Skill
+
+This is **a direct supply-chain attack on AI coding tools**, the same threat class as Mastra (June 17), TanStack (May 11), and node-ipc (May 15). It is in scope here because the skill documents AI-assisted workflows (`AGENTS.md` in `create-next-app`, `next-browser`, Vercel `eve`, Chat SDK, Vercel Agent), and **every one of those workflows ends with an AI provider API key in a developer environment**. The JetBrains plugin exploit demonstrates that the IDE itself is now an attack surface, not just `node_modules`.
+
+### How The Theft Works
+
+All 15 plugins share the same disguised codebase, renamed and repackaged for each listing. Every plugin offers a feature that **legitimately requires** the user to paste an API key into a settings panel (DeepSeek chat, commit-message generation, code review, bug finding, unit tests). The plugins actually deliver the advertised feature — which is what kept them functional and undetected for 8 months. The key exfiltration is a single side-channel call: as soon as the user saves the settings panel, the API key is POSTed (encrypted) to an attacker-controlled C2 server, then the settings panel returns success and the user never knows the key left their machine.
+
+### Indicators of Compromise
+
+If any of the following plugins were installed in any JetBrains IDE before June 17, 2026, treat **all API keys configured in that IDE** (OpenAI, Anthropic, DeepSeek, SiliconFlow, Google AI, plus any other provider keys present in env vars or `~/.config/`) as compromised:
+
+| Plugin | Plugin ID | Downloads | First Seen |
+|---|---|---|---|
+| DeepSeek Junit Test | `org.sm.yms.toolkit` | 1,121 | 2025-10-31 |
+| DeepSeek Git Commit | `com.json.simple.kit` | 1,894 | 2025-11-01 |
+| DeepSeek FindBugs | `org.bug.find.tools` | 1,485 | 2025-11-09 |
+| DeepSeek AI Chat | `org.translate.ai.simple` | 1,317 | 2025-11-23 |
+| DeepSeek Dev AI | `com.yy.test.ai.kit` | 740 | 2025-11-30 |
+| DeepSeek AI Coding | `com.dev.ai.toolkit` | 450 | 2025-12-06 |
+| AI FindBugs | `com.json.view.simple` | 623 | 2025-12-14 |
+| AI Git Commitor | `com.my.git.ai.kit` | 301 | 2026-01-10 |
+| AI Coder Review | `org.check.ai.ds` | 735 | 2026-01-11 |
+| DeepSeek Coder AI | `com.review.tool.code` | 3,498 | 2026-01-15 |
+| AI Coder Assistant | `org.code.assist.dev.tool` | 319 | 2026-02-01 |
+| DeepSeek Code Review | `com.coder.ai.dpt` | 278 | 2026-04-18 |
+| **CodeGPT AI Assistant** | `com.my.code.tools` | **25,571** | 2026-06-09 |
+| **DeepSeek AI Assist** | `ord.cp.code.ai.kit` | **27,727** | 2026-06-10 |
+| Coding Simple Tool | `com.dp.git.ai.tool` | 3,931 | (no online versions) |
+
+Publisher accounts (all banned): **CodePilot (mycode), StackSmith (misshewei), CodeCrafter (keteme), CodeWeaver (simpledev), JetCode (skyblue), DailyCode (dialycode), ZenCoder** (UUID).
+
+The two highest-download plugins — `CodeGPT AI Assistant` (25,571) and `DeepSeek AI Assist` (27,727) — were the last two published before disclosure. The campaign was still active at disclosure time.
+
+### Why Manual Review Failed
+
+JetBrains Marketplace does run a [manual code review](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html#approval-process) on every plugin before publication. This attack evaded review because:
+
+1. The plugin **delivers the advertised feature** — chat, commit messages, code review, etc. all work.
+2. The exfiltration code is **a single small function call** inside an otherwise legitimate codebase — easy to miss in a 5,000-line plugin review.
+3. The C2 server looks like a normal analytics endpoint (HTTPS POST, small JSON payload, user-agent strings matching the IDE).
+4. **8 months of dormancy between updates** for some plugins lowered reviewer suspicion ("looks like an established, low-activity plugin").
+
+The JetBrains team has acknowledged this and is updating their review process to look for outbound network calls inside plugin configuration handlers specifically.
+
+### Five Things To Do Today
+
+1. **Audit installed JetBrains plugins** — `Settings → Plugins → Installed` in any JetBrains IDE (IntelliJ, PyCharm, WebStorm, GoLand, CLion, Rider, Android Studio, RubyMine, PhpStorm, DataGrip). Look for any of the 15 plugin IDs above or any AI-themed plugin from an unfamiliar publisher.
+2. **Rotate every AI provider API key** that was configured in any JetBrains IDE before June 17, 2026 — OpenAI, Anthropic, Google AI, DeepSeek, SiliconFlow, and any custom provider. The exfiltration was silent; absence of evidence is not evidence of absence.
+3. **Check API provider billing dashboards** for unexpected usage spikes. Stolen keys are reportedly **resold as pay-per-use LLM proxy credits**, so the attacker monetizes by burning your quota. High `gpt-4o` or `claude-3-7-sonnet` spend with unfamiliar usage patterns is a strong signal.
+4. **Revoke and reissue keys with usage limits.** OpenAI, Anthropic, and Google AI all support per-key hard spend caps (`$50/month` default for OpenAI, configurable in Anthropic Console, hard quotas in Google AI Studio). Set the cap **below** your expected normal usage so a stolen key burns out before it costs you a meaningful amount.
+5. **Prefer vendor-verified AI plugins only** going forward. JetBrains' own AI Assistant, GitHub Copilot (now a [native JetBrains partner integration](https://blog.jetbrains.com/ai/2026/06/)), Continue.dev (open source, auditable on GitHub), Cursor (separate IDE, separate marketplace), and Tabnine are all vendor-verified or self-hostable. For any third-party AI plugin, require (a) the publisher to be a company you can name, (b) the source to be public on GitHub, and (c) the network calls to be documented in a privacy policy.
+
+### The Pattern Is Now IDE → Registry, Not Just Registry → npm
+
+TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17), and JetBrains Marketplace (June 16) all fit the same broad pattern: **a trusted marketplace or scope is compromised, malicious versions are published, and the malicious code is buried inside working features.** The JetBrains attack is the first one in this cluster to target the **IDE runtime itself** rather than the project\'s `node_modules`. Treat IDE plugins with the same vetting rigor you would apply to npm packages — verify the publisher, check the source, audit network calls. See also `setup.md` → `AGENTS.md` for how this skill recommends documenting trusted AI tooling in the project itself.
+
+**Sources:**
+- [Aikido Security — Multiple JetBrains IDE plugins caught stealing AI keys (June 16, 2026 — full IOC list, publisher accounts, exfiltration flow)](https://www.aikido.dev/blog/multiple-jetbrains-ide-plugins-caught-stealing-ai-keys)
+- [JetBrains Marketplace Ecosystem Security Update — Addressing Malicious Third-Party AI Plugins (official disclosure, June 17, 2026)](https://blog.jetbrains.com/platform/2026/06/marketplace-ecosystem-security-update-malicious-ai-plugins)
+- [Threat-Modeling.com — JetBrains Marketplace Malicious Plugins Stealing AI API Keys from Developer Environments (June 17, 2026)](https://threat-modeling.com/jetbrains-marketplace-malicious-plugins-ai-key-theft-june-2026/)
+- [OffSeq Threat Radar — 15 JetBrains Marketplace plugins quietly stealing developers\' AI API keys (~70,000 installs)](https://radar.offseq.com/threat/15-jetbrains-marketplace-plugins-were-quietly-stea-8bacd71f)
+- [SANS Stormcast Thursday June 18, 2026 — JetBrains Plugins segment (ISC overview)](https://isc.sans.edu/podcastdetail/9978)
+- [JetBrains Marketplace Approval Guidelines (the manual review process that failed)](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html#approval-process)
+
+## Server Actions Are Public POST Endpoints (2026 Architectural Principle) (2026 Architectural Principle)
 
 **This is the most important Server Actions security pattern in 2026, and it applies to every `'use server'` function in the codebase.** Multiple authoritative 2026 sources (Next.js official docs, Vercel, Makerkit, Authgear, BuildMVPFast) converge on the same rule: **authenticate and authorize *inside* every Server Action body. Never rely on page-level checks, never rely on middleware as your authorization layer.**
 
@@ -923,6 +992,7 @@ NEXTAUTH_SECRET="..."
 - **WebCrypto without input size cap** — `crypto.subtle.encrypt()` crashes the Node process when the input length is a multiple of 2 GiB (CVE-2026-48933). Even on a patched Node, defense in depth: cap plaintext size before encryption so untrusted input can never approach 2 GiB
 - **Outbound HTTPS calls to wildcard-cert hosts without hostname validation** — CVE-2026-48618 lets Unicode dot separators (U+3002, U+FF0E, U+FF61) pass `tls.checkServerIdentity()` against `*.example.com` while resolving to a different host. If you build a URL from user input, validate the hostname is ASCII-clean and reject Unicode dots at the boundary
 - **Calling `fetch` with a hostname derived from user input** — even on a patched Node, the canonical TLS-bypass / SSRF pattern is `const host = new URL(req.body.url).hostname; await fetch(\`https://${host}/api\`)`; an attacker can supply `evil。example.com` (with U+3002) and slip past any `*.example.com` check. Use a URL allowlist, not string interpolation
+- **Trusting third-party JetBrains Marketplace AI plugins with production API keys (June 16, 2026 disclosure)** — at least 15 plugins published under 7 publisher accounts (CodePilot, StackSmith, CodeCrafter, CodeWeaver, JetCode, DailyCode, ZenCoder) exfiltrated OpenAI / Anthropic / DeepSeek / SiliconFlow / Google AI keys to attacker C2 for 8 months (~70,000 installs) before JetBrains banned them. Treat any AI provider key that was ever pasted into a JetBrains IDE settings panel before June 17, 2026 as compromised. Rotate the key, check the billing dashboard for anomalous spend, and prefer vendor-verified AI plugins only (JetBrains AI Assistant, GitHub Copilot native integration, Continue.dev, Tabnine)
 - **Trusting the Node.js June 18 patch to cover all `undici` CVEs** — it only covers the version bundled with Node (`process.versions.undici`). If any package in your dependency tree pulls in its own `undici` (AWS SDK, OpenAI SDK, Anthropic SDK, Supabase, Prisma, NextAuth, WebSocket clients, etc.), `npm ls undici` may show an older version. Use `overrides` / `pnpm.overrides` to force a patched `undici` (7.28.0 / 8.5.0) across the whole tree
 
 **Sources:**
