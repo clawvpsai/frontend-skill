@@ -223,6 +223,88 @@ function DynamicForm() {
 - [React Hook Form 7.79.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.79.0)
 - [useFieldArray API — `disabled` prop](https://react-hook-form.com/docs/usefieldarray#props)
 
+## React Hook Form 7.80.0 (June 20, 2026) — Per-Field `disabled` + Perf + `deepEqual` Fix
+
+React Hook Form 7.80.0 was released on **June 20, 2026** (one week after 7.79.0). It completes the `useFieldArray` `disabled` work from 7.79.0 by exposing a `disabled` prop on each `fields[i]` item, ships a broad performance pass, and patches the `deepEqual` regression that 7.79.0 left behind.
+
+### 1. Per-Field `disabled` on `useFieldArray` Items
+
+In 7.79.0, `useFieldArray({ disabled: true })` made the *whole array* inert — `fields` became `[]` and all mutation methods became no-ops. In 7.80.0, you can pass `disabled: true` **and still get a populated `fields` array**, where each item carries its own `disabled` flag you can spread onto the inputs:
+
+```tsx
+const { fields, append, remove } = useFieldArray({
+  control,
+  name: 'items',
+  disabled: !isEditable, // ← NEW in 7.80.0: keeps fields, marks each one disabled
+})
+
+return (
+  <>
+    {fields.map((field, i) => (
+      <div key={field.id}>
+        {/* `field.disabled` is now a boolean you can spread or read */}
+        <input
+          {...register(`items.${i}.name` as const)}
+          disabled={field.disabled} // ← NEW in 7.80.0
+        />
+        <input
+          type="number"
+          {...register(`items.${i}.qty` as const)}
+          disabled={field.disabled} // ← NEW in 7.80.0
+        />
+        <button type="button" onClick={() => remove(i)} disabled={field.disabled}>
+          ×
+        </button>
+      </div>
+    ))}
+    <button type="button" onClick={() => append({ name: '', qty: 1 })} disabled={!isEditable}>
+      Add item
+    </button>
+  </>
+)
+```
+
+**Behavior matrix (7.79.0 → 7.80.0):**
+
+| `useFieldArray({ disabled })` | 7.79.0 behavior | 7.80.0 behavior |
+|---|---|---|
+| `disabled: false` (default) | fields populated, mutations work | unchanged |
+| `disabled: true` | `fields = []`, mutations no-op, array unregistered | fields populated with `field.disabled === true`, mutations no-op, array unregistered |
+| `disabled: <reactive value>` toggling true→false | fields become `[]`, lose IDs on toggle | fields stay mounted, IDs preserved, just toggle the `disabled` flag |
+
+The 7.80.0 behavior is what you want for **read-only / locked views** (e.g. an order details page that should show the items but not let the user edit them) — you no longer lose the IDs on toggle and you don't have to maintain a separate render path.
+
+### 2. Performance Pass (#13524)
+
+A non-API-changing perf improvement to the core form state — fewer unnecessary re-renders, faster `watch`/`getValues`/`setValue` paths. No code changes required to benefit; just bump the dependency.
+
+### 3. `deepEqual` Fix — Empty `[]` vs Empty `{}` (Re-revert of 7.79.0)
+
+7.79.0 shipped a `deepEqual` fix for "empty non-plain objects", but introduced a regression where `[]` and `{}` were treated as equal (both empty after a recursive walk). 7.80.0 fixes it: arrays and objects are now correctly distinguished when both are empty.
+
+```ts
+// Before 7.80.0 — these would compare as equal
+deepEqual([], {}) // → true (BUG)
+
+// 7.80.0
+deepEqual([], {}) // → false (correct)
+```
+
+**Why this matters:** if you used `deepEqual` for any kind of "did this field actually change" comparison in your own code (or in a custom resolver), bumping to 7.80.0 will correctly mark field changes you would have missed before. The 7.79.0 → 7.80.0 fix is safe to apply as a direct dependency bump.
+
+### 4. Common Mistakes
+
+- **Using `useFieldArray({ disabled: true })` to render a read-only view of the items in 7.79.0** — you'd get an empty array. Either upgrade to 7.80.0 and use `field.disabled` on each input, or maintain a separate `useWatch` + manual render path.
+- **Assuming the perf improvements in 7.80.0 mean you can skip React.memo on form fields** — the perf pass reduces internal re-renders, but input-level `React.memo` (or React Compiler) is still your fastest path when a parent re-renders for unrelated reasons.
+- **Pinning to 7.79.0 because of the `[]` vs `{}` regression** — 7.80.0 fixes it; there's no reason to stay on 7.79.0 unless you're blocked on a specific package version for some other reason.
+
+**Sources:**
+- [React Hook Form 7.80.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.80.0)
+- [useFieldArray API — per-item `disabled` (7.80.0+)](https://react-hook-form.com/docs/usefieldarray#props)
+- [GitHub PR #13535 — disable useFieldArray fields](https://github.com/react-hook-form/react-hook-form/pull/13535)
+- [GitHub PR #13524 — perf: make rhf more performant](https://github.com/react-hook-form/react-hook-form/pull/13524)
+- [GitHub PR #13533 — fix(deepEqual): empty array and empty plain object should not be equal](https://github.com/react-hook-form/react-hook-form/pull/13533)
+
 ## Basic Setup
 
 ```bash
