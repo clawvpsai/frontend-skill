@@ -215,7 +215,35 @@ export function LikeButton({ post }: { post: Post }) {
 ```
 
 **When to use which:**
-- `useOptimistic` — best for simple like/subscribe/toggle patterns where you want instant feedback
+
+| Pattern | Best for | Why |
+|---|---|---|
+| **`useOptimistic`** | Form actions, simple toggles (like/subscribe/delete), list operations driven by Server Actions | React auto-reverts on error; works seamlessly with Server Actions; no manual cache plumbing; **recommended in Next.js 16 + React 19.2** |
+| **`useMutation` + `onMutate` / `onError` / `onSettled`** | Shared REST/RPC mutations that affect the React Query cache, cross-component invalidation, complex rollback logic | Full control over the React Query cache; can update multiple queries atomically; works with non-action HTTP endpoints |
+
+**Rule of thumb:** If the mutation is a Server Action called from a form button, use `useOptimistic`. If the mutation is called from a `fetch`-based client API and you need to keep the React Query cache in sync, use `useMutation`.
+
+**Common mistake — `useOptimistic` requires a transition (or async action) to take effect.** The `addOptimistic(...)` call only "sticks" when wrapped in a `startTransition` (or when called from inside an async function passed to a form action). Calling it from a synchronous event handler without a transition causes the optimistic state to flash and revert immediately.
+
+```tsx
+'use client'
+
+import { useOptimistic, useState, startTransition } from 'react'
+import { updatePost } from '@/app/actions'
+
+// ❌ Optimistic state may not show — no transition wrapping the action
+function handleLike() {
+  addOptimisticPost(newLikes)
+  void updatePost(post.id, { likes: newLikes })
+}
+
+// ✅ Wrap the action in a transition so the optimistic state actually shows
+function handleLike() {
+  startTransition(async () => {
+    addOptimisticPost(newLikes)
+    await updatePost(post.id, { likes: newLikes })
+  })
+}
 ```
 
 ### Optimistic List Operations with `useOptimistic`
@@ -306,6 +334,194 @@ return (
 - Works with React Query's `invalidateQueries` — after `onSettled`, the list refetches and replaces the optimistic item with the real one
 
 **Caveat:** Temporary IDs (`temp-${Date.now()}`) prevent key conflicts during the brief window before the server responds. This prevents React from reusing the wrong DOM node when the real item arrives.
+
+## Suspense-Based Data Fetching (Next.js 16 + React 19.2)
+
+React 19.2 + TanStack Query v5 + Next.js 16 enable a **Suspense-first** data-fetching pattern. Instead of `useQuery` + manual `isLoading` checks, you use `useSuspenseQuery` (or `useQuery` with the experimental `use(query.promise)` hook) and let the nearest `<Suspense>` boundary render the loading state. This pairs naturally with `cacheComponents: true` in `next.config.ts` (Next.js 16) and PPR streaming.
+
+### `useSuspenseQuery` — Replace `useQuery` for Static Layouts
+
+```tsx
+// app/posts/page.tsx — Server Component shell
+import { Suspense } from 'react'
+import { PostsList } from './posts-list'
+import { PostsSkeleton } from './posts-skeleton'
+
+export default function PostsPage() {
+  return (
+    <Suspense fallback={<PostsSkeleton />}>
+      <PostsList />
+    </Suspense>
+  )
+}
+```
+
+```tsx
+// app/posts/posts-list.tsx — Client Component, no isLoading branch needed
+'use client'
+
+import { useSuspenseQuery } from '@tanstack/react-query'
+import { fetchPosts } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
+
+export function PostsList() {
+  // data is ALWAYS defined inside a Suspense boundary — no isLoading / isError needed
+  const { data } = useSuspenseQuery({
+    queryKey: queryKeys.posts.list({}),
+    queryFn: fetchPosts,
+  })
+
+  return (
+    <ul>
+      {data.map(p => <li key={p.id}>{p.title}</li>)}
+    </ul>
+  )
+}
+```
+
+**Why this is the recommended Next.js 16 pattern:**
+- `data` is typed as the resolved value (no `data | undefined`) — better DX, fewer type guards
+- The loading skeleton is colocated with the boundary, not inside the component
+- Errors bubble to the nearest `<ErrorBoundary>` — no `isError` check needed
+- Works seamlessly with PPR — the Suspense boundary becomes a streaming hole in the static shell
+
+**Caveats:**
+- `useSuspenseQuery` does **not** support `enabled: false` — dependent queries are handled by serial fetching inside the same component instead
+- `placeholderData` is also unavailable — wrap your key changes in `startTransition` to avoid unwanted fallbacks
+- `useSuspenseQuery` is a hook, so it must be called from a Client Component or inside another Client Component
+
+### `useSuspenseInfiniteQuery` — Paginated Lists
+
+```tsx
+'use client'
+
+import { useSuspenseInfiniteQuery } from '@tanstack/react-query'
+import { fetchPostsPage } from '@/lib/api'
+import { queryKeys } from '@/lib/query-keys'
+
+export function PostsList() {
+  const { data, fetchNextPage, hasNextPage } = useSuspenseInfiniteQuery({
+    queryKey: queryKeys.posts.list({}),
+    queryFn: ({ pageParam }) => fetchPostsPage(pageParam),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  })
+
+  return (
+    <div>
+      {data.pages.flatMap(page => page.items).map(p => (
+        <PostCard key={p.id} post={p} />
+      ))}
+      {hasNextPage && (
+        <button onClick={() => fetchNextPage()}>Load more</button>
+      )}
+    </div>
+  )
+}
+```
+
+### `useSuspenseQueries` — Parallel Dependent Fetches
+
+When you need to fetch N resources in parallel and the component cannot render until all are ready:
+
+```tsx
+'use client'
+
+import { useSuspenseQueries } from '@tanstack/react-query'
+import { fetchUser, fetchPosts, fetchFriends } from '@/lib/api'
+
+export function ProfilePage({ userId }: { userId: string }) {
+  // All three queries fetch in parallel; the component only renders after all resolve
+  const [{ data: user }, { data: posts }, { data: friends }] = useSuspenseQueries({
+    queries: [
+      { queryKey: ['user', userId], queryFn: () => fetchUser(userId) },
+      { queryKey: ['posts', userId], queryFn: () => fetchPosts(userId) },
+      { queryKey: ['friends', userId], queryFn: () => fetchFriends(userId) },
+    ],
+  })
+
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <PostsList posts={posts} />
+      <FriendsList friends={friends} />
+    </div>
+  )
+}
+```
+
+**Caveat:** `useSuspenseQueries` re-mounts the component if **any** query re-fetches in the background (cancellations don't apply to suspense). Set a high `staleTime` to avoid that.
+
+### Experimental: `use(query.promise)` + `React.use()` (React 19.2 + TanStack v5)
+
+React 19.2 + TanStack Query v5 also support an **experimental** pattern where you call `useQuery` in a parent, then unwrap its `.promise` in a child with `React.use()` — letting you decide per-subtree whether to suspense or not:
+
+```tsx
+// app/dashboard/page.tsx — Server Component
+import { QueryClient } from '@tanstack/react-query'
+import { Dashboard } from './dashboard'
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { experimental_prefetchInRender: true } },
+})
+
+export default async function DashboardPage() {
+  // Prefetch on the server (PPR cacheable)
+  await queryClient.prefetchQuery({
+    queryKey: ['dashboard'],
+    queryFn: fetchDashboard,
+  })
+
+  return (
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <Dashboard />
+    </HydrationBoundary>
+  )
+}
+```
+
+```tsx
+// app/dashboard/dashboard.tsx
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { fetchDashboard } from '@/lib/api'
+import { Skeleton } from '@/components/skeleton'
+
+function DashboardCharts({ query }: { query: UseQueryResult<Dashboard> }) {
+  // Only this subtree suspends — the rest of the page renders immediately
+  const data = React.use(query.promise)
+  return <Charts data={data} />
+}
+
+export function Dashboard() {
+  const query = useQuery({ queryKey: ['dashboard'], queryFn: fetchDashboard })
+
+  return (
+    <div>
+      <h1>Welcome back</h1>
+      <React.Suspense fallback={<Skeleton variant="charts" />}>
+        <DashboardCharts query={query} />
+      </React.Suspense>
+    </div>
+  )
+}
+```
+
+**When to use this pattern:**
+- The page has both fast-to-load and slow-to-load sections
+- You want the slow sections to suspend, but the fast sections to render immediately
+- You're on React 19.2+ with TanStack Query v5 — older React versions don't support `React.use()` with promises
+
+**Note:** This pattern is **experimental** in TanStack Query v5 and requires the `experimental_prefetchInRender: true` client config. It is not recommended for production-critical paths yet.
+
+**Sources:**
+- [TanStack Query v5 — Suspense guide](https://tanstack.com/query/v5/docs/framework/react/guides/suspense)
+- [TanStack Query v5 — `useSuspenseQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQuery)
+- [TanStack Query v5 — `useSuspenseInfiniteQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseInfiniteQuery)
+- [TanStack Query v5 — `useSuspenseQueries` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQueries)
+- [React 19.2 — `use()` hook with promises](https://react.dev/reference/react/use)
+
 ## Zustand Setup
 
 ```bash

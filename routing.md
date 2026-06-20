@@ -310,20 +310,83 @@ export default function Error({ error, reset }: { error: Error; reset: () => voi
 
 ## Parallel Routes
 
-Render multiple routes simultaneously in the same layout:
+Render multiple routes simultaneously in the same layout using named **slots** (the `@folder` convention). Slots are passed as props to the shared parent layout:
+
+```
+app/
+├── layout.tsx              # Receives { children, team, analytics } as props
+├── @team/
+│   ├── page.tsx            # /team (renders inside the @team slot)
+│   └── settings/page.tsx   # /team/settings
+├── @analytics/
+│   ├── page.tsx            # /analytics (renders inside the @analytics slot)
+│   └── default.tsx         # ⚠️ REQUIRED in Next.js 16 — see below
+```
 
 ```tsx
-// app/@feed/(.)timeline/page.tsx  → /timeline
-// app/@feed/(.)notifications/page.tsx → /notifications
-
 // app/layout.tsx
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function Layout({
+  children,
+  team,
+  analytics,
+}: {
+  children: React.ReactNode
+  team: React.ReactNode
+  analytics: React.ReactNode
+}) {
+  return (
+    <>
+      {children}
+      {team}
+      {analytics}
+    </>
+  )
+}
+```
+
+### `default.tsx` — Required in Next.js 16 (Breaking Change)
+
+**Next.js 16 requires every parallel route slot to have an explicit `default.tsx` file** — without one, the build fails. This applies to all slots including ones that never need a fallback, because Next.js needs to know what to render when the user navigates to a URL that doesn't match the slot's current child.
+
+```tsx
+// app/@analytics/default.tsx
+import { notFound } from 'next/navigation'
+
+// Option A: 404 when the slot has no matching child
+export default function Default() {
+  notFound()
+}
+
+// Option B: render nothing (preserves the pre-Next.js 16 default behavior)
+export default function Default() {
+  return null
+}
+```
+
+**Why this changed:** Without `default.tsx`, navigating to a URL that doesn't match a slot would either error or use stale slot content from a previous route — confusing users. The `default.tsx` makes the slot's fallback explicit and predictable.
+
+**Rule of thumb:**
+- Use `notFound()` for slots that should 404 when unmatched
+- Use `return null` for slots that should disappear when unmatched (e.g., a modal slot)
+- Use a loading skeleton for slots that should stream independently
+
+### Independent Loading and Error States
+
+Each parallel route can have its own `loading.tsx` and `error.tsx` — they stream independently:
+
+```tsx
+// app/@analytics/loading.tsx
+export default function Loading() {
+  return <AnalyticsSkeleton />
+}
+
+// app/@analytics/error.tsx
+'use client'
+export default function Error({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div>
-      <Header />
-      <FeedTabs />       {/* Tab navigation */}
-      {children}         {/* @feed slot */}
-      <Sidebar />
+      <p>Analytics failed to load</p>
+      <button onClick={reset}>Retry</button>
     </div>
   )
 }
@@ -493,6 +556,70 @@ router.prefetch('/dashboard')
 | Can use all HTTP methods | One export (default) |
 | No UI rendering | Server or Client Component |
 
+## Prefetch & Caching Optimizations (Next.js 16.2)
+
+Next.js 16.2 added two experimental flags that significantly change how navigation data is fetched and cached. Both are **opt-in** and stable enough to use in production with `cacheComponents: true` enabled.
+
+### `experimental.prefetchInlining` — One Request Per Link
+
+By default, Next.js 16's per-segment prefetcher issues **separate requests** for each segment in the route tree (one for the leaf page, one for each slot, one for the layout). This keeps shared layouts cache-efficient but increases request volume. `experimental.prefetchInlining` bundles all segments for a route into **a single response**, reducing the number of prefetch requests to one per `<Link>`.
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    prefetchInlining: true,
+  },
+}
+
+export default nextConfig
+```
+
+**Trade-off:** Shared layout data is duplicated across inlined responses rather than being cached and reused. Use this flag when your app has many leaf pages with small segments — the per-link request reduction wins. Skip it when most of your routes share a heavy layout that benefits from dedup.
+
+### `experimental.cachedNavigations` — Instant Repeat Visits
+
+This flag independently controls the Cached Navigations behavior, which caches **static and dynamic** Server Component data from navigations and the initial HTML loads so that repeat visits to a previously-visited route serve instantly. Requires `cacheComponents: true`.
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  experimental: {
+    cachedNavigations: true,
+  },
+}
+
+export default nextConfig
+```
+
+**When to enable:**
+- Multi-page apps with many repeat visits (dashboards, admin panels, e-commerce back-office)
+- Apps where TTI on the second visit matters more than fresh data
+- Combine with `revalidateTag(tag, profile)` to control how stale the cache is allowed to get
+
+**When to skip:**
+- Apps that depend on real-time data (live trading, chat, monitoring)
+- Apps that render fully-dynamic content per request (no cacheable parts)
+
+### Layout Deduplication + Incremental Prefetching (Next.js 16)
+
+Even without the experimental flags, Next.js 16 ships with two prefetch improvements on by default:
+
+- **Layout deduplication** — When prefetching multiple URLs that share a layout (e.g. 50 product pages under `/shop/[id]`), the shared layout is downloaded **once**, not 50 times. Dramatically reduces network transfer.
+- **Incremental prefetching** — Next.js only prefetches the parts of a route not already in cache, and cancels requests when the link leaves the viewport. The prefetch cache prioritizes links on hover or re-entering the viewport, and re-prefetches links when their data is invalidated.
+
+**Sources:**
+- [Next.js 16.2 release notes — `experimental.prefetchInlining` + `experimental.cachedNavigations`](https://nextjs.org/blog/next-16-2)
+- [Next.js 16 release notes — Layout deduplication + Incremental prefetching](https://nextjs.org/blog/next-16)
+- [Next.js docs — Prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
+- [Next.js docs — Parallel Routes file convention](https://nextjs.org/docs/app/api-reference/file-conventions/parallel-routes)
+- [Next.js 16 upgrade guide — `default.tsx` requirement for parallel routes](https://nextjs.org/docs/app/guides/upgrading/version-16)
+
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 
 **In Next.js 16, `middleware.ts` is deprecated in favor of `proxy.ts`.** The rename reflects that this file intercepts and proxies requests — not just adds middleware headers. Both files work during the deprecation period, but `proxy.ts` is the forward-looking name.
@@ -608,3 +735,14 @@ export const matcher = ['/dashboard/:path*', '/dashboard']
 **Sources:**
 - [Next.js 16 upgrade guide — proxy](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js proxy.ts migration](https://krishna-adhikari.com.np/blogs/next16-middleware-to-proxy)
+
+## Common Mistakes — Routing Edition
+
+- **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
+- **Using `middleware.ts` instead of `proxy.ts`** — works but deprecated in Next.js 16; the export must be renamed to `proxy` and made `async`.
+- **`matcher` regex missing the root path** — `['/dashboard/:path*']` does not match `/dashboard` itself. Always include both.
+- **Putting auth checks only in `proxy.ts`** — proxy can be bypassed; always re-validate `await auth()` in the page/route handler too.
+- **Catching all search params with `useSearchParams()` without `<Suspense>`** — forces the entire route segment to be dynamic. Wrap the client subtree in `<Suspense>` to keep the static shell cacheable.
+- **Inlining heavy layouts** with `experimental.prefetchInlining` — defeats layout dedup. Only enable when most routes have small segments.
+- **Enabling `experimental.cachedNavigations`** for real-time data — you'll show stale data. Skip for trading/chat/monitoring.
+- **Catching `<Error>` from a Server Component in a Client `error.tsx`** — works, but the error boundary must be a Client Component. The boundary also re-renders the static shell, so use it sparingly.

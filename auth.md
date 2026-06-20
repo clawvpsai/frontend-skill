@@ -9,6 +9,22 @@
 
 **Current state (June 2026):** Auth.js v5 (NextAuth v5) is production-ready and widely adopted. v4 remains valid for existing projects but v5 is now the recommended choice for all new Next.js projects. The API is stable.
 
+**Note on the npm dist-tag:** As of `next-auth@5.0.0-beta.31` (April 14, 2026), Auth.js v5 is still published under the `beta` dist-tag (you install with `next-auth@beta`). This is a packaging artifact — the API and runtime have been stable for ~18 months. The skill lists v5 as "✅ Production" because that's the de-facto reality across the ecosystem.
+
+### When to Consider an Alternative
+
+NextAuth/Auth.js is the default for most Next.js apps, but it's not the only option. Per the LogRocket April 2026 comparison of every major auth library for Next.js:
+
+- **Clerk** — Best-in-class DX, pre-built UI components, organizations + MFA out of the box. Free tier exists but limited. Use when UX velocity > control.
+- **Better Auth** — Open-source (MIT), TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations). GA since early 2025. Use when you want full control without rolling your own.
+- **Lucia / Oslo + custom** — Low-level primitives. Use when you need a hand-rolled auth flow with no library opinions (rare).
+- **Supabase Auth / Auth0 / WorkOS** — Use when you're already paying for the platform.
+
+For most apps, **Auth.js v5 remains the default recommendation** — it's free, MIT, framework-agnostic, and integrates cleanly with Next.js 16's `proxy.ts`. Reach for Clerk when DX is the bottleneck, Better Auth when you need more features than Auth.js provides without writing them yourself.
+
+**Sources:**
+- [LogRocket — I tested every major auth library for Next.js in 2026 (April 20, 2026)](https://blog.logrocket.com/best-auth-library-nextjs-2026/)
+
 ### v4 vs v5 — Key Differences
 
 | Concern | v4 | v5 |

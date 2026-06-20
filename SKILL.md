@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.19
+version: 1.4.20
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -13,10 +13,10 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Project setup, TypeScript, Vite, Biome, env vars | `setup.md` | Starting a new project |
 | React components, shadcn/ui, composition, ref forwarding | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
-| Routing, layouts, loading, error boundaries, `proxy.ts` | `routing.md` | Navigation & page structure |
+| Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` / `cachedNavigations` (16.2) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
-| Zustand, React Query, TanStack Query v5 patterns | `state.md` | State & server state |
-| Auth patterns, NextAuth.js, JWT, session management | `auth.md` | User auth & sessions |
+| Zustand, React Query, TanStack Query v5 (incl. `useSuspenseQuery` + `React.use(query.promise)`), v5 migration | `state.md` | State & server state |
+| Auth patterns, NextAuth.js v4/v5, JWT, session management, 2026 alternatives (Clerk, Better Auth) | `auth.md` | User auth & sessions |
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
 | Streaming, Suspense, image optimization, PPR, App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
@@ -136,3 +136,11 @@ Key breaking changes from Next.js 15 → 16:
 - [Chat SDK adapter directory (10+ official + vendor-official adapters)](https://chat-sdk.dev/adapters)
 - [Introducing eve — Vercel's open-source agent framework (June 17, 2026) — durable execution + sandbox + approvals + subagents + evals](https://vercel.com/blog/introducing-eve)
 - [Vercel Ship 2026 recap — Agent Stack, eve, Vercel Connect, Vercel Agent (private beta), Claude Managed Agents](https://vercel.com/blog/vercel-ship-2026-recap)
+- [TanStack Query v5 — Suspense guide](https://tanstack.com/query/v5/docs/framework/react/guides/suspense)
+- [TanStack Query v5 — `useSuspenseQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQuery)
+- [TanStack Query v5 — `useSuspenseInfiniteQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseInfiniteQuery)
+- [TanStack Query v5 — `useSuspenseQueries` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQueries)
+- [Next.js docs — Prefetching guide (16.2.9)](https://nextjs.org/docs/app/guides/prefetching)
+- [Next.js docs — Parallel Routes file convention (16.2.9 — `default.tsx` required)](https://nextjs.org/docs/app/api-reference/file-conventions/parallel-routes)
+- [Next.js 16 release notes — Layout deduplication + Incremental prefetching](https://nextjs.org/blog/next-16)
+- [LogRocket — I tested every major auth library for Next.js in 2026 (April 20, 2026)](https://blog.logrocket.com/best-auth-library-nextjs-2026/)
