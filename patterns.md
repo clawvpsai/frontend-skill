@@ -173,43 +173,58 @@ This sets the default prefetch behavior for all `<Link>` components pointing to 
 - [Next.js 16.3.0-canary.26 — App Shell server response](https://newreleases.io/project/npm/next/release/16.3.0-canary.26)
 - [Next.js 16.3.0-canary.1 — Partial prefetch default](https://newreleases.io/project/npm/next/release/16.3.0-canary.1)
 
-### `unstable_instant` — Instant Client-Side Navigation (Canary)
+### `unstable_instant` — REMOVED in 16.3.0-preview.0 (June 9, 2026)
 
-**⚠️ Status:** `unstable_instant` is a **canary-only feature** in Next.js 16.3. It enables instant client-side navigations (0ms perceived latency) by serving cached route content immediately from the prefetch cache, before the server RSC response even arrives.
+**⚠️ Breaking change (16.3+):** `unstable_instant` was **removed** in `16.3.0-preview.0`. Instant insights now default to `validationLevel: 'warning'` (validates every navigation in dev, no opt-in needed). The previous AI agent hints instructing agents to export `unstable_instant` to surface feedback are obsolete and have been deleted from the docs ([linking-and-navigating, caching, fetching-data, streaming, instant-navigation, loading](https://github.com/vercel/next.js/pull/94577)).
 
-**How it works:** Export `unstable_instant` from a route to indicate that client-side navigations to this route should use the prefetch cache instantly, without waiting for the RSC response:
+**What replaced it:**
+- The dev server now runs instant-navigation validation by default — you'll see the Cold cache indicator / insights badge in the dev overlay whenever a navigation wasn't served in a production-representative way, with no route-level export required.
+- The behavior is the same: served from prefetch cache instantly, RSC response patches dynamic holes in the background.
+- The Cold cache indicator is **scoped to shell cache misses only** (16.3.0-canary.57, [#94911](https://github.com/vercel/next.js/pull/94911)) — initial loads count cache misses up to the static shell, runtime-prefetch navigations count up to the runtime shell. Reads that resolve after the shell no longer count, so warm cache hits no longer incorrectly show the badge.
+
+**Migration:** Just delete any `export const unstable_instant = true` lines from your routes. The default dev validation now does the same thing with no opt-in.
+
+### `prefetch` segment config — `allow-runtime` + stabilization (16.3.0-preview.0)
+
+**Renamed ([#94568](https://github.com/vercel/next.js/pull/94568)):** The runtime-prefetch option on `export const prefetch` was renamed from `force-runtime` to `allow-runtime`. The semantic shift: `allow-runtime` conveys "this segment is designed for and makes sense to runtime prefetch" (a property of the segment), not "force runtime prefetching right now" (a runtime choice). Future runtime-prefetch optimizations can skip a segment without breaking, and `force-runtime` can be re-added later as a codemod-recoverable option if needed.
+
+**Stabilized ([#94571](https://github.com/vercel/next.js/pull/94571)):** `export const prefetch` is now a stable API in Next.js 16.3. Some individual option values may still be marked `unstable_` (e.g. `unstable_allow_runtime`), but the segment-config export itself ships stable.
 
 ```tsx
-// app/dashboard/page.tsx
+// app/dashboard/page.tsx — 16.3 stable segment config
+export const prefetch = 'app-shell' as const    // default: only app shell on hover
+export const prefetch = 'full' as const         // whole route on hover (high-value paths)
+export const prefetch = false                   // no prefetch (auth, admin, rare)
+export const prefetch = 'allow-runtime' as const // opt in to runtime prefetch (renamed from force-runtime)
+```
 
-// Enable instant navigation — served from prefetch cache on navigate
-export const unstable_instant = true
+**Programmatic prefetch with new options (16.3+):**
 
-export default async function DashboardPage() {
-  // ... page content
+```tsx
+'use client'
+import { useRouter } from 'next/navigation'
+
+function PrefetchButton({ href }: { href: string }) {
+  const router = useRouter()
+
+  function handleHover() {
+    router.prefetch(href, { kind: 'full' })            // full route
+    // router.prefetch(href, { kind: 'allow-runtime' }) // runtime prefetch (new option)
+    // router.prefetch(href, { kind: 'app-shell' })     // app shell only
+  }
+
+  return <Link href={href} onMouseEnter={handleHover}>{href}</Link>
 }
 ```
 
-**When to use:**
-- Routes that are frequently navigated to after initial load
-- Dashboard, settings, and app-shell pages where instant feel is critical
-- Most effective when combined with `prefetch="app-shell"` on parent navigation
-
-**How it integrates with Cache Components:**
-When `cacheComponents: true` is enabled and `unstable_instant` is exported from a route:
-1. User hovers/clicks a link to the route
-2. Next.js immediately serves the cached prefetch (layout + static shell) — instant visual response
-3. RSC response arrives in background and patches the DOM for dynamic holes
-4. Result: navigation feels instant even on slow connections
-
-**⚠️ Limitations:**
-- Requires the route to have been prefetched already (link was in viewport or hovered before navigation)
-- Only works for client-side navigations (`<Link>`, `router.push()`) — not initial page loads
-- Canary-only: may change or be removed before stable
-
 **Sources:**
+- [Next.js 16.3.0-preview.0 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.0)
+- [PR #94568 — Rename `force-runtime` to `allow-runtime`](https://github.com/vercel/next.js/pull/94568)
+- [PR #94571 — Stabilize `export const prefetch`](https://github.com/vercel/next.js/pull/94571)
+- [PR #94577 — Remove `unstable_instant` agent hints; insights validate by default](https://github.com/vercel/next.js/pull/94577)
+- [PR #94911 — Scope the Cold cache indicator to shell cache misses](https://github.com/vercel/next.js/pull/94911)
+- [Next.js prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
 - [Next.js instant navigation guide](https://nextjs.org/docs/app/guides/instant-navigation)
-- [Next.js 16.3.0-canary prefetch dedup improvement](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
 
 ## Search with Debounce + URL Sync + React Query
 

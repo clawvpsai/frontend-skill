@@ -123,7 +123,7 @@ Turbopack now persists compiler artifacts to disk under `.next/`. Restarting `ne
 | nextjs.org | 3.5s | 700ms | ~5× |
 | Large internal Vercel app | 15s | 1.1s | ~14× |
 
-No config needed — enabled by default since 16.1. The `experimental.turbopackFileSystemCacheForDev` / `...ForBuild` flags are no longer required (the dev cache is on; build cache is still experimental).
+No config needed — enabled by default since 16.1. The `experimental.turbopackFileSystemCacheForDev` flag is no longer required (the dev cache is on). The `experimental.turbopackFileSystemCacheForBuild` flag is **on by default in canary/preview releases** when certain env vars are detected (16.3.0-preview.3, [#94616](https://github.com/vercel/next.js/pull/94616)) — stabilization will move this into build-adaptors as a more generic solution.
 
 **Source:** [Turbopack FileSystem Caching config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache)
 
@@ -398,6 +398,26 @@ export default [
 
 **Sources:**
 - [React Compiler + Vite 8 + plugin-react v6 guide](https://dev.to/recca0120/react-compiler-10-vite-8-the-right-way-to-install-after-vitejsplugin-react-v6-drops-babel-p0i)
+
+### React Compiler on Turbopack — Experimental Rust Port (16.3.0-canary.52, June 16, 2026)
+
+Next.js 16.3 canary adds **experimental Turbopack React Compiler** support ([#94573](https://github.com/vercel/next.js/pull/94573)). It runs the compiler directly on Turbopack's swc AST with no `gen` + reparse, applied to client code and SSR (not RSC). Opt-in:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  reactCompiler: true,           // required — error if missing
+  experimental: {
+    rustReactCompiler: true,     // opt in to the Rust port on Turbopack
+  },
+}
+```
+
+The Rust compiler also **detects the installed React version** (16.3.0-canary.53, [#94836](https://github.com/vercel/next.js/pull/94836)) — it now builds for React 18 apps, not just React 19 (which it previously assumed). React 17 is supported by the compiler but not by Next.js 16.
+
+**Sources:**
+- [PR #94573 — Turbopack: add experimental React compiler support (canary.52)](https://github.com/vercel/next.js/pull/94573)
+- [PR #94836 — rust react compiler: detect and build for react 18 (canary.53)](https://github.com/vercel/next.js/pull/94836)
 - [vite-plugin-react discussion #1240 — oxc-plugin-react-compiler](https://github.com/vitejs/vite-plugin-react/discussions/1240)
 
 ## Next.js Configuration

@@ -613,12 +613,39 @@ Even without the experimental flags, Next.js 16 ships with two prefetch improvem
 - **Layout deduplication** — When prefetching multiple URLs that share a layout (e.g. 50 product pages under `/shop/[id]`), the shared layout is downloaded **once**, not 50 times. Dramatically reduces network transfer.
 - **Incremental prefetching** — Next.js only prefetches the parts of a route not already in cache, and cancels requests when the link leaves the viewport. The prefetch cache prioritizes links on hover or re-entering the viewport, and re-prefetches links when their data is invalidated.
 
+### `experimental.prefetchInlining` — Now Documented (16.3.0-canary.52, June 16, 2026)
+
+`experimental.prefetchInlining` now has a canonical config reference page ([#94650](https://github.com/vercel/next.js/pull/94650), [docs page](https://nextjs.org/docs/app/api-reference/config/next-config-js/prefetchInlining)). The reference documents the default behavior and the `false` / object forms, including:
+
+- **`maxSize`** threshold — when an inlined bundle exceeds this size, Next.js stops inlining and falls back to per-segment prefetch (prevents over-bundling)
+- **`maxBundleSize`** threshold — per-segment soft cap when inlining is on
+- **Request-count vs dedup trade-off** — turning inlining on reduces the number of prefetch requests but loses layout dedup across shared routes
+
+Previously you could only discover the option through code, PRs, and release notes — now there's an authoritative reference.
+
+### `experimental.useExperimentalReact` — Opt Into React's Experimental Channel (16.3.0-canary.53, June 17, 2026)
+
+New opt-in flag for selecting React's experimental build (which emits `<link rel="expect">` to hold first paint until the streamed shell is coherent — avoids flicker from partially-streamed HTML):
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    useExperimentalReact: true,
+  },
+}
+```
+
+Feeds the existing `needsExperimentalReact` aggregation and the matching Turbopack `react_channel` switch. Previously you had to enable `experimental.taint` (or `transitionIndicator` / `gestureTransition`) as a side effect to get the experimental channel — confusing because the taint APIs only exist in the experimental build. Setting `useExperimentalReact: false` is a no-op when one of those still requires it, and `assignDefaults` warns on that contradiction.
+
 **Sources:**
 - [Next.js 16.2 release notes — `experimental.prefetchInlining` + `experimental.cachedNavigations`](https://nextjs.org/blog/next-16-2)
 - [Next.js 16 release notes — Layout deduplication + Incremental prefetching](https://nextjs.org/blog/next-16)
 - [Next.js docs — Prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
 - [Next.js docs — Parallel Routes file convention](https://nextjs.org/docs/app/api-reference/file-conventions/parallel-routes)
 - [Next.js 16 upgrade guide — `default.tsx` requirement for parallel routes](https://nextjs.org/docs/app/guides/upgrading/version-16)
+- [Next.js `prefetchInlining` config reference (canary.52, [#94650](https://github.com/vercel/next.js/pull/94650))](https://nextjs.org/docs/app/api-reference/config/next-config-js/prefetchInlining)
+- [PR #94861 — Add `experimental.useExperimentalReact` (canary.53)](https://github.com/vercel/next.js/pull/94861)
 
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 
