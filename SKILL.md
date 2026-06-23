@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.24
+version: 1.4.25
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -19,6 +19,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Auth patterns, NextAuth.js v4/v5, JWT, session management, 2026 alternatives (Clerk, Better Auth) | `auth.md` | User auth & sessions |
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
+| Tailwind CSS v4, design tokens, modern cross-engine CSS (`field-sizing`, `@starting-style`, anchor positioning, OKLCH, `light-dark()`, scroll-driven animations) | `styling.md` | Styling & theming |
 | Streaming, Suspense, image optimization, PPR (legacy codepaths removed in 16.3, use `cacheComponents: true`), metadata image route static prerendering under Cache Components (16.3 canary.61), App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
 | Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
@@ -45,6 +46,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **TypeScript 6.0.3** (strict by default, ES2026 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3.1** + **shadcn/ui** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output)
+- **Modern CSS 2026** — `field-sizing: content` (Baseline 2026, Firefox 152 just shipped), `@starting-style` (Baseline 2024), CSS Anchor Positioning (cross-engine 2025–26), OKLCH color space, `color-scheme` + `light-dark()` function, scroll-driven animations
 - **Vite 8** (for non-Next projects; Next uses Turbopack)
 - **@biomejs/biome 2.5.0** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
