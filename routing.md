@@ -591,11 +591,16 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   experimental: {
     cachedNavigations: true,
+    // 16.3.0-canary.61+ — also accepts 'allow-runtime' to widen the runtime stage
+    // to every segment regardless of its per-segment prefetch config:
+    //   cachedNavigations: 'allow-runtime',
   },
 }
 
 export default nextConfig
 ```
+
+**`cachedNavigations` widened type (16.3.0-canary.61, [#95064](https://github.com/vercel/next.js/pull/95064), June 22, 2026):** The config is now `boolean | 'allow-runtime'`. `true` keeps the current behavior (static stage cached, runtime stage only for segments with `export const prefetch = 'allow-runtime'`). `'allow-runtime'` additionally treats every segment as runtime-cached regardless of its per-segment `prefetch` config — useful for dogfooding the CPU/payload overhead of the runtime stage across a whole app. The client-facing env var `__NEXT_EXPERIMENTAL_CACHED_NAVIGATIONS` stays a plain boolean; the runtime prerender is entirely server-driven, so the widening is only consumed in the two production spawn gates (`app-render.tsx` — the client-navigation Flight render and the initial HTML render). Prefetch hints, instant validation, and component-tree staging are intentionally still keyed off the per-segment config — the global flag is a cache-side override, not a prefetch-side one.
 
 **When to enable:**
 - Multi-page apps with many repeat visits (dashboards, admin panels, e-commerce back-office)
@@ -646,6 +651,8 @@ Feeds the existing `needsExperimentalReact` aggregation and the matching Turbopa
 - [Next.js 16 upgrade guide — `default.tsx` requirement for parallel routes](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js `prefetchInlining` config reference (canary.52, [#94650](https://github.com/vercel/next.js/pull/94650))](https://nextjs.org/docs/app/api-reference/config/next-config-js/prefetchInlining)
 - [PR #94861 — Add `experimental.useExperimentalReact` (canary.53)](https://github.com/vercel/next.js/pull/94861)
+- [PR #95064 — Widen `cachedNavigations` to `boolean | 'allow-runtime'` (canary.61)](https://github.com/vercel/next.js/pull/95064)
+- [Next.js 16.3.0-canary.61 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.61)
 
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 

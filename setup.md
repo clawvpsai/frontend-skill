@@ -420,6 +420,36 @@ The Rust compiler also **detects the installed React version** (16.3.0-canary.53
 - [PR #94836 — rust react compiler: detect and build for react 18 (canary.53)](https://github.com/vercel/next.js/pull/94836)
 - [vite-plugin-react discussion #1240 — oxc-plugin-react-compiler](https://github.com/vitejs/vite-plugin-react/discussions/1240)
 
+### Turbopack "Edge Runtime" → "Self-Contained Runtime" Rename (16.3.0-canary.61, [#94726](https://github.com/vercel/next.js/pull/94726), June 22, 2026)
+
+The Turbopack ecmascript-runtime package's `edge` chunk-loading variant has been renamed to `self-contained`. The runtime code's name reflects what it actually does: it performs no runtime chunk loading, registers chunks only via `globalThis`/`self` (no DOM), and is used for **both** the Edge execution environment and single-chunk (service-worker) bundles, where everything is inlined into one file.
+
+**What changed:**
+
+- `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/edge/` → `…/runtime/self-contained/`
+- File renames: `dev-backend-edge.ts` → `dev-backend-self-contained.ts`, `runtime-backend-edge.ts` → `runtime-backend-self-contained.ts`
+- `package.json` scripts: `check:browser-runtime-edge` → `check:browser-runtime-self-contained`
+- `browser_runtime.rs` matches now `(ChunkLoading::Edge, RuntimeType::{Development,Production})` and pushes the renamed paths
+
+**Impact for Next.js users:** This is **not a functionality change** for application code. The rename is internal to Turbopack's runtime code generation. If you have any custom code that reads from `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/edge/` (extremely unlikely for a Next.js app), update the paths. If you see documentation or error messages still referencing the old `edge` runtime path in canary.61+, that's a stale reference — the canonical name is now `self-contained`.
+
+### Cache Components Adoption — `cache-components-instant-false` Codemod (16.3, [#94941](https://github.com/vercel/next.js/pull/94941))
+
+Enabling `cacheComponents: true` fails the build immediately for any route that reads request-time data outside `<Suspense>`. The new `cache-components-instant-false` codemod in `@next/codemod` (registered at `version: '16.3.0'`) blanket-inserts `export const instant = false` (with a `// TODO: Cache Components adoption` comment) into every `app/**/{page,layout,default}.{js,jsx,ts,tsx}` that doesn't already export `instant`. Skips Client Components (`"use client"`), route handlers, and files with existing `instant` exports (including aliased `export { x as instant }`). Idempotent — safe to re-run.
+
+```bash
+# Run from project root, point at your app directory
+npx @next/codemod@canary cache-components-instant-false ./app
+```
+
+For agents working on a larger app, Vercel ships a matching [`next-cache-components-adoption`](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption) skill that drives the full two-milestone adoption (green build → remove `instant = false` top-down) and walks the dev-overlay validation insights:
+
+```bash
+npx skills add https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption
+```
+
+See `patterns.md` → "Cache Components Adoption — The `instant = false` Opt-Out + Adoption Skill" for the full breakdown: highest-wins resolution, why `instant = false` doesn't clear sync-IO errors (`new Date()`, `Math.random()`, `crypto.randomUUID()`), and why you remove opt-outs top-down (root layout first, then descend).
+
 ## Next.js Configuration
 
 ### `next.config.ts`

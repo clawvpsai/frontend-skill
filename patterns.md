@@ -1099,6 +1099,61 @@ export default async function Page() { ... }
 
 If you need edge-like behavior for specific routes, use Next.js 16's **Proxy** (`proxy.ts`) instead, which replaces `middleware.ts`.
 
+**Constraint confirmed in 16.3 docs ([#94897](https://github.com/vercel/next.js/pull/94897), canary.61, June 22, 2026):** Cache Components requires the Node.js runtime — even at the segment level. If you have `export const runtime = 'edge'` on any page or layout that participates in `cacheComponents`, the build will fail. Edge runtime segments and Cache Components are mutually exclusive project-wide; this is now called out explicitly in the migration guide.
+
+#### Cache Components Adoption — The `instant = false` Opt-Out + Adoption Skill (16.3+, [#94941](https://github.com/vercel/next.js/pull/94941))
+
+Enabling `cacheComponents: true` on an existing app **fails the build immediately** for any route that reads request-time data outside a `<Suspense>` boundary. On a large app that's a wall of failures with no clear order to fix them in. Two new first-party tools give agents and humans a sequenced adoption path:
+
+**1. `cache-components-instant-false` codemod** (`@next/codemod`, registered at `version: '16.3.0'`) — blanket-inserts `export const instant = false` (with a `// TODO: Cache Components adoption` comment) into every `app/**/{page,layout,default}.{js,jsx,ts,tsx}` that doesn't already declare or export `instant` in any form. Idempotent: skips files with existing `instant` exports (including aliased `export { x as instant }`), skips Client Components (`"use client"`), and skips route handlers. The resulting build is green; the TODO comments are the work queue for milestone B.
+
+```bash
+# Run from the project root
+npx @next/codemod@canary cache-components-instant-false ./app
+
+# Then enable the flag
+# next.config.ts
+#   cacheComponents: true,
+```
+
+**What the codemod produces:**
+
+```tsx
+// app/dashboard/page.tsx — after codemod
+// TODO: Cache Components adoption. Refactor this route so this opt-out can be removed.
+// See: https://nextjs.org/docs/app/guides/migrating-to-cache-components
+export const instant = false
+
+export default function Page() {
+  return <h1>Dashboard</h1>
+}
+```
+
+**Important quirks of `instant = false`:**
+
+- **Highest-wins resolution.** Resolution is top-down, first-explicit-config-wins — the **highest** `instant = false` in a route's tree decides the whole subtree. So removing a leaf's opt-out does nothing while an ancestor still holds one. The codemod opts **every** segment out on purpose: remove them top-down (root layout first, then descend) so the blast radius is one segment at a time.
+- **Doesn't clear sync-IO errors.** `new Date()`, `Date.now()`, `Math.random()`, `crypto.randomUUID()` called at render time still fail the prerender (`blocking-prerender-current-time` / `-random` / `-crypto`) even with `instant = false`, because they produce different results on every render. So a shared layout that calls `new Date()` directly will block the build regardless of the opt-out — fix that explicitly.
+- **Client Components don't get an opt-out.** `instant` is a Server Component route segment config; exporting it from a `"use client"` module is a build error (`E1344`). They don't need one: a client page is covered by its nearest server layout's opt-out, and a client page can't read server request data (`cookies()`, `headers()`, `await params`) itself.
+- **Framework routes (`/_not-found`, etc.) have no user file.** Don't try to add `instant = false` to `app/not-found.tsx` or similar — the directive wouldn't apply. When `/_not-found` blocks, the cause is the **root layout** it renders through; add the opt-out to `app/layout.tsx` instead.
+
+**2. `next-cache-components-adoption` agent skill** ([Next.js repo: `skills/next-cache-components-adoption/SKILL.md`](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption), June 22, 2026) — an installable agent skill that drives the full adoption in two milestones across five steps:
+
+```bash
+# Install with the Vercel skills CLI
+npx skills add https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption
+```
+
+- **Milestone A — Green build** (steps 1–2): choose Blanket vs Direct strategy, run the codemod (Blanket) or enable the flag directly (Direct), confirm with `next build`.
+- **Milestone B — Remove `instant = false`** (steps 2–3): walk the route tree top-down, one subtree at a time, removing each opt-out and either making the route prerenderable or documenting it as a deliberate Block. This is the loop where adoption actually happens — most of the time is spent here. Verifies each change at runtime via [`next-dev-loop`](https://github.com/vercel/next.js/tree/canary/skills/next-dev-loop) (with a manual dev-overlay fallback).
+- **Requires Next.js 16.3+ and App Router only** — Pages Router projects should stop and tell the user. Hybrid apps (`pages/` + `app/`) are fine: the flag affects only the `app/` routes.
+
+**Useful build flags** when iterating:
+
+- `next build --debug-build-paths="app/admin/**/page.tsx"` — builds only the named routes. **Pass file paths relative to project root**, not URL paths — `--debug-build-paths=/admin` matches nothing and silently exits 0.
+- `next dev --debug-prerender` — dev-only, prints a fuller stack trace so the error names the originating file and line.
+
+**Optional further optimization** (after adoption is complete): making navigations instant via dev-overlay Insights, adopting Partial Prefetching, locking the result in with e2e tests, growing static shells — all covered by linked docs in the skill's "further reading" section, not re-taught in the skill itself.
+
 #### Dynamic Routes with `cacheComponents` — Wrap in Suspense
 
 Dynamic routes like `blog/[slug]` require special handling with `cacheComponents`. The dynamic data fetching part must be wrapped in `<Suspense>`:

@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.23
+version: 1.4.24
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -10,21 +10,21 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 | Topic | File | When to Use |
 |---|---|---|
-| Project setup, TypeScript, Vite, Biome, env vars | `setup.md` | Starting a new project |
+| Project setup, TypeScript, Vite, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
 | React components, shadcn/ui, composition, ref forwarding | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
-| Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2), `experimental.useExperimentalReact` (16.3 canary) | `routing.md` | Navigation & page structure |
+| Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
 | Zustand, React Query, TanStack Query v5 (incl. `useSuspenseQuery` + `React.use(query.promise)`), v5 migration | `state.md` | State & server state |
 | Auth patterns, NextAuth.js v4/v5, JWT, session management, 2026 alternatives (Clerk, Better Auth) | `auth.md` | User auth & sessions |
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
-| Streaming, Suspense, image optimization, PPR, App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
+| Streaming, Suspense, image optimization, PPR (legacy codepaths removed in 16.3, use `cacheComponents: true`), metadata image route static prerendering under Cache Components (16.3 canary.61), App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
 | Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + Playwright + component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
-| React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3) | `patterns.md` | Composite recipes |
+| React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3), `cacheComponents` adoption (`instant = false` opt-out, `cache-components-instant-false` codemod, `next-cache-components-adoption` agent skill in 16.3 canary.61) | `patterns.md` | Composite recipes |
 
 ## Critical Rules (Never Forget)
 
@@ -40,7 +40,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; **16.3.0-preview.0** released June 9, 2026 — `unstable_instant` removed, `export const prefetch` stabilized, `force-runtime` renamed to `allow-runtime`, `turbopackFileSystemCacheForBuild` on by default in preview; **16.3.0-canary.60** latest canary June 21)
+- **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; **16.3.0-preview.3** released June 10, 2026; **16.3.0-canary.61** released June 22–23, 2026 — `cachedNavigations` widened to `boolean | 'allow-runtime'` ([#95064](https://github.com/vercel/next.js/pull/95064)), `cache-components-instant-false` codemod + `next-cache-components-adoption` agent skill shipped ([#94941](https://github.com/vercel/next.js/pull/94941)), legacy PPR codepaths removed ([#94955](https://github.com/vercel/next.js/pull/94955)), metadata image routes now statically prerender under Cache Components ([#94957](https://github.com/vercel/next.js/pull/94957)), Turbopack `edge` runtime renamed to `self-contained` ([#94726](https://github.com/vercel/next.js/pull/94726)), Cache Components docs explicitly call out Node.js runtime requirement ([#94897](https://github.com/vercel/next.js/pull/94897)))
 - **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2026 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
@@ -151,3 +151,13 @@ Key breaking changes from Next.js 15 → 16:
 - [OffSeq Threat Radar — 15 JetBrains Marketplace plugins quietly stealing developers\' AI API keys (~70,000 installs, June 17, 2026)](https://radar.offseq.com/threat/15-jetbrains-marketplace-plugins-were-quietly-stea-8bacd71f)
 - [SANS Stormcast Thursday June 18, 2026 — JetBrains Plugins segment](https://isc.sans.edu/podcastdetail/9978)
 - [JetBrains Marketplace Approval Guidelines (the manual review process that failed)](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html#approval-process)
+- [Next.js 16.3.0-canary.61 release notes (June 22–23, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.61)
+- [PR #95064 — Widen `cachedNavigations` to `boolean | 'allow-runtime'` (canary.61)](https://github.com/vercel/next.js/pull/95064)
+- [PR #94941 — `cache-components-instant-false` codemod + `next-cache-components-adoption` skill (canary.61)](https://github.com/vercel/next.js/pull/94941)
+- [Next.js `next-cache-components-adoption` skill (canary source)](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption)
+- [PR #94955 — Remove legacy PPR codepaths (canary.61)](https://github.com/vercel/next.js/pull/94955)
+- [PR #94957 — Statically prerender metadata image routes under Cache Components (canary.61)](https://github.com/vercel/next.js/pull/94957)
+- [PR #94726 — Turbopack `edge` runtime → `self-contained` rename (canary.61)](https://github.com/vercel/next.js/pull/94726)
+- [PR #94897 — Cache components requires Node.js runtime (docs, canary.61)](https://github.com/vercel/next.js/pull/94897)
+- [Next.js docs — Migrating to Cache Components](https://nextjs.org/docs/app/guides/migrating-to-cache-components) (updated to mention `next-cache-components-adoption` skill)
+- [Next.js docs — Codemods reference (16.3)](https://nextjs.org/docs/app/guides/upgrading/codemods) (now lists `cache-components-instant-false`)
