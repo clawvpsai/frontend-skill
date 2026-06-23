@@ -709,6 +709,307 @@ export function ProductPage({ product }: { product: Product }) {
 }
 ```
 
+## Type-Level Patterns (The Power Tools)
+
+These four features are not part of the "core" TS spec the way `interface` or `extends` are, but they are now table-stakes for any non-trivial TypeScript codebase. Reach for them when the basic tools force you to either over-widen or under-narrow a type.
+
+### `satisfies` Operator (TypeScript 4.9+)
+
+`satisfies` checks that a value matches a type *without* widening the value's inferred type. It sits between "let TS infer" and "explicit type annotation" — you get the structural check from the type, but the literal-narrow inference from the value:
+
+```ts
+// Without satisfies — TS infers `string` (too wide)
+const palette = { red: '#f00', green: '#0f0' }
+//   ^? { red: string; green: string }
+
+// With explicit type — TS forces the wider shape (loses literal)
+const palette: Record<string, string> = { red: '#f00', green: '#0f0' }
+// palette.red has type `string` — can't autocomplete '#f00'
+
+// With satisfies — best of both worlds
+const palette = { red: '#f00', green: '#0f0' } satisfies Record<string, string>
+//   ^? { red: string; green: string }   ← still narrow!
+// AND the assignment is checked against Record<string, string>
+palette.red    // 'string' (literal preserved)
+palette.blue   // ❌ Error: Object literal may only specify known properties
+```
+
+**When to use `satisfies`:**
+- Configuration objects whose keys/values you want to keep narrow (Tailwind class maps, color palettes, feature flags)
+- Any place you'd want a type assertion *and* a structural check
+- Discriminated record types — `satisfies Record<Key, BaseType>` lets you keep narrow per-key types while proving the structure
+
+```ts
+// Discriminated record with satisfies — keeps per-key types narrow
+type Key = 'user' | 'post' | 'comment'
+interface Base { id: string }
+interface User extends Base { name: string; email: string }
+interface Post extends Base { title: string; body: string }
+interface Comment extends Base { body: string; authorId: string }
+
+const handlers = {
+  user:    { id: 'u1', name: 'Alice', email: 'a@x.com' },
+  post:    { id: 'p1', title: 'Hi',  body: 'Hello' },
+  comment: { id: 'c1', body: 'Cool', authorId: 'u1' },
+} satisfies Record<Key, Base>
+//   ^? narrow per-key types preserved: User, Post, Comment
+// AND the compiler proves every Key is present
+
+handlers.user.name     // string — narrow
+handlers.user.title    // ❌ not on User
+handlers.feed          // ❌ 'feed' not in Key
+```
+
+**`satisfies` vs `as` (type assertion):**
+
+| | `satisfies` | `as` |
+|---|---|---|
+| Structural check | Yes | No (assertion bypasses checks) |
+| Narrows inferred type | Yes (preserves literal) | Loses literal info |
+| Runtime cost | Zero | Zero |
+| Use when | "This should match X" | "Trust me, I know better than the type system" |
+
+**Sources:**
+- [TypeScript 4.9 release notes — `satisfies`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html)
+- [learningtypescript.com — The satisfies Operator](https://www.learningtypescript.com/articles/the-satisfies-operator)
+
+### `const` Type Parameters (TypeScript 5.0+)
+
+`const` type parameters make TypeScript infer literal types in function calls, the same way `as const` does on a variable. Useful when you write a generic function and want the call site to preserve the literal types of its arguments:
+
+```ts
+// Without const — T is inferred as `string`, not the literal "Alice"
+function getNamesExactly<T extends { names: readonly string[] }>(arg: T): T['names'] {
+  return arg.names
+}
+const names = getNamesExactly({ names: ['Alice', 'Bob', 'Eve'] })
+//   ^? string[]   ← lost the literal tuple
+
+// With const — T is inferred as readonly ['Alice', 'Bob', 'Eve']
+function getNamesExactly<const T extends { names: readonly string[] }>(arg: T): T['names'] {
+  return arg.names
+}
+const names = getNamesExactly({ names: ['Alice', 'Bob', 'Eve'] })
+//   ^? readonly ['Alice', 'Bob', 'Eve']  ← preserved!
+```
+
+**Common use cases:**
+
+```ts
+// 1. Typed `fetch` wrapper that preserves the response type
+async function getJSON<const T>(url: string): Promise<T> {
+  const res = await fetch(url)
+  return res.json() as T
+}
+// T still widens to its constraint (T), but JSON literal shape is preserved
+// by the call site if T is given a literal-typed default.
+
+// 2. Validation/sanitization that should preserve literal types
+function tag<const T extends string>(value: T): { __tag: T; value: T } {
+  return { __tag: value, value }
+}
+const t = tag('user')
+//   ^? { __tag: 'user'; value: 'user' }  — literal 'user' preserved
+
+// 3. Object keys for exhaustiveness checks
+function keysOf<const T extends object>(obj: T): Array<keyof T> {
+  return Object.keys(obj) as Array<keyof T>
+}
+const k = keysOf({ a: 1, b: 2 })
+// k[0] is `'a' | 'b'`, not just `string`
+```
+
+**Caveats:**
+- `const` only affects inference for *expressions written inside the call* — variables defined outside the call are still widened by default. So `const arr = ['a','b']; fnGood(arr)` will not narrow.
+- If your function writes to its inputs, the readonly inference may conflict. Use `readonly` in your constraints to be safe.
+
+**Sources:**
+- [TypeScript 5.0 release notes — `const` Type Parameters](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html)
+- [Matt Pocock — Const type parameters bring 'as const' to functions](https://www.totaltypescript.com/const-type-parameters)
+
+### Branded (Opaque) Types — Nominal Typing Without Compiler Support
+
+TypeScript is structurally typed: `type UserId = string` and `type PostId = string` are interchangeable, which lets you pass a `postId` where a `userId` is expected. **Branded types** (also called opaque types) simulate nominal typing using an intersection with a phantom property:
+
+```ts
+// Define a brand helper
+type Brand<T, B extends string> = T & { readonly __brand: B }
+
+// Two string aliases that are NOT interchangeable
+type UserId = Brand<string, 'UserId'>
+type PostId = Brand<string, 'PostId'>
+
+declare function getUser(id: UserId): Promise<User>
+declare function getPost(id: PostId): Promise<Post>
+
+const userId = 'usr_123' as UserId
+const postId = 'pst_456' as PostId
+
+getUser(userId)   // ✅ OK
+getUser(postId)   // ❌ Type 'PostId' is not assignable to type 'UserId'
+```
+
+**The "weak" pattern (most common) — `Base & { __brand }`:**
+
+```ts
+type Tag<T> = { readonly __brand: T }
+type Currency<T extends string> = number & Tag<T>
+type Euro = Currency<'euro'>
+type USD  = Currency<'usd'>
+
+// A price function that takes only Euros
+function charge(price: Euro): void { /* ... */ }
+
+const tenEuros = 10 as Euro
+charge(tenEuros)               // ✅
+charge(10)                     // ❌ number is not Euro
+charge(10 as USD)              // ❌ USD is not Euro
+```
+
+**The "strong" pattern — uses a sentinel object so the brand is hard to cast away:**
+
+```ts
+// Strong: you can only create a Currency through the constructor
+type StrongCurrency<T extends string> = (number & Tag<T>) | Tag<T>
+
+const TEN_EUROS: StrongCurrency<'euro'> = 10 as never  // ❌ can't cast directly
+const TEN_EUROS: StrongCurrency<'euro'> = { __brand: 'euro' }  // ❌ still rejected
+// Must go through a constructor:
+function euro(n: number): StrongCurrency<'euro'> { return n as StrongCurrency<'euro'> }
+```
+
+**Smart constructors — the recommended pattern:**
+
+```ts
+// Hide the cast in a function so callers don't learn the trick
+type UserId = Brand<string, 'UserId'>
+
+function createUserId(raw: string): UserId {
+  if (!/^usr_[a-z0-9]{8,}$/.test(raw)) {
+    throw new Error(`Invalid user id: ${raw}`)
+  }
+  return raw as UserId
+}
+
+// Optional Zod-backed smart constructor (best for runtime data)
+import { z } from 'zod'
+
+const UserIdSchema = z.string().regex(/^usr_[a-z0-9]{8,}$/).brand<'UserId'>()
+type UserId = z.infer<typeof UserIdSchema>  // string & z.BRAND<'UserId'>
+
+function parseUserId(raw: string): UserId {
+  return UserIdSchema.parse(raw)  // throws if invalid, returns branded value
+}
+```
+
+**Caveats:**
+- Branded types are erased at runtime — they're purely a type-system fiction. Always validate raw input at the boundary.
+- Math operations on branded numeric types do **not** error in TypeScript. The compiler treats `Euro + Euro` as `number + number`. This is a known gap ([microsoft/TypeScript#59423](https://github.com/microsoft/TypeScript/issues/59423)).
+- For a fuller version with `.map`, `.chain`, validation, etc., look at [Effect's `Brand` module](https://effect.website) — it provides `Brand.Brand`, `Brand.nominal`, and a structured API.
+
+**Sources:**
+- [learningtypescript.com — Branded Types](https://www.learningtypescript.com/articles/branded-types)
+- [ferreira.io — Opaque / Branded Types in TypeScript](https://ferreira.io/posts/opaque-branded-types-in-typescript)
+- [microsoft/TypeScript#202 — Support some non-structural (nominal) type matching](https://github.com/microsoft/TypeScript/issues/202)
+- [Zod — `.brand<'Foo'>()`](https://zod.dev)
+
+### Template Literal Types — String Types in Depth
+
+Template literal types let you express string-shaped types — both the shape they accept and the shape they produce. They are how libraries like `tailwind-merge`, `ts-pattern`, and zod's `z.templateLiteral` build safe string APIs.
+
+**Basic syntax:**
+
+```ts
+type World = 'world'
+type Greeting = `hello ${World}`      // 'hello world'
+
+type Color = 'red' | 'green' | 'blue'
+type ColorClass = `text-${Color}`     // 'text-red' | 'text-green' | 'text-blue'
+
+// Numeric interpolation
+type Digit = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9
+type Pin = `${Digit}${Digit}${Digit}${Digit}`  // 10,000 combinations — valid
+```
+
+**Intrinsic string manipulation types (built into TS):**
+
+```ts
+type Slug = 'hello-world'
+Uppercase<Slug>      // 'HELLO-WORLD'
+Lowercase<Slug>      // 'hello-world'
+Capitalize<Slug>     // 'Hello-world'
+Uncapitalize<Slug>   // 'hello-world'
+```
+
+**Real-world pattern: typed event names**
+
+```ts
+// Without template literals — easy to typo
+person.on('firstName', () => {})  // ❌ not a known event
+person.on('firstNameChanged', () => {})  // ✅
+
+// With template literals — typos caught at compile time
+type Person = { firstName: string; lastName: string; age: number }
+type EventName<T> = {
+  [K in keyof T as `${string & K}Changed`]: (newValue: T[K]) => void
+}
+// EventName<Person> = {
+//   firstNameChanged: (newValue: string) => void
+//   lastNameChanged:  (newValue: string) => void
+//   ageChanged:       (newValue: number) => void
+// }
+```
+
+**Real-world pattern: dot-notation paths (type-safe deep `get`/`set`)**
+
+```ts
+// Build a type that knows every valid "a.b.c" path through an object
+type Paths<T, Prev extends string = ''> = {
+  [K in keyof T & string]:
+    | `${Prev}${K}`
+    | (T[K] extends object
+        ? Paths<T[K], `${Prev}${K}.`>
+        : never)
+}[keyof T & string]
+
+type User = { name: string; address: { city: string; zip: string } }
+type UserPaths = Paths<User>
+//   'name' | 'name.city' | 'name.zip' | 'address' | 'address.city' | 'address.zip'
+
+function get<T, P extends Paths<T>>(obj: T, path: P): GetValue<T, P> {
+  return path.split('.').reduce((acc: any, key) => acc[key], obj) as any
+}
+
+const u: User = { name: 'Alice', address: { city: 'Surat', zip: '395007' } }
+get(u, 'address.city')    // string ✅
+get(u, 'address.zip')     // string ✅
+get(u, 'addres.city')     // ❌ typo caught
+get(u, 'address.country') // ❌ not a path
+```
+
+**Real-world pattern: CSS units / unit-aware strings**
+
+```ts
+type CSSUnit = 'px' | 'rem' | 'em' | '%' | 'vh' | 'vw'
+type CSSLength = `${number}${CSSUnit}`
+type CSSValue = CSSLength | 'auto' | '0'
+
+function setHeight(h: CSSValue): void { /* ... */ }
+setHeight('100px')   // ✅
+setHeight('2.5rem')  // ✅
+setHeight('auto')    // ✅
+setHeight('hello')   // ❌ not a valid CSS value
+```
+
+**Performance caveat:**
+
+Template literal types with large unions explode combinatorially. `${0|1|2|...|9}${0|1|...|9}${0|1|...|9}${0|1|...|9}` produces 10,000 types and slows `tsc` dramatically. For runtime-validated values (user IDs, CSS values, route slugs), prefer **branded types** with a runtime regex/Zod check — keep the type-level work to a small finite set.
+
+**Sources:**
+- [TypeScript docs — Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)
+- [dev.to — I need to learn about TypeScript Template Literal Types (Phenomnominal)](https://dev.to/phenomnominal/i-need-to-learn-about-typescript-template-literal-types-51po)
+- [OneUptime — How to Handle Template Literal Types (Jan 2026)](https://oneuptime.com/blog/post/2026-01-24-typescript-template-literal-types/view)
+
 ## Explicit Resource Management (`using`) — TypeScript 5.2
 
 TypeScript 5.2 introduces the `using` keyword and `Symbol.dispose` for deterministic resource cleanup — similar to C#'s `using` or Python's `with`:

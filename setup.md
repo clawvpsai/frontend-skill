@@ -450,6 +450,63 @@ npx skills add https://github.com/vercel/next.js/tree/canary/skills/next-cache-c
 
 See `patterns.md` → "Cache Components Adoption — The `instant = false` Opt-Out + Adoption Skill" for the full breakdown: highest-wins resolution, why `instant = false` doesn't clear sync-IO errors (`new Date()`, `Math.random()`, `crypto.randomUUID()`), and why you remove opt-outs top-down (root layout first, then descend).
 
+### Vite 8.1 (June 23, 2026) — What's New
+
+Vite 8.1.0 is a minor release with several notable additions. **No breaking changes for plugin authors or app code** — everything below is opt-in.
+
+| Feature | Why it matters | Config / API |
+|---|---|---|
+| **WASM ESM Integration** (`.wasm` direct imports) | Import a `.wasm` file as an ES module — no `?init`, no `WebAssembly.instantiate` boilerplate. Also works in SSR now. | `import wasm from './module.wasm'` |
+| **`server.hmr` → `server.ws` rename** | HMR is implemented over a WebSocket; the `ws` namespace reflects the actual transport. The old `server.hmr` keys still work (deprecation warning). | `server: { ws: { host, port, protocol } }` |
+| **`import.meta.glob` `caseSensitive` option** | Glob matching on case-sensitive filesystems (Linux prod, Docker) can now be forced even on case-insensitive dev hosts (macOS, Windows). | `import.meta.glob('./**/*.svg', { caseSensitive: true })` |
+| **`html.additionalAssetSources` option** | Declare extra roots (e.g. a `public-cdn/` folder, or a remote manifest) whose files become addressable as static assets. | `html: { additionalAssetSources: ['public-cdn'] }` |
+| **Chunk importmap** | Vite now emits a build-time import map so non-bundled script tags can resolve hashed chunk URLs — great for module federation and micro-frontend setups. | (automatic, in build output) |
+| **Lightning CSS as a CSS plugin** | First-class Lightning CSS support — `transform`, `minify`, and `define` are wired in via a plugin dependency. Use it instead of PostCSS for new projects. | `import lightningcss from 'vite-plugin-lightningcss'` |
+| **`envFile` deprecation warning** | The old `envFile: false` is deprecated; use `envDir` + explicit `.env` exclusion via `loadEnv('mode', root, '')`. | warning at startup |
+| **Vite Task (zero-config build cache)** | Optional Rust-based build cache. Speeds up cold builds in CI and large monorepos. | opt-in via `vite task enable` |
+| **Extended `server.fs.deny` list** | Common leaked files (`.env`, `.env.*`, `*.pem`, `*.key`) are now denied by default in dev. Override per-entry. | `server: { fs: { deny: ['custom/secret'] } }` |
+| **Rolldown 1.1.2** | Faster bundling, smaller binaries. Drop-in for Vite 8. | (automatic) |
+
+**Migration impact:** None. Vite 8.1.0 is fully backward-compatible with Vite 8.0.x. The `server.hmr` keys still work (deprecation warning) and the new `server.ws` keys are recommended for new code.
+
+**The WASM ESM integration in practice:**
+
+```ts
+// Before Vite 8.1 (still works)
+import init, { add } from './add.wasm?init'
+await init()
+console.log(add(1, 2))
+
+// Vite 8.1+ — direct ESM import (works in dev, build, and SSR)
+import * as addWasm from './add.wasm'
+const { add } = await addWasm
+console.log(add(1, 2))
+```
+
+**The `server.ws` rename in practice:**
+
+```ts
+// Vite 8.0
+export default defineConfig({
+  server: {
+    hmr: { host: 'myhost.local', port: 24678, protocol: 'wss' },
+  },
+})
+
+// Vite 8.1+ (recommended)
+export default defineConfig({
+  server: {
+    ws: { host: 'myhost.local', port: 24678, protocol: 'wss' },
+  },
+})
+// Vite logs: "server.hmr.* is deprecated, use server.ws.* instead"
+```
+
+**Sources:**
+- [Vite 8.1.0 CHANGELOG (GitHub)](https://github.com/vitejs/vite/blob/v8.1.0/packages/vite/CHANGELOG.md)
+- [Vite 8.0 announcement — foundational features that 8.1 builds on](https://vite.dev/blog/announcing-vite8)
+- [Vite 8.1.0 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.0)
+
 ## Next.js Configuration
 
 ### `next.config.ts`

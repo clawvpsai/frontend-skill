@@ -207,6 +207,233 @@ const MyInput = forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInput
 )
 ```
 
+### Ref callback cleanup (React 19)
+
+In React 19, a **callback ref** can return a cleanup function. React calls it when the ref is detached (component unmounts) — and the ref is *not* called with `null` anymore. This is the cleanest way to attach and tear down observers, subscriptions, or imperative DOM APIs without `useEffect`:
+
+```tsx
+// React 19 — ref callback returns a cleanup function
+'use client'
+
+import { useState } from 'react'
+
+function MeasureExample() {
+  const [height, setHeight] = useState(0)
+
+  // ✅ The returned function is the cleanup — no useEffect needed
+  const measuredRef = (node: HTMLHeadingElement | null) => {
+    if (!node) return  // safety for the null case
+
+    const observer = new ResizeObserver(([entry]) => {
+      setHeight(entry.contentRect.height)
+    })
+    observer.observe(node)
+
+    // Return cleanup — React calls it when the node is detached
+    return () => {
+      observer.disconnect()
+    }
+  }
+
+  return (
+    <>
+      <h1 ref={measuredRef}>Hello, world</h1>
+      <h2>The above header is {Math.round(height)}px tall</h2>
+    </>
+  )
+}
+```
+
+**What changed vs React 18:**
+- React 18: callback ref was called with `null` on unmount; you had to detect that to clean up.
+- React 19: return a cleanup function — React calls it on detach, and skips the `null` call. Cleaner mental model, fewer re-runs.
+
+**Caveats:**
+- The returned cleanup runs on unmount, not on every re-render. The callback itself is still re-invoked on every render unless you wrap it in `useCallback` or enable the **React Compiler** (then the compiler memoizes it for you).
+- Pair with the React Compiler: it removes the need for `useCallback` around the ref callback, so the cleanup pattern is fully self-contained.
+- Cleanup return is not yet supported in async Server Components.
+
+**Sources:**
+- [React 19 release notes — ref cleanup](https://react.dev/blog/2024/12/05/react-19)
+- [tkdodo — Ref Callbacks, React 19 and the Compiler](https://tkdodo.eu/blog/ref-callbacks-react-19-and-the-compiler)
+- [React docs — `useRef` (callback ref API)](https://react.dev/reference/react/useRef#caveats)
+
+## Custom Hooks (React 19 + 19.2)
+
+React 19 (and 19.2) shipped several new hooks and stabilized others. These cover the patterns the React docs now recommend for forms, accessibility, and event separation.
+
+### `useFormStatus` — Form pending state from a child
+
+`useFormStatus()` reads the status of the parent `<form>`. It works with **Server Actions** and native form submissions — no extra wiring. The hook must be called from a component rendered *inside* the `<form>` (not the form component itself):
+
+```tsx
+// components/submit-button.tsx
+'use client'
+
+import { useFormStatus } from 'react-dom'
+import { Button } from '@/components/ui/button'
+
+export function SubmitButton({ children }: { children: React.ReactNode }) {
+  const { pending, data, method, action } = useFormStatus()
+
+  return (
+    <Button type="submit" disabled={pending} aria-busy={pending}>
+      {pending ? 'Submitting…' : children}
+    </Button>
+  )
+}
+```
+
+**Returns:**
+- `pending: boolean` — true while the form is submitting
+- `data: FormData | null` — the data being submitted
+- `method: 'get' | 'post' | 'dialog' | null`
+- `action: string | null` — the resolved action URL
+
+**Typical usage in a Server Action form:**
+
+```tsx
+// app/signup/page.tsx — server component
+import { signup } from './actions'
+import { SubmitButton } from '@/components/submit-button'
+
+export default function SignupPage() {
+  return (
+    <form action={signup} className="space-y-4">
+      <input name="email" type="email" required className="border rounded px-3 py-2" />
+      <SubmitButton>Create account</SubmitButton>
+    </form>
+  )
+}
+```
+
+**Caveats:**
+- Must be inside a `<form>`. If `status.pending` is never `true`, the hook is being called from a component that isn't a child of the form (common bug).
+- For React Hook Form, prefer `formState.isSubmitting` instead — `useFormStatus` only sees the parent native `<form>` it lives inside, not RHF-managed state.
+
+**Sources:**
+- [React docs — `useFormStatus`](https://react.dev/reference/react-dom/hooks/useFormStatus)
+- [Telerik — Guide to New Hooks in React 19](https://www.telerik.com/blogs/guide-new-hooks-react-19)
+
+### `useId` — SSR-safe, accessibility-grade unique IDs
+
+`useId()` generates a unique, stable ID per component instance that matches between server and client. Use it for `<label htmlFor>`, `aria-describedby`, `aria-labelledby`, and any other DOM-ID relationship:
+
+```tsx
+'use client'
+
+import { useId } from 'react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+
+export function TextField({ label, error, hint, ...props }: TextFieldProps) {
+  // One call → derive every related ID deterministically
+  const id = useId()
+  const errorId = `${id}-error`
+  const hintId = `${id}-hint`
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
+        id={id}
+        aria-describedby={[hintId, error ? errorId : null].filter(Boolean).join(' ') || undefined}
+        aria-invalid={error ? true : undefined}
+        {...props}
+      />
+      {hint ? <p id={hintId} className="text-sm text-muted-foreground">{hint}</p> : null}
+      {error ? <p id={errorId} className="text-sm text-destructive">{error}</p> : null}
+    </div>
+  )
+}
+```
+
+**Why `useId` (and not `Math.random()` or a global counter):**
+- Stable across re-renders — screen readers don't get confused by changing IDs.
+- Same value on server and client — no React hydration mismatch warnings.
+- No shared mutable counter — safe inside lists, modals, portals, anywhere.
+
+**Caveats (from the React docs):**
+- **Don't use for React keys** in lists. Keys must come from your data, not from `useId`.
+- **Don't use for `use()` cache keys** — IDs aren't stable enough as cache identifiers.
+- **Not yet supported in async Server Components** — call it from a client child or hoist into a client component.
+- The component tree rendered on server and client must be structurally identical, or the generated IDs won't match.
+
+**Sources:**
+- [React docs — `useId`](https://react.dev/reference/react/useId)
+- [Epic React — Improving React Accessibility with `useId`](https://www.epicreact.dev/improving-react-accessibility-with-use-id-knljs)
+
+### `useEffectEvent` (React 19.2) — Separate events from effects
+
+`useEffectEvent` lets you extract a callback that reads the **latest** props/state without making those values reactive in your effect's dependency array. It's React's official answer to the "stale closure + lint suppression" problem:
+
+```tsx
+'use client'
+
+import { useEffect, useContext, useEffectEvent } from 'react'
+import { ShoppingCartContext } from './cart-context'
+
+function Page({ url }: { url: string }) {
+  const { items } = useContext(ShoppingCartContext)
+  const numberOfItems = items.length
+
+  // ✅ Effect event — reads latest `numberOfItems`, but does NOT re-run the effect when it changes
+  const onNavigate = useEffectEvent((visitedUrl: string) => {
+    logVisit(visitedUrl, numberOfItems)  // always the latest value
+  })
+
+  // ✅ Effect only re-runs when `url` changes
+  useEffect(() => {
+    onNavigate(url)
+  }, [url])  // eslint react-hooks/exhaustive-deps won't complain about onNavigate
+}
+```
+
+**The problem it solves:** Normally, if an effect reads a reactive value (a prop or state), that value must be in the dependency array — otherwise the effect sees a stale value. But adding it causes the effect to re-run unnecessarily. `useEffectEvent` lets you "mark" a function as non-reactive: it always sees the latest state but doesn't trigger the effect.
+
+**More real-world examples:**
+
+```tsx
+// Auto-save on interval — useEffectEvent lets the save callback see fresh content
+function DocumentEditor({ documentId }: { documentId: string }) {
+  const [content, setContent] = useState('')
+  const [meta, setMeta] = useState({})
+
+  const doSave = useEffectEvent(() => {
+    api.save(documentId, { content, meta, timestamp: Date.now() })
+  })
+
+  useEffect(() => {
+    const id = setInterval(doSave, 30_000)
+    return () => clearInterval(id)
+  }, [documentId])  // doesn't re-run on every keystroke
+}
+
+// WebSocket notification — read latest `theme` without re-subscribing on theme change
+function ChatRoom({ roomId, theme }: Props) {
+  const onConnected = useEffectEvent(() => {
+    showNotification('Connected!', theme)  // latest theme, no re-subscribe
+  })
+
+  useEffect(() => {
+    const connection = createConnection(serverUrl, roomId)
+    connection.on('connected', onConnected)
+    connection.connect()
+    return () => connection.disconnect()
+  }, [roomId])  // re-subscribes only on roomId change
+}
+```
+
+**Caveats:**
+- `useEffectEvent` functions are meant to be called **inside Effects** (`useEffect`, `useLayoutEffect`, `useInsertionEffect`). They have an "Effect Event" identity, so they won't trigger re-renders and aren't reactive.
+- Don't add the effect event to your effect's dependency array — the exhaustive-deps lint rule recognizes them and exempts them automatically.
+- Pair with the React Compiler: it removes the manual `useCallback` you'd otherwise use, leaving you with a clean effect + event split.
+
+**Sources:**
+- [React docs — `useEffectEvent`](https://react.dev/reference/react/useEffectEvent)
+- [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
+- [React docs — Separating events from effects](https://react.dev/learn/separating-events-from-effects)
+
 ## Error Handling in Components
 
 ### Error Boundaries (Client Components)

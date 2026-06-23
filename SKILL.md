@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.25
+version: 1.4.26
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -10,8 +10,8 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 | Topic | File | When to Use |
 |---|---|---|
-| Project setup, TypeScript, Vite, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
-| React components, shadcn/ui, composition, ref forwarding | `components.md` | Building UI |
+| Project setup, TypeScript, Vite 8.1, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
+| React components, shadcn/ui, composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
 | Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
@@ -24,7 +24,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + Playwright + component tests | `testing.md` | Test-driven dev |
-| Strict TypeScript, generics, utilities, `import defer`, Temporal API | `typescript.md` | Type safety |
+| Strict TypeScript, generics, utilities, `import defer`, Temporal API, `satisfies`, `const` type parameters, branded/opaque types, template literal types | `typescript.md` | Type safety |
 | React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3), `cacheComponents` adoption (`instant = false` opt-out, `cache-components-instant-false` codemod, `next-cache-components-adoption` agent skill in 16.3 canary.61) | `patterns.md` | Composite recipes |
 
 ## Critical Rules (Never Forget)
@@ -41,15 +41,15 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 ## Version Defaults
 
-- **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; **16.3.0-preview.3** released June 10, 2026; **16.3.0-canary.61** released June 22–23, 2026 — `cachedNavigations` widened to `boolean | 'allow-runtime'` ([#95064](https://github.com/vercel/next.js/pull/95064)), `cache-components-instant-false` codemod + `next-cache-components-adoption` agent skill shipped ([#94941](https://github.com/vercel/next.js/pull/94941)), legacy PPR codepaths removed ([#94955](https://github.com/vercel/next.js/pull/94955)), metadata image routes now statically prerender under Cache Components ([#94957](https://github.com/vercel/next.js/pull/94957)), Turbopack `edge` runtime renamed to `self-contained` ([#94726](https://github.com/vercel/next.js/pull/94726)), Cache Components docs explicitly call out Node.js runtime requirement ([#94897](https://github.com/vercel/next.js/pull/94897)))
+- **Next.js 16.2.9** (latest stable — App Router, Server Components, Server Actions, Turbopack stable for production, Node.js proxy, `use cache` directive, PPR stable; **16.3.0-preview.3** released June 10, 2026; **16.3.0-canary.62** released June 23, 2026 (minor — marks `insight-error-page` and `next-rspack` skills as internal [#95070], Turbopack `clone`-avoidance on module sort by path [#95079], false-positive `export const dynamic` in Cache Components detection fix [#95083], new **Interactive Apps** guide [#94020]); **16.3.0-canary.61** released June 22–23, 2026 — `cachedNavigations` widened to `boolean | 'allow-runtime'` ([#95064](https://github.com/vercel/next.js/pull/95064)), `cache-components-instant-false` codemod + `next-cache-components-adoption` agent skill shipped ([#94941](https://github.com/vercel/next.js/pull/94941)), legacy PPR codepaths removed ([#94955](https://github.com/vercel/next.js/pull/94955)), metadata image routes now statically prerender under Cache Components ([#94957](https://github.com/vercel/next.js/pull/94957)), Turbopack `edge` runtime renamed to `self-contained` ([#94726](https://github.com/vercel/next.js/pull/94726)), Cache Components docs explicitly call out Node.js runtime requirement ([#94897](https://github.com/vercel/next.js/pull/94897)))
 - **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2026 target, import defer; TS 7 beta available with Go-based compiler)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
 - **Tailwind CSS v4.3.1** + **shadcn/ui** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output)
 - **Modern CSS 2026** — `field-sizing: content` (Baseline 2026, Firefox 152 just shipped), `@starting-style` (Baseline 2024), CSS Anchor Positioning (cross-engine 2025–26), OKLCH color space, `color-scheme` + `light-dark()` function, scroll-driven animations
-- **Vite 8** (for non-Next projects; Next uses Turbopack)
-- **@biomejs/biome 2.5.0** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
-- **TanStack Query v5.101.0** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
+- **Vite 8.1.0** (for non-Next projects; Next uses Turbopack — 8.1 ships WASM ESM Integration, `server.hmr` → `server.ws` rename, `import.meta.glob` `caseSensitive`, chunk importmap, lightningcss support, extended `server.fs.deny` defaults; **≥ 8.1.0 required for the new `caseSensitive` glob option**)
+- **@biomejs/biome 2.5.1** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
+- **TanStack Query v5.101.1** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
 - **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; **≥ 4.1.8 required for the CDP RCE fix (GHSA-g8mr-85jm-7xhm, CVSS 9.8)**; use `api.allowWrite: false, api.allowExec: false` in CI; Vitest 5 in beta)
 - **React Hook Form v7.80.0** + **@hookform/resolvers v5.4.0** (7.80.0 ships per-field `disabled` on `useFieldArray` items; broad perf pass; fixes `[]` vs `{}` `deepEqual` regression from 7.79.0) (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
@@ -154,6 +154,20 @@ Key breaking changes from Next.js 15 → 16:
 - [SANS Stormcast Thursday June 18, 2026 — JetBrains Plugins segment](https://isc.sans.edu/podcastdetail/9978)
 - [JetBrains Marketplace Approval Guidelines (the manual review process that failed)](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html#approval-process)
 - [Next.js 16.3.0-canary.61 release notes (June 22–23, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.61)
+- [Next.js 16.3.0-canary.62 release notes (June 23, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.62)
+- [Vite 8.1.0 release notes + CHANGELOG (June 23, 2026)](https://github.com/vitejs/vite/releases/tag/v8.1.0)
+- [Vite 8.1.0 CHANGELOG.md (raw)](https://github.com/vitejs/vite/blob/v8.1.0/packages/vite/CHANGELOG.md)
+- [React docs — `useFormStatus`](https://react.dev/reference/react-dom/hooks/useFormStatus)
+- [React docs — `useId`](https://react.dev/reference/react/useId)
+- [React docs — `useEffectEvent`](https://react.dev/reference/react/useEffectEvent)
+- [React docs — Separating events from effects](https://react.dev/learn/separating-events-from-effects)
+- [tkdodo — Ref Callbacks, React 19 and the Compiler](https://tkdodo.eu/blog/ref-callbacks-react-19-and-the-compiler)
+- [Matt Pocock — Const type parameters bring 'as const' to functions](https://www.totaltypescript.com/const-type-parameters)
+- [learningtypescript.com — Branded Types](https://www.learningtypescript.com/articles/branded-types)
+- [ferreira.io — Opaque / Branded Types in TypeScript](https://ferreira.io/posts/opaque-branded-types-in-typescript)
+- [TypeScript 5.0 release notes — `const` Type Parameters](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-0.html)
+- [TypeScript 4.9 release notes — `satisfies`](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-4-9.html)
+- [TypeScript docs — Template Literal Types](https://www.typescriptlang.org/docs/handbook/2/template-literal-types.html)
 - [PR #95064 — Widen `cachedNavigations` to `boolean | 'allow-runtime'` (canary.61)](https://github.com/vercel/next.js/pull/95064)
 - [PR #94941 — `cache-components-instant-false` codemod + `next-cache-components-adoption` skill (canary.61)](https://github.com/vercel/next.js/pull/94941)
 - [Next.js `next-cache-components-adoption` skill (canary source)](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-adoption)
