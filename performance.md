@@ -402,7 +402,68 @@ const nextConfig: NextConfig = {
 
 **Note:** App Shells require all static content to be wrapped in Suspense boundaries — if a component doesn't have a Suspense boundary, it's considered part of the shell and can't stream independently.
 
-See: [Next.js 16.3 canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
+### ISR + Prefetch + App Shells (16.3.0-canary.63)
+
+PR [#94534](https://github.com/vercel/next.js/pull/94534) (June 24, 2026) closes a long-standing cold-cache gap: previously, a static segment prefetch that hit a route with an unresolved ISR entry couldn't be served a fallback shell — so the prefetch cache was left cold until the entry regenerated, and the user saw the spinner on the first navigation after revalidation. Canary.63 lets the prefetch request be served the ISR **fallback shell immediately**, warming the cache right away.
+
+Because the shell is only a partial response, the client retries the prefetch a bounded number of times so it eventually upgrades to the full concrete response once the server finishes regenerating in the background. **Only shells that can actually be upgraded are retried** — a route with no `generateStaticParams` never upgrades, so its shell isn't flagged and the client doesn't waste retries on it.
+
+The new serving behavior is gated behind the existing `experimental.appShells` flag, so existing behavior is unchanged when it's off. Pair this with `experimental.cachedNavigations` to get the full "instant repeat visits + warm prefetch on cold cache" combo.
+
+### Dev Insights — Cleaner Fix Cards (16.3.0-canary.63)
+
+PR [#94926](https://github.com/vercel/next.js/pull/94926) cleans up two misleading Insight fix cards in the dev overlay:
+
+- **Drop the `generateStaticParams` card** from runtime + client-hook Insight sets. It was being shown on every error involving `cookies()` / `headers()` / `params` / `searchParams`, but `generateStaticParams` only applies to `params` — for the other three it was noise, and even for `params` it nudged devs to make the route static instead of fixing the immediate error.
+- **Filter the `"use cache"` card** when the cause is `connection()`. Caching `connection()` is contradictory, so suggesting it was actively wrong.
+
+Both manifests on initial load and in-navigation (the fix-card sets are shared). The card set is now `01-cookies-body`, `03-params-body`, `90-client-use-params`, `41-subnav-cookies`, `42-subnav-fetch` (drop) plus `05-connection-body`, `08-connection-body-dynamic`, `31-connection-in-metadata`, `33-connection-in-viewport` (filtered).
+
+See: [Next.js 16.3 canary release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26) • [PR #94534 — Serve ISR fallback shells to prefetch requests (canary.63)](https://github.com/vercel/next.js/pull/94534) • [PR #94926 — Drop irrelevant fix cards from instant errors (canary.63)](https://github.com/vercel/next.js/pull/94926) • [Next.js 16.3.0-canary.63 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.63) • [PR #95080 — `TURBOPACK_DEBUG_CSS_CHUNKING` env var (canary.64)](https://github.com/vercel/next.js/pull/95080) • [PR #95100 — `cacheMaxMemorySize: 0` no longer forces dynamic cache life in dev (canary.65)](https://github.com/vercel/next.js/pull/95100) • [PR #95116 — `getHeaders` no longer mutates `req.headers` (canary.65)](https://github.com/vercel/next.js/pull/95116)
+
+### Turbopack Single-Entry Chunks + Chunk Merging (16.3.0-canary.64)
+
+PRs [#94727](https://github.com/vercel/next.js/pull/94727) and [#95102](https://github.com/vercel/next.js/pull/95102) (June 24, 2026) land two complementary improvements to the chunk graph:
+
+- **Single-entry chunks** — the chunker can now emit chunks that contain exactly one entry module, in addition to multi-entry chunks. This is the building block for finer-grained code splitting when a route has heavy peer-imports (e.g. a charting library imported only by a single route) that don't naturally cluster with the rest of the page.
+- **Merge chunks when `overlap == 1`** — when two adjacent chunks would emit a `1`-overlap (one shared dependency in the same segment), they're now merged into a single chunk. This trims the request count and avoids a class of awkward `ChunkLoadError`s where a shared helper was reachable only through a chunk that the next-page navigation had already evicted.
+
+For most apps the practical effect is neutral or slightly positive — a small reduction in chunk count and a small improvement in navigation reliability. If you watch the build's chunk graph, you'll see fewer "tiny" chunks in the report; the new rules are safe defaults and don't need opt-in.
+
+### Debugging the Graph-Based CSS Chunker (16.3.0-canary.64)
+
+PR [#95080](https://github.com/vercel/next.js/pull/95080) (June 24, 2026) ships a new debug side-channel for the `experimental.cssChunking: "graph"` pipeline (the new graph-based CSS chunker in Turbopack-core):
+
+```bash
+TURBOPACK_DEBUG_CSS_CHUNKING=1 pnpm next build
+```
+
+On every invocation of `compute_style_groups_graph` the chucker writes a timestamped, pretty-printed JSON snapshot — `turbopack-css-chunking-debug-<unix_ms>-<seq>.json` — into the current working directory. Each dump contains:
+
+- `chunk_groups: string[][]` — the module idents per chunk group, in the order the algorithm saw them
+- `global_order: string[]` — the flat global order from `linearize`
+- `global_order_chunks: string[][]` — the same modules grouped by the merged segments produced by `split_into_chunks`
+- `modules: [{ ident, size, style_type }]` — per-module size and style-type metadata
+
+The env var is read exactly once per process (cached in a `static LazyLock<bool>`); truthy values are anything other than unset, empty, `0`, or `false` (case-insensitive). **Dump failures are swallowed** — the toggle must never fail a build. Use it when filing a Vercel issue about bad CSS chunking decisions, attach the JSON, and a maintainer can replay the chunking graph locally without instrumenting Rust on your machine.
+
+### `cacheMaxMemorySize: 0` Dev Hot-Reload Fix (16.3.0-canary.65)
+
+PR [#95100](https://github.com/vercel/next.js/pull/95100) (June 24, 2026) fixes a real-world dev hot-reload regression that bit fully-cached routes. Previously the `'use cache'` wrapper forced every entry in a `cacheMaxMemorySize: 0` cache to a **dynamic cache life** (`revalidate: 0`, a five-minute `expire`) so that warm reads would serve stale + regenerate in the background. That forcing leaked into the *stored* entry. A fully-cached route with no `<Suspense>` above the `'use cache'` would, on a warm reload, read the entry, see `revalidate: 0`, and the dev validation prerender would throw a false-positive: *"`'use cache'` with zero `revalidate` is nested inside another `'use cache'` that has no explicit `cacheLife`"*. The route was then reported as a blocking route even though nothing was actually nested. The **cold load was unaffected** because the entry didn't exist yet — the bug only fired on hot reload.
+
+With canary.65 the size-0 path keeps the entry's *resolved* cache life (the explicit `cacheLife()` value when the user set one, otherwise the default 15-min `revalidate` / infinite `expire`). That default sits well above the dynamic thresholds, so a fully-cached route can prerender again. An explicitly-short `cacheLife()` still makes the route legitimately dynamic without a spurious throw, because the explicit-revalidate and explicit-expire flags are then set. Private caches are unchanged and remain forced-dynamic.
+
+To keep reloads showing a fresh value, the background revalidation in the cache-hit path also fires for size-0 built-in entries regardless of the stored `revalidate`, but **only in the dynamic dev request render** — not in the dev validation prerender — so the prerender never regenerates in parallel with itself.
+
+### `getHeaders` Request-Header Mutation Fix (16.3.0-canary.65)
+
+PR [#95116](https://github.com/vercel/next.js/pull/95116) (June 24, 2026) fixes a regression in dev instant navigation that left the React dev overlay stuck in *"Rendering..."* after a server-action redirect.
+
+**Root cause:** `getHeaders` in the request store strips internal flight and dev request-id headers before sealing the object exposed to userland `headers()`. It built the sealed object with `HeadersAdapter.from(req.headers)` — which **wraps `IncomingHttpHeaders` without copying** — and then called `.delete()` on it. Those deletes mutated the shared `req.headers` as a side effect. For flight headers the absence is a handled state, so it was harmless. But for the dev request-id headers (`x-nextjs-request-id` and `x-nextjs-html-request-id`) added in PR #94703, the action's `headers()` access deleted them from `req.headers`. The dev instant-navigation render of the redirect target reuses the same request, then read a *missing* request id and fabricated a *mismatched* HTML request id. The React dev debug channel was registered under that wrong id, so the client overlay stayed in "Rendering..." and never applied the navigation.
+
+**Fix:** copy the headers before stripping so only the sealed userland view is affected, leaving the shared request headers intact. An e2e test now reproduces the regression.
+
+**Practical impact:** if a teammate reports the dev overlay hanging after a server action redirect, the first check is `next dev` version — anything before canary.65 with `cacheComponents` enabled will still show this. Either upgrade to 16.3.0-canary.65+ or temporarily toggle `cacheComponents` off in `next.config.ts` to unblock.
 ## Turbopack — Fast Development Bundler
 
 Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:

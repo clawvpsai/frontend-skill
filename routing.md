@@ -602,6 +602,15 @@ export default nextConfig
 
 **`cachedNavigations` widened type (16.3.0-canary.61, [#95064](https://github.com/vercel/next.js/pull/95064), June 22, 2026):** The config is now `boolean | 'allow-runtime'`. `true` keeps the current behavior (static stage cached, runtime stage only for segments with `export const prefetch = 'allow-runtime'`). `'allow-runtime'` additionally treats every segment as runtime-cached regardless of its per-segment `prefetch` config — useful for dogfooding the CPU/payload overhead of the runtime stage across a whole app. The client-facing env var `__NEXT_EXPERIMENTAL_CACHED_NAVIGATIONS` stays a plain boolean; the runtime prerender is entirely server-driven, so the widening is only consumed in the two production spawn gates (`app-render.tsx` — the client-navigation Flight render and the initial HTML render). Prefetch hints, instant validation, and component-tree staging are intentionally still keyed off the per-segment config — the global flag is a cache-side override, not a prefetch-side one.
 
+**`partialPrefetching` + per-segment `prefetch: 'partial'` / `'unstable_eager'` also opt into the runtime stage (16.3.0-canary.63, [#95097](https://github.com/vercel/next.js/pull/95097), June 24, 2026):** The runtime-cache path for cached navigations used to fire only when a segment exported `prefetch = 'allow-runtime'`. Canary.63 broadens that gate via a new `anySegmentHasPartialPrefetchingEnabled` helper — the two runtime-prefetch spawn gates in `app-render.tsx` now also match when:
+
+- The new global `experimental.partialPrefetching: true` flag is set (opts every route in), or
+- Any segment in the matched route exports `prefetch = 'partial'` / `'unstable_eager'` (PPR-style partial prefetching).
+
+Tests cover `prefetch = 'partial'` and `prefetch = 'unstable_eager'` fixtures and a new `partial-prefetching` fixture for the global flag. Each asserts the route runtime-caches its request-derived content on a second navigation without a per-segment `prefetch = 'allow-runtime'` export. The narrower callers that gate metadata staging and the dev reveal stage keep using the existing `anySegmentHasRuntimePrefetchEnabled` because they specifically concern `'allow-runtime'` (which the client runtime-prefetches), not partial prefetching. Apps that do **not** set `experimental.partialPrefetching` and have no partial-prefetch segments are unaffected — `partialPrefetching` has no default and is not auto-enabled by `cacheComponents`.
+
+**Dev fallback `params` computed from the most-specific matching route (16.3.0-canary.63, [#95066](https://github.com/vercel/next.js/pull/95066), June 24, 2026):** When Cache Components is enabled in dev, the server threads a `fallbackParams` request meta so the staged render knows which params are not statically known. The previous computation walked the prerendered routes from `getStaticPaths` and picked the one with the fewest fallback params, **without verifying the route actually matched the requested URL**. For a route like `/mixed/[lang]/[id]` where `generateStaticParams` covers `lang: 'en'` but not `id`, the covered `/mixed/en/[id]` route deferred only `[id]`. For a request to `/mixed/fr/123`, that covered route had fewer fallback params, but `en` didn't match `fr` — so applying its `[id]` set left `lang` out of the fallback set and `fr` was treated as a statically known value. The fix matches the requested URL against each prerendered route with the canonical `getRouteRegex` and picks the most-specific *matching* one. Concrete effect: in dev you'll see `params` correctly resolve to the runtime stage for routes with partial `generateStaticParams` coverage. The cold prod behavior is unaffected — this only changes which params the dev server marks as "not statically known" during the staged render. If a dynamic param was previously being read in the prerender stage (and surfacing sync-IO errors as a result), it'll now be deferred to the runtime stage and the errors should move with it.
+
 **When to enable:**
 - Multi-page apps with many repeat visits (dashboards, admin panels, e-commerce back-office)
 - Apps where TTI on the second visit matters more than fresh data
@@ -652,7 +661,9 @@ Feeds the existing `needsExperimentalReact` aggregation and the matching Turbopa
 - [Next.js `prefetchInlining` config reference (canary.52, [#94650](https://github.com/vercel/next.js/pull/94650))](https://nextjs.org/docs/app/api-reference/config/next-config-js/prefetchInlining)
 - [PR #94861 — Add `experimental.useExperimentalReact` (canary.53)](https://github.com/vercel/next.js/pull/94861)
 - [PR #95064 — Widen `cachedNavigations` to `boolean | 'allow-runtime'` (canary.61)](https://github.com/vercel/next.js/pull/95064)
+- [PR #95097 — Partial-prefetching routes opt into runtime stage of Cached Navs (canary.63)](https://github.com/vercel/next.js/pull/95097)
 - [Next.js 16.3.0-canary.61 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.61)
+- [Next.js 16.3.0-canary.63 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.63)
 
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 

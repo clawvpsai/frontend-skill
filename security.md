@@ -168,6 +168,30 @@ If you cannot upgrade immediately:
 - [Ox Security: React CVEs analysis](https://www.ox.security/blog/react-cve-2025-55184-67779-55183-react-19-vulnerabilities/)
 ---
 
+## React DevTools Standalone HTML Injection (June 23, 2026) — canary fix
+
+PR [#36839](https://github.com/facebook/react/pull/36839) (released as **React 19.3.0-canary-99e86060-20260623**, June 23, 2026) fixes an HTML-injection issue in the **React DevTools standalone shell** (`npx react-devtools`). Standalone DevTools errors received from the DevTools server were rendered into the page using HTML strings (innerHTML). A crafted error message could therefore inject arbitrary HTML — including `<script>` — into the DevTools surface when connecting to a remote/untrusted DevTools backend.
+
+**The fix:** DevTools standalone now renders server errors as **DOM nodes built via `document.createElement` and `textContent`** instead of as innerHTML. The existing error box classes and copy are preserved; only the insertion mechanism changed. Because `textContent` treats input as literal text, any HTML-looking payload from the DevTools server is rendered as text, not parsed as markup.
+
+### Why This Matters for Frontend Skills
+
+- **Local-only attack surface in normal use.** React DevTools standalone opens a local WebSocket (default port 8097) to the page being inspected, and the page injects errors into the local DevTools UI. If you only ever connect to your own dev server, there is no remote attacker — the fix is hardening against future misuse.
+- **Risk when connecting to a remote/shared DevTools server.** If you (or your team) use the standalone shell to inspect a page running on someone else's DevTools backend — common in shared QA environments, on flaky CI runners, or when a coworker is running `react-devtools` over a forwarded port — a malicious server can now no longer pivot into the inspector UI via crafted error text. Pre-patch, this was an actual injection vector; post-patch, it isn't.
+- **Not a runtime user-facing CVE.** The injection point is inside the DevTools standalone app (a developer-only Electron app, not the page itself). End users are never exposed. No production user data is reachable through this path.
+- **No version bump for stable yet.** The fix lives only in the canary builds (`react@19.3.0-canary-99e86060-20260623` and the matched experimental channel). It will roll forward into the next 19.x patch release on the stable channel.
+
+### What To Do
+
+- **No action required** if you only use the standalone DevTools locally against your own app — the fix is already in the channel your editor/browser DevTools uses.
+- **Pin `react-devtools` to the latest stable** when installing the standalone CLI (`npm i -g react-devtools` / `npx react-devtools@latest`). Avoid running the standalone shell pointed at remote/untrusted DevTools servers on canary or pre-canary builds that predate this PR.
+- **If you build your own dev-tooling on top of the standalone shell** — for example, a custom inspector that forwards errors from a remote page — adopt the same `createElement` + `textContent` pattern for any error text you render. Never use innerHTML, `dangerouslySetInnerHTML`, or template-literal interpolation for untrusted error copy.
+
+**Sources:**
+- [React PR #36839 — Avoid HTML injection in standalone errors (commit 99e86060, June 23, 2026)](https://github.com/facebook/react/pull/36839)
+- [React canary commit 99e86060ac35ea81153ac39ddab9b4cd744d9391 — "Avoid HTML injection in standalone errors"](https://github.com/facebook/react/commit/99e86060ac35ea81153ac39ddab9b4cd744d9391)
+- [react-devtools standalone docs — `npx react-devtools`](https://www.npmjs.com/package/react-devtools)
+
 ## TanStack npm Supply Chain Attack (May 11, 2026)
 
 On May 11, 2026, an attacker published 84 malicious versions across 42 @tanstack/* npm packages via a compromised npm publisher account. This affected @tanstack/react-query, @tanstack/query-core, and all other TanStack packages.
