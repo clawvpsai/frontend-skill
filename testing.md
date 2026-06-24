@@ -417,6 +417,90 @@ npx playwright test --ui
 npx playwright test e2e/auth.spec.ts
 ```
 
+## Playwright 1.61 (June 15, 2026) — What's New
+
+Playwright 1.61 is a **major feature release**. Two pieces (WebAuthn passkeys + WebStorage) are first-class APIs that change how you write E2E tests for auth and storage; the rest are smaller quality-of-life wins. **Browsers bumped to Chromium 149, Firefox 151, WebKit 26.5.** Tested against Google Chrome 149 and Microsoft Edge 149 stable channels. Playwright 1.61.1 (June 23, 2026) shipped the next day with five regression fixes — pin to 1.61.1+.
+
+### WebAuthn passkeys — `browserContext.credentials`
+
+The single biggest addition. A **virtual authenticator** that lets you register passkeys and answer `navigator.credentials.create()` / `navigator.credentials.get()` ceremonies in the page — no real hardware key, no WebAuthn shim library, works in all three engines. Replaces every team's home-rolled "mock `navigator.credentials`" helper.
+
+```ts
+// e2e/passkey.spec.ts
+import { test, expect } from '@playwright/test'
+
+test('user can log in with a passkey', async ({ browser }) => {
+  const context = await browser.newContext()
+
+  // 1) Seed a passkey your backend provisioned for a test user.
+  await context.credentials.create('example.com', {
+    id: 'credential-id-from-backend',
+    userHandle: 'user-handle-from-backend',
+    privateKey: 'base64url-encoded-private-key',
+    publicKey: 'base64url-encoded-public-key',
+  })
+  await context.credentials.install()
+
+  const page = await context.newPage()
+  await page.goto('https://example.com/login')
+
+  // 2) The page's navigator.credentials.get() is answered with the seeded passkey.
+  await page.getByRole('button', { name: /sign in with passkey/i }).click()
+  await expect(page).toHaveURL('/dashboard')
+})
+```
+
+You can also let the app register a passkey once in a setup test, read it back with `credentials.get()`, and seed it into later tests — see the [Credentials docs](https://playwright.dev/docs/api/class-credentials).
+
+**Cross-reference:** if you're using Better Auth (which supports passkeys natively — see `auth.md`), you can now E2E the full passkey flow against the real Better Auth UI instead of mocking the navigator API.
+
+### WebStorage — `page.localStorage` / `page.sessionStorage`
+
+A proper origin-aware WebStorage API that replaces the brittle `page.evaluate(() => localStorage.setItem(...))` boilerplate. Reads and writes the page's storage **for the current origin**, no string-serialization in test code:
+
+```ts
+// Set tokens / seeded state without page.evaluate gymnastics
+await page.localStorage.setItem('token', 'abc123')
+await page.sessionStorage.setItem('wizard-step', '2')
+
+// Read back
+const token = await page.localStorage.getItem('token')
+const items = await page.sessionStorage.items() // → Array<{ name, value }>
+```
+
+### New APIs at a glance
+
+| Area | API | What it does |
+|---|---|---|
+| Network | `apiResponse.securityDetails()` / `apiResponse.serverAddr()` | Mirror the browser-side `response.securityDetails()` / `serverAddr()` on API contexts — parity between `request.fetch()` and `page.request.get()` |
+| Browser / CDP | `browserType.connectOverCDP({ artifactsDir })` | New option controls where traces + downloads are stored when attaching to an existing browser (was always `cwd`) |
+| Screencast | `screencast.showActions({ cursor: 'always' \| 'never' \| 'auto' })` | New `cursor` option controls pointer-action cursor decoration in screencast recordings |
+| Screencast | `screencast.start({ onFrame })` | The `onFrame` callback now receives a `timestamp` of when the frame was presented by the browser — lets you measure end-to-end paint latency in screencast tests |
+| Test runner | `testOptions.video: 'on-all-retries' \| 'retain-on-first-failure' \| 'retain-on-failure-and-retries'` | Video modes now match the `trace` mode vocabulary — use `'on-all-retries'` for flaky-test forensics, `'retain-on-first-failure'` to debug just the first failure without filling disk |
+| Test runner | `expect.soft.poll(...)` | Soft-assertion polling — fails the test at the end if any soft assertion never resolved, doesn't stop the run mid-test |
+| Test runner | `fullConfig.argv` | Snapshot of `process.argv` from the runner process — read custom CLI args passed after `--` without parsing env vars |
+| Test runner | `fullConfig.failOnFlakyTests` | Mirrors the `failOnFlakyTests` config option so reporters can explain why a flaky run failed |
+| Test runner | `testInfo.errors` | Each sub-error of an `AggregateError` is now a separate entry — your reporter can render parallel-call failures properly |
+| CLI | `-G` shorthand | New shorthand for `--grep-invert` (analog of `-g` for `--grep`) |
+| Platform | Ubuntu 26.04 | Playwright now supports Ubuntu 26.04 LTS as a host |
+| Recording | HAR + trace WebSocket capture | HAR and trace recordings now include WebSocket frames — debug flaky WS tests the same way you debug flaky HTTP |
+
+### Browser versions (1.61)
+
+- Chromium 149.0.7827.55
+- Mozilla Firefox 151.0
+- WebKit 26.5
+
+### Playwright 1.61.1 (June 23, 2026) — regression fixes
+
+Eight days after 1.61.0, the team shipped 1.61.1 with **five fixes for regressions** introduced in 1.61. Pin to ≥ 1.61.1 if you upgraded on day one:
+
+1. **`expect.extend` overriding default matchers** — A custom matcher registered with the same name as a built-in matcher (e.g. `expect.extend({ toBeVisible: ... })`) corrupted the default `toBeVisible` implementation. Custom matchers no longer shadow built-ins.
+2. **UI mode API request byte count mismatch** — `apiRequestContext._wrapApiCall` reported wrong byte counts in UI mode (same test passed in headed mode). Byte counts now consistent across UI and headed.
+3. **Trace viewer WebSocket time scaling** — WebSocket message timestamps in the trace viewer were divided by 1000 (a 1-second delay looked like 1 ms). Fixed.
+4. **Sync loader crash on Node 22.15** — ESM loader threw `context.conditions?.includes is not a function` on Node 22.15. Fixed.
+5. **pnpm workspace symlink resolution** — Extensionless `.ts` subpath imports across pnpm workspace symlinks failed in the sync ESM loader. Fixed.
+
 ## React Testing Library Patterns
 
 ```tsx

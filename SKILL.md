@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.27
+version: 1.4.28
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -23,7 +23,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Streaming, Suspense, image optimization, PPR (legacy codepaths removed in 16.3, use `cacheComponents: true`), metadata image route static prerendering under Cache Components (16.3 canary.61), App Shells (canary), prefetch controls | `performance.md` | Speed & UX |
 | Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
-| Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + Playwright + component tests | `testing.md` | Test-driven dev |
+| Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + **Playwright 1.61** (WebAuthn passkeys `browserContext.credentials`, WebStorage `page.localStorage/sessionStorage`, video modes parity, expect.soft.poll) + component tests | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API, `satisfies`, `const` type parameters, branded/opaque types, template literal types | `typescript.md` | Type safety |
 | React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3), `cacheComponents` adoption (`instant = false` opt-out, `cache-components-instant-false` codemod, `next-cache-components-adoption` agent skill in 16.3 canary.61) | `patterns.md` | Composite recipes |
 
@@ -51,6 +51,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **@biomejs/biome 2.5.1** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
 - **TanStack Query v5.101.1** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
 - **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; **≥ 4.1.8 required for the CDP RCE fix (GHSA-g8mr-85jm-7xhm, CVSS 9.8)**; use `api.allowWrite: false, api.allowExec: false` in CI; Vitest 5 in beta)
+- **@playwright/test 1.61.1** (E2E — **1.61.0 (June 15, 2026)** shipped WebAuthn passkeys virtual authenticator via `browserContext.credentials.create/install`, `page.localStorage` / `page.sessionStorage` (origin-aware, replaces `page.evaluate('localStorage…')` boilerplate), `apiResponse.securityDetails()` / `serverAddr()` network parity with browser responses, `testOptions.video` modes parity with trace (`'on-all-retries'`, `'retain-on-first-failure'`, `'retain-on-failure-and-retries'`), `expect.soft.poll(...)`, `fullConfig.argv`, `fullConfig.failOnFlakyTests`, `testInfo.errors` AggregateError sub-entries, `-G` shorthand for `--grep-invert`, HAR + trace now include WebSocket frames, Ubuntu 26.04 host support, browsers Chromium 149.0.7827.55 / Firefox 151.0 / WebKit 26.5; **1.61.1 (June 23, 2026)** fixed five 1.61 regressions — `expect.extend` matcher-name shadowing built-ins, UI-mode API request byte count mismatch, trace-viewer WebSocket timestamps scaled by 1/1000, sync ESM loader crash on Node 22.15, pnpm workspace symlink `.ts` subpath resolution)
 - **React Hook Form v7.80.0** + **@hookform/resolvers v5.4.0** (7.80.0 ships per-field `disabled` on `useFieldArray` items; broad perf pass; fixes `[]` vs `{}` `deepEqual` regression from 7.79.0) (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
 - **Node.js 24 LTS** (Node.js 22 LTS also supported)
 
@@ -127,6 +128,14 @@ Key breaking changes from Next.js 15 → 16:
 - [Authgear — Next.js Security Best Practices 2026](https://www.authgear.com/post/nextjs-security-best-practices/)
 - [pnpm — minimumReleaseAge (supply-chain defense, blocks short-lived malicious publishes)](https://pnpm.io/supply-chain-security)
 - [OpenAI — Our response to the TanStack npm supply chain attack (May 13, 2026)](https://openai.com/index/our-response-to-the-tanstack-npm-supply-chain-attack/)
+
+- [Playwright 1.61.0 release notes (June 15, 2026)](https://github.com/microsoft/playwright/releases/tag/v1.61.0)
+- [Playwright 1.61.1 release notes — 5 regression fixes (June 23, 2026)](https://github.com/microsoft/playwright/releases/tag/v1.61.1)
+- [Playwright docs — Credentials (WebAuthn virtual authenticator)](https://playwright.dev/docs/api/class-credentials)
+- [Playwright docs — WebStorage (`page.localStorage`, `page.sessionStorage`)](https://playwright.dev/docs/api/class-webstorage)
+- [Playwright docs — `fullConfig.argv` / `fullConfig.failOnFlakyTests`](https://playwright.dev/docs/api/class-fullconfig)
+- [Playwright docs — video modes (1.61 parity with trace modes)](https://playwright.dev/docs/test-use-options#video-modes)
+- [Playwright release notes page (1.61 + 1.61.1)](https://playwright.dev/docs/release-notes)
 
 - [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
 - [GitHub Advisory: undici WebSocket client DoS via fragment count bypass (CVE-2026-11525, June 19, 2026)](https://github.com/advisories?query=undici+type%3Areviewed)
