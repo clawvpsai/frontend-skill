@@ -611,6 +611,41 @@ Tests cover `prefetch = 'partial'` and `prefetch = 'unstable_eager'` fixtures an
 
 **Dev fallback `params` computed from the most-specific matching route (16.3.0-canary.63, [#95066](https://github.com/vercel/next.js/pull/95066), June 24, 2026):** When Cache Components is enabled in dev, the server threads a `fallbackParams` request meta so the staged render knows which params are not statically known. The previous computation walked the prerendered routes from `getStaticPaths` and picked the one with the fewest fallback params, **without verifying the route actually matched the requested URL**. For a route like `/mixed/[lang]/[id]` where `generateStaticParams` covers `lang: 'en'` but not `id`, the covered `/mixed/en/[id]` route deferred only `[id]`. For a request to `/mixed/fr/123`, that covered route had fewer fallback params, but `en` didn't match `fr` — so applying its `[id]` set left `lang` out of the fallback set and `fr` was treated as a statically known value. The fix matches the requested URL against each prerendered route with the canonical `getRouteRegex` and picks the most-specific *matching* one. Concrete effect: in dev you'll see `params` correctly resolve to the runtime stage for routes with partial `generateStaticParams` coverage. The cold prod behavior is unaffected — this only changes which params the dev server marks as "not statically known" during the staged render. If a dynamic param was previously being read in the prerender stage (and surfacing sync-IO errors as a result), it'll now be deferred to the runtime stage and the errors should move with it.
 
+**Suppress `prefetch={true}` warning when route opts out via `instant = false` (16.3.0-canary.67, [#95099](https://github.com/vercel/next.js/pull/95099), June 24, 2026):** In dev with Cache Components, navigating via a `<Link prefetch={true}>` to a route that hasn't opted into Partial Prefetching logs a warning, because the full prefetch pulls in dynamic data and defeats the static/dynamic split. `instant = false` is the explicit API for opting a route out of this validation, so it should silence the warning — but previously it didn't, because an `instant = false` segment set no prefetch hint at all and the warning still fired. The fix adds a new `SubtreeHasInstantFalse` `PrefetchHint`, set on any segment that exports `instant = false` and **propagated up to the root** (mirroring `SubtreeHasPartialPrefetching`). The dev warning now skips routes where this bit is present anywhere on the target subtree. This is **warning-only** and kept separate from the existing `PrefetchDisabled` bit (which feeds `StaticPrefetchDisabled` and would change actual prefetch behavior). Practical effect: a route like `/admin` that has `export const instant = false` at its layout no longer triggers the `prefetch={true}` dev warning when linked from the public marketing pages with `<Link href="/admin" prefetch={true}>`.
+
+**`generateStaticParams` required for root parameters when `cacheComponents: true` (16.3.0-canary.67, [#95073](https://github.com/vercel/next.js/pull/95073), June 24, 2026):** Root parameters (from `next/root-params`) are available as soon as you create the routes that define them — a `generateStaticParams` is only required **with `cacheComponents: true`**, where each root parameter must have at least one value or the build fails. Without CC, `generateStaticParams` for root params is optional. Code shape:
+
+```ts
+// app/[lang]/layout.tsx — with cacheComponents, every root param needs a value
+import { lang } from 'next/root-params'
+
+export default async function RootLayout(props: LayoutProps<'/[lang]'>) {
+  return (
+    <html lang={await lang()}>
+      <body>{props.children}</body>
+    </html>
+  )
+}
+
+export async function generateStaticParams() {
+  return [{ lang: 'en' }, { lang: 'fr' }]
+}
+```
+
+For multiple root parameters, return a value for each combination:
+
+```ts
+// app/[lang]/[locale]/layout.tsx
+export async function generateStaticParams() {
+  return [
+    { lang: 'en', locale: 'us' },
+    { lang: 'en', locale: 'uk' },
+  ]
+}
+```
+
+A nested segment's `generateStaticParams` can read the parent's root params (it gets the resolved values, not the raw request) — the docs now document this explicitly. The CC requirement is **fail-closed**: omit a value for a root param and the build errors out with the standard `generateStaticParams` "must return at least one value" message, naming the missing param. The companion note in the docs (TypeScript types for `next/root-params` exports) clarifies that types are generated during `next dev`, `next build`, or `next typegen` — same as `PageProps` and `LayoutProps`.
+
 **When to enable:**
 - Multi-page apps with many repeat visits (dashboards, admin panels, e-commerce back-office)
 - Apps where TTI on the second visit matters more than fresh data
@@ -662,8 +697,14 @@ Feeds the existing `needsExperimentalReact` aggregation and the matching Turbopa
 - [PR #94861 — Add `experimental.useExperimentalReact` (canary.53)](https://github.com/vercel/next.js/pull/94861)
 - [PR #95064 — Widen `cachedNavigations` to `boolean | 'allow-runtime'` (canary.61)](https://github.com/vercel/next.js/pull/95064)
 - [PR #95097 — Partial-prefetching routes opt into runtime stage of Cached Navs (canary.63)](https://github.com/vercel/next.js/pull/95097)
+- [PR #95099 — Suppress `prefetch={true}` warning when route opts out via `instant = false` (canary.67)](https://github.com/vercel/next.js/pull/95099)
+- [PR #95073 — `generateStaticParams` required for root params with `cacheComponents: true` (canary.67)](https://github.com/vercel/next.js/pull/95073)
+- [Next.js docs — `next-root-params` reference (canary.67 + #95073)](https://nextjs.org/docs/app/api-reference/functions/next-root-params)
 - [Next.js 16.3.0-canary.61 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.61)
 - [Next.js 16.3.0-canary.63 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.63)
+- [Next.js 16.3.0-canary.66 release notes (June 24, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.66)
+- [Next.js 16.3.0-canary.67 release notes (June 24–25, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.67)
+- [Next.js 16.3.0-preview.4 release notes (June 24, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.4)
 
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 
