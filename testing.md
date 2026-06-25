@@ -977,7 +977,167 @@ npx vitest migrate
 
 ### Upcoming (Vitest 5.0-beta)
 
-5.0 removes the remaining deprecated entry points (`vitest/coverage`, `vitest/reporters`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`). Use `vitest/node` and `vitest/runtime` instead. The migration is mechanical — see [migration guide](https://main.vitest.dev/guide/migration).
+Vitest 5.0 is on beta. Three beta releases have shipped between May 19 and June 15, 2026 (beta.3 on May 19, beta.4 on June 1, beta.5 on June 15) and the breaking-change list has grown materially. **The list below supersedes anything earlier.** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
+
+### Hard requirements (beta.3 — [#10178](https://github.com/vitest-dev/vitest/issues/10178))
+
+- **Node.js ≥ 22** (Node 20 is no longer supported)
+- **Vite ≥ 6.4** (matches Vitest 4's hard floor of Vite 6)
+
+If you previously upgraded to Vitest 4 because Node 20 was still allowed, plan to bump Node to 22 LTS (or 24 LTS) before Vitest 5 ships stable.
+
+### Removed deprecated entry points (beta.3 + migration guide)
+
+| Removed | Use instead |
+|---|---|
+| `vitest/coverage` | `vitest/node` |
+| `vitest/reporters` | `vitest/node` |
+| `vitest/environments` | `vitest/runtime` |
+| `vitest/snapshot` | `vitest/runtime` |
+| `vitest/runners` | `TestRunner` from `vitest` |
+| `vitest/suite` | static methods on `TestRunner` from `vitest` (e.g. `TestRunner.getCurrentTest()`) |
+| `vitest/mocker` | `@vitest/mocker` package directly (the standalone package was always published, `vitest/mocker` was removed) |
+| `vitest/internal/module-runner` | (no replacement — was internal) |
+
+```ts
+// Before (Vitest 4)
+import { coverageConfigDefaults } from 'vitest/coverage'
+
+// After (Vitest 5)
+import { coverageConfigDefaults } from 'vitest/node'
+```
+
+### `expect.poll` now fails on timeout (beta.3 — [#10233](https://github.com/vitest-dev/vitest/issues/10233))
+
+Previously a `expect.poll(fn)` that never resolved would hang until Vitest killed it. It now **fails the test with a timeout error** if `fn` does not resolve in time. Practical impact: if you were relying on `expect.poll` to keep polling past the timeout to surface async state to a debugger, you'll need a different strategy. Most usages just need to confirm the timeout is configured correctly (`{ timeout: 5_000 }` or whatever your test needs).
+
+### Strict `toHaveTextContent` + new `toMatchTextContent` (beta.4 — [#10473](https://github.com/vitest-dev/vitest/issues/10473))
+
+Browser Mode's `toHaveTextContent` matcher used to do a **partial, case-sensitive substring match** and accepted `RegExp`. In 5.0 it does **strict equality** and rejects regex. The old behaviour (including `RegExp` support) is moved to `toMatchTextContent`.
+
+```ts
+// Before (Vitest 4 — partial match, accepts regex)
+await expect(element).toHaveTextContent(/hello/i)
+await expect(element).toHaveTextContent('world')  // matched "Hello World" too
+
+// After (Vitest 5 — strict, no regex)
+await expect(element).toMatchTextContent(/hello/i)  // use the new matcher for regex
+await expect(element).toHaveTextContent('Hello World')  // exact string only
+```
+
+If your suite relied on the old "matches if the element contains the string" behaviour, plan to either tighten assertions to exact strings or switch the affected calls to `toMatchTextContent` during the 5.0 migration.
+
+### Browser Mode: `locators.exact: true` by default (beta.4 — [#10430](https://github.com/vitest-dev/vitest/issues/10430))
+
+`page.getByText('Hello, World')` used to be a fuzzy match — it would find elements containing that substring or matching it case-insensitively in many cases. In 5.0 the `exact` flag is `true` by default, matching only the exact string. If you have tests like `getByText('Submit')` that previously matched a button labelled `Submit Order`, they will now fail.
+
+```ts
+// Before (Vitest 4 — fuzzy)
+const submit = page.getByText('Submit')  // matches "Submit", "Submit Order", "Submitted"
+
+// After (Vitest 5 — strict by default)
+const submit = page.getByText('Submit', { exact: true })  // exact match only
+const submit = page.getByText('Submit', { exact: false }) // opt back into fuzzy
+```
+
+Audit your `getByText` / `getByRole` / `getByLabel` calls before bumping.
+
+### Browser Mode: nested mark trace in UI (beta.5 — [#10437](https://github.com/vitest-dev/vitest/issues/10437))
+
+New UI feature — not breaking, but worth knowing: `page.mark` and `context.mark` calls now display as a **nested trace** in the Vitest UI, with custom commands expandable in the test panel. If you were using `page.mark` for custom debug breadcrumbs, they'll now show up hierarchically rather than flat.
+
+### Browser Mode: `sessionId` required for orchestrator HTML request (beta.5 — [#10522](https://github.com/vitest-dev/vitest/issues/10522))
+
+The Vitest browser orchestrator's HTML request (the one the test runner polls to discover tests) **now requires a `sessionId`** in 5.0. If you have any custom integrations that hit the orchestrator endpoint (custom reporters, dashboard bridges, CI-side test selection), they'll start getting 400s after upgrading. Pass a session ID via the standard Vitest browser API or the `VITEST_BROWSER_SESSION_ID` env var.
+
+### `thresholds.perFile` accepts an object (beta.5 — [#10190](https://github.com/vitest-dev/vitest/issues/10190))
+
+Previously `coverage.thresholds.perFile` was a boolean. In 5.0 it can be `true | false | { lines, statements, branches, functions }` — letting you opt into per-file checking for specific metrics only. Glob coverage thresholds **no longer inherit `perFile`** from the top-level config — set `perFile` explicitly on each glob that needs it.
+
+```ts
+// vitest.config.ts (Vitest 5)
+export default defineConfig({
+  test: {
+    coverage: {
+      thresholds: {
+        perFile: { lines: true, statements: true },  // only these metrics checked per-file
+        'src/critical/**': { lines: 95, perFile: true },  // glob needs its own perFile
+        'src/legacy/**': { lines: 60 },                   // no perFile, top-level is no longer inherited
+      },
+    },
+  },
+})
+```
+
+### No more config lookup from ancestor directories (beta.5 — [#10428](https://github.com/vitest-dev/vitest/issues/10428))
+
+Vitest historically walked up the directory tree looking for a `vitest.config.*` file. In 5.0 it **only looks in the project root** (the directory you ran `vitest` from, or the `root` you configured). Practical impact: monorepo packages with a config two levels up, or workspaces where `vitest` was previously invoked from a sub-package and picked up the root config, will silently start using the in-package config (or failing with "no config found"). Set `root` explicitly per-project, or run `vitest --config path/to/config.ts` from the package you want to test.
+
+### `@vitest/runner` inlined — package no longer published (beta.5 — [#10511](https://github.com/vitest-dev/vitest/issues/10511))
+
+`@vitest/runner` is **no longer a separate package on npm**. Its types and runtime are merged into `vitest` itself. If your `package.json` lists `@vitest/runner` as a direct dependency (uncommon, but it happened), remove it and rely on `vitest`'s re-exports. The migration guide documents the replacement imports — `TestRunner` is now exported from `vitest` directly.
+
+### `TestModule` diagnostics: `concurrencyId` / `workerId` exposed, `id` is 1-based (beta.5 — [#10516](https://github.com/vitest-dev/vitest/issues/10516))
+
+`TestModule` now exposes `concurrencyId` and `workerId` directly on the diagnostics object, and the `id` field is **1-based instead of 0-based**. If you have any custom reporters or test-isolation logic that filters by `module.id === 0` to detect "the first test", that filter will now miss everything.
+
+### Happy-dom / jsdom window mutation allowed (beta.5 — [#10373](https://github.com/vitest-dev/vitest/issues/10373))
+
+Vitest 4 threw if you mutated the `window` object provided by `happy-dom` or `jsdom`. In 5.0 that restriction is relaxed — useful for libraries that patch `window.fetch`, `window.matchMedia`, or similar globals during test setup. Not a breaking change unless your code relied on the throw for debugging; if so, replace it with an explicit assertion.
+
+### CLI: `--repeats` option (beta.5 — [#10504](https://github.com/vitest-dev/vitest/issues/10504))
+
+New flag to rerun the entire suite N times in a single invocation — handy for flake hunting. Not a breaking change.
+
+### Removed: `test.sequential`, `describe.sequential`, `sequential` option (migration guide)
+
+The deprecated `sequential` options are removed. To opt a test or suite out of inherited / global concurrency, use `concurrent: false` instead.
+
+```ts
+// Before (Vitest 4)
+test.sequential('runs alone', async () => { /* ... */ })
+
+// After (Vitest 5)
+test('runs alone', { concurrent: false }, async () => { /* ... */ })
+```
+
+### Hoistable methods outside top-level scope throw (beta.4 — [#10460](https://github.com/vitest-dev/vitest/issues/10460))
+
+Methods that Vitest hoists (`vi.mock`, `vi.hoisted`, `vi.doMock`, etc.) used to be tolerated if called inside `describe` or `beforeEach`. In 5.0 they **throw at module evaluation time**. The codemod handles most cases; the failure mode is loud so you'll know immediately if your setup needs re-ordering.
+
+### Benchmarking API rewrite (beta.4 — [#10113](https://github.com/vitest-dev/vitest/issues/10113))
+
+`bench` is **no longer a top-level import from `vitest`** — it's now a test-context fixture accessed from inside a regular `test()`. The old `bench.skip`, `bench.only`, `bench.todo`, `benchmark.reporters`, `benchmark.outputFile`, `benchmark.compare`, `benchmark.outputJson`, and the `--compare` / `--outputJson` CLI flags are all removed. `Vitest` instance `mode` is always `'test'` now (the old `'benchmark'` value is gone — benchmarks run inside a dedicated project of the same instance).
+
+```ts
+// Before (Vitest 4)
+import { bench, describe } from 'vitest'
+
+describe('sort', () => {
+  bench('Array.sort', () => { /* ... */ })
+})
+
+// After (Vitest 5)
+import { test } from 'vitest'
+
+test('sort - Array.sort', ({ bench }) => {
+  bench('Array.sort', () => { /* ... */ })
+})
+```
+
+If your project uses `vitest bench` as a CI gate, the new API requires updating both the test definitions and the reporter config (`test.reporters` / `--reporter=json --outputFile=<path>` for benchmark capture).
+
+### Upgrading on a real codebase
+
+1. **Audit `getByText` / `getByRole` calls** for substring matches before bumping — strict-by-default will surface these as immediate failures.
+2. **Audit `toHaveTextContent`** for partial matches and regex arguments.
+3. **Move `vi.mock` / `vi.hoisted` calls** to the top level if any are inside `describe` or hooks — beta.4's hoistable-methods-out-of-scope error will surface them at module load.
+4. **Replace `vitest/coverage`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`, `vitest/reporters`, `vitest/mocker` imports** with the `vitest/node` / `vitest/runtime` equivalents.
+5. **Replace `test.sequential`** with `{ concurrent: false }`.
+6. **Bump Node to 22 LTS or 24 LTS** before installing.
+7. **Rewrite benchmark suites** if you use `vitest bench` — the API moved inside `test()`.
+8. **Set `root` explicitly** in monorepo workspaces — ancestor-directory config lookup is gone.
+9. **Remove `@vitest/runner`** from `dependencies` / `devDependencies` if you had it pinned directly.
 
 ## Common Mistakes
 
@@ -1012,3 +1172,6 @@ npx vitest migrate
 - [Testing React 19 components](https://react.dev/learn/testing-react-components)
 - [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
 - [GHSA-g8mr-85jm-7xhm — Vitest Browser Mode CDP RCE (CVSS 9.8)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)
+- [Vitest 5.0.0-beta.5 release notes — June 15, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.5)
+- [Vitest 5.0.0-beta.4 release notes — June 1, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4)
+- [Vitest 5.0.0-beta.3 release notes — May 19, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.3)
