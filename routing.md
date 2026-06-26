@@ -823,6 +823,44 @@ export const matcher = ['/dashboard/:path*', '/dashboard']
 - [Next.js 16 upgrade guide — proxy](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js proxy.ts migration](https://krishna-adhikari.com.np/blogs/next16-middleware-to-proxy)
 
+
+## Pages + App Router Coexistence — Hard-Navigate Fix (16.3, June 26, 2026)
+
+PR [#95185](https://github.com/vercel/next.js/pulls/95185) "Hard-navigate to app routes shadowed by a pages dynamic route" fixes a real, easy-to-miss client-side navigation bug in projects migrating from Pages Router to App Router.
+
+### The bug (now fixed) — soft nav to `app/[locale]/about` from a Pages page could land on `pages/[locale]/[category]`
+
+If you have **both** a Pages Router route **and** an App Router route whose path starts with a dynamic segment — for example `pages/[locale]/[category].tsx` and `app/[locale]/about/page.tsx` — a client-side navigation from the Pages side to `/en/about` resolved **against Pages Router routes only**. The Pages Router matched `pages/[locale]/[category]` (less specific, but Pages wins the soft-nav resolution) and rendered the wrong route. A hard reload always rendered the correct App Router page (the server pools and ranks app + pages routes by specificity), so the bug was **soft-nav only** — invisible until a user clicked a link instead of typing the URL.
+
+The fix lives in the client router filter (`createClientRouterFilter`). Previously it only recorded the **static prefix** of a dynamic App Router route — so App routes whose first segment is dynamic contributed nothing to the filter. The Pages Router never learned to hand them off. The new code also stores a **normalized pattern** for those routes, with dynamic segments replaced by a placeholder token — `/[locale]/about` becomes `/[]/about`. After the Pages Router resolves a navigation to a dynamic route, `hasDynamicFilterCandidate` reconstructs the candidate app-route patterns from that route and the concrete path, then **forces a hard navigation** when any candidate is present in the dynamic filter. This also covers catch-all and optional catch-all Pages routes (whose final parameter absorbs a variable number of segments).
+
+### What you actually need to do
+
+If your project is **Pages Router only**, or **App Router only**, or has static-prefix App routes (e.g. `app/dashboard/[id]`) under a Pages project — **nothing changes**. The fix only activates when an App route starts with a dynamic segment AND a Pages dynamic route could match the resolved path.
+
+If you're migrating Pages → App with `app/[locale]/*` routes co-resident with `pages/[locale]/*`, you get the fix automatically on the next canary cut. No config change, no opt-in flag — `createClientRouterFilter` always populates the dynamic filter now.
+
+### Audit checklist for affected projects
+
+Run this to find candidate routes in your project:
+
+```bash
+# List all App Router routes whose first segment is dynamic
+find app -mindepth 2 -maxdepth 3 -path 'app/\[*/*' -name 'page.tsx' | head -20
+
+# List all Pages Router dynamic routes (will shadow soft navs if they share a prefix)
+find pages -name '*.tsx' | grep -E '\[' | head -20
+```
+
+If you have routes that match both lists with overlapping prefixes, your users were hitting the wrong route on soft navigation before this fix. Upgrade to the canary that includes #95185 (16.3.0-canary.69+ — check the next canary release notes for the version that includes this PR).
+
+### Why this is a real bug, not a doc cleanup
+
+The original PR title makes it sound like a routing-table edge case, but the underlying mechanics are a **silent misroute**: users on a Pages page who click a link to an App route would land on the wrong page, with no error, no console warning, no DevTools signal. The Pages Router's resolution is the only place where the wrong route got picked, so dev-mode tests that reload-then-assert missed it (server resolution is correct). The `pages-to-app-routing` end-to-end suite was extended to cover this — the fix is verified by a real test that does a client-side navigation from a Pages page to an App dynamic-segment route and asserts the destination.
+
+**Source:** [PR #95185 — Hard-navigate to app routes shadowed by a pages dynamic route](https://github.com/vercel/next.js/pulls/95185)
+
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

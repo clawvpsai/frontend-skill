@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.33
+version: 1.4.34
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -11,9 +11,9 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Topic | File | When to Use |
 |---|---|---|
 | Project setup, TypeScript, Vite 8.1, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), **Turbopack Service Worker support** (16.3 canary.68 — discover/compile/serve via `ServiceWorkerEntryModule` + self-contained single-chunk runtime, `service_worker_chunk_filename` config), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
-| React components, shadcn/ui 4.11.1 (specifier-preservation fix #10967 for `shadcn add` — package.json no longer gets corrupted), composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
+| React components, shadcn/ui 4.12.0 (Chat Components — `MessageScroller` / `Message` / `Bubble` / `Attachment` / `Marker`; CSS utilities `scroll-fade` / `shimmer`; new `@shadcn/react` npm package with `message-scroller` primitive) + 4.11.1 specifier-preservation fix #10967, composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
-| Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary), `generateStaticParams` required for root params with CC (canary.67), suppress `prefetch={true}` warning on `instant = false` opt-out (canary.67) | `routing.md` | Navigation & page structure |
+| Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary), `generateStaticParams` required for root params with CC (canary.67), suppress `prefetch={true}` warning on `instant = false` opt-out (canary.67), **hard-navigate to App routes shadowed by Pages dynamic route** (PR #95185, soft-nav misroute fix) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
 | Zustand, React Query, TanStack Query v5 (incl. `useSuspenseQuery` + `React.use(query.promise)`), v5 migration | `state.md` | State & server state |
 | Auth patterns, NextAuth.js v4/v5, JWT, session management, 2026 alternatives (Clerk, Better Auth) | `auth.md` | User auth & sessions |
@@ -46,7 +46,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2026 target, import defer) + **TypeScript 7.0.1-rc** (June 18, 2026, RC release of Go-based compiler ships as the main `typescript` package — `npx tsc` is now Go, ~10× faster, Strada internal API; stable targeted within 2 months of RC)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
-- **Tailwind CSS v4.3.1** + **shadcn/ui 4.11.1** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output; **4.11.1 (June 26, 2026) patches `shadcn add` to preserve existing `package.json` dependency specifiers** — fixes [shadcn-ui/ui#10525](https://github.com/shadcn-ui/ui/issues/10525) where the CLI could swap specifier values between packages, leaving lockfile + manifest contradictory; also drops the `node-fetch` transitive dep in favor of native `fetch` ([#10905](https://github.com/shadcn-ui/ui/pull/10905)))
+- **Tailwind CSS v4.3.1** + **shadcn/ui 4.12.0** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output; **4.11.1 (June 26, 2026) patches `shadcn add` to preserve existing `package.json` dependency specifiers** — fixes [shadcn-ui/ui#10525](https://github.com/shadcn-ui/ui/issues/10525) where the CLI could swap specifier values between packages, leaving lockfile + manifest contradictory; also drops the `node-fetch` transitive dep in favor of native `fetch` ([#10905](https://github.com/shadcn-ui/ui/pull/10905)); **4.12.0 (June 26, 2026, same day as 4.11.1) ships the first phase of Chat Components** — `MessageScroller` / `Message` / `Bubble` / `Attachment` / `Marker` (each available in Base UI + Radix UI flavors), two new CSS utilities `scroll-fade` + `shimmer` (shipped via `shadcn/tailwind.css`, so any project initialized with `npx shadcn@latest init` gets them for free), and a brand-new npm package **`@shadcn/react@0.1.0`** — unstyled headless React primitives, first primitive is `@shadcn/react/message-scroller` with the same interaction logic the registry item wraps)
 - **Modern CSS 2026** — `field-sizing: content` (Baseline 2026, Firefox 152 just shipped), `@starting-style` (Baseline 2024), CSS Anchor Positioning (cross-engine 2025–26), OKLCH color space, `color-scheme` + `light-dark()` function, scroll-driven animations
 - **Vite 8.1.0** (for non-Next projects; Next uses Turbopack — 8.1 ships WASM ESM Integration, `server.hmr` → `server.ws` rename, `import.meta.glob` `caseSensitive`, chunk importmap, lightningcss support, extended `server.fs.deny` defaults; **≥ 8.1.0 required for the new `caseSensitive` glob option**)
 - **@biomejs/biome 2.5.1** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
@@ -211,3 +211,13 @@ Key breaking changes from Next.js 15 → 16:
 - [PR #94897 — Cache components requires Node.js runtime (docs, canary.61)](https://github.com/vercel/next.js/pull/94897)
 - [Next.js docs — Migrating to Cache Components](https://nextjs.org/docs/app/guides/migrating-to-cache-components) (updated to mention `next-cache-components-adoption` skill)
 - [Next.js docs — Codemods reference (16.3)](https://nextjs.org/docs/app/guides/upgrading/codemods) (now lists `cache-components-instant-false`)
+- [shadcn-ui/ui#11022 — feat: @shadcn/react (Chat Components + scroll-fade + shimmer + @shadcn/react package, 4.12.0)](https://github.com/shadcn-ui/ui/pull/11022)
+- [shadcn-ui/ui commit `18fcf0f7` — feat: @shadcn/react (4.12.0 release commit)](https://github.com/shadcn-ui/ui/commit/18fcf0f766857a7249cc0daac3c1609610edd158)
+- [shadcn changelog post — June 2026 Components for Chat Interfaces](https://ui.shadcn.com/docs/changelog/2026-06-chat-components)
+- [@shadcn/react on npm (v0.1.0, MIT, React ≥19 peer dep, exports `./message-scroller`)](https://www.npmjs.com/package/@shadcn/react)
+- [shadcn-ui/ui `packages/react` source directory](https://github.com/shadcn-ui/ui/tree/main/packages/react)
+- [shadcn-ui/ui `packages/react/src/message-scroller` README — parts, hooks, types](https://github.com/shadcn-ui/ui/tree/main/packages/react/src/message-scroller)
+- [shadcn-ui/ui `packages/react/src/message-scroller/PERFORMANCE.md`](https://github.com/shadcn-ui/ui/tree/main/packages/react/src/message-scroller/PERFORMANCE.md)
+- [shadcn 4.12.0 release notes (GitHub)](https://github.com/shadcn-ui/ui/releases/tag/shadcn@4.12.0)
+- [PR #95185 — Hard-navigate to app routes shadowed by a pages dynamic route (16.3)](https://github.com/vercel/next.js/pull/95185)
+
