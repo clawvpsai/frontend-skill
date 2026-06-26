@@ -517,6 +517,59 @@ PR [#95153](https://github.com/vercel/next.js/pull/95153) (June 25, 2026) tighte
 - [PR #95153 — `next-dev-loop` papercut fixes](https://github.com/vercel/next.js/pull/95153)
 - [PR #95147 — docs: expand `io()` reference](https://github.com/vercel/next.js/pull/95147)
 
+### Dev Cold-Cache Badge Now Behind `experimental.coldCacheBadge` (16.3.0-canary.68)
+
+PR [#95169](https://github.com/vercel/next.js/pull/95169) (June 25, 2026) gates the **persistent "Cold cache" badge** that the dev overlay shows after a navigation filled an empty cache. The badge was added in canary.57 / [#94611](https://github.com/vercel/next.js/pull/94611) and was on by default in every dev session. After this change it's **off by default** — too loud and visually disruptive in its current form, the team wants to iterate on the UI/UX before re-enabling it for everyone.
+
+**What's now gated:**
+- The **persistent** "Cold cache" badge in the dev-overlay corner (left behind after a load settles) — **now off by default**.
+- The **transient** "Rendering (cold cache)" pill shown *during* a navigation is **unchanged** — it clears itself once the navigation commits, so it stays valuable without being disruptive.
+- The pre-existing "Cache disabled" (bypass) badge is also unchanged.
+- The DevTools menu's cold-cache entry is also unchanged.
+
+**How to enable / disable:**
+
+```ts
+// next.config.ts — opt in to the persistent badge for local dev
+const nextConfig: NextConfig = {
+  experimental: {
+    coldCacheBadge: true,   // default: false (canary.68+)
+  },
+}
+
+// Or via the env var the badge plumbing actually reads:
+process.env.__NEXT_EXPERIMENTAL_COLD_CACHE_BADGE = '1'
+```
+
+The flag is plumbed to the dev overlay via the define plugin (`computeIntent` resolves to a no-badge path when the flag is off). **Storybook forces the flag on** through its `env` hook so the badge stories remain the surface for iterating on the design — every test suite that asserts on the badge also opts in, so none of them regress while it's disabled by default.
+
+**Practical impact for agents:**
+- If you were relying on the persistent badge as a "your build is doing cold-cache work" signal — and you see it disappear after upgrading to canary.68+ — set `experimental.coldCacheBadge: true` in `next.config.ts` to bring it back.
+- If you were *not* relying on it and found it noisy, just upgrade. The transient pill is unchanged.
+- The canary.57 guidance ("the cold cache indicator is scoped to shell cache misses only") is still accurate for the transient pill; only the persistent badge is gated.
+
+### `partialPrefetching` Shell Prefetch Simulation — Reveal after ShellRuntime (16.3.0-canary.68)
+
+PR [#95149](https://github.com/vercel/next.js/pull/95149) (June 25, 2026) refines the **Shell Prefetch** simulation in dev when `partialPrefetching` is on. Before this change, the dev overlay's cold-cache indicator and the `revealAfterStage` machinery used the `RenderStage.Runtime` boundary as the "what counts as cold-cache work" cutoff, which over-counted for shell-prefetch routes (the user only cares about cache misses up to the App Shell, not the runtime tree that runs after the shell commits).
+
+**What changed:**
+- When `partialPrefetching` is on, the shell we care about is the **App Shell**, represented by the `ShellRuntime` stage. The dev overlay now counts cold-cache work up to **and including `ShellRuntime`**, and releases the client-side promise at that boundary.
+- This produces a much more accurate dev-only cold-cache signal for the common case (a shell prefetch) — warm-shell navigations no longer get flagged just because the runtime tree behind the shell needed to fetch data.
+- **Limitation:** if you're navigating via `<Link prefetch={true}>` or using `partialPrefetching: 'unstable_eager'`, you might want the `Runtime` stage instead — that's a follow-up PR.
+- Internal refactor: `revealAfterStage` and `holdStreamUntilRevealed` were merged into a single `DevNavigationKind` object that represents either an initial load or a client navigation. This removes the invalid `holdStreamUntilRevealed = true` + `revealAfterStage = RenderStage.Runtime/ShellRuntime` combination and brings the logic closer to where the stream-blocking tricks actually happen. Drive-by refactor of `streamStagedRenderInDev` deduped some repetitive code, and all `revealAfter.resolve()` calls were moved into separate tasks (previously inconsistent).
+
+**Practical impact:**
+- If you use `partialPrefetching: true` and watch the dev overlay for cold-cache signals, expect fewer false-positive "cold cache" warnings after upgrading to canary.68+. Warm-shell navigations on shell-prefetch routes will no longer show the badge.
+- This is a **dev-only** change — production prefetch behavior is unchanged. Canary.65+ (#95067) already aligned dev with prod on shell-only prefetch responses; this change further aligns the dev-overlay *signal* with prod behavior.
+- If you're hacking on the dev-overlay itself, the new `DevNavigationKind` type is the right entry point — the old `revealAfterStage`/`holdStreamUntilRevealed` combo is gone.
+
+**Sources for canary.68:**
+- [Next.js 16.3.0-canary.68 release notes (June 25, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.68)
+- [PR #95169 — Gate the dev Cold cache badge behind an experimental flag](https://github.com/vercel/next.js/pull/95169)
+- [PR #95149 — `[PP]` Reveal after ShellRuntime when simulating a Shell Prefetch in dev](https://github.com/vercel/next.js/pull/95149)
+- [PR #94611 — Dev Cold cache indicator (canary.57, now gated by `experimental.coldCacheBadge`)](https://github.com/vercel/next.js/pull/94611)
+- [PR #94911 — Scope the Cold cache indicator to shell cache misses (canary.57)](https://github.com/vercel/next.js/pull/94911)
+
 ## Turbopack — Fast Development Bundler
 
 Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:

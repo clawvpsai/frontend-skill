@@ -433,6 +433,36 @@ The Turbopack ecmascript-runtime package's `edge` chunk-loading variant has been
 
 **Impact for Next.js users:** This is **not a functionality change** for application code. The rename is internal to Turbopack's runtime code generation. If you have any custom code that reads from `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/edge/` (extremely unlikely for a Next.js app), update the paths. If you see documentation or error messages still referencing the old `edge` runtime path in canary.61+, that's a stale reference — the canonical name is now `self-contained`.
 
+### Turbopack Service Worker Support (16.3.0-canary.68, [#94920](https://github.com/vercel/next.js/pull/94920) + [#94921](https://github.com/vercel/next.js/pull/94921) + [#94922](https://github.com/vercel/next.js/pull/94922), June 25, 2026)
+
+First-class Turbopack support for compiling and serving **service workers** landed in 16.3.0-canary.68 as a three-PR stack that mirrors the Webpack-equivalent behavior (which has been there since Next.js 12+). After this change, Turbopack's analyzer discovers `ServiceWorkerEntryModule`s, the Turbopack runtime emits them as **single-chunk self-contained bundles** (using the runtime renamed above), and `next-api` serves the compiled worker on the route you register it on (typically `/sw.js` or `/worker.js`).
+
+**What ships:**
+
+1. **[#94920](https://github.com/vercel/next.js/pull/94920)** — `ServiceWorkerChunkingContextOptions` added to `turbopack/crates/turbopack-next/next-core` so Turbopack knows how to bundle workers (no shared chunks, no DOM-dependent runtime — exactly the "self-contained" runtime shape the previous rename enabled).
+2. **[#94921](https://github.com/vercel/next.js/pull/94921)** — `ServiceWorkerEntryModule` plus a new `service_worker_chunk_filename` config knob. The analyzer inserts one of these per registered worker, telling the runtime "compile this file as a self-contained single-chunk worker."
+3. **[#94922](https://github.com/vercel/next.js/pull/94922)** — `next-api` discovers the workers via the module graph and serves the compiled output at the route you registered (e.g. `navigator.serviceWorker.register('/sw.js')` will now hit a Turbopack-compiled worker instead of falling back to Webpack).
+
+**User-facing impact:**
+
+- If you ship a PWA, **migrate from `next dev --webpack` to Turbopack now**. Previously, service worker registration on a Turbopack dev/build would silently fall back to a static file or fail to serve a compiled worker — both are easy-to-miss footguns that broke offline behavior in dev and produced stale prod workers.
+- **`navigator.serviceWorker.register('/sw.js')`** continues to work — you do **not** need to change your registration code. The compiled output path is the same. Internally, Turbopack now produces a single-file bundle that loads with `globalThis`/`self` only (matching the self-contained runtime shape) so the worker is fully self-contained and registers cleanly without depending on a chunk loader that the worker context can't access.
+- **No config needed.** The bundling and serving are automatic for any file you register as a service worker, via the same module-graph discovery path Webpack has used for years.
+- **e2e tests still being added** ([#94924](https://github.com/vercel/next.js/pull/94924), open at canary.68) — expect rough edges if you're an early adopter. If your existing PWA test suite was passing on Turbopack canary ≤ canary.67, it should keep passing (the old code path was a no-op or fall-through, so any "passing" result was likely a stale-cache hit).
+
+**Files that change in Turbopack source if you ever inspect them:**
+
+- `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/self-contained/` — the runtime that now backs workers
+- `turbopack/crates/turbopack-next/next-core/src/next_shared/resolve.rs` — the analyzer rule that inserts `ServiceWorkerEntryModule`
+- `packages/next/src/server/lib/router-utils/filesystem.ts` — the route that serves the compiled worker
+
+**Sources:**
+- [PR #94920 — `[turbopack]` Create `ServiceWorkerChunkingContextOptions` in `next-core`](https://github.com/vercel/next.js/pull/94920)
+- [PR #94921 — `[turbopack]` Create `ServiceWorkerEntryModule` and `service_worker_chunk_filename`](https://github.com/vercel/next.js/pull/94921)
+- [PR #94922 — `[turbopack]` Discover `ServiceWorkerEntryModule`s in `next-api` and compile + serve those service workers](https://github.com/vercel/next.js/pull/94922)
+- [PR #94924 — `[turbopack]` Add e2e tests for service workers](https://github.com/vercel/next.js/pull/94924) (still open at canary.68)
+- [Next.js docs — `serviceWorkerRegistration` in PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps)
+
 ### Cache Components Adoption — `cache-components-instant-false` Codemod (16.3, [#94941](https://github.com/vercel/next.js/pull/94941))
 
 Enabling `cacheComponents: true` fails the build immediately for any route that reads request-time data outside `<Suspense>`. The new `cache-components-instant-false` codemod in `@next/codemod` (registered at `version: '16.3.0'`) blanket-inserts `export const instant = false` (with a `// TODO: Cache Components adoption` comment) into every `app/**/{page,layout,default}.{js,jsx,ts,tsx}` that doesn't already export `instant`. Skips Client Components (`"use client"`), route handlers, and files with existing `instant` exports (including aliased `export { x as instant }`). Idempotent — safe to re-run.
