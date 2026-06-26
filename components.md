@@ -749,6 +749,59 @@ npx shadcn@latest eject -s
 - You use the standard Radix or Base UI shadcn variants (the shared CSS is what they need)
 
 **Source:** [shadcn eject — May 2026 changelog](https://ui.shadcn.com/docs/changelog) · [shadcn CLI docs — eject command](https://ui.shadcn.com/docs/cli#eject)
+## shadcn 4.11.1 — `package.json` Specifier Preservation Fix (June 26, 2026)
+
+A real user-facing bug fix shipped in 4.11.1. If you use `shadcn add` to install registry items in a project with a curated `package.json` (pinned ranges, custom registries, monorepo workspace overrides), upgrade before your next `shadcn add`.
+
+### The bug (now fixed) — `shadcn add` silently corrupted `package.json` specifiers
+
+Tracked as [shadcn-ui/ui#10525](https://github.com/shadcn-ui/ui/issues/10525). When `shadcn add` ran against a `package.json` that already had dependencies, **specifier values got swapped between packages**. The CLI would write the new dep at the wrong key, leaving the lockfile and `package.json` in contradictory states. Repro (deterministic):
+
+```json
+
+// BEFORE shadcn add
+
+"dependencies": {
+
+  "@base-ui/react": "latest",
+
+  "class-variance-authority": "^0.7.1"
+
+}
+
+
+
+// AFTER shadcn add (BROKEN pre-4.11.1)
+
+"dependencies": {
+
+  "@base-ui/react": "latest",
+
+  "class-variance-authority": "^1.4.1"   // value that belonged to a different package
+
+}
+
+```
+
+`pnpm-lock.yaml` would then show the correct resolved version but the wrong specifier — `pnpm install` against the corrupted file would silently upgrade or downgrade packages on next install.
+
+### The fix — `shadcn add` now preserves existing specifiers
+
+[PR #10967](https://github.com/shadcn-ui/ui/pull/10967) (shipped in 4.11.1) replaces the specifier-merge path so existing entries are read from `package.json` first, only the new dep is written, and no specifier shuffling happens. If you were bitten by this, diff `package.json` and your lockfile — the corrupted specifier is in `package.json` only, the lockfile holds the real resolved version. The fix is to:
+
+1. Upgrade to `shadcn@4.11.1` or later (`npx shadcn@latest add ...`).
+
+2. Manually restore the correct specifier values from the lockfile (`pnpm-lock.yaml` has the real resolved versions).
+
+3. Re-run `pnpm install --lockfile-only` to verify the specifier/version pair reconciles cleanly.
+
+### Also in 4.11.1 — `node-fetch` → native `fetch`
+
+[PR #10905](https://github.com/shadcn-ui/ui/pull/10905) drops the `node-fetch` transitive dep in favor of the Node 18+ native `fetch`. No user-facing change, just a smaller install footprint and one fewer transitive supply-chain surface. Requires Node ≥ 18 (already a hard requirement for every tracked Next.js / Vite / TanStack project).
+
+**Sources:** [shadcn-ui/ui#10525 — bug report](https://github.com/shadcn-ui/ui/issues/10525) · [shadcn-ui/ui#10967 — specifier preservation fix](https://github.com/shadcn-ui/ui/pull/10967) · [shadcn-ui/ui#10905 — node-fetch → native fetch](https://github.com/shadcn-ui/ui/pull/10905) · [shadcn changelog](https://ui.shadcn.com/docs/changelog)
+
+
 
 ## shadcn/ui GitHub Registries (June 2026)
 

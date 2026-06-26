@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.32
+version: 1.4.33
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -11,7 +11,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Topic | File | When to Use |
 |---|---|---|
 | Project setup, TypeScript, Vite 8.1, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), **Turbopack Service Worker support** (16.3 canary.68 — discover/compile/serve via `ServiceWorkerEntryModule` + self-contained single-chunk runtime, `service_worker_chunk_filename` config), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
-| React components, shadcn/ui, composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
+| React components, shadcn/ui 4.11.1 (specifier-preservation fix #10967 for `shadcn add` — package.json no longer gets corrupted), composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
 | Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary), `generateStaticParams` required for root params with CC (canary.67), suppress `prefetch={true}` warning on `instant = false` opt-out (canary.67) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
@@ -46,7 +46,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **React 19.2.7** (React Compiler 1.0 stable, `use()` hook, `useOptimistic`, `useFormStatus`, `useActionState`, `useEffectEvent`, `cacheSignal`, `cache`, `<Activity>`)
 - **TypeScript 6.0.3** (strict by default, ES2026 target, import defer) + **TypeScript 7.0.1-rc** (June 18, 2026, RC release of Go-based compiler ships as the main `typescript` package — `npx tsc` is now Go, ~10× faster, Strada internal API; stable targeted within 2 months of RC)
 - **Zod 4.4.3** (14x faster string parsing, strict/loose object modes, `z.file()`, `z.templateLiteral()`)
-- **Tailwind CSS v4.3.1** + **shadcn/ui** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output)
+- **Tailwind CSS v4.3.1** + **shadcn/ui 4.11.1** (CSS-first config via `@theme` directive — no tailwind.config.js by default; v4.3.1 patch added `--silent` CLI flag, `@apply` with CSS mixins, cleaner spacing output; **4.11.1 (June 26, 2026) patches `shadcn add` to preserve existing `package.json` dependency specifiers** — fixes [shadcn-ui/ui#10525](https://github.com/shadcn-ui/ui/issues/10525) where the CLI could swap specifier values between packages, leaving lockfile + manifest contradictory; also drops the `node-fetch` transitive dep in favor of native `fetch` ([#10905](https://github.com/shadcn-ui/ui/pull/10905)))
 - **Modern CSS 2026** — `field-sizing: content` (Baseline 2026, Firefox 152 just shipped), `@starting-style` (Baseline 2024), CSS Anchor Positioning (cross-engine 2025–26), OKLCH color space, `color-scheme` + `light-dark()` function, scroll-driven animations
 - **Vite 8.1.0** (for non-Next projects; Next uses Turbopack — 8.1 ships WASM ESM Integration, `server.hmr` → `server.ws` rename, `import.meta.glob` `caseSensitive`, chunk importmap, lightningcss support, extended `server.fs.deny` defaults; **≥ 8.1.0 required for the new `caseSensitive` glob option**)
 - **@biomejs/biome 2.5.1** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
@@ -102,6 +102,9 @@ Key breaking changes from Next.js 15 → 16:
 - [Tailwind CSS v4.3.1 release notes](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.1)
 - [shadcn/ui — GitHub Registries (June 2026)](https://ui.shadcn.com/docs/changelog/2026-06-github-registries)
 - [shadcn eject (May 2026) — take ownership of registry CSS](https://ui.shadcn.com/docs/changelog)
+- [shadcn-ui/ui#10525 — `shadcn add` package.json specifier-swap bug (fixed in 4.11.1, June 26, 2026)](https://github.com/shadcn-ui/ui/issues/10525)
+- [shadcn-ui/ui#10967 — specifier preservation fix (PR, shipped in 4.11.1)](https://github.com/shadcn-ui/ui/pull/10967)
+- [shadcn-ui/ui#10905 — node-fetch → native fetch (PR, shipped in 4.11.1)](https://github.com/shadcn-ui/ui/pull/10905)
 - [React Hook Form 7.79.0 — `useFieldArray` `disabled` option (June 13, 2026)](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.79.0)
 - [React Hook Form 7.80.0 — per-field `disabled` + perf + `deepEqual` fix (June 20, 2026)](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.80.0)
 - [React Compiler 1.0 stable release](https://react.dev/blog/2025/10/07/react-compiler-1)
