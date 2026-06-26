@@ -476,6 +476,47 @@ PR [#95139](https://github.com/vercel/next.js/pull/95139) (June 24, 2026) closes
 **The fix:** detect the empty static shell at serve time and **throw to a normal error page** instead, and **clear the instant-navigation cookie** so the next reload renders the route normally (the inspector is no longer active, so the route renders its full tree). The team plans to render this error message inline in the Navigation Inspector panel rather than as a full-page error in a future canary.
 
 **Practical impact:** if you see a full-page error during a Navigation Inspector session — particularly the "blank document, no DevTools, can't reload out" failure mode — upgrade to 16.3.0-canary.67+ first. If you can't upgrade, the manual escape hatch is `await fetch('/__nextjs_original-stack-frame?file=…')` to clear the inspector cookie via DevTools, or a hard restart of `next dev` (the cookie is process-scoped in dev).
+### `instant()` Renders Shell Only Unless `prefetch` Prop Is Set (16.3.0-preview.5)
+
+PR [#95150](https://github.com/vercel/next.js/pull/95150) (June 25, 2026) tightens the `instant()` behavior so the shell and the prefetched payload stay cleanly separated. Before this change, an `instant()` call could render a full payload into the shell response — wasting bytes on data that was only useful on actual navigation. After this change, **`instant()` only renders the route's static shell by default**. To render the prefetched payload (the data the route would produce on navigation), pass the `prefetch` prop explicitly:
+
+```ts
+// Renders only the shell — fast, small payload
+// Use this when serving the response for the "instant nav" cookie path
+instant()  // now equivalent to: instant({ prefetch: false })
+
+// Renders the shell + the prefetched payload
+// Use this when warming the prefetch cache for a future navigation
+instant({ prefetch: true })
+```
+
+**Practical impact:**
+
+- If you have custom integration code that calls `instant()` from a Server Action or a route handler and expects the full payload, you'll now get just the shell. Pass `{ prefetch: true }` to restore the old behavior.
+- The `<Link prefetch>` path is unaffected — it always passes `prefetch: true` internally, so prefetched payloads continue to flow as before.
+- Combined with the dev-parity change below, this means dev now mirrors production: prefetch requests serve the same shell-only response they would in prod, which makes Dev Insights and the Navigation Inspector behave consistently.
+
+### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
+
+PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.
+
+**Practical impact:**
+
+- If a route previously "worked fine" in dev but threw "Empty static shell" or similar errors in prod, you can now reproduce the failure locally without deploying.
+- The Dev Insights fix-card set is unchanged, but the new shell-only path means more routes will trigger the `connection()` / `cookies()` / `headers()` fix cards in dev than before — that's the intended behavior, since those routes would have failed in prod anyway.
+- Combine with `experimental.cachedNavigations` + `experimental.prefetchInlining` for the full production-equivalent instant-navigation pipeline.
+
+### `next-dev-loop` Papercut Fixes (16.3.0-preview.5)
+
+PR [#95153](https://github.com/vercel/next.js/pull/95153) (June 25, 2026) tightens the **`next-dev-loop` skill** (the agent-skill that drives Next.js dev through iterative edits). Several papercut-class fixes — clearer error messages on a failed dev server start, better cache invalidation between agent iterations, and a more deterministic restart path. The agent skill itself is the right way to drive a Next.js project through a coding agent loop (see `setup.md` for the recommended agent-driven dev workflow).
+
+**Sources for preview.5:**
+- [Next.js 16.3.0-preview.5 release notes (June 25, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.5)
+- [PR #95150 — `instant()` only renders shell unless `prefetch` prop is set](https://github.com/vercel/next.js/pull/95150)
+- [PR #95067 — Replicate production prefetch shells in dev](https://github.com/vercel/next.js/pull/95067)
+- [PR #95153 — `next-dev-loop` papercut fixes](https://github.com/vercel/next.js/pull/95153)
+- [PR #95147 — docs: expand `io()` reference](https://github.com/vercel/next.js/pull/95147)
+
 ## Turbopack — Fast Development Bundler
 
 Next.js 16 ships Turbopack (Rust-based bundler) as the default development bundler:

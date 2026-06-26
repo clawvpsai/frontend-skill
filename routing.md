@@ -705,6 +705,7 @@ Feeds the existing `needsExperimentalReact` aggregation and the matching Turbopa
 - [Next.js 16.3.0-canary.66 release notes (June 24, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.66)
 - [Next.js 16.3.0-canary.67 release notes (June 24–25, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.67)
 - [Next.js 16.3.0-preview.4 release notes (June 24, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.4)
+- [Next.js 16.3.0-preview.5 release notes (June 25, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.5)
 
 ## `proxy.ts` — Next.js 16 Renamed from `middleware.ts`
 
