@@ -34,7 +34,7 @@ Flags explained:
 
 Next.js 16.2 ships four features specifically designed for AI-assisted development. These are significant if you're an AI agent (like this skill's users) or you work alongside one.
 
-### 1. AGENTS.md in `create-next-app` (Default: Yes)
+### 1. AGENTS.md in `create-next-app` (Default: Yes) + Auto-Update (16.3+)
 
 `npx create-next-app@latest` now scaffolds an `AGENTS.md` file at the project root. This file instructs AI coding agents (Claude Code, Cursor, etc.) to read the bundled Next.js documentation from `node_modules/next/dist/docs/` *before* writing any code — giving agents version-matched, local documentation instead of fetching external data.
 
@@ -45,6 +45,8 @@ Vercel's research found that bundled docs achieved a **100% pass rate** on Next.
 cat AGENTS.md
 # → "Read the docs bundled at node_modules/next/dist/docs/ before writing any code"
 ```
+
+**16.3 update:** `next dev` now writes and updates the managed `AGENTS.md` block automatically when it detects an AI coding agent in the environment (`CLAUDE_CODE`, `CURSOR_TRACE_ID`, `GITHUB_COPILOT_CHAT`, etc.). The exact text it inserts is delimited by `<!-- BEGIN:nextjs-agent-rules -->` / `<!-- END:nextjs-agent-rules -->` markers; anything outside the markers is preserved verbatim. **Opt out** with `agentRules: false` in `next.config.ts`. For 16.1 or earlier (or to opt in manually without running `next dev`), run `npx @next/codemod@canary agents-md`. Full details in `patterns.md` → Next.js 16.3 AI Improvements.
 
 **For existing projects**, you can opt in manually by creating `AGENTS.md` with the same directive. Vercel's [research on AGENTS.md](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals) shows always-available context beats on-demand retrieval because agents often fail to recognize when they should search.
 
@@ -79,37 +81,69 @@ Run kill 12345 to stop it.
 
 The lock also blocks two concurrent `next build` processes. If you need to override (stale lock after crash), delete `.next/dev/lock`.
 
-### 4. `@vercel/next-browser` — Experimental CLI for Agents
+### 4. `agent-browser` — Browser CLI for Agents (formerly `next-browser`, merged in 16.3)
 
-[`@vercel/next-browser`](https://github.com/vercel-labs/next-browser) is an experimental CLI that exposes browser-level data (screenshots, network requests, console logs) plus framework-specific insights from React DevTools and the Next.js dev overlay — all as structured text via shell commands. An LLM can't read a DevTools panel, but it can run `next-browser tree` and parse the output.
+As of Next.js 16.3 (June 26, 2026), the experimental [`@vercel/next-browser`](https://github.com/vercel-labs/next-browser) CLI from 16.2 has **merged into the general-purpose [`agent-browser`](https://github.com/vercel-labs/agent-browser) CLI**. Everything `next-browser` did is now in `agent-browser`, and it works beyond Next.js too (any web app). **`agent-browser` 0.27+** adds React DevTools introspection on top of the existing DOM, console, network, and Web Vitals access — the equivalent commands are renamed from `next-browser *` to `agent-browser *`.
 
-Install as a [skills.sh](https://skills.sh) skill:
+Install or upgrade with `npm install -g agent-browser@^0.27` (0.31.1 is current; the `next-dev-loop` skill now requires 0.31.1+, see `patterns.md` → Next.js 16.3 AI Improvements). React commands require `--enable react-devtools` at launch.
 
 ```bash
-npx skills add vercel-labs/next-browser
+# Install globally
+npm install -g agent-browser@^0.27
+
+# Or as a skills.sh skill
+npx skills add vercel-labs/agent-browser
 ```
 
-Then use `/next-browser` in Claude Code, Cursor, or any AI agent that supports skills. The CLI manages a Chromium instance with React DevTools pre-loaded.
+**Available commands (as of June 2026, agent-browser 0.31.1):**
 
-**Available commands (as of June 2026):**
 | Command | Purpose |
 |---|---|
-| `next-browser tree` | Inspect React component tree (props, hooks, state, source locations) |
-| `next-browser network` | Track requests since navigation, including Server Actions |
-| `next-browser logs` | Retrieve build + runtime issues from dev server |
-| `next-browser ppr` | Analyze PPR shells — identify static vs dynamic regions and blocked Suspense boundaries |
-| `next-browser screenshot` | Capture current viewport (or loading filmstrip) |
-| `next-browser errors` | Surface dev overlay errors with `Error.cause` chains |
+| `agent-browser tree` | Inspect DOM/component tree with selectors + source locations |
+| `agent-browser react tree` | List the React component tree with fiber IDs |
+| `agent-browser react inspect <fiberId>` | Inspect a single React component (props, hooks, state, source location) |
+| `agent-browser react renders start` / `stop` | Profile re-renders over a time window |
+| `agent-browser react suspense --only-dynamic --json` | See what's holding a render — machine-readable JSON for agents |
+| `agent-browser network` | Track requests since navigation, including Server Actions |
+| `agent-browser logs` | Retrieve build + runtime issues from dev server |
+| `agent-browser screenshot` | Capture current viewport (or loading filmstrip) |
+| `agent-browser errors` | Surface dev overlay errors with `Error.cause` chains |
+| `agent-browser mcp` | Start an MCP stdio server (for Claude Desktop, Cursor, etc.) |
 
-Each command is a one-shot request against a persistent browser session, so agents can query the app repeatedly without managing browser state. **Note:** `next-browser` is still experimental — APIs may change.
+Each command is a one-shot request against a persistent browser session, so agents can query the app repeatedly without managing browser state. **Note:** `agent-browser` is still under active development — APIs may change.
+
+The previous `next-browser` repo is now archived/merged; **do not install `next-browser` for new projects in 16.3+** — it duplicates `agent-browser` and won't get React DevTools introspection. The `next-dev-loop` Skill (`npx skills add vercel/next.js --skill next-dev-loop`) wraps `agent-browser` for agents and is the recommended way to drive a Next.js dev loop from a coding agent.
+
+### 5. 16.3 Update — `AGENTS.md` Auto-Update + Knowledge-Skills Retirement
+
+Two behavioral changes land in 16.3 that supersede the 16.2 AGENTS.md behavior:
+
+**(a) `next dev` writes and updates the managed `AGENTS.md` block automatically.** The dev server detects AI coding agents in the environment (`CLAUDE_CODE`, `CURSOR_TRACE_ID`, `GITHUB_COPILOT_CHAT`, etc.) and inserts (or refreshes) the marker block on its own — no manual codemod needed. The exact text:
+
+```md
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
+<!-- END:nextjs-agent-rules -->
+```
+
+The block is only written when (a) an AI coding agent is detected AND (b) the markers aren't already there. Anything outside the markers is preserved verbatim. **Opt out** with `agentRules: false` in `next.config.ts`. For 16.1 or earlier (or to opt in manually), run `npx @next/codemod@canary agents-md`.
+
+**(b) Older Vercel knowledge Skills are retired.** The earlier knowledge Skills (App Router conventions, caching APIs) distributed via `skills.sh` are **retired in 16.3** because the bundled docs (now reachable through the managed AGENTS.md block) make them redundant. **Run `npx skills update` to remove them from your installed set.** The new recommended Skills are the three first-party Skills from `vercel/next.js/tree/canary/skills`: `next-dev-loop`, `next-cache-components-adoption`, and `next-cache-components-optimizer`. Full breakdown in `patterns.md` → Next.js 16.3 AI Improvements.
 
 **Sources:**
-- [Next.js 16.2: AI Improvements (official blog)](https://nextjs.org/blog/next-16-2-ai)
+- [Next.js 16.2: AI Improvements (official blog, March 2026)](https://nextjs.org/blog/next-16-2-ai)
+- [Next.js 16.3: AI Improvements (official blog, June 26, 2026 — merged `next-browser` into `agent-browser`, AGENTS.md auto-update, knowledge-Skills retirement)](https://nextjs.org/blog/next-16-3-ai-improvements)
 - [Next.js AI Coding Agents guide](https://nextjs.org/docs/app/guides/ai-agents)
-- [`@vercel/next-browser` repo](https://github.com/vercel-labs/next-browser)
+- [`agent-browser` repo (successor to `next-browser`)](https://github.com/vercel-labs/agent-browser)
+- [`@vercel/next-browser` repo (archived/merged into `agent-browser`)](https://github.com/vercel-labs/next-browser)
+- [`agent-browser` on npm (current: 0.31.1)](https://www.npmjs.com/package/agent-browser)
 - [Vercel research: AGENTS.md outperforms skills (100% vs 79%)](https://vercel.com/blog/agents-md-outperforms-skills-in-our-agent-evals)
 
-## Next.js 16.1 Highlights (December 2025)
+## Next.js 16.1 Highlights (December 2025)## Next.js 16.1 Highlights (December 2025)
 
 If you're starting a new project today, you're getting these by default. Worth knowing what they do:
 

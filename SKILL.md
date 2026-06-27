@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.35
+version: 1.4.36
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -10,7 +10,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 
 | Topic | File | When to Use |
 |---|---|---|
-| Project setup, TypeScript, Vite 8.1, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), **Turbopack Service Worker support** (16.3 canary.68 — discover/compile/serve via `ServiceWorkerEntryModule` + self-contained single-chunk runtime, `service_worker_chunk_filename` config), `cache-components-instant-false` codemod | `setup.md` | Starting a new project |
+| Project setup, TypeScript, Vite 8.1, Biome, env vars, Turbopack `self-contained` runtime rename (16.3 canary.61), **Turbopack Service Worker support** (16.3 canary.68 — discover/compile/serve via `ServiceWorkerEntryModule` + self-contained single-chunk runtime, `service_worker_chunk_filename` config), `cache-components-instant-false` codemod, **`AGENTS.md` auto-update** (16.3 — `next dev` writes managed block when AI agent detected, `agentRules: false` opt-out), `agent-browser` (16.3 — merged from `next-browser`, React DevTools commands: `react tree`/`react inspect`/`react renders`/`react suspense --only-dynamic --json`) | `setup.md` | Starting a new project |
 | React components, shadcn/ui 4.12.0 (Chat Components — `MessageScroller` / `Message` / `Bubble` / `Attachment` / `Marker`; CSS utilities `scroll-fade` / `shimmer`; new `@shadcn/react` npm package with `message-scroller` primitive) + 4.11.1 specifier-preservation fix #10967, composition, ref forwarding, ref-callback cleanup (React 19), `useFormStatus` / `useId` / `useEffectEvent` (React 19/19.2) | `components.md` | Building UI |
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
 | Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary), `generateStaticParams` required for root params with CC (canary.67), suppress `prefetch={true}` warning on `instant = false` opt-out (canary.67), **hard-navigate to App routes shadowed by Pages dynamic route** (PR #95185, soft-nav misroute fix, shipped in canary.69), **middleware rewrite query/params preserved in Pages API** (PR #94905, fixes issue #94647, canary.69 — silent data loss in `req.query` when middleware rewrites to `/api/*` Pages API handlers) | `routing.md` | Navigation & page structure |
@@ -21,12 +21,12 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
 | Tailwind CSS v4, design tokens, modern cross-engine CSS (`field-sizing`, `@starting-style`, anchor positioning, OKLCH, `light-dark()`, scroll-driven animations) | `styling.md` | Styling & theming |
 | Streaming, Suspense, image optimization, PPR (legacy codepaths REMOVED in 16.3 canary.61 then REVERTED in canary.66 — use `cacheComponents: true`), metadata image route static prerendering under Cache Components (16.3 canary.61, canary.67 local-fonts Buffer-corruption follow-up), App Shells (canary), Dev Insights, Navigation Inspector blocking-route error (canary.67), prefetch controls, **dev cold-cache badge gated behind `experimental.coldCacheBadge`** (canary.68, default off; transient pill unchanged), **`partialPrefetching` Shell Prefetch reveal-after-ShellRuntime** (canary.68) | `performance.md` | Speed & UX |
-| Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server | `deployment.md` | Going live |
+| Vercel (incl. Vercel Connect, eve, Chat SDK), Docker, Node adapter, self-hosted, Next.js MCP Server (16.3 — knowledge base + upgrade + CC helpers REMOVED; new `get_compilation_issues` / `compile_route` compilation tools added) | `deployment.md` | Going live |
 | XSS, CSRF, CSP, input sanitization | `security.md` | Hardening |
 | Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + **Playwright 1.61** (WebAuthn passkeys `browserContext.credentials`, WebStorage `page.localStorage/sessionStorage`, video modes parity, expect.soft.poll) + component tests | `testing.md` | Test-driven dev |
 | Vitest 4 (Browser Mode stable, Visual Regression, Playwright Trace) + **Playwright 1.61** (WebAuthn passkeys `browserContext.credentials`, WebStorage `page.localStorage/sessionStorage`, video modes parity, expect.soft.poll) + component tests + **Vitest 5.0-beta breaking changes (beta.3/4/5 May 19–June 15, 2026)** — strict `toHaveTextContent` + new `toMatchTextContent`, `locators.exact: true` default in Browser Mode, Node 22 / Vite 6.4 hard requirement, removed entry points (`vitest/coverage`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`, `vitest/reporters`, `vitest/mocker`), `expect.poll` fails on timeout, hoistable-methods-out-of-scope throw, `bench` moved into `test()` fixture, `test.sequential` → `{ concurrent: false }`, no ancestor-directory config lookup, `@vitest/runner` inlined into `vitest`, `TestModule.id` 1-based, `coverage.thresholds.perFile` accepts an object, browser orchestrator requires `sessionId`, happy-dom/jsdom `window` mutation allowed, `--repeats` CLI flag | `testing.md` | Test-driven dev |
 | Strict TypeScript, generics, utilities, `import defer`, Temporal API, `satisfies`, `const` type parameters, branded/opaque types, template literal types, **TS 7.0 RC** (June 18, 2026, Go compiler via `typescript@rc`, `--checkers`/`--builders`/`--singleThreaded`, `stableTypeOrdering` mandatory, `@typescript/typescript6` compat package) | `typescript.md` | Type safety |
-| React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3), `cacheComponents` adoption (`instant = false` opt-out, `cache-components-instant-false` codemod, `next-cache-components-adoption` agent skill in 16.3 canary.61; canary.67 — skill leads with `next-dev-loop` + adds build-only verification) | `patterns.md` | Composite recipes |
+| React Compiler, `<Activity>`, useOptimistic, `after()`, View Transitions, `prefetch` segment config (`allow-runtime` rename in 16.3), `cacheComponents` adoption (`instant = false` opt-out, `cache-components-instant-false` codemod, `next-cache-components-adoption` agent skill in 16.3 canary.61; canary.67 — skill leads with `next-dev-loop` + adds build-only verification), **Next.js 16.3 AI Improvements** (June 26, 2026 — `AGENTS.md` auto-update + `agentRules: false` opt-out, 3 first-party Skills `next-dev-loop`/`next-cache-components-adoption`/`next-cache-components-optimizer`, older knowledge Skills retired via `npx skills update`, Instant Insights `Copy as prompt`, MCP server shrunk (knowledge base removed + new `get_compilation_issues` / `compile_route` tools), Docs as Markdown (`/docs/llms.txt`, `.md` suffix, `Accept: text/markdown`), `agent-browser` 0.27+ React DevTools commands) | `patterns.md` | Composite recipes |
 
 ## Critical Rules (Never Forget)
 
@@ -97,6 +97,14 @@ Key breaking changes from Next.js 15 → 16:
 - [Next.js 16.2.9 release](https://github.com/vercel/next.js/releases/tag/v16.2.9)
 - [Next.js 16.2 — automated upgrade CLI](https://nextjs.org/blog/next-16-2)
 - [Next.js 16.2 — AI Improvements (AGENTS.md, browser log forwarding, dev server lock file, next-browser)](https://nextjs.org/blog/next-16-2-ai)
+- [Next.js 16.3 — AI Improvements (June 26, 2026 — `AGENTS.md` auto-update, 3 first-party Skills, Instant Insights `Copy as prompt`, MCP shrinking + new compilation tools, Docs as Markdown, `agent-browser` React DevTools commands)](https://nextjs.org/blog/next-16-3-ai-improvements)
+- [Next.js 16.3 — Instant Navigations (companion post, June 17, 2026)](https://nextjs.org/blog/next-16-3-instant-navigations)
+- [Next.js first-party Skills directory (`vercel/next.js/tree/canary/skills`)](https://github.com/vercel/next.js/tree/canary/skills)
+- [`next-cache-components-optimizer` skill (NEW in 16.3)](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-optimizer)
+- [`agent-browser` repo (16.3 — successor to `next-browser`, adds React DevTools commands)](https://github.com/vercel-labs/agent-browser)
+- [`agent-browser` on npm (current: 0.31.1)](https://www.npmjs.com/package/agent-browser)
+- [Next.js docs as Markdown (`/docs/llms.txt`)](https://nextjs.org/docs/llms.txt)
+- [llms.txt convention](https://llmstxt.org)
 - [Next.js 16.1 — Turbopack File System Caching stable + `next dev --inspect` + Bundle Analyzer](https://nextjs.org/blog/next-16-1)
 - [Next.js 16.3 canary — prefetch controls + dedup](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.26)
 - [Tailwind CSS v4.3.1 release notes](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.1)
