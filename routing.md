@@ -852,13 +852,85 @@ find app -mindepth 2 -maxdepth 3 -path 'app/\[*/*' -name 'page.tsx' | head -20
 find pages -name '*.tsx' | grep -E '\[' | head -20
 ```
 
-If you have routes that match both lists with overlapping prefixes, your users were hitting the wrong route on soft navigation before this fix. Upgrade to the canary that includes #95185 (16.3.0-canary.69+ — check the next canary release notes for the version that includes this PR).
+If you have routes that match both lists with overlapping prefixes, your users were hitting the wrong route on soft navigation before this fix. **The fix shipped in [16.3.0-canary.69](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.69) on June 26, 2026** — upgrade to that canary (or any later one) to get it.
 
 ### Why this is a real bug, not a doc cleanup
 
 The original PR title makes it sound like a routing-table edge case, but the underlying mechanics are a **silent misroute**: users on a Pages page who click a link to an App route would land on the wrong page, with no error, no console warning, no DevTools signal. The Pages Router's resolution is the only place where the wrong route got picked, so dev-mode tests that reload-then-assert missed it (server resolution is correct). The `pages-to-app-routing` end-to-end suite was extended to cover this — the fix is verified by a real test that does a client-side navigation from a Pages page to an App dynamic-segment route and asserts the destination.
 
 **Source:** [PR #95185 — Hard-navigate to app routes shadowed by a pages dynamic route](https://github.com/vercel/next.js/pulls/95185)
+
+
+## Middleware Rewrite Query/Params Lost in Pages API Routes — #94905 (16.3.0-canary.69, June 26, 2026)
+
+PR [#94905](https://github.com/vercel/next.js/pulls/94905) "fix: preserve middleware rewrite query in Pages API routes" fixes a real, easy-to-miss **silent data loss** in middleware rewrites that target Pages API routes. Same bug family as #95185 above (silent corruption in shared server routing), different symptom — instead of the user landing on the wrong page, the API handler reads the wrong `req.query` and silently returns wrong data.
+
+### The bug (now fixed) — rewrite-added query params + destination `slug` disappeared from `req.query` in Pages API handlers
+
+If you rewrite from `/foo/bar?key=value` to `/api/proxy/bar?added=1&extra=2` in middleware, with an optional catch-all Pages API route at `pages/api/proxy/[[...slug]].ts`, the bundled Pages API handler in Next.js 15+ received **only** `{ key: "value" }` — the `added`, `extra`, and catch-all `slug` values were silently dropped. The Node `NextNodeServer.runApi` path restored `req.url` to the original browser-visible URL and forwarded only `waitUntil`, so the handler re-parsed the original URL and produced a truncated `req.query`. This regressed from Next.js 14.2.35 (which had the rewrite query and dynamic params) during the Pages API handler-interface migration.
+
+Concrete repro (from issue [#94647](https://github.com/vercel/next.js/issues/94647), opened June 10, 2026 against Next.js 15.5.19, [reproduction repo](https://github.com/lionralfs/repro-rewrite-bug)):
+
+```http
+# Middleware
+# Rewrite /foo/bar?key=value → /api/proxy/bar?added=1&extra=2
+```
+
+```ts
+// pages/api/proxy/[[...slug]].ts
+import type { NextApiRequest, NextApiResponse } from 'next'
+
+export default function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Next.js 14.2.35: { key: 'value', added: '1', extra: '2', slug: ['bar'] }
+  // Next.js 15.5.19 → 16.3.0-canary.68: { key: 'value' }   ← silent data loss
+  res.json({ url: req.url, query: req.query })
+}
+```
+
+```json
+// GET /foo/bar?key=value  →  200 OK
+// Next.js 14.2.35 (correct):
+{ "url": "/foo/bar?key=value", "query": { "key": "value", "added": "1", "extra": "2", "slug": ["bar"] } }
+// Next.js 15.5.19 → 16.3.0-canary.68 (regression):
+{ "url": "/foo/bar?key=value", "query": { "key": "value" } }
+```
+
+### How the fix works
+
+`NextNodeServer.runApi` now forwards the existing request metadata **together with** the resolved `query` and `match.params` through the bundled handler context. The Pages API entrypoint already installs the supplied request metadata before `routeModule.prepare()`, which then uses these routed values while retaining the original `req.url` for browser-visible compatibility. Two invariants are preserved:
+
+1. `req.url` stays `/foo/bar?key=value` (the browser-visible URL, unchanged from the regressed behavior).
+2. `req.query` contains the **original** query (`key=value`), the **rewrite-added** query (`added=1&extra=2`), AND the **catch-all `slug`** (`['bar']`).
+
+Affects both webpack and Turbopack because the data was lost in **shared server routing after bundling** — neither bundler is at fault, the data path is in `next-server.ts`. The regression test added in #94905 asserts both invariants under `test/e2e/middleware-rewrites/` with `pages/api/proxy/[[...slug]].js`.
+
+### What you actually need to do
+
+**If you use middleware rewrites that target a Pages API route and read `req.query` from the handler** — you were hitting this regression. Audit your rewrites:
+
+```bash
+# Find all middleware/proxy files that rewrite to /api/* destinations
+grep -rn "rewrite.*api\|rewrite.*\x27/api" proxy.ts middleware.ts 2>/dev/null
+
+# Find all Pages API handlers that read req.query (candidates for the bug)
+find pages/api -name '*.ts' -o -name '*.js' | xargs grep -l 'req.query' 2>/dev/null
+```
+
+If both lists are non-empty in your project, **upgrade to [16.3.0-canary.69](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.69)+** to get the fix. No config change, no opt-in flag — `runApi` always forwards the resolved `query` and `match.params` now.
+
+If your middleware rewrites only target **App Router route handlers** (`app/api/*/route.ts` reading the `request.nextUrl.searchParams`) — you're unaffected. The bug is specific to the Pages API `runApi` path.
+
+### Why this is a real bug, not a doc cleanup
+
+Three properties make this a classic silent-corruption issue:
+
+1. **No error, no warning, no DevTools signal.** The handler ran cleanly with truncated `req.query`. No `console.error`, no Next.js warning, no HMR overlay. The wrong data just returned to whoever called the API.
+2. **Reload-based dev tests miss it.** If your test does `page.goto('/foo/bar?key=value')` and asserts the response body, the **server resolution** is correct in both versions — the bug only surfaces when a **middleware rewrite** is involved. Many tests don't include middleware in their setup.
+3. **Production-only symptom.** Most dev middleware doesn't rewrite to API routes; the failure surfaces when the team's middleware starts proxying user-facing paths to internal `/api/*` endpoints (a common pattern for AB-testing, geo-redirects, A/B routing, multi-tenant path normalization).
+
+This is the **third** silent-corruption fix the skill has documented in the past week — after #95185 (silent misroute to wrong page, June 26), and the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26). All three share the same shape: deterministic, silent, surfaces only in production or in specific configurations. Treat any "middleware + Pages API" rewrite path in your codebase as a candidate to audit against this fix.
+
+**Source:** [PR #94905 — fix: preserve middleware rewrite query in Pages API routes](https://github.com/vercel/next.js/pulls/94905) · [Issue #94647 — Middleware rewrite query params lost in Pages API handlers on Next.js 15](https://github.com/vercel/next.js/issues/94647)
 
 
 ## Common Mistakes — Routing Edition
