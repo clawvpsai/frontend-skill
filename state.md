@@ -61,6 +61,35 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
+### React Query Devtools
+
+```bash
+npm install @tanstack/react-query-devtools
+```
+
+```tsx
+// app/providers.tsx (dev-only — import lazily so it never ships to production)
+'use client'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { queryClient } from '@/lib/api'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      {process.env.NODE_ENV === 'development' && (
+        <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-right" />
+      )}
+    </QueryClientProvider>
+  )
+}
+```
+
+**If you ship the devtools to production** (intentionally or by accident), the panel mounts in the page DOM but the bundle is heavy. Keep the `process.env.NODE_ENV === 'development'` guard so the dead-code-eliminator strips it in prod builds. If you want devtools available in production for debugging, gate it behind a flag like `process.env.NEXT_PUBLIC_ENABLE_RQ_DEVTOOLS === 'true'` so the bundle is only loaded when explicitly enabled.
+
+**Pass `styleNonce` for strict-CSP projects.** See the [`@tanstack/react-query@5.101.2` (June 27, 2026)](#react-query-51012--devtools-csp-window__nonce__-fix--4-other-devtools-patches-june-27-2026) section below for the silent CSP-nonce bug the devtools shipped before 5.101.2 — even after upgrading, projects with strict `style-src 'nonce-...'` CSP should pass `styleNonce` to `<ReactQueryDevtools>`.
+
 ## React Query Data Fetching
 
 ### Basic Query
@@ -515,12 +544,68 @@ export function Dashboard() {
 
 **Note:** This pattern is **experimental** in TanStack Query v5 and requires the `experimental_prefetchInRender: true` client config. It is not recommended for production-critical paths yet.
 
+## React Query 5.101.2 — Devtools CSP `window.__nonce__` Fix + 4 Other Devtools Patches (June 27, 2026)
+
+[`@tanstack/react-query@5.101.2`](https://www.npmjs.com/package/@tanstack/react-query) shipped June 27, 2026 (20:31 UTC, ~9.5 hours before this cron). The headline fix is in `@tanstack/query-devtools@5.101.2`; `@tanstack/react-query` itself pulls it in transitively when `@tanstack/react-query-devtools` is installed. Five patches in total, four user-facing.
+
+### 1. `setupStyleSheet` CSP nonce fix (PR [#10736](https://github.com/TanStack/query/pull/10736), commit [`49012db`](https://github.com/TanStack/query/commit/49012dbd5192dfe483d3b108b72ffaa7f2849e0f)) — **the headline fix**
+
+**The bug (now fixed):** the devtools use [goober](https://goober.js.org/) for CSS-in-JS, which reads `window.__nonce__` **every time** it creates or accesses its style element. The devtools' `setupStyleSheet` function did **not** set `window.__nonce__` even when you correctly passed `styleNonce` to `<ReactQueryDevtools>`. Result: goober overwrote the nonce with `undefined`, and the very next CSP report flagged the devtools' `<style>` tag as a violation — even though your app's CSP was configured correctly.
+
+This is a textbook **silent CSP violation**: no error in dev, no React warning, no console message. The CSP report only fires when the browser actually evaluates the devtools' style tag in a strict-CSP environment. In dev (where most apps don't enforce strict CSP), it's invisible.
+
+**Who is affected:** every project that runs `<ReactQueryDevtools>` AND uses a strict CSP (the production setup). Strict-CSP projects include any project with a CSP report-only phase, any project that gates inline-style injection, and any project that ships with `style-src 'self' 'nonce-...'` in production. If your dev environment doesn't enforce CSP, you won't notice — until the first production deploy that turns CSP on.
+
+**The fix:** `setupStyleSheet` now sets `window.__nonce__` to the `styleNonce` you passed to `<ReactQueryDevtools>` before goober creates its style element. Your code does not change — `<ReactQueryDevtools styleNonce={cspNonce} />` works the same way it did before; the devtools now respect the nonce instead of dropping it.
+
+**Recovery for projects that hit the bug:** upgrade to `@tanstack/react-query@5.101.2` (or `@tanstack/query-devtools@5.101.2` if installed standalone). No code change needed — the fix is internal to `setupStyleSheet`.
+
+### 2. PiPContext auto-reopen bug (PR [#10813](https://github.com/TanStack/query/pull/10813), commit [`f5bf180`](https://github.com/TanStack/query/commit/f5bf180d933d8b8d9d9e7b845e55b26a3a413b07))
+
+Calling `closePipWindow` programmatically did not reset `'pip_open'` in `localStorage`. The next render of `PiPContext` saw the stale `pip_open === true` value and the `createEffect` reopened the window you just closed. Fixed: `closePipWindow` now writes `'close'` to `localStore.pip_open` before closing. Affects anyone using `useReactQueryDevtoolsPanel` with `Pip` mode (Picture-in-Picture floating devtools panel) and a custom UI that closes the panel via code.
+
+### 3. `setupStyleSheet` cross-target dedup (PR [#10815](https://github.com/TanStack/query/pull/10815), commit [`ecd89c8`](https://github.com/TanStack/query/commit/ecd89c8faf7acc226f00633ea3a761d3ab842c1d))
+
+When `shadowDOMTarget` was passed to `<ReactQueryDevtools>`, the dedup check for "do we already have a `#_goober` style tag?" was scoped to `document.head` instead of the shadow root. The shadow root never received its own style tag, and CSS rules injected by the devtools inside the shadow tree silently failed to apply. Fixed: the dedup check is now scoped to the target. Affects anyone mounting devtools into a web component or shadow-DOM isolated microfrontend.
+
+### 4. `last updated` sort comparator tie-break (PR [#10812](https://github.com/TanStack/query/pull/10812), commit [`25cdd97`](https://github.com/TanStack/query/commit/25cdd975fed4703d2ca5b600ca5ccd2b600b3dd8))
+
+Sorting queries by `dataUpdatedAt` returned a non-deterministic order for queries with equal `dataUpdatedAt` (the comparator returned `undefined` instead of `0`, violating the standard comparator contract). Browser sort is now stable across renders — which matters when you're diffing devtools state in a test snapshot. Affects anyone using `@tanstack/react-query-devtools` with multiple queries that update in the same render cycle (common in dashboard apps with many parallel `useQuery` calls).
+
+### 5. Theme sub-trigger className typo (PR [#10811](https://github.com/TanStack/query/pull/10811), commit [`01c7634`](https://github.com/TanStack/query/commit/01c763444e3cf3dfa9744f13911aa1533cac3c29))
+
+`<ThemeButton>` rendered with `className="position"` instead of `className="theme"`. Purely cosmetic; theme sub-trigger still worked. Fixed in passing.
+
+### Audit checklist for projects hitting #10736 (CSP nonce)
+
+```bash
+# 1. Are you using <ReactQueryDevtools>?
+grep -rn "ReactQueryDevtools\|@tanstack/react-query-devtools" app/ components/ 2>/dev/null
+
+# 2. Does your production CSP allow inline styles without a nonce?
+grep -rn "Content-Security-Policy\|style-src" middleware.ts next.config.* 2>/dev/null
+```
+
+If both lists return non-empty AND your CSP uses `style-src 'self' 'nonce-...'` (or stricter), upgrade to `@tanstack/react-query@5.101.2` (or `@tanstack/query-devtools@5.101.2` standalone).
+
+### Why this is a real update, not "patches don't matter"
+
+PR #10736 is the **third silent-CSP-class fix** the skill has documented in two months (after the Next.js [middleware/proxy bypass CVEs](https://github.com/vercel/next.js/security/advisories) of May 6, 2026 — GHSA-26hh-7cqf-hhc6 + GHSA-492v-c6pp-mqqv + GHSA-267c-6grr-h53f — which all depend on devtools-style style-tag injection behavior in App Router projects). The pattern: a browser security mechanism (CSP / Sandbox / Trusted Types) silently drops a CSS or style injection, no error thrown, no warning logged, and the affected component (devtools or production UI) renders without styling in strict environments. The fix is always the same shape: **read the security-relevant context (`window.__nonce__`, `Trusted Types policy name`, sandbox flags) before injecting DOM, and pass it through to the underlying library that creates the element**. Future TanStack devtools updates will likely continue this pattern as more strict-CSP configurations become the norm.
+
 **Sources:**
 - [TanStack Query v5 — Suspense guide](https://tanstack.com/query/v5/docs/framework/react/guides/suspense)
 - [TanStack Query v5 — `useSuspenseQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQuery)
 - [TanStack Query v5 — `useSuspenseInfiniteQuery` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseInfiniteQuery)
 - [TanStack Query v5 — `useSuspenseQueries` reference](https://tanstack.com/query/v5/docs/framework/react/reference/useSuspenseQueries)
 - [React 19.2 — `use()` hook with promises](https://react.dev/reference/react/use)
+- [`@tanstack/react-query@5.101.2` on npm (June 27, 2026)](https://www.npmjs.com/package/@tanstack/react-query)
+- [`@tanstack/query-devtools@5.101.2` CHANGELOG (5 fixes)](https://github.com/TanStack/query/blob/main/packages/query-devtools/CHANGELOG.md)
+- [PR #10736 — `setupStyleSheet` `window.__nonce__` CSP fix](https://github.com/TanStack/query/pull/10736)
+- [PR #10813 — `PiPContext` `pip_open` reset on close](https://github.com/TanStack/query/pull/10813)
+- [PR #10815 — `setupStyleSheet` cross-target dedup (shadow DOM)](https://github.com/TanStack/query/pull/10815)
+- [PR #10812 — `last updated` sort tie-break comparator](https://github.com/TanStack/query/pull/10812)
+- [PR #10811 — Theme sub-trigger className typo](https://github.com/TanStack/query/pull/10811)
+- [TanStack Query release train — 2026-06-27 20:33 (`release-2026-06-27-2033`)](https://github.com/TanStack/query/releases/tag/release-2026-06-27-2033)
 
 ## Zustand Setup
 

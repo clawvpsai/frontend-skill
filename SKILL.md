@@ -1,7 +1,7 @@
 ---
 name: Frontend
 slug: frontend-skill
-version: 1.4.36
+version: 1.4.37
 description: Production-grade React/Next.js frontend development — ship modern web apps without common pitfalls.
 metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","darwin","win32"]}
 ---
@@ -15,7 +15,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 | Server vs Client components, data fetching, `use cache`, `use()` hook | `server-components.md` | Next.js App Router |
 | Routing, layouts, loading, error boundaries, `proxy.ts`, parallel routes `default.tsx` (Next 16), `experimental.prefetchInlining` (now documented) / `cachedNavigations` (16.2; widened to `boolean \| 'allow-runtime'` in 16.3 canary.61), `experimental.useExperimentalReact` (16.3 canary), `generateStaticParams` required for root params with CC (canary.67), suppress `prefetch={true}` warning on `instant = false` opt-out (canary.67), **hard-navigate to App routes shadowed by Pages dynamic route** (PR #95185, soft-nav misroute fix, shipped in canary.69), **middleware rewrite query/params preserved in Pages API** (PR #94905, fixes issue #94647, canary.69 — silent data loss in `req.query` when middleware rewrites to `/api/*` Pages API handlers) | `routing.md` | Navigation & page structure |
 | Forms with React Hook Form + Zod | `forms.md` | Any form or input |
-| Zustand, React Query, TanStack Query v5 (incl. `useSuspenseQuery` + `React.use(query.promise)`), v5 migration | `state.md` | State & server state |
+| Zustand, React Query, TanStack Query v5.101.2 (devtools CSP `window.__nonce__` fix + 4 other devtools patches, June 27, 2026 — PR #10736/#10813/#10815/#10812/#10811; incl. `useSuspenseQuery` + `React.use(query.promise)`), v5 migration | `state.md` | State & server state |
 | Auth patterns, NextAuth.js v4/v5, JWT, session management, 2026 alternatives (Clerk, Better Auth) | `auth.md` | User auth & sessions |
 | Route handlers, Server Actions, API routes, SSE, WebSockets | `api.md` | Backend API endpoints |
 | Tailwind CSS v4, design tokens, themes | `styling.md` | Styling & theming |
@@ -50,7 +50,7 @@ metadata: {"emoji":"⚛️","requires":{"bins":["node","npm"]},"os":["linux","da
 - **Modern CSS 2026** — `field-sizing: content` (Baseline 2026, Firefox 152 just shipped), `@starting-style` (Baseline 2024), CSS Anchor Positioning (cross-engine 2025–26), OKLCH color space, `color-scheme` + `light-dark()` function, scroll-driven animations
 - **Vite 8.1.0** (for non-Next projects; Next uses Turbopack — 8.1 ships WASM ESM Integration, `server.hmr` → `server.ws` rename, `import.meta.glob` `caseSensitive`, chunk importmap, lightningcss support, extended `server.fs.deny` defaults; **≥ 8.1.0 required for the new `caseSensitive` glob option**)
 - **@biomejs/biome 2.5.1** (recommended linter/formatter — 10–100x faster than ESLint, v2 has breaking changes from v1; run `npx biome migrate --write` after every upgrade)
-- **TanStack Query v5.101.1** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries)
+- **TanStack Query v5.101.2** (React Query v5 — gcTime replaces cacheTime, improved SSR hydration, `skipToken` for dependent queries; **5.101.2 (June 27, 2026)** patches `@tanstack/query-devtools` — `setupStyleSheet` now sets `window.__nonce__` when `styleNonce` is passed ([#10736](https://github.com/TanStack/query/pull/10736), fixes a silent CSP violation where the devtools' `<style>` tag was injected without a nonce and tripped strict `style-src 'nonce-...'` policies in production), `PiPContext.closePipWindow` now resets `pip_open` in localStorage to stop auto-reopen ([#10813](https://github.com/TanStack/query/pull/10813)), `setupStyleSheet` dedup scoped to shadow-DOM target ([#10815](https://github.com/TanStack/query/pull/10815)), `last-updated` sort returns 0 on ties so the comparator is deterministic ([#10812](https://github.com/TanStack/query/pull/10812)), Theme sub-trigger className typo `position` → `theme` ([#10811](https://github.com/TanStack/query/pull/10811)))
 - **Vitest 4.1.9** (Browser Mode stable, Visual Regression testing via `toMatchScreenshot`, Playwright Trace support; requires Vite ≥ 6 + Node.js ≥ 20; **≥ 4.1.8 required for the CDP RCE fix (GHSA-g8mr-85jm-7xhm, CVSS 9.8)**; use `api.allowWrite: false, api.allowExec: false` in CI; **Vitest 5.0 in beta** — three beta releases between May 19 and June 15, 2026 (beta.3, beta.4, beta.5) introduced hard requirement Node 22 + Vite 6.4, strict `toHaveTextContent` + new `toMatchTextContent`, Browser Mode `locators.exact: true` default, `expect.poll` fails on timeout, hoistable-methods-out-of-scope throw, removed entry points (`vitest/coverage` → `vitest/node`, `vitest/environments` / `vitest/snapshot` → `vitest/runtime`, `vitest/runners` / `vitest/suite` → `TestRunner` from `vitest`, `vitest/mocker` → `@vitest/mocker`), `bench` moved into `test()` fixture, `test.sequential` → `{ concurrent: false }`, no ancestor-directory config lookup, `@vitest/runner` inlined into `vitest`, `TestModule.id` 1-based, `coverage.thresholds.perFile` accepts an object, browser orchestrator requires `sessionId`)
 - **@playwright/test 1.61.1** (E2E — **1.61.0 (June 15, 2026)** shipped WebAuthn passkeys virtual authenticator via `browserContext.credentials.create/install`, `page.localStorage` / `page.sessionStorage` (origin-aware, replaces `page.evaluate('localStorage…')` boilerplate), `apiResponse.securityDetails()` / `serverAddr()` network parity with browser responses, `testOptions.video` modes parity with trace (`'on-all-retries'`, `'retain-on-first-failure'`, `'retain-on-failure-and-retries'`), `expect.soft.poll(...)`, `fullConfig.argv`, `fullConfig.failOnFlakyTests`, `testInfo.errors` AggregateError sub-entries, `-G` shorthand for `--grep-invert`, HAR + trace now include WebSocket frames, Ubuntu 26.04 host support, browsers Chromium 149.0.7827.55 / Firefox 151.0 / WebKit 26.5; **1.61.1 (June 23, 2026)** fixed five 1.61 regressions — `expect.extend` matcher-name shadowing built-ins, UI-mode API request byte count mismatch, trace-viewer WebSocket timestamps scaled by 1/1000, sync ESM loader crash on Node 22.15, pnpm workspace symlink `.ts` subpath resolution)
 - **React Hook Form v7.80.0** + **@hookform/resolvers v5.4.0** (7.80.0 ships per-field `disabled` on `useFieldArray` items; broad perf pass; fixes `[]` vs `{}` `deepEqual` regression from 7.79.0) (compatible with Zod v4; v8.0.0-beta available with `createForm` API)
@@ -232,4 +232,12 @@ Key breaking changes from Next.js 15 → 16:
 - [PR #94905 — fix: preserve middleware rewrite query in Pages API routes (16.3, canary.69)](https://github.com/vercel/next.js/pulls/94905)
 - [Issue #94647 — Middleware rewrite query params lost in Pages API handlers on Next.js 15 (June 10, 2026)](https://github.com/vercel/next.js/issues/94647)
 - [repro-rewrite-bug — minimal reproduction for issue #94647](https://github.com/lionralfs/repro-rewrite-bug)
+- [`@tanstack/react-query@5.101.2` on npm (June 27, 2026)](https://www.npmjs.com/package/@tanstack/react-query)
+- [`@tanstack/query-devtools@5.101.2` CHANGELOG (5 fixes)](https://github.com/TanStack/query/blob/main/packages/query-devtools/CHANGELOG.md)
+- [PR #10736 — `setupStyleSheet` `window.__nonce__` CSP fix](https://github.com/TanStack/query/pull/10736)
+- [PR #10813 — `PiPContext` `pip_open` reset on close](https://github.com/TanStack/query/pull/10813)
+- [PR #10815 — `setupStyleSheet` cross-target dedup (shadow DOM)](https://github.com/TanStack/query/pull/10815)
+- [PR #10812 — `last updated` sort tie-break comparator](https://github.com/TanStack/query/pull/10812)
+- [PR #10811 — Theme sub-trigger className typo](https://github.com/TanStack/query/pull/10811)
+- [TanStack Query release train — 2026-06-27 20:33 (`release-2026-06-27-2033`)](https://github.com/TanStack/query/releases/tag/release-2026-06-27-2033)
 
