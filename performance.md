@@ -449,6 +449,63 @@ On every invocation of `compute_style_groups_graph` the chucker writes a timesta
 
 The env var is read exactly once per process (cached in a `static LazyLock<bool>`); truthy values are anything other than unset, empty, `0`, or `false` (case-insensitive). **Dump failures are swallowed** — the toggle must never fail a build. Use it when filing a Vercel issue about bad CSS chunking decisions, attach the JSON, and a maintainer can replay the chunking graph locally without instrumenting Rust on your machine.
 
+### `experimental.cssChunking: 'graph'` Config Schema Breaking Change — `moduleFactorCost` → `weightDistribution` (16.3.0-canary.71+, June 29, 2026)
+
+PR [#95088](https://github.com/vercel/next.js/pull/95088) (Tobias Koppers / sokra, merged June 29, 2026 at 15:53:24Z) **reworks the cost model** of the experimental graph-based CSS chunker (`experimental.cssChunking: 'graph'`, Turbopack only) and **changes the config schema**. This is the first breaking config change in the 16.3 series for the CSS chunker.
+
+**What changed:**
+
+- **`moduleFactorCost` option REMOVED.** Replaced by `weightDistribution`. The old `moduleFactorCost` term penalized a chunk purely by `chunk_size / group_total_size`, which charged a chunk group even for CSS it fully needs and never actually measured overshipping.
+- **New per-group cost formula:** `chunk_group_weight * (chunk_size + request_cost)`, summed over the chunk groups that load a chunk, where `chunk_group_weight = group_total_size ^ (-weightDistribution)` is precomputed once per group. `weightDistribution = 0` weights every chunk group equally; higher values give smaller chunk groups a larger weight, so the algorithm overships less to small pages at the cost of more requests. The size weighting subsumes the explicit overship penalty, so the metric stays chunk-local and the greedy merger is unchanged.
+- **Defaults retuned:** `requestCost` `20000` → `100000` (bytes) and `weightDistribution` default `0.1`.
+- **New config shape (object form):** `{ type: 'graph', requestCost?, weightDistribution? }`. The previous shape `{ type: 'graph', requestCost?, moduleFactorCost? }` is invalid as of canary.71.
+- **String-form (`'graph'`) unchanged.** If you don't override the object options, you keep the defaults automatically — no migration needed.
+
+**Migration guide:**
+
+```ts
+// next.config.ts
+
+// ✅ String form — no migration, defaults just got retuned
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: {
+      // ... other turbopack config ...
+    },
+    cssChunking: 'graph',
+  },
+}
+
+// ❌ Old object form — will throw a config-schema error on canary.71+
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: { /* ... */ },
+    cssChunking: { type: 'graph', requestCost: 20000, moduleFactorCost: 0.1 },
+  },
+}
+
+// ✅ New object form
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: { /* ... */ },
+    cssChunking: { type: 'graph', requestCost: 100000, weightDistribution: 0.1 },
+  },
+}
+```
+
+If you were using the old object form with custom `moduleFactorCost`, you'll need to pick a `weightDistribution` value that produces roughly equivalent chunking decisions. The new defaults are tuned by Vercel — if you were relying on `moduleFactorCost = 0.1` (the previous default), `weightDistribution: 0.1` is the equivalent new default. The new `requestCost` default is 5× higher (100,000 vs 20,000) — if you had `requestCost` set lower than the previous default, you may see fewer requests but more bytes shipped per chunk; if you had it set higher than the new default, you may see more requests but smaller chunks.
+
+**Verification:** `cargo test -p turbopack-core --lib style_groups_graph` (54 tests pass, including a new test asserting `weightDistribution` keeps an unneeded module out of a small group's chunk).
+
+**Practical impact:**
+
+- **If you set `experimental.cssChunking: 'graph'`** (string form) with no object options — **nothing changes**, the new defaults apply automatically.
+- **If you set `experimental.cssChunking: { type: 'graph', ... }`** with `moduleFactorCost` or a custom `requestCost` — your build will **fail** with a config-schema error on canary.71+. Migrate to the new shape using the guide above.
+- **If you set `experimental.cssChunking: 'merge'` (default)** or don't set the flag at all — **unaffected**, this PR only touches the `'graph'` algorithm.
+- **If you use webpack** (not Turbopack) — **unaffected**, this PR only touches `turbopack-core`'s CSS chunker.
+
+The change is wired end-to-end through the config schema/types, `StyleGroupsAlgorithm::Graph`, and the chunking algorithm. It is not exposed via a codemod — the schema-error is the migration signal, and the fix is a one-line edit in `next.config.ts`.
+
 ### `cacheMaxMemorySize: 0` Dev Hot-Reload Fix (16.3.0-canary.65)
 
 PR [#95100](https://github.com/vercel/next.js/pull/95100) (June 24, 2026) fixes a real-world dev hot-reload regression that bit fully-cached routes. Previously the `'use cache'` wrapper forced every entry in a `cacheMaxMemorySize: 0` cache to a **dynamic cache life** (`revalidate: 0`, a five-minute `expire`) so that warm reads would serve stale + regenerate in the background. That forcing leaked into the *stored* entry. A fully-cached route with no `<Suspense>` above the `'use cache'` would, on a warm reload, read the entry, see `revalidate: 0`, and the dev validation prerender would throw a false-positive: *"`'use cache'` with zero `revalidate` is nested inside another `'use cache'` that has no explicit `cacheLife`"*. The route was then reported as a blocking route even though nothing was actually nested. The **cold load was unaffected** because the entry didn't exist yet — the bug only fired on hot reload.

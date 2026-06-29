@@ -1019,6 +1019,111 @@ This is the **fourth** silent-corruption fix the skill has documented in the pas
 **Source:** [PR #94863 — fix: preserve repeated search params in client page segment cache keys](https://github.com/vercel/next.js/pulls/94863) · [Issue #92787 — Object.fromEntries(URLSearchParams) drops duplicate keys → stale UI on navigation](https://github.com/vercel/next.js/issues/92787) · [Issue #93104 — multi→single search-param unset does not commit RSC](https://github.com/vercel/next.js/issues/93104) · [Issue #94821 — Submitting Query Parameters via a Form does not always update the client](https://github.com/vercel/next.js/issues/94821)
 
 
+## Client Navigation URL Bar Stuck After Middleware Redirect — #95207 (16.3.0-canary.71+, June 29, 2026)
+
+PR [#95207](https://github.com/vercel/next.js/pulls/95207) "Fix: Update the URL when a client navigation redirects to a rewritten route" (Andrew Clark / acdlite, merged June 29, 2026 at 17:00:29Z) fixes a silent **stale-URL** bug where a client-side navigation through a proxy/middleware redirect chain left the browser address bar on the *original* URL, while the page content rendered correctly. It is the **fifth** silent-corruption fix the skill has documented in the past week, after #95185 (silent misroute, June 26), #94905 (silent `req.query` truncation, June 26), the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26), and #94863 (silent cache-key collapse, June 29). Different bug family from the other four — only happens on soft-nav, only on the client, only with a specific three-leg path — but the same shape: deterministic, silent, no error or warning, surfaces only when all three legs are present.
+
+### The bug (now fixed) — click `<Link href="/a">`, middleware redirects to `/`, address bar stays at `/a` even though `/` rendered
+
+If you have a proxy/middleware that **redirects** `/a` → `/` AND **rewrites** `/` → `/a` (where `/a` is a dynamic route that reads its `params`), clicking `<Link href="/a">` (or calling `router.push('/a')`) renders the right page content (the dynamic route's `slug = 'a'` shows up correctly), but the browser address bar stays on `/a`. Hard navigation (typing the URL, browser reload, `curl`) is unaffected — those always redirect correctly to `/` because the server's resolver runs the full chain. The bug is **soft-nav only** — invisible until a user actually clicks a link.
+
+Concrete repro from issue [#95195](https://github.com/vercel/next.js/issues/95195) (amannn, opened June 26, 2026 against [16.3.0-preview.5](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.5)) — full automated Playwright test in the [reproduction repo](https://github.com/amannn/nextjs-16-3-bug-repro-redirect):
+
+```ts
+// proxy.ts (formerly middleware.ts)
+import { NextResponse, type NextRequest } from 'next/server'
+
+export function proxy(request: NextRequest) {
+  // /a → redirect to /
+  if (request.nextUrl.pathname === '/a') {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
+  // / → rewrite to /a (a dynamic, force-dynamic route)
+  if (request.nextUrl.pathname === '/') {
+    return NextResponse.rewrite(new URL('/a', request.url))
+  }
+}
+```
+
+```tsx
+// app/page.tsx
+import Link from 'next/link'
+
+export default function Page() {
+  return <Link href="/a">Go to /a</Link>
+}
+```
+
+```tsx
+// app/[slug]/page.tsx
+export const dynamic = 'force-dynamic'
+
+export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  return <p>slug: {slug}</p>  // → "slug: a"
+}
+```
+
+```bash
+# Hard navigation (works in all versions):
+# curl http://localhost:3000/a
+# → 307 → curl http://localhost:3000/
+# → rewrite → app/[slug] with slug='a' → "slug: a" ✅
+
+# Soft navigation via <Link> (broken on 16.3.0-preview.5 + canary.66..canary.70):
+# Click "Go to /a"
+# → page renders: "slug: a" ✅
+# → window.location.href: "/a" ❌   (should be "/")
+```
+
+All three of the following are required to trigger the bug:
+
+1. **A client-side navigation** (hard navigation redirects correctly via the server resolver).
+2. **The middleware redirect target is itself rewritten to another route** (here `/` → `/a`). A bare redirect without a rewrite does not exhibit the bug.
+3. **The rewrite target is dynamically rendered and reads route params** (here `app/[slug]/page.tsx` with `force-dynamic` reading `await params`). The full-page App Router rendering pipeline must walk the dynamic param to resolve the slug.
+
+This matches the dynamic-route shell changes in 16.3 ("Instant Navigations"): the router appears to commit the destination URL (`/a`) to the address bar optimistically before the RSC response resolves, and does not correct it after the server follows the redirect.
+
+### How the fix works
+
+The fix lives in the client-side navigation reducer (`packages/next/src/client/components/router-reducer/reducers/server-patch-reducer.ts` + the `ppr-navigations.ts` path that PR #94863 also touched, with new `PrefetchHint`-shape plumbing in `router-reducer-types.ts`). The previous code path committed the **predicted** URL to the address bar when the navigation started, then treated the resolved RSC payload as confirmation of the prediction. When the redirect chain resolved to a route with the same shape as the prediction (dynamic segment + same concrete path), the reducer treated the navigation as already correct and never reconciled the address bar.
+
+The new code path treats a redirect discovered during a navigation as an **invalidator of the prediction**: the optimistic URL commit is rolled back, the route is re-resolved with the redirect target as the new key, and the address bar reflects the redirect destination before the page commits. The fix is scoped to the navigation reducer — the server-side resolver was already correct (which is why hard navigation always worked).
+
+A new end-to-end test lands at `test/e2e/app-dir/redirect-rewrite-dynamic/`. The test app has `app/[slug]/page.tsx`, a `proxy.ts` with the same `/a → /` redirect + `/ → /a` rewrite chain, and a `<Link>` that triggers the soft nav. The test asserts both the rendered content (`slug: a`) **and** the address bar (`/`) after the click — the second assertion is what would fail on canary.66..canary.70.
+
+### What you actually need to do
+
+**If you have a `proxy.ts` (or `middleware.ts`) that redirects to a path that is itself rewritten to a dynamic route** — you were hitting this regression on soft-nav. Auditable via:
+
+```bash
+# Find redirects in your middleware/proxy that target paths rewritten elsewhere
+grep -rn "NextResponse.redirect" proxy.ts middleware.ts 2>/dev/null
+
+# Find rewrites that target dynamic routes (params, slug, id, etc.)
+grep -rn "NextResponse.rewrite" proxy.ts middleware.ts 2>/dev/null
+
+# Find routes that read params dynamically (force-dynamic + awaits params)
+grep -rn "force-dynamic\|export const dynamic" --include="*.tsx" --include="*.ts" app/ 2>/dev/null
+```
+
+If any combination matches the three-leg pattern above (redirect + rewrite-to-different-path + rewrite target reads params), **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71)+ (or the eventual 16.3.0 stable)** to get the fix. No config change, no opt-in flag — the reducer always invalidates the prediction on a redirect now.
+
+If your middleware/proxy only does one of: redirects without a rewrite, or rewrites without a follow-up redirect, or rewrites to fully-static routes — you're unaffected. The bug requires all three legs.
+
+### Why this is a real bug, not a doc cleanup
+
+Four properties make this a classic silent-corruption issue specific to 16.3:
+
+1. **No error, no warning, no DevTools signal.** The page renders the correct content. The browser address bar just shows the wrong URL. No `console.error`, no Next.js warning, no HMR overlay. A user who copies the URL from the address bar and shares it gives a recipient a 307 to `/` — the share link silently does the wrong thing.
+2. **Hard-navigation tests miss it.** If your Playwright test does `page.goto('/a')` and asserts the response body, the **server resolution** is correct in all versions (canary.66..canary.70 + canary.71+) — the bug only surfaces on **soft navigation** via `<Link>` or `router.push`. Many e2e suites use `page.goto` exclusively and miss this entire class of soft-nav bugs.
+3. **Only present in 16.3 Preview + canary.** Next.js 15.x and 16.0–16.2 don't have the Instant Navigations optimistic-URL-commit path, so they don't exhibit the bug. The bug is **specific to the 16.3 series** where the router started committing the predicted URL before the server confirms. Stable Next.js users are unaffected until they upgrade.
+4. **Masked by browser back/forward.** A user who hits the browser back button after the broken soft-nav gets the correct URL on the way back, because the browser's history stores the URL the user originally clicked — not the URL the address bar shows. End users who "fix" the issue by going back and clicking again never report it; they assume the page just needs a refresh — and the same path keeps misbehaving for users who don't know to back-out.
+
+This is the **fifth** silent-corruption fix the skill has documented in the past week. All five share the same shape: deterministic, silent, surfaces only when specific configurations line up. Treat any combination of `(redirect → rewrite → dynamic route)` in your `proxy.ts` as a candidate to audit against this fix.
+
+**Source:** [PR #95207 — Fix: Update the URL when a client navigation redirects to a rewritten route](https://github.com/vercel/next.js/pulls/95207) · [Issue #95195 — Middleware redirect not reflected in URL on client-side navigation when target is rewritten to a dynamic route](https://github.com/vercel/next.js/issues/95195) · [Reproduction repo (amannn/nextjs-16-3-bug-repro-redirect)](https://github.com/amannn/nextjs-16-3-bug-repro-redirect)
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
