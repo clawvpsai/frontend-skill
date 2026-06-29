@@ -930,7 +930,93 @@ Three properties make this a classic silent-corruption issue:
 
 This is the **third** silent-corruption fix the skill has documented in the past week — after #95185 (silent misroute to wrong page, June 26), and the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26). All three share the same shape: deterministic, silent, surfaces only in production or in specific configurations. Treat any "middleware + Pages API" rewrite path in your codebase as a candidate to audit against this fix.
 
-**Source:** [PR #94905 — fix: preserve middleware rewrite query in Pages API routes](https://github.com/vercel/next.js/pulls/94905) · [Issue #94647 — Middleware rewrite query params lost in Pages API handlers on Next.js 15](https://github.com/vercel/next.js/issues/94647)
+## Repeated Search Params Collapsed in Client Page Segment Cache — #94863 (16.3.0-canary.71+, June 29, 2026)
+
+PR [#94863](https://github.com/vercel/next.js/pulls/94863) "fix: preserve repeated search params in client page segment cache keys" (icyJoseph, merged June 29, 2026) fixes a silent **stale-UI** bug in the client page segment cache that affects any URL whose query string has a key with multiple values (`?color=red&color=blue`, `?tag=foo&tag=bar`, `?k=A&k=B`, etc.). It is the **fourth** silent-corruption fix the skill has documented in the past week, after #95185 (silent misroute to wrong page, June 26), #94905 (silent `req.query` truncation, June 26), and the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26). Different bug family from those three — no Pages API or middleware involved — but the same shape: deterministic, silent, surfaces only in specific configurations.
+
+### The bug (now fixed) — `Object.fromEntries(new URLSearchParams(search))` collapsed repeated keys in the cache key
+
+The client-side segment-cache scheduler and PPR navigation reducer built their cache keys with `Object.fromEntries(new URLSearchParams(search))`. `Object.fromEntries` **keeps only the last value per key**:
+
+```js
+const s = '?foo=bar&foo=baz'
+Object.fromEntries(new URLSearchParams(s)) // { foo: 'baz' }   ← drops 'bar'
+```
+
+Two URLs that should have been **different cache entries** therefore hashed to the **same key**:
+
+```js
+'?color=red&color=blue'  → { color: 'blue' }   // value is the last one
+'?color=blue'            → { color: 'blue' }   // same key
+// → cache HIT on the second navigation, no re-render — stale UI
+```
+
+The correct form was already available in the codebase as [`urlSearchParamsToParsedUrlQuery`](https://github.com/vercel/next.js/blob/canary/packages/next/src/client/route-params.ts#L235) (`packages/next/src/client/route-params.ts`), which preserves repeated params as an array:
+
+```js
+urlSearchParamsToParsedUrlQuery(new URLSearchParams(s)) // { foo: ['bar', 'baz'] }
+```
+
+The fix swaps the `Object.fromEntries` calls for `urlSearchParamsToParsedUrlQuery` in the three client-side cache sites:
+
+- `packages/next/src/client/components/router-reducer/ppr-navigations.ts` — PPR navigation cache key
+- `packages/next/src/client/components/segment-cache/scheduler.ts` — segment cache scheduler key
+- `packages/next/src/client/route-params.ts` — shared helper export
+
+A new e2e regression test lands at `test/e2e/app-dir/multi-value-search-params-stale/` (44-line `multi-value-search-params-stale.test.ts` + a `page.tsx` that renders the URL's `searchParams` so the test can assert the new render after the multi→single transition).
+
+### Concrete symptom — multi→single search-param unset does not commit RSC, toggle "works the second time", form submissions don't update the client
+
+Three independent user reports resolved by this single fix. All three were filed against **stable** versions of Next.js — not just canary:
+
+**Issue [#92787](https://github.com/vercel/next.js/issues/92787) "Object.fromEntries(URLSearchParams) drops duplicate keys → stale UI on navigation"** (krivcikfilip, opened April 14, 2026 against `next@16.2.1-canary.38`):
+> Click "+ red"  → `/?color=red`            (2 items) ✅
+> Click "+ blue" → `/?color=red&color=blue` (4 items) ✅
+> Click "✕ red"  → `/?color=blue`           still 4 items ❌ (should be 2)
+
+**Issue [#93104](https://github.com/vercel/next.js/issues/93104) "multi→single search-param unset does not commit RSC"** (dave-wwg, opened April 21, 2026 against stable): `router.replace(url, { scroll: false })` that changes a repeated search-param from multiple values (`?k=A&k=B`) to a single value (`?k=B`) fetches a new RSC payload, the server renders the correct `searchParams`, but the client tree **never commits the update**. Empty→single and single→multi transitions commit correctly — only multi→single is broken. The reporter also notes "It also seems to work if the toggle is done a second time?", which is the cache-hit signature: the second toggle to the same key is a real re-render, the first is served from the stale cache.
+
+**Issue [#94821](https://github.com/vercel/next.js/issues/94821) "Submitting Query Parameters via a Form does not always update the client with the newly server rendered content"** (JanBayer, opened June 15, 2026 against `next@16.3.0-canary.51`): A `next/form` `<form>` submission that adds a repeated checkbox query param and then removes one — the URL updates, the server logs the new value, the **client never receives the new render**. Same root cause: the cache key for the new URL collides with the cache key for the previous URL after `Object.fromEntries` collapses the repeated keys.
+
+### How the fix works
+
+`urlSearchParamsToParsedUrlQuery` was already imported in `ppr-navigations.ts` and `scheduler.ts` for a related path; the fix consolidates all three cache-key sites to use it. The returned object has arrays for repeated keys (`{ foo: ['bar', 'baz'] }`) and scalars for single keys (`{ foo: 'bar' }`) — the existing cache-key serializer already handles both shapes (it stringifies arrays), so no further plumbing is required.
+
+Two invariants are preserved:
+
+1. **Single-value URLs are unaffected.** `urlSearchParamsToParsedUrlQuery(new URLSearchParams('?foo=bar'))` returns `{ foo: 'bar' }` — same as before. The cache-key hash is identical for any URL that has no repeated params, so no cache misses are introduced.
+2. **Server-rendered `searchParams` is unchanged.** This is a *client cache key* fix only. The server already parses search params correctly via Next.js's `parsedUrlQuery` pipeline, which has always used `urlSearchParamsToParsedUrlQuery`. The bug was strictly on the client-side cache-key computation.
+
+### What you actually need to do
+
+**If your app has any URL with a repeated query-string key** — and the client-side RSC tree or `<form>`-driven URL state derives from those params — you were hitting this regression. Auditable via:
+
+```bash
+# Client code that reads search params from the URL
+grep -rn "useSearchParams\|searchParams.get\|searchParams\.getAll" --include="*.tsx" --include="*.ts" app/ components/ 2>/dev/null
+
+# Server or client code that mutates the URL with repeated keys (likely via URLSearchParams or qs.stringify)
+grep -rn "URLSearchParams\|searchParams\.append\|qs\.stringify\|qs\.parse" --include="*.tsx" --include="*.ts" app/ components/ lib/ 2>/dev/null
+
+# Forms that produce repeated keys (checkbox groups, multi-select filters, etc.)
+grep -rn "name=\"[a-zA-Z_]*\[\]*\"\|useFormState" --include="*.tsx" app/ 2>/dev/null
+```
+
+If any of these exist in your project, **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71)+** (or the eventual 16.3.0 stable once it ships) to get the fix. No config change, no opt-in flag — the cache key always uses `urlSearchParamsToParsedUrlQuery` now.
+
+If your app only uses single-value search params, you're unaffected.
+
+### Why this is a real bug, not a doc cleanup
+
+Three properties make this a classic silent-corruption issue:
+
+1. **No error, no warning, no DevTools signal.** The cache HIT is invisible. No `console.error`, no Next.js warning, no HMR overlay. The wrong (stale) data just stays on screen until the user does a hard reload, navigates away and back via the browser back button, or — depending on the URL pattern — makes a second mutation that bypasses the cache.
+2. **Reload-based tests miss it.** If your test does `page.goto('/shop?color=red&color=blue')` and asserts the response body, the **server render** is correct in all versions — the bug only surfaces on **soft navigation** (via `<Link>`, `router.replace`, or `<form>` submission) where the client cache key gets consulted. Many integration tests don't exercise soft nav with repeated keys.
+3. **Masked by the browser cache.** A browser hard reload reads the URL fresh; the bug only manifests on in-app navigation. End users who reload to "fix" the UI never report it — they assume the page just needs a refresh — and the same URL keeps misbehaving for users who navigate within the app.
+
+This is the **fourth** silent-corruption fix the skill has documented in the past week. All four share the same shape: deterministic, silent, surfaces only in production or in specific configurations. Treat any feature in your codebase that produces repeated query-string keys (filter facets, tag chips, multi-select dropdowns, checkbox groups in `<form>`) as a candidate to audit against this fix.
+
+**Source:** [PR #94863 — fix: preserve repeated search params in client page segment cache keys](https://github.com/vercel/next.js/pulls/94863) · [Issue #92787 — Object.fromEntries(URLSearchParams) drops duplicate keys → stale UI on navigation](https://github.com/vercel/next.js/issues/92787) · [Issue #93104 — multi→single search-param unset does not commit RSC](https://github.com/vercel/next.js/issues/93104) · [Issue #94821 — Submitting Query Parameters via a Form does not always update the client](https://github.com/vercel/next.js/issues/94821)
 
 
 ## Common Mistakes — Routing Edition
