@@ -624,6 +624,95 @@ PR [#95153](https://github.com/vercel/next.js/pull/95153) (June 25, 2026) tighte
 - [PR #95153 — `next-dev-loop` papercut fixes](https://github.com/vercel/next.js/pull/95153)
 - [PR #95147 — docs: expand `io()` reference](https://github.com/vercel/next.js/pull/95147)
 
+### Build Errors Get Code Frames + Real Stacks (canary.71+, June 30, 2026)
+
+Two companion PRs landed on the canary branch on June 30, 2026 that make Cache Components build errors **actually debuggable** instead of opaque framework-code errors. Together they close the most common "my `generateStaticParams` failed the build but I don't know why" footgun. The two PRs are designed to be stacked: #95269 gives you a real stack anchored at your code; #95270 makes sure the build prints the code frame (with file + line numbers + the offending source line), not just the stack.
+
+#### `generateStaticParams` empty-array redbox with user-code stack ([#95269](https://github.com/vercel/next.js/pull/95269), Hendrik Liebau, merged 2026-06-30T09:18:55Z)
+
+**Before this PR (the footgun):** Under `cacheComponents: true`, a dynamic route whose `generateStaticParams` returns `[]` is intentionally an error — CC requires at least one set of params to prerender the route. Previously the failure mode was terrible:
+
+- **Dev:** the request threw an uncaught error, leaving a **blank screen + 500**, no redbox, no stack trace — just a dead page.
+- **Prod:** `next build` printed the error message without a stack.
+
+Root cause: `throwEmptyGenerateStaticParamsError` deliberately discarded the stack because the throw happens in framework code (`buildAppStaticPaths`) **after** the user's function has already returned, so the original `Error` had no user-code frame to point at.
+
+**What #95269 does:** adds an SWC transform that emits a `__next_create_empty_gsp_error` factory in any `page`/`layout`/`default` file that exports `generateStaticParams`. The factory's `new Error` is **span-mapped back to the source** — so when it ultimately throws from framework code, the stack trace points at the user's `return []` line (or the most specific frame available). The factory is attached to the segment as `createEmptyParamsError` in `collectSegments`, and `buildAppStaticPaths` calls it when it detects an empty result.
+
+**Anchor logic (most-specific wins):**
+
+| Case | Anchor |
+|---|---|
+| `export function gsp() { return [] }` — single, literal `return []` | the `return []` line |
+| `export function gsp() { if (...) return [...]; return [] }` — computed empty | the function declaration |
+| `export { gsp } from './other'` — body in another module | the `export` statement |
+| `export { x as generateStaticParams }` — aliased re-export | covered (key is the export, not the declaration name) |
+| `export * from './other'` — wildcard re-export | **not covered** — see "Known limitations" below |
+| A same-named local helper that is never exported | ignored — only the exported name triggers the transform |
+
+**Transform gating:** registered for both bundlers, gated on `cacheComponents: true`, excluded from the edge runtime (mirrors the existing `debug_instant_stack` wiring). Idempotent — re-running the transform over an already-transformed file is a no-op.
+
+**User-visible result:**
+
+- **Dev:** a proper redbox with a meaningful stack trace pointing at the offending line in your `generateStaticParams`. The custom `EmptyGenerateStaticParamsError` class name was dropped (it only added noise to the logs); now you just see a regular `Error` with the right stack.
+- **Prod:** the build fails with a stacked CLI error pointing at the same user-code line, instead of a framework-only message.
+
+**Known limitations:**
+
+- **Wildcard re-exports (`export * from './other'`)** are not covered — the SWC transform keys off the export statement and doesn't follow wildcard re-exports. If you re-export `generateStaticParams` via `export *`, you won't get the user-code stack; you'll get the old framework-only error. Workaround: use a named re-export (`export { generateStaticParams } from './other'`), which IS covered.
+- The transform is gated on `cacheComponents: true` — apps not using CC won't get the improved error UX. That's intentional: outside CC, `generateStaticParams` returning `[]` is just "no static params" and isn't an error.
+
+#### Build errors now print code frames for static-worker errors ([#95270](https://github.com/vercel/next.js/pull/95270), Hendrik Liebau, merged 2026-06-30T09:18:56Z)
+
+**The companion fix.** Previously, errors thrown **while collecting page data** during the build (including empty `generateStaticParams` under CC, but also any other throw from `isPageStatic`) printed a source-mapped stack **but no code frame**. Prerender errors from the export worker already showed the offending source lines — but the static worker did not, even though the stack was source-mapped.
+
+**Root cause:** the static worker (`packages/next/src/build/worker.ts`) exposes both `isPageStatic` and `exportPages`, but only `exportPages` called `installCodeFrameSupport` to register the code-frame renderer. When `isPageStatic` ran, the renderer was never registered, so the frame was dropped from the output even though the underlying source map was intact.
+
+**What #95270 does:** installs the native bindings and code-frame support in the static worker entry by wrapping the exposed `isPageStatic`, mirroring what `exportPages` already does. Both installs are idempotent. **The implementation deliberately does NOT do this in `build/utils.ts`**: that module is reachable from `next-server` through the dev server, so importing the code-frame installer there pulls `next-devtools/server/shared` into the production server's file trace, which the `next-server-nft` test rightly rejects (NFT = Node File Trace, the build artifact Vercel uses to keep dev-only modules out of the production bundle). The worker entry is only loaded by build workers, so the renderer stays out of the runtime server.
+
+**User-visible result:** a build error thrown from `generateStaticParams` (or any other static-worker error) now prints the same code frame as a prerender error — file, line number, column, and the offending source line. The frame is **only rendered when the source map carries source content**, which happens under `--debug-prerender` (or `serverSourceMaps: true` in `next.config.ts`); normal minified production builds are unaffected. The `empty-generate-static-params` e2e test is updated to assert the code frame that now appears in the build error for both the literal and the computed empty array cases.
+
+**Combined practical impact of #95269 + #95270:**
+
+- The single most confusing Cache Components failure mode — "my route failed the build with a meaningless framework-only error, and I don't know which line of my `generateStaticParams` is the problem" — is gone on canary.71+. You now get a redbox in dev (real stack anchored at your code) and a code-framed CLI error in prod build.
+- If you're running into this failure on a canary.71+ project and you DON'T see a code frame, double-check `serverSourceMaps: true` or pass `--debug-prerender`. The code-frame renderer is registered unconditionally; it just can't render anything if the source map doesn't carry source content.
+- If your `generateStaticParams` re-exports via `export * from '...'`, you'll still get the old behavior — file an issue and reference this PR; named re-exports work, wildcard re-exports don't.
+
+**Sources:**
+- [PR #95269 — `Surface empty generateStaticParams as a redbox with a real stack` (Hendrik Liebau, canary.71+, June 30, 2026)](https://github.com/vercel/next.js/pull/95269)
+- [PR #95270 — `Render a code frame for build errors thrown collecting page data` (Hendrik Liebau, canary.71+, June 30, 2026)](https://github.com/vercel/next.js/pull/95270)
+
+### Turbopack SWC: Constant-Fold `x in y` (#95286, canary.71+, June 30, 2026)
+
+PR [#95286](https://github.com/vercel/next.js/pull/95286) (Niklas Mischkulnig, merged 2026-06-30T09:04:56Z) teaches Turbopack's SWC transform to **constant-evaluate the `in` operator** when `x` is a literal. Pattern:
+
+```ts
+const hasFoo = 'foo' in obj   // → const hasFoo = true / false at compile time, when 'obj' is a literal
+```
+
+This is part of the ongoing constant-folding pass in Turbopack's SWC integration. The practical effect is small but real:
+
+- **Smaller bundles** for code that does dictionary-shaped checks against literal keys (common in feature-flag libs, dependency-injection containers, enum-shaped maps).
+- **Cheaper startup** — the check runs once at compile time instead of once per call site.
+- **No code change required** — the optimization is applied transparently by the SWC transformer. If `x` is anything but a literal (`'foo' in someVariable`, `'foo' in obj[key]`), the check stays as runtime code.
+
+Caveat: this is a compile-time transformation, not a TypeScript narrowing — `'foo' in obj` becoming `true` does NOT change the inferred type of `obj`. If you're relying on `in` narrowing for type-guarding (e.g. `if ('x' in val) { val.x }`), keep using the runtime form.
+
+### Next.js config-evaluation time is logged (#94811, canary.71+, June 30, 2026)
+
+PR [#94811](https://github.com/vercel/next.js/pull/94811) (Luke Sandberg, merged 2026-06-30T06:36:48Z) adds timing instrumentation around the `next.config.ts` evaluation step. The duration now appears in dev startup and `next build` startup logs:
+
+```
+▲ Next.js 16.3.0-canary.71
+- Local: http://localhost:3000
+- Network: use --hostname to expose
+✓ Ready in 1.2s
+✓ Compiled / in 412ms
+✓ next.config.ts evaluated in 187ms   ← NEW
+```
+
+Use this when diagnosing slow dev startup or slow CI builds: if the config-evaluation line dominates your "Ready in Xs", the bottleneck is in your config (custom plugins, large env-var lookups, expensive module imports in the config file). Move heavy work out of `next.config.ts` or behind a `process.env` gate.
+
 ### Dev Cold-Cache Badge Now Behind `experimental.coldCacheBadge` (16.3.0-canary.68)
 
 PR [#95169](https://github.com/vercel/next.js/pull/95169) (June 25, 2026) gates the **persistent "Cold cache" badge** that the dev overlay shows after a navigation filled an empty cache. The badge was added in canary.57 / [#94611](https://github.com/vercel/next.js/pull/94611) and was on by default in every dev session. After this change it's **off by default** — too loud and visually disruptive in its current form, the team wants to iterate on the UI/UX before re-enabling it for everyone.

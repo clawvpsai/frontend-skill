@@ -606,6 +606,43 @@ export default defineConfig({
 - [Vite 8.0 announcement — foundational features that 8.1 builds on](https://vite.dev/blog/announcing-vite8)
 - [Vite 8.1.0 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.0)
 
+### Vite 8.1.1 (June 30, 2026) — Patch Release with `resolve.tsconfigPaths` CSS Fix
+
+Vite 8.1.1 ([npm `latest` pointer moved 2026-06-30T10:31:53Z](https://www.npmjs.com/package/vite)) is a **patch release** — 43 commits, no breaking changes, no API removals, no deprecations. It's the recommended upgrade for any project that adopted Vite 8.1.0 and runs into the `resolve.tsconfigPaths` regression or any of the other fixes below.
+
+**The headline fix — `resolve.tsconfigPaths` for CSS and Sass `@import` (and Sass `@use`):**
+
+PR [#22775](https://github.com/vitejs/vite/pull/22775) (Jerry Zhao, merged 2026-06-30T06:57:34Z, closes [#22766](https://github.com/vitejs/vite/issues/22766) by TimonLukas filed June 24) restores a regression introduced by the oxc-resolver upgrade in Vite 8.1.0. Since Vite 8.1.0, `resolve.tsconfigPaths: true` stopped resolving `paths` aliases inside CSS `@import` and Sass `@use`, e.g. `@import "@/styles/main.css"`. The Vite CSS plugin was passing a synthetic `<dir>/*` importer to the resolver, which oxc-resolver interpreted as "this file isn't in any tsconfig" and skipped the `paths` mapping. The fix passes the real importing file as the importer — CSS (postcss-import) uses the `@import` AtRule's source file, Sass already used `context.containingUrl`. Because tsconfig matches by extension, **CSS and Sass files must be declared explicitly in `tsconfig.json` `include`** to receive `paths`, e.g. `include: ["src", "src/**/*.css", "src/**/*.scss"]` — Vercel documents this under `resolve.tsconfigPaths`. Less is **not supported** by this fix (its plugin API only exposes the importer's directory, not the file); use a relative path or `resolve.alias` for `@import` in Less. The `playground/resolve-tsconfig-paths` Vite fixture gains CSS `@import` and Sass `@use` cases that resolve via `paths`, plus a Less case asserting the alias stays unresolved.
+
+**Other user-facing fixes worth noting:**
+
+| Fix | Why it matters | PR |
+|---|---|---|
+| **Escape ids with multiple null bytes** | `wrapId` / `unwrapId` / the Lightning CSS filename encoder used `String.prototype.replace`, which only replaces the first `\0`. When a virtual module was wrapped by another plugin (e.g. a CommonJS proxy around a virtual module produces `\0commonjs-proxy:\0virtual`), only the first null byte was handled, leaving raw null bytes in import URLs (invalid) and only restoring the first placeholder on decode (asymmetric). Lightning CSS treats null bytes as string terminators, so a leftover null byte truncated the filename. Switched to `replaceAll`. | [#22687](https://github.com/vitejs/vite/pull/22687) (Sujal Shah, 08:33Z, fixes #22690) |
+| **`import.meta.hot.invalidate()` stack overflow in Bundled Dev Mode** | Calling `import.meta.hot.invalidate()` inside Bundled Dev Mode triggered an infinite recursion in the invalidation handler, crashing the dev server with a stack overflow. | [#22797](https://github.com/vitejs/vite/pull/22797) (Jerry Zhao, 07:49Z) |
+| **Bundled Dev Mode: serve assets emitted during HMR/lazy compile** | Assets emitted by a plugin during HMR or lazy compilation inside Bundled Dev Mode were not being served, leaving imports broken until a full reload. | [#22745](https://github.com/vitejs/vite/pull/22745) (andrew, 09:56Z) |
+| **Invert `esbuild.jsxSideEffects` → `oxc.jsx.pure`** | When Vite converts from esbuild's JSX side-effect flag to oxc's `jsx.pure`, it was copying the boolean directly, missing the inversion that the two transformers expect. Side-effectful JSX components could be incorrectly tree-shaken in Rolldown-backed builds. | [#22809](https://github.com/vitejs/vite/pull/22809) (Jerry Zhao, 05:54Z) |
+| **Dynamic-import warning now links to Vite docs** | The warning you get from importing a non-existent module now points at the Vite docs page explaining the resolution rules, instead of just printing the error text. | [#22823](https://github.com/vitejs/vite/pull/22823) (翠, 09:43Z) |
+| **Malformed URI in `indexHtmlMiddleware`** | A malformed URI in the request could crash the Vite dev server's HTML middleware. Now caught and handled. | [#22781](https://github.com/vitejs/vite/pull/22781) (greymoth, 09:57Z) |
+| **pnpm `.modules.yaml` resolved from workspace root** | Vite resolved `.pnpm/.modules.yaml` from `cwd` instead of the workspace root in pnpm workspaces, leading to "could not find pnpm modules manifest" failures in pnpm monorepos when running Vite from a sub-package. Now resolves from the workspace root. | [#22757](https://github.com/vitejs/vite/pull/22757) (btea, June 25) |
+| **Sourcemap field returned from plugins that were missing it** | Several internal plugins were missing the `sourcemap: true` field in their `transform` hook result, so the sourcemap pipeline silently dropped output sourcemaps. | [#22782](https://github.com/vitejs/vite/pull/22782) (翠, 09:34Z) |
+| **Optimize-deps scanner ignores `ERR_CLOSED_SERVER`** | The dep-scanner used to crash on `ERR_CLOSED_SERVER` from the internal HTTP server when the parent process closed mid-scan (common in test harnesses and CI). Now ignored. | [#22784](https://github.com/vitejs/vite/pull/22784) (翠, 02:02Z) |
+
+**Who should upgrade:** anyone on Vite 8.1.0 with `resolve.tsconfigPaths: true` and CSS `@import` statements (the regression above is silent — Vite throws a confusing `postcss` "can't find" error instead of a clean resolution-failure error), anyone using Bundled Dev Mode with `import.meta.hot.invalidate()` or custom HMR-emitting plugins, anyone in a pnpm workspace hitting the `.modules.yaml` error, and anyone who noticed sourcemaps vanishing from a sub-set of plugins in 8.1.0.
+
+**Sources:**
+- [Vite 8.1.1 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.1)
+- [Vite 8.1.1 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.1.1/packages/vite/CHANGELOG.md)
+- [PR #22775 — `fix(css): resolve tsconfig paths in CSS and Sass @import` (Vite 8.1.1)](https://github.com/vitejs/vite/pull/22775)
+- [Issue #22766 — `Vite 8.1 doesn't resolve tsconfigPaths in CSS @import directives`](https://github.com/vitejs/vite/issues/22766)
+- [PR #22687 — `fix: escape ids with multiple null bytes`](https://github.com/vitejs/vite/pull/22687)
+- [PR #22797 — `fix(bundled-dev): avoid stack overflow on import.meta.hot.invalidate()`](https://github.com/vitejs/vite/pull/22797)
+- [PR #22745 — `fix(bundled-dev): serve assets emitted during HMR/lazy compile`](https://github.com/vitejs/vite/pull/22745)
+- [PR #22809 — `fix: invert esbuild.jsxSideEffects when converting to oxc.jsx.pure`](https://github.com/vitejs/vite/pull/22809)
+- [PR #22823 — `feat: update dynamic import warning to link to Vite docs`](https://github.com/vitejs/vite/pull/22823)
+- [PR #22781 — `fix(server): handle malformed URI in indexHtmlMiddleware`](https://github.com/vitejs/vite/pull/22781)
+- [PR #22757 — `fix: resolve pnpm .modules.yaml from workspace root instead of cwd`](https://github.com/vitejs/vite/pull/22757)
+
 ## Next.js Configuration
 
 ### `next.config.ts`

@@ -796,6 +796,17 @@ export default [
 
 **Note:** Even with the React Compiler, keep the ESLint plugin — it catches cases where the compiler can't optimize and tells you why.
 
+#### ESLint Compiler Error Messages Restore Code Frames (React 19.3 canary-92f4fda3-20260630+, PR [#36901](https://github.com/facebook/react/pull/36901))
+
+When the Rust port of the React Compiler (PR [#36173](https://github.com/facebook/react/pull/36173), which now ships as `experimental.turbopackRustReactCompiler` / `experimental.rustReactCompiler` in Next.js 16.3) became the default compiler backend, ESLint error printing regressed for a few weeks:
+
+- The Rust `CompileError` `LoggerEvent`s carry **plain serialized detail objects** instead of `CompilerError`/`CompilerDiagnostic` class instances.
+- The replacement `printErrorMessage()` helper emitted **only** `reason` and `description` — **dropping the source code frame and `file:line:column` location** that used to appear for each error detail.
+
+PR #36901 (Pieter De Baets, merged 2026-06-30T09:20:27Z into React `main`) restores the previous behavior: `printCodeFrame` is exported from `CompilerError` and reused from both ESLint integrations; `printErrorMessage` rebuilds the full message (reason + description + per-detail code frames + hints); the detail-loop is normalized to handle **both** the `details` array (Rust compiler shape) and the legacy flat `loc` shape (deprecated `CompilerErrorDetail`) — without the normalization, iterating over `error.details` on the flat-`loc` path would have thrown `TypeError: not iterable`.
+
+**Practical impact:** if you've been running `eslint-plugin-react-compiler` against the Rust compiler and the output felt "missing" — no source line, no `file:line:column`, just a one-liner reason — upgrade React to a canary with #36901 included (released in `19.3.0-canary-…-20260630+`). The fix lands automatically when Next.js bumps its React canary pin to that canary; if you're on the current canary (`19.3.0-canary-92f4fda3-20260629` as of the previous skill update), wait for the next React bump or pin React to `19.3.0-canary-…-20260630+` yourself if your project uses a direct React dependency.
+
 ### What the Compiler Handles
 
 | Pattern | Compiler Action |
@@ -2194,4 +2205,3 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **`<ViewTransition>` missing `name` prop** — without a `name` prop, React doesn't know which elements should transition together; always use `name` for cross-page or state-change animations
 - **View Transitions in SSR without hydration guard** — `document.startViewTransition()` throws in SSR/Server Components; only call it inside event handlers or in Client Components, never during server render
 - **`useEffectEvent` as a dependency shortcut** — `useEffectEvent` is for extracting non-reactive logic from Effects; do NOT use it to silence the dependency linter when you should be adding proper dependencies; this hides bugs; instead, only extract logic that genuinely doesn't need to trigger re-runs
-
