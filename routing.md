@@ -1124,6 +1124,118 @@ This is the **fifth** silent-corruption fix the skill has documented in the past
 
 **Source:** [PR #95207 — Fix: Update the URL when a client navigation redirects to a rewritten route](https://github.com/vercel/next.js/pulls/95207) · [Issue #95195 — Middleware redirect not reflected in URL on client-side navigation when target is rewritten to a dynamic route](https://github.com/vercel/next.js/issues/95195) · [Reproduction repo (amannn/nextjs-16-3-bug-repro-redirect)](https://github.com/amannn/nextjs-16-3-bug-repro-redirect)
 
+### Client Pages with `await params`/`await searchParams` Crash Dev Instant Validation — [#95289](https://github.com/vercel/next.js/pull/95289) (16.3.0-canary.72+, June 30, 2026)
+
+A client component (`'use client'`) reading `await params` or `await searchParams` on a **Cache Components** dynamic route crashes dev instant validation with a misleading "This is a bug in Next.js" redbox. This is the **sixth** silent-corruption fix the skill has documented in the past week, and the most impactful for early adopters — it crashes the entire route in dev, with no work-around other than upgrading to canary.72+ or refactoring the param read to a server component.
+
+**The crash:** a route like `app/store/[slug]/page.tsx` where the page component is a client component:
+
+```tsx
+'use client'
+import { use } from 'react'
+
+export default function Page(props: PageProps<'/store/[slug]'>) {
+  const { slug } = use(props.params)  // crashes dev validation
+  return (
+    <>
+      <h1>Store {slug}</h1>
+      ...
+    </>
+  )
+}
+```
+
+Running `next dev` against this route in any of `16.3.0-preview.5`, `16.3.0-canary.66` through `16.3.0-canary.71` produces a dev overlay:
+
+```
+## Error Message
+Route "/store/[slug]": Could not validate `instant` because an error prevented the target segment from rendering.
+
+Next.js version: 16.3.0-preview.5 (Turbopack)
+
+  [cause]: Error [InvariantError]: Invariant: Expected to have a workUnitStore that provides validationSampleTracking. This is a bug in Next.js.
+      at Page (app/store/[slug]/page.tsx:6:11)
+    4 |
+    5 | export default function Page(props: PageProps<"/store/[slug]">) {
+  > 6 |   const { slug } = use(props.params);
+      |           ^
+    7 |   return (
+    8 |     <>
+```
+
+The route is unusable in dev. Build production works (the code path that crashes is dev-instant-validation only), so many CI suites with `next build && next start` pass while `next dev` crashes — making it easy to miss until a developer hits it locally.
+
+**Root cause:** `createParamsFromClient` in `packages/next/src/server/request/params.ts` (and the parallel `createSearchParamsFromClient` in `search-params.ts`) had a `'validation-client'` case that wrapped `params`/`searchParams` in a "validation-sample-tracking proxy" — a proxy that records property accesses so dev validation can confirm the page actually consumed each request-derived input. That proxy is **only valid in the build-time prerender path** where `workUnitStore.validationSamples` is set up on the store. In the dev-instant-validation path, the store has no `validationSamples`, so the proxy crashed with `Invariant: Expected to have a workUnitStore that provides validationSampleTracking`.
+
+The original `'validation-client'` case was added so dev validation could audit client-page access to `await params`. But the proxy needs the store to be in "validation-sample-recording" mode, and dev-instant-validation puts the store in "validation-sample-passive" mode (it reads samples but doesn't record new ones). The case was gated correctly in some call paths but not in others — specifically, any client component reading `params`/`searchParams` at runtime would land on the wrong path.
+
+**Fix ([PR #95289](https://github.com/vercel/next.js/pull/95289) by Janka Uryga, merged 2026-06-30T14:38:02Z, will be in canary.72):**
+
+Two changes, one per file:
+
+1. **`packages/next/src/server/request/params.ts`** — the `'validation-client'` case in `createParamsFromClient`'s switch is **removed entirely**. The switch falls through to the existing `'prerender'` case (which is the correct code path for the dev-instant-validation workUnitStore). The change is -7/+11 lines.
+
+2. **`packages/next/src/server/request/search-params.ts`** — the `'validation-client'` case is **gated on `workUnitStore.validationSamples`**. When samples are present (build-time validation path), the proxy is created as before; when samples are absent (dev-instant-validation path), the function returns `makeUntrackedSearchParams(underlyingSearchParams)` instead — the same fallback used by the other "no samples" cases. The change is -7/+10 lines.
+
+The asymmetry between params and searchParams is intentional: `params` only need the proxy when samples are recorded, so removing the case unconditionally is equivalent to the gated path. `searchParams` might want to behave differently in the two cases (the proxy adds a level of introspection that `makeUntrackedSearchParams` skips), so the gate preserves the option. **9 new e2e tests** at `test/e2e/app-dir/instant-validation/static/valid-client-params/[slug]/`, `valid-client-search-params/`, plus a `suspense-in-root/page.tsx` regression test.
+
+**Who is affected (audit your codebase):**
+
+- Any client component (`'use client'`) reading `await props.params` or `await props.searchParams` via `use()` on a dynamic route, **and** Cache Components is enabled (`cacheComponents: true` in `next.config.ts`), **and** `next dev` is being used.
+
+Concrete search patterns to audit:
+
+```bash
+# Find client components that consume params via use()
+rg -l "'use client'" app/ -g '*.tsx' | xargs rg -l 'use\(props\.(params|searchParams)\)|await props\.(params|searchParams)'
+
+# Find any await/use of params.searchParams in client components
+rg "use\(.*\.searchParams" app/ -g '*.tsx' --type tsx
+
+# Find pages that look like 'use client' + PageProps<'/[slug]'>
+rg "'use client'" app/ -g '*page.tsx'
+```
+
+**Migration to canary.72+:**
+
+```bash
+# Pin to canary.72 once cut (current canary.71 still crashes)
+npm install next@canary
+# Verify:
+npx next --version  # should show 16.3.0-canary.72+
+```
+
+Until canary.72 is cut, **two workarounds**:
+
+1. **Move the param read to a server component.** Server components reading `await props.params` don't crash dev validation because they don't go through `createParamsFromClient`. Extract the data the client component needs (e.g. `slug`) into props passed down from the server page, and keep the client component purely presentational:
+
+   ```tsx
+   // app/store/[slug]/page.tsx (server, no 'use client')
+   export default async function Page(props: PageProps<'/store/[slug]'>) {
+     const { slug } = await props.params
+     return <StorePage slug={slug} />
+   }
+
+   // app/store/StorePage.tsx ('use client')
+   'use client'
+   export function StorePage({ slug }: { slug: string }) {
+     // ... use slug freely, no use(props.params)
+   }
+   ```
+
+2. **Disable Cache Components temporarily.** Set `cacheComponents: false` in `next.config.ts` while developing, then flip back on once canary.72 is out. You lose the static-shell validation benefits but the route renders.
+
+**Why this matters even if you're not on canary yet:** any project planning to enable Cache Components and that has client components reading `await params`/`searchParams` (a common pattern — e.g. `<ProductCard>` client components that get `slug` from the URL) **must upgrade to canary.72+ before enabling Cache Components in dev**. Otherwise they'll hit the redbox on first dev start. The skill's existing Cache Components guidance didn't flag this because the bug surfaced after the guidance was written.
+
+**Properties of this fix:**
+
+1. **Crashes with a misleading "This is a bug in Next.js" message.** The error names `validationSampleTracking` and tells you to file a Next.js issue, but the bug is in the case-routing in `createParamsFromClient`, not in user code. A developer following the error's instructions would waste time searching for a non-existent bug in their own code.
+2. **Dev-only.** `next build` is unaffected; only `next dev` instant validation hits the wrong case. CI suites with build+start pass; developers hitting `next dev` crash.
+3. **Specific to client components reading params/searchParams.** Server components have their own code path (`createParamsFromServer`/`createSearchParamsFromServer`) that's not affected.
+4. **Specific to Cache Components dynamic routes.** Without `cacheComponents: true`, the `'validation-client'` case in `createParamsFromClient` isn't reached, so the crash doesn't fire. The skill recommends running `cacheComponents: true` for all new 16.3 projects; combined with the common pattern of client components reading `await params`, this fix is **broadly applicable to anyone starting a new 16.3 project today**.
+
+**Source:** [PR #95289 — fix: params/searchParams in client page crashing dev instant validation](https://github.com/vercel/next.js/pull/95289) · [Commit af066a2fe5849cf2397603381600f50ab66c4467](https://github.com/vercel/next.js/commit/af066a2fe5849cf2397603381600f50ab66c4467) · Files: `packages/next/src/server/request/params.ts` + `packages/next/src/server/request/search-params.ts` + 7 e2e tests in `test/e2e/app-dir/instant-validation/`
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

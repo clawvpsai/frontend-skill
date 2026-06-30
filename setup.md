@@ -643,6 +643,59 @@ PR [#22775](https://github.com/vitejs/vite/pull/22775) (Jerry Zhao, merged 2026-
 - [PR #22781 — `fix(server): handle malformed URI in indexHtmlMiddleware`](https://github.com/vitejs/vite/pull/22781)
 - [PR #22757 — `fix: resolve pnpm .modules.yaml from workspace root instead of cwd`](https://github.com/vitejs/vite/pull/22757)
 
+### Vite 8.1.2 (June 30, 2026) — Patch Release with Two Reverts
+
+Vite 8.1.2 ([npm `latest` pointer moved 2026-06-30T16:46:39Z](https://www.npmjs.com/package/vite), same day as 8.1.1, ~6h later) is a **patch release** that reverts **two** changes from 8.1.1 that broke production users. **If you are on Vite 8.1.1, you should upgrade to 8.1.2** — the reverts below address real failures, not style preferences.
+
+**Revert #1 — `es-module-lexer` 2.2.0 → 2.1.0 (PR [#22827](https://github.com/vitejs/vite/pull/22827), merged 2026-06-30T16:32:49Z):**
+
+PR [#22827](https://github.com/vitejs/vite/pull/22827) (翠 / green@sapphi.red, reopens [#22750](https://github.com/vitejs/vite/issues/22750), fixes [#22826](https://github.com/vitejs/vite/issues/22826), refs [#22804](https://github.com/vitejs/vite/issues/22804)) reverts the `es-module-lexer` upgrade from `2.1.0` to `^2.2.0` that landed in 8.1.1. The `2.2.0` release (cut 2026-06-29T05:12:43Z) ships a **regression**: `parse()` throws `WebAssembly.Memory.grow(): Maximum memory size exceeded` on source inputs larger than ~4 MB. See [guybedford/es-module-lexer#214](https://github.com/guybedford/es-module-lexer/issues/214) (open as of 2026-06-30). The minimum reproduction:
+
+```js
+import { parse, init } from 'es-module-lexer';
+await init;
+const big = 'const x = "' + 'a'.repeat(5 * 1024 * 1024) + '";\n';
+parse(big);  // throws on 2.2.0, works on 2.1.0
+```
+
+**Why this matters for Vite users:** Vite's `build-import-analysis` pass runs `parse()` against pre-bundled dependency chunks in dev. Any **production build with an output chunk over ~4 MB** now fails on Vite 8.1.1. Concrete failure reported in [#22826](https://github.com/vitejs/vite/issues/22826): dev server crashes with `Failed to parse source for import analysis because the content contains invalid JS syntax` when `@vitejs/plugin-react` is used alongside `@rolldown/plugin-babel` with `reactCompilerPreset`. The crash is also reachable in any bundle that combines several large vendor libraries into a single chunk (most production React apps with `lodash`, `monaco-editor`, `@mui/material`, or `react-pdf`).
+
+**Revert #2 — `escape ids with multiple null bytes` (PR [#22687](https://github.com/vitejs/vite/pull/22687) reverted by [#cccef55](https://github.com/vitejs/vite/commit/cccef55dfaa6253929d2cb58d3af53f217efc877)):**
+
+PR [#22687](https://github.com/vitejs/vite/pull/22687) (Sujal Shah, merged into 8.1.1) was reverted in 8.1.2 by sapphi-red with the explicit reason "broke some ecosystem-ci suites". The PR changed `replace('\0', NULL_BYTE_PLACEHOLDER)` to `replaceAll('\0', NULL_BYTE_PLACEHOLDER)` in `compileLightningCSS`, intending to fix Lightning CSS filename truncation when a virtual module was wrapped by another plugin (CommonJS-proxy → virtual modules like `\0commonjs-proxy:\0virtual`). The ecosystem-ci failures were:
+
+- [**waku** (vite-ecosystem-ci run 28438066374, job 84268775303)](https://github.com/vitejs/vite-ecosystem-ci/actions/runs/28438066374/job/84268775303) — react-server-components framework on top of Vite
+- [**vite-plugin-rsc** (vite-ecosystem-ci run 28438066374, job 84268775251)](https://github.com/vitejs/vite-ecosystem-ci/actions/runs/28438066374/job/84268775251) — Vite plugin for React Server Components
+
+Both rely on virtual-module wrapping patterns that interact poorly with the broader replace-all. The revert restores the 8.1.0 behavior (single-null-byte replace), and the multi-null-byte edge case remains unfixed.
+
+**Bonus — `#22757` re-PR'd with the actual fix (PR [#22825](https://github.com/vitejs/vite/pull/22825), merged 2026-06-30T15:47:27Z):**
+
+PR [#22825](https://github.com/vitejs/vite/pull/22825) (翠) restores the `pnpm .modules.yaml` resolution-from-workspace-root behavior from #22757 with a corrected implementation. The first attempt (in 8.1.1) introduced a regression in `pnpm` monorepos where the same root `node_modules/.modules.yaml` was read twice with slightly different path contexts; the corrected version reads it once via `searchForWorkspaceRoot(root)` and uses the returned `workspaceRoot` consistently for both the manifest path and the `virtualStoreDir` resolution. **8.1.2 has the corrected version; 8.1.1 should be skipped entirely.**
+
+**Who should upgrade to 8.1.2:**
+
+- **Skip 8.1.1 entirely.** Going 8.1.0 → 8.1.2 directly is safe; 8.1.2 contains all of 8.1.1's intended fixes (resolve.tsconfigPaths CSS regression, Bundled Dev Mode fixes, sourcemap-field fix, optimize-deps ERR_CLOSED_SERVER handling, etc.) **plus** the corrected pnpm fix and **minus** the two breaking changes above.
+- Anyone using **waku** or **vite-plugin-rsc** — these projects would not build on 8.1.1.
+- Anyone with **production build output chunks over ~4 MB** — 8.1.1 would crash the import-analysis pass.
+- Anyone in a **pnpm monorepo** — get the corrected `.modules.yaml` resolution.
+- **Anyone on 8.1.0 with the `resolve.tsconfigPaths` CSS regression** — 8.1.2 has the fix.
+
+**Who can stay on 8.1.0:** if you don't use `resolve.tsconfigPaths`, aren't in a pnpm monorepo, don't use waku or vite-plugin-rsc, and your prod output chunks are all under ~4 MB, Vite 8.1.0 still works. But there's no reason to stay — 8.1.2 is a pure patch on top.
+
+**Sources:**
+- [Vite 8.1.2 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.2)
+- [Vite 8.1.2 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.1.2/packages/vite/CHANGELOG.md)
+- [PR #22827 — `fix(deps): revert es-module-lexer to 2.1.0`](https://github.com/vitejs/vite/pull/22827)
+- [Issue #22826 — `vite:import-analysis fails on large files`](https://github.com/vitejs/vite/issues/22826)
+- [guybedford/es-module-lexer#214 — `parse() throws "WebAssembly.Memory.grow(): Maximum memory size exceeded" on inputs larger than ~4 MB`](https://github.com/guybedford/es-module-lexer/issues/214)
+- [Commit cccef55 — `fix: revert, "fix: escape ids with multiple null bytes (#22687)"`](https://github.com/vitejs/vite/commit/cccef55dfaa6253929d2cb58d3af53f217efc877)
+- [PR #22687 (the reverted change) — `fix: escape ids with multiple null bytes`](https://github.com/vitejs/vite/pull/22687)
+- [PR #22825 — `fix: restore, "fix: resolve pnpm .modules.yaml from workspace root instead of cwd (#22757)"`](https://github.com/vitejs/vite/pull/22825)
+- [PR #22757 (the original) — `fix: resolve pnpm .modules.yaml from workspace root instead of cwd`](https://github.com/vitejs/vite/pull/22757)
+
+**Recommended Vite version for new projects (June 30, 2026):** **Vite 8.1.2** — supersedes 8.1.1 (which should be **skipped entirely**) and contains all the 8.1.1-intended fixes (the `resolve.tsconfigPaths` CSS regression fix #22775, Bundled Dev Mode fixes #22797/#22745, sourcemap field #22782, ERR_CLOSED_SERVER #22784, etc.) plus the corrected pnpm workspace-root resolution (#22825) and **minus** the two breaking changes from 8.1.1 (es-module-lexer 2.2.0 WebAssembly regression and #22687 multi-null-byte escape). The skill previously recommended 8.1.1 in the immediately-prior update; that recommendation is **withdrawn** as of this update — the previous-update's recommendation of 8.1.1 should not be acted on without also taking this update's correction.
+
 ## Next.js Configuration
 
 ### `next.config.ts`
