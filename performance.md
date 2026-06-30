@@ -747,6 +747,168 @@ const nextConfig: NextConfig = {
 **Sources:**
 - [Turbopack API reference (Next.js docs)](https://nextjs.org/docs/app/api-reference/turbopack)
 - [Turbopack 16.2 improvements](https://nextjs.org/blog/next-16-2-turbopack)
+- [Turbopack: What's New in Next.js 16.3 (June 29, 2026 — Andrew Imm; dev memory eviction, persistent build cache, Rust React Compiler, import.meta.glob, HMR perf, runtime lazy-load, local PostCSS)](https://nextjs.org/blog/next-16-3-turbopack)
+- [`experimental.turbopackMemoryEviction` config reference](https://preview.nextjs.org/docs/app/api-reference/config/next-config-js/turbopackMemoryEviction)
+- [`turbopackFileSystemCache` config reference (dev + build)](https://preview.nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache)
+- [`turbopackRustReactCompiler` config reference](https://preview.nextjs.org/docs/app/api-reference/config/next-config-js/turbopackRustReactCompiler)
+- [`import.meta.glob` turbopack reference](https://preview.nextjs.org/docs/app/api-reference/turbopack#importmetaglob)
+
+### Dev Memory Eviction — `experimental.turbopackMemoryEviction` (16.3 Preview, June 29, 2026 — defaults on)
+
+Turbopack's incremental-compilation model has always traded **memory** for **CPU** — caching more results in memory to avoid recompilation. After three months of work, the Turbopack team is moving that trade-off the other direction, led by an in-memory **eviction** mechanism that flushes cached results back to disk when they're no longer needed. On the Vercel-owned benchmark apps:
+
+| Project | Before | After | Reduction |
+|---|---|---|---|
+| vercel.com (dashboard) | 21.5 GB | 2 GB | **~90% smaller** |
+| nextjs.org | 4,600 MB | 840 MB | **~82% smaller** |
+
+Both numbers are **after compiling 50 routes**. There is no single reduction percentage that applies to every application — your result depends on the size of the route graph, how much of it was touched during the dev session, and how long the session was running. The biggest wins come from evicting the in-memory cache: the dev filesystem cache (introduced in 16.1 as `experimental.turbopackFileSystemCacheForDev`, default on) means evicted entries are still served from disk on the next request.
+
+```ts
+// next.config.ts — both flags are on by default in 16.3
+const nextConfig: NextConfig = {
+  experimental: {
+    // dev filesystem cache → required for memory eviction to evict safely
+    turbopackFileSystemCacheForDev: true,
+    // memory eviction strategy: 'full' (default) | 'single' | false (disable)
+    turbopackMemoryEviction: 'full',
+  },
+}
+```
+
+Values:
+- **`'full'`** (default in 16.3) — evict entries as soon as they're inactive. The recommended setting; gives the largest memory reduction at the cost of a slightly higher chance of re-reading from disk.
+- **`'single'`** — evict one entry at a time on a stricter threshold. Lower memory pressure but less aggressive.
+- **`false`** — disable memory eviction entirely. Useful **only** when investigating cache or dev performance regressions where you need Turbopack to behave identically to 16.2.
+
+**Why this matters:** coding agents, IDEs, typecheckers, and linters all consume dev-time memory. Long-running agentic dev sessions (the default mode for an AI agent on a Next.js project) accumulate cached routes indefinitely in 16.2; with `turbopackMemoryEviction: 'full'`, the working set stays bounded even after hours of editing. **If you see OOMs on a long-lived `next dev` against a large app, upgrade to canary.71+ / 16.3 stable before doing anything else.**
+
+### Persistent File-System Cache for Builds — `experimental.turbopackFileSystemCacheForBuild` (16.3 Preview, June 29, 2026 — was already opt-in, now GA)
+
+The dev filesystem cache became stable in 16.1 ([post](https://nextjs.org/blog/next-16-1#turbopack-file-system-caching-for-next-dev)). After months of hardening in production with Vercel-owned sites, **the same persistence is now available for `next build`**. On Vercel's own apps:
+
+| Project | Cold `next build` | Cached `next build` | Speedup |
+|---|---|---|---|
+| nextjs.org | 21s | 9.2s | **~2.3× faster** |
+| vercel.com/home | 66s | 46s | **~1.4× faster** |
+| vercel.com/geist | 30s | 5.5s | **~5.5× faster** |
+
+CI benefits the most: **copy `.next` between runs**, and Turbopack will read the cache from disk before compiling any new changes on the next run. The on-by-default behavior in 16.3.0-preview.3 (PR [#94616](https://github.com/vercel/next.js/pull/94616)) is now the documented, stable default.
+
+```ts
+// next.config.ts — also reachable via the top-level `turbopack.fileSystemCacheForBuild`
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForBuild: true,
+  },
+}
+
+// CI workflow (GitHub Actions, Vercel build cache, buildkite, etc.) —
+// restore the .next directory before running next build
+- run: next build
+```
+
+**Caveats:**
+
+- The cache is keyed by Turbopack's internal version + the resolved module graph. Schema changes invalidate the cache automatically.
+- The cache file lives under `.next/` — exclude it from git but include it in CI caches (`actions/cache@v4` on `path: .next/cache` keyed by `package-lock.json` hash, or the equivalent on your CI).
+- Webpack builds don't get this benefit (Webpack uses its own disk cache; Turbopack is the path to fast `next build`).
+
+### Experimental Rust React Compiler — `experimental.turbopackRustReactCompiler` (16.3 Preview, June 29, 2026 — added docs page)
+
+The React Compiler stable-on-Turbopack integration (added as `experimental.rustReactCompiler` in [canary.52 — June 16, 2026](#react-compiler-on-turbopack--experimental-rust-port-1630-canary52-june-16-2026) above) is now documented at `preview.nextjs.org/docs/.../turbopackRustReactCompiler.mdx` (PR [#95280](https://github.com/vercel/next.js/pull/95280), canary.71, June 29). The early benchmarks Vercel published against [v0.app](https://v0.app) saw **20–50% faster builds** compared to the Babel transform. To use it:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  reactCompiler: true,           // turn the compiler on (otherwise Turbopack's Rust pass is skipped)
+  experimental: {
+    rustReactCompiler: true,     // legacy key (canary.52); still works
+    turbopackRustReactCompiler: true, // new key in 16.3; both keys are aliases
+  },
+}
+```
+
+The 16.3 Preview post calls out that the Rust compiler is now being released as **experimental** to drive more adoption against large React apps — your real-world build times will vary. The Babel transform (the OG implementation) remains the fallback; the Rust version is opt-in.
+
+### `import.meta.glob` API on Turbopack (16.3 Preview, June 29, 2026 — Vite-compatible)
+
+Turbopack now supports the Vite-compatible **`import.meta.glob`** API, letting you import all modules that match a glob without hardcoding their names:
+
+```ts
+// All .mdx files under ./posts — returns an object keyed by matching file paths
+const posts = import.meta.glob('./posts/*.mdx')
+
+// Each value is an async function that loads the module by default
+for (const path in posts) {
+  const post = await posts[path]()  // → MDX module
+}
+```
+
+Use `eager: true` to import each match immediately (same as static imports — they become part of the bundle):
+
+```ts
+const posts = import.meta.glob('./posts/*.mdx', { eager: true })
+// posts['/posts/hello.mdx'] is the imported module, not a function
+```
+
+The implementation also supports: named imports (`import.meta.glob('./posts/*.mdx', { import: 'default' })`), multiple patterns (`['./posts/*.mdx', './drafts/*.mdx']`), negative patterns (`'!./posts/draft-*.mdx'`), custom search path (`{ root: './src' }`), query strings to pick a loader (`'./styles/*.css?raw'`), and TypeScript type generation for the result.
+
+**Powered by Turbopack's file watcher** — when a file is added to or removed from the match set, it triggers a recompilation in dev mode, so your site always reflects the latest files.
+
+**`--webpack` not supported.** This is a Turbopack-only feature. Webpack-based builds will throw at compile time.
+
+```ts
+// Real-world: blog index page
+import type { MDXModule } from '*.mdx'
+
+// type-safe: posts: Record<string, () => Promise<MDXModule>>
+const posts = import.meta.glob('./posts/*.mdx')
+
+export async function getStaticPaths() {
+  return {
+    paths: Object.keys(posts).map((path) => ({
+      params: { slug: path.replace(/^\/posts\//, '').replace(/\.mdx$/, '') },
+    })),
+    fallback: false,
+  }
+}
+```
+
+### HMR Cold-Start Win — Single-Subscription Chunk Tracking (16.3 Preview, June 29, 2026)
+
+By analyzing the performance of Turbopack in large Next.js apps at Vercel, the team identified a number of improvements that benefit all Turbopack users. The most significant one **streamlines the tracking of chunks that are loaded on a page** — by collapsing multiple subscriptions to a single one, **dev-server cold start was reduced by over 15% on complex apps**. No config required; it's an HMR-internal optimization.
+
+### Smaller Runtime Size — Lazy-WASM / Lazy-Workers / Lazy-Async-Modules (16.3 Preview, June 29, 2026)
+
+Turbopack ships runtime code to every route that allows it to resolve modules and dynamically fetch new chunks — including code for loading WebAssembly, workers, and top-level async modules. Not every Next.js application uses that functionality. **In 16.3, Turbopack only ships those features when they're needed** and avoids shipping extra runtime code the rest of the time. Reduced client bundle size on apps that don't use WASM/workers.
+
+### Local PostCSS Configuration — `experimental.turbopackLocalPostcssConfig` (16.3 Preview, June 29, 2026)
+
+Monorepos may need different PostCSS transforms for different packages. The new experimental flag lets Turbopack resolve the **closest** PostCSS config to each CSS file before falling back to the project root:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackLocalPostcssConfig: true,
+  },
+}
+```
+
+With this enabled, package-level CSS files (e.g. `packages/ui/src/button.css`) pick up `packages/ui/postcss.config.cjs`; application-level CSS picks up the root config. Without the flag, Turbopack only reads `postcss.config.*` at the project root. Use this when your monorepo's design tokens require plugins (mixins, `postcss-import` chains, custom syntaxes) that the consuming app doesn't need.
+
+### Turbopack Compatibility and Reliability (16.3 Preview, June 29, 2026 — final section of the 16.3 Preview Turbopack post)
+
+Next.js 16.3 rolls up all of the fixes from the 16.2 patch line and adds more improvements across **module resolution**, **tracing**, and **HMR**:
+
+- **Correct `import.meta.url` file URLs on Windows** — previously, `import.meta.url` resolved to a `file:///C:/...` URL on Windows but Turbopack passed through the raw forward-slashed path some users wrote, breaking dedupe against the runtime. Now consistent across OSes.
+- **Retry chunk fetching on failure** — transient chunk-fetch failures (network hiccup, build process restart) now retry automatically with the same incremental cache key.
+- **Better support for `createRequire(new URL(..., import.meta.url))`** — Turbopack now correctly resolves the relative path within `createRequire`, including when the URL has a query string or fragment.
+- **Correct `worker_threads` URL resolution** — Turbopack-emitted `new Worker(new URL('./worker.js', import.meta.url))` now resolves the same way at runtime as it does in build, including in production.
+- **Support for the `module-sync` export condition** — packages that publish dual ESM/CJS via the `module-sync` exports condition (a Node 22+ feature) now bundle through Turbopack without falling back to the slower sync path.
+- **Better errors when webpack loaders crash** — clearer stack traces when a custom loader throws, including the loader name and the file path it was processing.
+- **CSS HMR fixes in Safari** — Safari was failing to apply HMR updates when a CSS file was changed via edit-while-replacing (an editor save-then-replace sequence, common with `sed -i`). The fix uses a different update strategy on Safari only; Chrome/Firefox are unaffected.
 
 ## Font Optimization
 

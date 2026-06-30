@@ -296,6 +296,38 @@ ImageResponse (used for OG image generation via `next/og`) is **2–20× faster*
 - [Next.js 16.2 Turbopack API reference](https://nextjs.org/docs/app/api-reference/turbopack)
 - [Roboto Studio: Next.js 16.2 for dummies (benchmarks)](https://roboto.studio/blog/nextjs-16-2-for-dummies)
 
+## Next.js 16.3 Turbopack Preview (June 29, 2026) — Andrew Imm
+
+The third post in the [16.3 Preview series](https://nextjs.org/blog/next-16-3-turbopack) — "Turbopack: What's New in Next.js 16.3" — lands seven major Turbopack improvements at once. The performance impact of each is captured in **`performance.md`**: see [Dev Memory Eviction](#dev-memory-eviction-experimentalturbopackmemoryeviction-163-preview-june-29-2026-defaults-on) (16.3 Preview, June 29, 2026 — defaults on), [Persistent File-System Cache for Builds](#persistent-file-system-cache-for-builds-experimentalturbopackfilesystemcacheforbuild-163-preview-june-29-2026-was-already-opt-in-now-ga), [Experimental Rust React Compiler](#experimental-rust-react-compiler-experimentalturbopackrustreactcompiler-163-preview-june-29-2026-added-docs-page), [`import.meta.glob` API on Turbopack](#importmetaglob-api-on-turbopack-163-preview-june-29-2026-vite-compatible), [HMR Cold-Start Win](#hmr-cold-start-win-single-subscription-chunk-tracking-163-preview-june-29-2026), [Smaller Runtime Size](#smaller-runtime-size-lazy-wasm-lazy-workers-lazy-async-modules-163-preview-june-29-2026), [Local PostCSS Configuration](#local-postcss-configuration-experimentalturbopacklocalpostcssconfig-163-preview-june-29-2026), and [Turbopack Compatibility and Reliability](#turbopack-compatibility-and-reliability-163-preview-june-29-2026-final-section-of-the-163-preview-turbopack-post) for the long-form patterns. Quick-reference:
+
+```ts
+// next.config.ts — 16.3 Turbopack defaults are now memory-safe, cacheable, and faster:
+const nextConfig: NextConfig = {
+  reactCompiler: true,                              // stable since 16.0
+  experimental: {
+    // Memory: evict inactive cache entries to disk (default on in 16.3, requires dev FS cache)
+    turbopackFileSystemCacheForDev: true,           // default true since 16.1
+    turbopackMemoryEviction: 'full',                // default in 16.3 — 'full' | 'single' | false
+    // Build: persist .next/ cache across `next build` runs (CI-friendly)
+    turbopackFileSystemCacheForBuild: true,         // default true in 16.3 canary/preview
+    // Compiler: native Rust port (Babel fallback) — ~20–50% build perf on large React apps
+    turbopackRustReactCompiler: true,               // requires reactCompiler: true
+    // Monorepos: per-package PostCSS resolution
+    turbopackLocalPostcssConfig: true,
+  },
+}
+```
+
+`import.meta.glob` is a Turbopack-only feature (does not work with `next build --webpack`):
+
+```ts
+// app/blog/page.tsx — type-safe blog index via Vite-compatible glob API
+// Returns Record<string, () => Promise<MDXModule>> — async loader per match
+const posts = import.meta.glob<false, './posts/*.mdx'>('./posts/*.mdx')
+```
+
+See `performance.md` for the full sections (benchmarks, caveats, monorepo postcss walkthrough, and config compatibility details for `import.meta.url` on Windows / `worker_threads` / `module-sync`).
+
 ### Vite (React SPA, non-Next)
 
 ```bash
