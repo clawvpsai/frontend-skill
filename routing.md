@@ -930,7 +930,7 @@ Three properties make this a classic silent-corruption issue:
 
 This is the **third** silent-corruption fix the skill has documented in the past week — after #95185 (silent misroute to wrong page, June 26), and the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26). All three share the same shape: deterministic, silent, surfaces only in production or in specific configurations. Treat any "middleware + Pages API" rewrite path in your codebase as a candidate to audit against this fix.
 
-## Repeated Search Params Collapsed in Client Page Segment Cache — #94863 (16.3.0-canary.71+, June 29, 2026)
+## Repeated Search Params Collapsed in Client Page Segment Cache — #94863 (16.3.0-canary.71, June 29, 2026)
 
 PR [#94863](https://github.com/vercel/next.js/pulls/94863) "fix: preserve repeated search params in client page segment cache keys" (icyJoseph, merged June 29, 2026) fixes a silent **stale-UI** bug in the client page segment cache that affects any URL whose query string has a key with multiple values (`?color=red&color=blue`, `?tag=foo&tag=bar`, `?k=A&k=B`, etc.). It is the **fourth** silent-corruption fix the skill has documented in the past week, after #95185 (silent misroute to wrong page, June 26), #94905 (silent `req.query` truncation, June 26), and the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26). Different bug family from those three — no Pages API or middleware involved — but the same shape: deterministic, silent, surfaces only in specific configurations.
 
@@ -1002,7 +1002,7 @@ grep -rn "URLSearchParams\|searchParams\.append\|qs\.stringify\|qs\.parse" --inc
 grep -rn "name=\"[a-zA-Z_]*\[\]*\"\|useFormState" --include="*.tsx" app/ 2>/dev/null
 ```
 
-If any of these exist in your project, **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71)+** (or the eventual 16.3.0 stable once it ships) to get the fix. No config change, no opt-in flag — the cache key always uses `urlSearchParamsToParsedUrlQuery` now.
+If any of these exist in your project, **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71) or later** (or the eventual 16.3.0 stable once it ships) to get the fix. No config change, no opt-in flag — the cache key always uses `urlSearchParamsToParsedUrlQuery` now.
 
 If your app only uses single-value search params, you're unaffected.
 
@@ -1019,7 +1019,7 @@ This is the **fourth** silent-corruption fix the skill has documented in the pas
 **Source:** [PR #94863 — fix: preserve repeated search params in client page segment cache keys](https://github.com/vercel/next.js/pulls/94863) · [Issue #92787 — Object.fromEntries(URLSearchParams) drops duplicate keys → stale UI on navigation](https://github.com/vercel/next.js/issues/92787) · [Issue #93104 — multi→single search-param unset does not commit RSC](https://github.com/vercel/next.js/issues/93104) · [Issue #94821 — Submitting Query Parameters via a Form does not always update the client](https://github.com/vercel/next.js/issues/94821)
 
 
-## Client Navigation URL Bar Stuck After Middleware Redirect — #95207 (16.3.0-canary.71+, June 29, 2026)
+## Client Navigation URL Bar Stuck After Middleware Redirect — #95207 (16.3.0-canary.71, June 29, 2026)
 
 PR [#95207](https://github.com/vercel/next.js/pulls/95207) "Fix: Update the URL when a client navigation redirects to a rewritten route" (Andrew Clark / acdlite, merged June 29, 2026 at 17:00:29Z) fixes a silent **stale-URL** bug where a client-side navigation through a proxy/middleware redirect chain left the browser address bar on the *original* URL, while the page content rendered correctly. It is the **fifth** silent-corruption fix the skill has documented in the past week, after #95185 (silent misroute, June 26), #94905 (silent `req.query` truncation, June 26), the shadcn 4.11.1 specifier-swap (silent `package.json` mutation, June 26), and #94863 (silent cache-key collapse, June 29). Different bug family from the other four — only happens on soft-nav, only on the client, only with a specific three-leg path — but the same shape: deterministic, silent, no error or warning, surfaces only when all three legs are present.
 
@@ -1107,7 +1107,7 @@ grep -rn "NextResponse.rewrite" proxy.ts middleware.ts 2>/dev/null
 grep -rn "force-dynamic\|export const dynamic" --include="*.tsx" --include="*.ts" app/ 2>/dev/null
 ```
 
-If any combination matches the three-leg pattern above (redirect + rewrite-to-different-path + rewrite target reads params), **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71)+ (or the eventual 16.3.0 stable)** to get the fix. No config change, no opt-in flag — the reducer always invalidates the prediction on a redirect now.
+If any combination matches the three-leg pattern above (redirect + rewrite-to-different-path + rewrite target reads params), **upgrade to [16.3.0-canary.71](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.71) or later (or the eventual 16.3.0 stable)** to get the fix. No config change, no opt-in flag — the reducer always invalidates the prediction on a redirect now.
 
 If your middleware/proxy only does one of: redirects without a rewrite, or rewrites without a follow-up redirect, or rewrites to fully-static routes — you're unaffected. The bug requires all three legs.
 

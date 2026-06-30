@@ -759,6 +759,46 @@ npx biome check --write
 npx eslint . --fix
 ```
 
+### `@next/eslint-plugin-next` Security Rules (16.3.0-canary.71, [PR #93057](https://github.com/vercel/next.js/pull/93057) by SukkaW, June 29, 2026)
+
+The `no-location-assign-relative-destination` rule (enabled by default in `@next/eslint-plugin-next`'s recommended config) got two important enhancements in 16.3.0-canary.71. The rule is a **defense-in-depth against open-redirect and phishing-via-relative-URL attacks** — it catches code like:
+
+```js
+// 🚨 Rule will flag this — navigates to attacker-controlled relative URL
+function handleComment(commentBody: string) {
+  window.location.assign(commentBody) // commentBody might be "/redirect?to=https://evil.com"
+}
+
+// 🚨 Rule will flag this too
+window.location.href = userInput
+```
+
+**What's new in 16.3.0-canary.71:**
+
+1. **Real `location` scope check** — the rule now only flags when `location` is a true global variable, not a shadowed local one. Previously, the rule would false-positive on code like:
+   ```js
+   // ✅ Before 16.3.0-canary.71: rule would WRONGLY flag this
+   // ✅ After 16.3.0-canary.71: correctly recognized `location` is a local
+   function handler() {
+     const location = '/safe-path'  // local var
+     window.location.assign(location)  // not a global location — local var is safe
+   }
+   ```
+2. **Basic variable tracking** — the rule now follows simple variable assignments, so it can correctly resolve whether a given `location.assign(...)` call is on the global `location` (dangerous) or on a local variable shadowing it (safe). Previously it would only look at the literal `location.X` call site.
+
+**Why this matters:**
+
+- **If you have code that uses local `location` variables**, you may see new lint warnings after upgrading — but they'll be false-positives that the rule's now-fixed heuristics can be wrong about (re-run the linter to confirm; if it's still flagging a local var as if it were the global, that's a bug in the new variable tracker — file an issue against the rule).
+- **If you have code that uses `window.location.assign()` on dynamic data**, the rule will catch it. Before 16.3.0-canary.71, it might have missed some cases due to the scope-check bug.
+- **The rule is enabled by default** in the recommended config — it runs whenever you run ESLint with `@next/eslint-plugin-next`. There's no opt-in for the new behavior; you get it automatically.
+
+**For deployment:** if you're using the Next.js ESLint flat config from setup.md, the rule is already active. No config changes needed. If you've customized your ESLint config to disable this rule, you should re-enable it — the 16.3.0-canary.71 enhancements make the false-positive rate much lower (the scope check + variable tracking fix the most common false-positives that motivated teams to disable the rule).
+
+**Sources:**
+- [PR #93057 — Enhance ESLint rule `no-location-assign-relative-destination` (canary.71, June 29, 2026)](https://github.com/vercel/next.js/pull/93057)
+- [PR #92900 — Original rule PR (referenced for the scope-check suggestion)](https://github.com/vercel/next.js/pull/92900)
+- [`@next/eslint-plugin-next` source — `packages/eslint-plugin-next/src/rules/no-location-assign-relative-destination.ts`](https://github.com/vercel/next.js/tree/canary/packages/eslint-plugin-next/src/rules/no-location-assign-relative-destination.ts)
+
 ### Turbopack Production Builds
 Next.js 16 uses Turbopack for production builds by default:
 ```bash

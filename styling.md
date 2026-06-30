@@ -398,6 +398,28 @@ v4.3.1 generates cleaner CSS for the spacing scale. `m-0` used to generate `marg
 
 **Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.1`). Patch release — no code changes required.
 
+## Tailwind v4.3.2 — Patch (June 29, 2026)
+
+A pure bug-fix release dropped the same day as the 16.3.0-canary.71 cut. v4.3.2 ships four targeted fixes — no new features, no breaking changes, no documentation-only changes. **The CSS output is unchanged**, so you can upgrade without testing.
+
+### Fixed in v4.3.2
+
+- **`auto-rows-*` and `auto-cols-*` accept bare numeric values** ([#20229](https://github.com/tailwindlabs/tailwindcss/pull/20229)) — `auto-rows-12` and `auto-cols-16` now work without a `grid-template-rows: repeat(...)` wrapper. Previously these would either silently fail or require the `grid-rows-12` / `grid-cols-12` variant; the new bare-value form matches the more common grid-literal expectation.
+- **`@tailwindcss/cli --watch` no longer crashes on Windows when `@source` points to a missing directory** ([#20242](https://github.com/tailwindlabs/tailwindcss/pull/20242)) — the watcher used to throw `ENOENT` on Windows specifically (the path-handling was wrong on case-insensitive filesystems when the missing directory was in a `git clean -fdx`-style state). Now it logs a warning and continues watching the rest of the tree.
+- **`@tailwindcss/vite` no longer crashes in Deno v2.8.x** ([#20245](https://github.com/tailwindlabs/tailwindcss/pull/20245)) — Deno 2.8 changed `LoaderContext.parentURL` semantics, and the Vite plugin was reading it as if it were always a valid `file://` URL. Now guarded with a `URL.canParse(parentURL)` check before reading.
+- **`@tailwindcss/cli --watch` doesn't re-emit an unchanged file when only a sibling changes** ([#20249](https://github.com/tailwindlabs/tailwindcss/pull/20249)) — a small debouncing fix that prevents the CLI from rewriting `output.css` on every rebuild even when no class changed, which was breaking the `mtime`-based CDN cache invalidation some deploy setups rely on.
+
+### Why This Matters in a Skill
+
+All four fixes are **silent footgun** fixes (no warning, no error before — they just did the wrong thing or crashed under specific edge cases). If you have any of these in your codebase:
+
+- A grid container that uses `auto-rows-N` / `auto-cols-N` with bare numeric values, **upgrade to v4.3.2** to make the missing classes actually resolve.
+- A Windows + Tailwind CLI + `--watch` workflow where `@source` references a directory that's sometimes missing — **upgrade to v4.3.2** to stop the `ENOENT` crash.
+- A Deno 2.8+ project using `@tailwindcss/vite` — **upgrade to v4.3.2** to stop the `parentURL is not a valid URL` crash.
+- A CI pipeline where `output.css` was being re-emitted with unchanged content (and downstream caches were not invalidating) — **upgrade to v4.3.2** to stop the unnecessary rewrites.
+
+**Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.2`). Patch release — no code changes required.
+
 ## shadcn/ui Theming
 
 ### CSS Variables Pattern

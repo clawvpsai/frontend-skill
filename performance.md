@@ -449,7 +449,7 @@ On every invocation of `compute_style_groups_graph` the chucker writes a timesta
 
 The env var is read exactly once per process (cached in a `static LazyLock<bool>`); truthy values are anything other than unset, empty, `0`, or `false` (case-insensitive). **Dump failures are swallowed** — the toggle must never fail a build. Use it when filing a Vercel issue about bad CSS chunking decisions, attach the JSON, and a maintainer can replay the chunking graph locally without instrumenting Rust on your machine.
 
-### `experimental.cssChunking: 'graph'` Config Schema Breaking Change — `moduleFactorCost` → `weightDistribution` (16.3.0-canary.71+, June 29, 2026)
+### `experimental.cssChunking: 'graph'` Config Schema Breaking Change — `moduleFactorCost` → `weightDistribution` (16.3.0-canary.71, June 29, 2026)
 
 PR [#95088](https://github.com/vercel/next.js/pull/95088) (Tobias Koppers / sokra, merged June 29, 2026 at 15:53:24Z) **reworks the cost model** of the experimental graph-based CSS chunker (`experimental.cssChunking: 'graph'`, Turbopack only) and **changes the config schema**. This is the first breaking config change in the 16.3 series for the CSS chunker.
 
@@ -476,7 +476,7 @@ const nextConfig: NextConfig = {
   },
 }
 
-// ❌ Old object form — will throw a config-schema error on canary.71+
+// ❌ Old object form — will throw a config-schema error on canary.71+ (and later)
 const nextConfig: NextConfig = {
   experimental: {
     turbopack: { /* ... */ },
@@ -500,11 +500,61 @@ If you were using the old object form with custom `moduleFactorCost`, you'll nee
 **Practical impact:**
 
 - **If you set `experimental.cssChunking: 'graph'`** (string form) with no object options — **nothing changes**, the new defaults apply automatically.
-- **If you set `experimental.cssChunking: { type: 'graph', ... }`** with `moduleFactorCost` or a custom `requestCost` — your build will **fail** with a config-schema error on canary.71+. Migrate to the new shape using the guide above.
+- **If you set `experimental.cssChunking: { type: 'graph', ... }`** with `moduleFactorCost` or a custom `requestCost` — your build will **fail** with a config-schema error on canary.71+ (and later). Migrate to the new shape using the guide above.
 - **If you set `experimental.cssChunking: 'merge'` (default)** or don't set the flag at all — **unaffected**, this PR only touches the `'graph'` algorithm.
 - **If you use webpack** (not Turbopack) — **unaffected**, this PR only touches `turbopack-core`'s CSS chunker.
 
 The change is wired end-to-end through the config schema/types, `StyleGroupsAlgorithm::Graph`, and the chunking algorithm. It is not exposed via a codemod — the schema-error is the migration signal, and the fix is a one-line edit in `next.config.ts`.
+
+### Turbopack `experimental.turbopack.chunkingHeuristics` Config Flag (16.3.0-canary.71, [PR #95019](https://github.com/vercel/next.js/pull/95019) by sampoder, June 29, 2026)
+
+A 4-PR stack landed in canary.71 that gives you **fine-grained control over Turbopack's production chunking heuristics**: [#95019](https://github.com/vercel/next.js/pull/95019) (add the config knob), [#95020](https://github.com/vercel/next.js/pull/95020) (thread `chunkingHeuristics` through to chunk groups), [#95021](https://github.com/vercel/next.js/pull/95021) (set `chunking_heuristics` on each `ChunkGroupInfo`), [#95026](https://github.com/vercel/next.js/pull/95026) (use experimental chunking heuristics in the chunker). This **directly complements the canary.71 `cssChunking: 'graph'` rework** — both are part of Vercel's broader "make Turbopack chunking match real-world SPA traffic patterns" effort.
+
+**What's new** — 4 new experimental options under `experimental.turbopack`:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: {
+      chunkingHeuristics: {
+        requestCost: 20000,                    // bytes; default 20000 — per-request overhead
+        clusters: ['/admin', '/dashboard'],   // string[] — route prefixes where chunk merging is preferred (Z+Z case in `make_production_chunks` is more likely → larger merged chunks are better)
+        entryPoints: ['/', '/products'],       // string[] — route prefixes where larger merged chunks are prioritized for fast initial page loads (achieved by increasing P(N=1))
+        bounceRate: 0.65,                     // number 0..1 — configures P(N=1) and P(N=2) based on site data (e.g. 0.65 = 65% of visits are single-page)
+      },
+    },
+  },
+}
+```
+
+**What each option does:**
+
+- **`requestCost`** (default `20000` bytes) — same knob used by `cssChunking: 'graph'`'s new formula; the byte-cost of an extra HTTP request, used when computing the trade-off between chunk size and request count.
+- **`clusters`** (default `[]`) — route-prefix array that says "these routes tend to navigate to each other frequently; merge their chunks." Models the Z+Z case in Turbopack's `make_production_chunks` (the probability that a user on page Z navigates to page Z'). Higher Z+Z → bigger merged chunks are worth the extra bytes (one request instead of two).
+- **`entryPoints`** (default `[]`) — route-prefix array for "fast initial page load" priority. For entry points, the algorithm increases P(N=1) — the probability that the next navigation stays on the same chunk. Larger merged chunks at entry points = fewer total bytes the entry route needs to load.
+- **`bounceRate`** (default `0` = disabled) — your site's empirical single-page-visit rate (0..1). Higher bounceRate → P(N=1) higher (chunks merge more aggressively), P(N=2) lower (we don't expect second-page nav). Set to 0.6-0.7 for typical content sites, 0.3-0.4 for SPAs, 0.1-0.2 for document-heavy apps.
+
+**Why this matters:**
+
+- **Without this config**, Turbopack uses a one-size-fits-all chunking heuristic that doesn't know about your app's specific traffic shape. A dashboard app where users click between 5 routes constantly, and a blog where most visitors read one post and leave, get the same chunks — suboptimally.
+- **With this config**, you can tell Turbopack "users navigate from `/admin/*` to `/admin/users` to `/admin/users/123` a lot — merge those chunks," and "users land on `/` and often bounce — don't merge chunks at `/`, prioritize initial-load size instead."
+- **Symmetric with `cssChunking: 'graph'`** — same author (Sam Poder), same week, same theme: expose the cost function so apps can tune it. If you're already tuning `cssChunking`, you should also be tuning `chunkingHeuristics` if your app has a non-uniform traffic shape.
+
+**When to use:**
+
+- **Single-page apps** with rich navigation between a small set of routes (dashboards, admin panels, IDE-like UIs) — set `clusters` to the top-3 navigation prefixes, `bounceRate` to ~0.3.
+- **Content sites** with high bounce (most visitors read 1 page) — set `bounceRate` to your analytics-derived value (0.5-0.7 typical).
+- **E-commerce** with predictable funnel paths (home → category → product → cart) — set `clusters` to the category slug pattern, `entryPoints` to `/`.
+- **If you don't tune it** — the defaults give the same chunks as before, no behavior change.
+
+**Verification:** the chunker integrates `chunkingHeuristics` via `ChunkGroupInfo` propagation — chunks inherit heuristics from the entry chunk groups that reference them (for entry-points, if a chunk group is referenced by any entry point, it inherits `true`; for clusters, chunk groups inherit all the clusters that the groups that reference them are a part of). Touches `packages/next/src/server/{config-schema.ts,config-shared.ts}` (+33) and `packages/next/src/build/swc/index.ts` (+19). 60 lines of config-schema and config-shared changes, no behavior change for apps that don't set the flag.
+
+**Sources:**
+- [PR #95019 — `[turbopack]` Add an experimental `chunkingHeuristics` to `next.config.js`](https://github.com/vercel/next.js/pull/95019)
+- [PR #95020 — `[turbopack]` Thread `chunkingHeuristics` through to chunk groups](https://github.com/vercel/next.js/pull/95020)
+- [PR #95021 — `[turbopack]` Set `chunking_heuristics` on each `ChunkGroupInfo`](https://github.com/vercel/next.js/pull/95021)
+- [PR #95026 — `[turbopack]` Use experimental chunking heuristics](https://github.com/vercel/next.js/pull/95026)
 
 ### `cacheMaxMemorySize: 0` Dev Hot-Reload Fix (16.3.0-canary.65)
 

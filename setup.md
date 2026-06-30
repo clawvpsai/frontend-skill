@@ -452,6 +452,7 @@ The Rust compiler also **detects the installed React version** (16.3.0-canary.53
 **Sources:**
 - [PR #94573 — Turbopack: add experimental React compiler support (canary.52)](https://github.com/vercel/next.js/pull/94573)
 - [PR #94836 — rust react compiler: detect and build for react 18 (canary.53)](https://github.com/vercel/next.js/pull/94836)
+- [PR #95280 — Add docs for `experimental.turbopackRustReactCompiler` (canary.71, June 29, 2026)](https://github.com/vercel/next.js/pull/95280) — adds `docs/01-app/03-api-reference/05-config/01-next-config-js/turbopackRustReactCompiler.mdx` (52 lines)
 - [vite-plugin-react discussion #1240 — oxc-plugin-react-compiler](https://github.com/vitejs/vite-plugin-react/discussions/1240)
 
 ### Turbopack "Edge Runtime" → "Self-Contained Runtime" Rename (16.3.0-canary.61, [#94726](https://github.com/vercel/next.js/pull/94726), June 22, 2026)
@@ -469,13 +470,14 @@ The Turbopack ecmascript-runtime package's `edge` chunk-loading variant has been
 
 ### Turbopack Service Worker Support (16.3.0-canary.68, [#94920](https://github.com/vercel/next.js/pull/94920) + [#94921](https://github.com/vercel/next.js/pull/94921) + [#94922](https://github.com/vercel/next.js/pull/94922), June 25, 2026)
 
-First-class Turbopack support for compiling and serving **service workers** landed in 16.3.0-canary.68 as a three-PR stack that mirrors the Webpack-equivalent behavior (which has been there since Next.js 12+). After this change, Turbopack's analyzer discovers `ServiceWorkerEntryModule`s, the Turbopack runtime emits them as **single-chunk self-contained bundles** (using the runtime renamed above), and `next-api` serves the compiled worker on the route you register it on (typically `/sw.js` or `/worker.js`).
+First-class Turbopack support for compiling and serving **service workers** landed in 16.3.0-canary.68 as a three-PR stack that mirrors the Webpack-equivalent behavior (which has been there since Next.js 12+). After this change, Turbopack's analyzer discovers `ServiceWorkerEntryModule`s, the Turbopack runtime emits them as **single-chunk self-contained bundles** (using the runtime renamed above), and `next-api` serves the compiled worker on the route you register it on (typically `/sw.js` or `/worker.js`). **A fourth PR (#94923) landed in 16.3.0-canary.71 to complete the feature** — the analyzer-side transformation that recognizes `navigator.serviceWorker.register()` calls.
 
 **What ships:**
 
 1. **[#94920](https://github.com/vercel/next.js/pull/94920)** — `ServiceWorkerChunkingContextOptions` added to `turbopack/crates/turbopack-next/next-core` so Turbopack knows how to bundle workers (no shared chunks, no DOM-dependent runtime — exactly the "self-contained" runtime shape the previous rename enabled).
 2. **[#94921](https://github.com/vercel/next.js/pull/94921)** — `ServiceWorkerEntryModule` plus a new `service_worker_chunk_filename` config knob. The analyzer inserts one of these per registered worker, telling the runtime "compile this file as a self-contained single-chunk worker."
 3. **[#94922](https://github.com/vercel/next.js/pull/94922)** — `next-api` discovers the workers via the module graph and serves the compiled output at the route you registered (e.g. `navigator.serviceWorker.register('/sw.js')` will now hit a Turbopack-compiled worker instead of falling back to Webpack).
+4. **[#94923](https://github.com/vercel/next.js/pull/94923)** *(16.3.0-canary.71, June 29, 2026, by sampoder)* — the analyzer-side transformation that **"turns on" the service worker feature**. The Turbopack analyzer now looks for code like `await navigator.serviceWorker.register(new URL('../lib/service-workers/1.js', import.meta.url), ...)` and transforms it into registering the URL that Next.js will serve based on scope. URL scheme: `scope: '/' → 'sw.js'`, `scope: '/offline/mode' → 'sw-offline-mode.js'`, etc. Also inserts the `ServiceWorkerEntryModule`s so they can be discovered by `next-api` (see #94922). 5 files in `turbopack/crates/turbopack-ecmascript/src/{analyzer/well_known/{kinds.rs,mod.rs},code_gen.rs,references/{mod.rs,service_worker.rs}}`, +309/-5. **Before this PR, even with #94920/#94921/#94922 in place, `navigator.serviceWorker.register()` calls in user code weren't recognized by Turbopack's analyzer** — the analyzer would pass them through unchanged, the worker wouldn't appear in the module graph, and the user-facing behavior would still fall back to static files or stale workers.
 
 **User-facing impact:**
 
@@ -494,7 +496,8 @@ First-class Turbopack support for compiling and serving **service workers** land
 - [PR #94920 — `[turbopack]` Create `ServiceWorkerChunkingContextOptions` in `next-core`](https://github.com/vercel/next.js/pull/94920)
 - [PR #94921 — `[turbopack]` Create `ServiceWorkerEntryModule` and `service_worker_chunk_filename`](https://github.com/vercel/next.js/pull/94921)
 - [PR #94922 — `[turbopack]` Discover `ServiceWorkerEntryModule`s in `next-api` and compile + serve those service workers](https://github.com/vercel/next.js/pull/94922)
-- [PR #94924 — `[turbopack]` Add e2e tests for service workers](https://github.com/vercel/next.js/pull/94924) (still open at canary.68)
+- [PR #94923 — `[turbopack]` Discover service workers in the Turbopack analyzer (canary.71, June 29, 2026)](https://github.com/vercel/next.js/pull/94923) — the PR that "turns on" the feature
+- [PR #94924 — `[turbopack]` Add e2e tests for service workers](https://github.com/vercel/next.js/pull/94924) (open since canary.68, now landed)
 - [Next.js docs — `serviceWorkerRegistration` in PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps)
 
 ### Cache Components Adoption — `cache-components-instant-false` Codemod (16.3, [#94941](https://github.com/vercel/next.js/pull/94941))
