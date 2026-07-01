@@ -549,6 +549,57 @@ npx skills add https://github.com/vercel/next.js/tree/canary/skills/next-cache-c
 
 See `patterns.md` → "Cache Components Adoption — The `instant = false` Opt-Out + Adoption Skill" for the full breakdown: highest-wins resolution, why `instant = false` doesn't clear sync-IO errors (`new Date()`, `Math.random()`, `crypto.randomUUID()`), and why you remove opt-outs top-down (root layout first, then descend).
 
+### `@next/codemod upgrade --yes` for Agents / CI (16.3.0-canary.72+, [PR #95312](https://github.com/vercel/next.js/pull/95312) by aurorascharff, merged 2026-06-30T20:03:37Z)
+
+`pnpm dlx @next/codemod@canary upgrade preview` was hanging forever when invoked by AI coding agents — the recommended-codemods multiselect blocks waiting on keyboard input. Same hazard for any CI that pipes the command. Agents were choosing the manual non-interactive path, which defeats the codemod entirely. **canary.72 fixes this** with two changes:
+
+1. **New `-y, --yes` flag** on `next-codemod upgrade` — skips every interactive prompt and accepts its existing default.
+2. **Auto-detection** of `!process.stdin.isTTY` — agents and CI get non-interactive mode without needing to know the flag exists.
+
+A single `nonInteractive` flag is plumbed into the four `suggest*` helpers, each short-circuits before its `prompts(...)` call and returns the default. Type-check clean.
+
+**What each prompt accepts in non-interactive mode:**
+
+| Prompt | Default accepted | Notes |
+|---|---|---|
+| React 18-or-19 upgrade | **upgrade React past 18** (`shouldStayOnReact18 = false`) | Existing `initial: false` is the no-op default |
+| Turbopack enable | **yes** | If target version is 15.0.1-canary.3+ (uses `--turbopack`) |
+| Custom dev-script fallback | **leave the script untouched** | Without a TTY we can't ask for a replacement |
+| Recommended codemods multiselect | **apply all** | Matches `selected: true` on every choice; logged to stdout so the agent sees what ran |
+| React 19 codemod | **yes** | Runs `codemod@latest react/19/migration-recipe --no-interactive --allow-dirty` |
+| React 19 Types codemod | **yes** | Runs `types-react-codemod@latest --yes preset-19 .` |
+
+The CLI also prints `Running in non-interactive mode. Every prompt will accept its default.` at the top so it's obvious why no prompts appear.
+
+**Usage patterns:**
+
+```bash
+# From an AI coding agent or CI — auto-detected, no flag needed
+npx @next/codemod upgrade canary
+
+# From a terminal, explicit opt-in (same effect)
+npx @next/codemod upgrade canary --yes
+
+# CI / sandboxed run — explicit for log readability
+npx @next/codemod upgrade minor --yes --verbose
+
+# Upgrade to the latest patch only
+npx @next/codemod upgrade patch --yes
+```
+
+**For agents running `next-dev-loop` / `next-cache-components-adoption`:** this PR is the reason `next-codemod upgrade` no longer breaks the loop. Before canary.72, agents had to invoke the codemods manually because the upgrade command hung.
+
+**Files touched** (3 files, +93/-38):
+- `docs/01-app/02-guides/upgrading/codemods.mdx` (+5/-0) — docs note that `-y, --yes` is auto-enabled on non-TTY
+- `packages/next-codemod/bin/next-codemod.ts` (+5/-0) — `-y, --yes` option declared in `program.option(...)`
+- `packages/next-codemod/bin/upgrade.ts` (+83/-38) — `nonInteractive` plumbing into all four `suggest*` helpers + CLI log line
+
+**Sources:**
+- [PR #95312 — `codemod: non-interactive upgrade for agents and CI`](https://github.com/vercel/next.js/pull/95312)
+- [PR #95312 commit `6ab848610c`](https://github.com/vercel/next.js/commit/6ab848610ce3c478c5d4fb22ce8c187a709237f3)
+- [Next.js docs — `codemods.mdx` for `-y, --yes`](https://github.com/vercel/next.js/blob/v16.3.0-canary.72/docs/01-app/02-guides/upgrading/codemods.mdx) (new section)
+- [`packages/next-codemod/bin/upgrade.ts` at v16.3.0-canary.72](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.72/packages/next-codemod/bin/upgrade.ts) — `nonInteractive` flag (line ~114) + per-helper branches
+
 ### Vite 8.1 (June 23, 2026) — What's New
 
 Vite 8.1.0 is a minor release with several notable additions. **No breaking changes for plugin authors or app code** — everything below is opt-in.

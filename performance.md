@@ -262,6 +262,94 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
 **Rule:** Always use `use cache` for data. Enable `cacheComponents` (PPR) at the route level when you want the framework to cache rendered Suspense shells too.
 
+### Durable `use cache` Code Hash — `experimental.durableUseCacheEntries` (16.3.0-canary.72+, [PR #94234](https://github.com/vercel/next.js/pull/94234) by mischnic, merged 2026-06-30T12:50:55Z)
+
+Each `use cache` function now gets an implementation hash that lets a remote cache (Vercel Data Cache, S3, Redis, etc.) survive across deployments without serving stale entries. Without a stable hash, a deploy that changes a transitive import of a `use cache` function would either (a) keep returning the old cached value or (b) invalidate everything on every deploy — both bad.
+
+**What the hash covers:**
+
+- The module containing the `use cache` function, plus all transitive imports of that module (including externals via NFT)
+- For bundled code: the generated code (so it includes any AST transforms, inlined env vars, etc.)
+- For NFT'd files: the file content on disk
+- Equivalent to hashing the generated JS chunks, **scoped to only what the given actions module uses**
+
+**Configuration (Turbopack-only, dev disabled):**
+
+```ts
+// next.config.ts
+const nextConfig = {
+  experimental: {
+    // Default false. When true, Turbopack writes a per-`use cache`-function
+    // `codeHash` field into .next/server/server-reference-manifest.json so a
+    // remote cache key can include it. Survives across deployments.
+    durableUseCacheEntries: true,
+  },
+}
+
+export default nextConfig
+```
+
+**Surface — the new `codeHash` field in `.next/server/server-reference-manifest.json`:**
+
+```jsonc
+{
+  "node": {
+    "806f4954cfbb75404a19d6d405065ed9059cc0cab2": {
+      "workers": {
+        "app/rsc/page": {
+          "moduleId": "[project]/bench/app-router-server/.next-internal/server/app/rsc/page/actions.js { ACTIONS_MODULE0 => "[project]/bench/app-router-server/app/rsc/logic.js [app-rsc] (ecmascript)" } [app-rsc] (server actions loader, ecmascript)",
+          "async": false,
+          "exportedName": "$$RSC_SERVER_CACHE_0",
+          "filename": "bench/app-router-server/app/rsc/logic.js",
+          "codeHash": "413e394d9597b35df12828a6a7fd6363" // <-- new
+        }
+      },
+      "filename": "bench/app-router-server/app/rsc/logic.js",
+      "exportedName": "$$RSC_SERVER_CACHE_0"
+    }
+  },
+  "edge": {},
+  "encryptionKey": "jOF2TbpNLjp2oOhl3VPBwGE7luodnei9clJPq/gaYQo="
+}
+```
+
+**Implementation details from the PR description:**
+
+- **Gated behind the experimental flag** — opt-in via `experimental.durableUseCacheEntries`. No behavior change when off.
+- **Only computed for `use cache` functions** — not all server actions. The PR deliberately scopes the hash to the cache path.
+- **Disabled in dev** — the hash is computed at build time only.
+- **Multiple `use cache` functions in a single file share the same hash** — since the hash covers the module + imports, two `use cache` exports from `lib/data.ts` will share one hash. That's intentional: any change to `lib/data.ts` invalidates both, which is the conservative thing to do.
+- **Known limitation:** `final_read_hint` is a problem — some chunk items get codegen'd twice, so the AST is recomputed. The author flagged this in the PR description; the workaround is in the manifest writer and does not affect correctness.
+- **Turbopack-only.** Webpack doesn't implement this; no-op if you build with webpack.
+
+**Audit commands:**
+
+```bash
+# See which use cache functions have a code hash
+rg '"codeHash"' .next/server/server-reference-manifest.json
+
+# Or pretty-print
+node -e 'console.log(JSON.stringify(require("./.next/server/server-reference-manifest.json"), null, 2))' | rg -A 2 'codeHash'
+
+# Verify the flag is on
+rg 'durableUseCacheEntries' next.config.ts
+```
+
+**Files touched** (21 files, +281/-12, mostly test scaffolding):
+- `crates/next-api/src/server_actions.rs` (+256/-12) — Turbopack `use_cache` loader writes `codeHash` to manifest entries
+- `crates/next-api/src/app.rs` (+2/-4) — wires through
+- `crates/next-core/src/next_config.rs` (+12/-0) — config key plumbing
+- `crates/next-core/src/next_manifests/mod.rs` (+2/-0) — `ServerReferenceManifest` struct gains `codeHash`
+- `packages/next/src/server/config-schema.ts` (+1/-0) — `durableUseCacheEntries: z.boolean().optional()`
+- `packages/next/src/server/config-shared.ts` (+6/-0) — `ExperimentalConfig.durableUseCacheEntries?: boolean` with JSDoc "Enables durable "use cache" remote cache entries across deployments. Only implemented for Turbopack."
+- 14 new test files under `test/production/app-dir/use-cache-code-hash/`
+
+**Sources:**
+- [PR #94234 — `Turbopack: compute code hash per "use cache" function`](https://github.com/vercel/next.js/pull/94234)
+- [PR #94234 commit `84457f4e6c`](https://github.com/vercel/next.js/commit/84457f4e6c73bd44cf65736d75075e962f7ef30c)
+- [`config-shared.ts` at v16.3.0-canary.72](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.72/packages/next/src/server/config-shared.ts) — `durableUseCacheEntries` declaration
+- [`server-reference-manifest` schema in `next_manifests/mod.rs`](https://github.com/vercel/next.js/blob/v16.3.0-canary.72/crates/next-core/src/next_manifests/mod.rs)
+
 ## Bundle Optimization
 
 ### Dynamic Imports (Code Splitting)
