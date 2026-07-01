@@ -1236,6 +1236,127 @@ Until canary.72 is cut, **two workarounds**:
 
 **Source:** [PR #95289 — fix: params/searchParams in client page crashing dev instant validation](https://github.com/vercel/next.js/pull/95289) · [Commit af066a2fe5849cf2397603381600f50ab66c4467](https://github.com/vercel/next.js/commit/af066a2fe5849cf2397603381600f50ab66c4467) · Files: `packages/next/src/server/request/params.ts` + `packages/next/src/server/request/search-params.ts` + 7 e2e tests in `test/e2e/app-dir/instant-validation/`
 
+### "Link Data" Validation Errors for `params`/`searchParams` Outside `<Suspense>` — PR [#95151](https://github.com/vercel/next.js/pull/95151) + [#94595](https://github.com/vercel/next.js/pull/94595) (16.3.0-canary.73+, July 1, 2026)
+
+When `cacheComponents: true` + `partialPrefetching: true` (or per-segment `prefetch = 'partial'` / `'unstable_eager'`) is enabled, the Instant Navigation validation pipeline now treats `params` and `searchParams` accessed outside a `<Suspense>` boundary as a **distinct error category called "link data"** — separate from "runtime data" and "dynamic data". Three new blocking-route error builders land in `packages/next/src/server/app-render/blocking-route-messages.ts` and three new entries (1390–1392) in `packages/next/errors.json`. This is the new "shell can never have link data" enforcement for partial-prefetching routes.
+
+**What's new (PR #95151, Janka Uryga, merged 2026-07-01T04:36:41Z, will be in canary.73):**
+
+The Instant Navigation pipeline previously only distinguished Runtime vs Dynamic hole kinds. PR #95151 adds a third kind — **Link** (`DynamicHoleKind.Link = 1` in `packages/next/src/server/app-render/dynamic-rendering.ts`, with the existing `Runtime` and `Dynamic` renumbered to 2 and 3) — for holes caused by `params`/`searchParams` accessed outside `<Suspense>`. The detection logic re-runs each new segment under `ShellRuntime` (a new stage added to `instant-validation.tsx`'s `SEGMENT_STAGE_ORDER`, between `Static` and `Runtime`) and "forces them into `Runtime` for the purposes of discriminating dynamic holes": if a hole is present in `ShellRuntime` but **disappears** in `Runtime`, it's a *link data* hole (link data cannot resolve in App Shell, but it can resolve in `Runtime` since the runtime render can call `prefetch({ params })`). The three new error builders:
+
+| Builder | Surfaces in error 1390/1391/1392 | When it fires |
+|---|---|---|
+| `createLinkBodyErrorInNavigation(route)` | `1390` | `params` or `searchParams` accessed in the **page body** outside `<Suspense>` |
+| `createLinkMetadataError(route)` | `1391` | `params` or `searchParams` accessed in **`generateMetadata()`** |
+| `createLinkViewportError(route)` | `1392` | `params` or `searchParams` accessed in **`generateViewport()`** |
+
+The redbox (dev validation) and build error (static shell validation) point to `https://nextjs.org/docs/messages/blocking-prerender-{runtime,metadata-runtime,viewport-runtime}#{fix-card}` for the three fixes — same doc-anchor pattern as the runtime/dynamic variants.
+
+**The body's redbox looks like:**
+
+```
+Route "/store/[slug]": Next.js encountered link data during prerendering or a navigation.
+
+`params` or `searchParams` accessed outside of `<Suspense>` prevents the navigation from being instant, leading to a slower user experience.
+
+Ways to fix this:
+  - [stream] Provide a placeholder with `<Suspense fallback={...}>` around the data access
+    https://nextjs.org/docs/messages/blocking-prerender-runtime#wrap-in-or-move-into-suspense
+  - [block] Set `export const instant = false` to silence this warning and allow a blocking route
+    https://nextjs.org/docs/messages/blocking-prerender-runtime#allow-blocking-route
+```
+
+The metadata variant points to `blocking-prerender-metadata-runtime` (fixes: `[static]` use static metadata export OR `[dynamic]` mark route as dynamic via `await connection()` inside `<Suspense>`). The viewport variant points to `blocking-prerender-viewport-runtime` (fixes: `[static]` use static viewport export OR `[block]` `export const instant = false`).
+
+**The follow-up PR #94595 (Janka Uryga, merged 2026-07-01T06:59:43Z, will be in canary.73) — extending link-data detection to `generateStaticParams`:**
+
+Static params from `generateStaticParams` are special: they resolve at build time, but the dev/render pipeline needs to choose *when* to resolve them — and the answer depends on whether the route is rendering for an App Shell or a Static HTML Shell:
+
+1. If we resolve in the `Static` stage, we get an accurate *static HTML shell* (used for initial HTML navigation) but an **incorrect App Shell** (link data is included when it shouldn't be, masking violations).
+2. If we resolve in the `ShellRuntime` stage, we get an accurate App Shell but cannot validate a static HTML shell (which would contain static params).
+
+PR #94595 picks **(2)** whenever client-navigating with `partialPrefetching` enabled (`requestStore.needsSessionShell === true`), and **(1)** for initial HTML renders. The static-params stage selection is now `requestStore.needsSessionShell ? RENDER_STAGES_BY_DATA_KIND.runtimeLinkData : RENDER_STAGES_BY_DATA_KIND.staticLinkData` in `createStagedRenderParamsImpl` (`packages/next/src/server/request/params.ts`). Three params utilities move from inline definitions into a new `packages/next/src/server/lib/params-utils.ts` (`isEmptyParams`, `hasFallbackRouteParams`, `allParamsAreRootParams`, plus a new `hasNonRootStaticParams`) so `app-render.tsx` can call them at the second-render-planning call site.
+
+**Concretely, the new validation behaviour:**
+
+| Page shape | Dev validation outcome on `next dev` after PR #95151 + #94595 |
+|---|---|
+| `<Page>` reads `await params` inside `<Suspense fallback={...}>` | ✅ PASSES (link data is suspended — shell renders the fallback) |
+| `<Page>` reads `await params` **outside** `<Suspense>` | ❌ REDBOX — `createLinkBodyErrorInNavigation` → error 1390 |
+| `generateMetadata()` reads `await params` | ❌ REDBOX — `createLinkMetadataError` → error 1391 |
+| `generateViewport()` reads `await params` | ❌ REDBOX — `createLinkViewportError` → error 1392 |
+| `<Page>` reads `await cookies()` (session data) outside `<Suspense>` | ✅ PASSES (session data is allowed in App Shell — see `valid-session-only` and `valid-session-with-dynamic` test fixtures) |
+| `<Page>` reads `await io()` / dynamic data outside `<Suspense>` | ❌ REDBOX — existing dynamic/runtime error (different code path) |
+
+The pattern: **session data (`cookies()` / `headers()` / `'use cache: private'`) is allowed outside Suspense in an App Shell** (since each user has their own shell). **Link data (`params` / `searchParams`) is not** (since link data is per-URL, the App Shell can't render it). **Dynamic data (`io()` / uncached fetches) is also not** (the shell can't render it; it streams in after).
+
+**Who is affected (audit your codebase):**
+
+- Any route with `cacheComponents: true` (default-on intent in 16.3) **and** `experimental.partialPrefetching: true` **and** the page reads `params`/`searchParams` outside `<Suspense>`. Specifically watch for:
+  - Pages that read `(await params).slug` directly in JSX (move into `<Suspense>`)
+  - `generateMetadata({ params })` that does `const { slug } = await params` for OG image URLs (move to static metadata, or wrap in `<Suspense>`+`await connection()`)
+  - `generateViewport({ params })` reading `params` (use static viewport export)
+
+Audit command:
+
+```bash
+# Find page.tsx files that read params/searchParams unguarded
+rg -l 'await params\b|await searchParams\b' app/ -g '*page.tsx' | \
+  xargs -I{} sh -c 'echo "=== {} ==="; grep -c "<Suspense" "{}" || true'
+
+# Find generateMetadata that await's params or searchParams
+rg -A2 "generateMetadata" app/ -g '*.tsx' | rg 'await (params|searchParams)'
+
+# Same for generateViewport
+rg -A2 "generateViewport" app/ -g '*.tsx' | rg 'await (params|searchParams)'
+```
+
+A non-zero count of `await params` lines in a `page.tsx` that has no `<Suspense` is the trigger pattern.
+
+**Known limitations (as of these PRs, both noted by the author):**
+
+1. **The PR #95151 implementation is intentionally incomplete.** The implementation uses "chunks from the dev render, which resolves static params in the `Static` stage. We use `ShellRuntime` for validating the App Shell, so as a result, static params are incorrectly included in it and don't trigger link data errors. This will be implemented in a follow-up." The follow-up is PR #94595 — but only handles the ShellRuntime-vs-Static stage order choice, not the chunk-source issue. Caching builds may show false negatives for `generateStaticParams` routes.
+2. **Pre-existing `fallbackParams` bug in build validation.** Two tests marked `// TODO(app-shells): missing fallback params in build validation` — fallback params don't resolve correctly during static prerender, so a route reading `params` as fallback resolves statically when it shouldn't, and the validation error is silently missed. This is documented as a separate fix in a follow-up.
+3. **The new error kind has no new test coverage for the deprecated `prefetch = 'allow-runtime'` path.** The fixtures (`invalid-runtime-params/[slug]`, `invalid-runtime-searchparams`, `invalid-runtime-with-valid-static-parent`) all use `prefetch = 'partial'` per PR #95151's purpose. The skill's existing guidance for `allow-runtime` (read params outside `<Suspense>` blocks the shell) still holds — but the validation message is now a "link data" one, not a "runtime" one.
+
+**Migration to canary.73+:**
+
+Once canary.73 ships (likely within 24h given the 24h cadence since canary.70), the audit command above flags every page that needs a `<Suspense>` wrap. For each match, two fixes:
+
+1. **Stream the data access (preferred):** wrap the data access in `<Suspense fallback={<Skeleton/>}>`. The shell renders the skeleton; the data resolves and replaces it in place. Compatible with `prefetch = 'partial'` and the runtime stage.
+
+   ```tsx
+   import { Suspense } from 'react'
+   export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
+     return (
+       <main>
+         <h1>Store</h1>
+         <Suspense fallback={<StoreSkeleton/>}>
+           <StoreCard params={params} />
+         </Suspense>
+       </main>
+     )
+   }
+   async function StoreCard({ params }: { params: Promise<{ slug: string }> }) {
+     const { slug } = await params   // resolves inside Suspense → OK
+     return <article>{slug}</article>
+   }
+   ```
+
+2. **Block the route from being instant (workaround for metadata/viewport where you can't easily Suspense the data):** set `export const instant = false` at the page or layout level. The link data fix card points at this — it tells the router "this route is a blocking route; don't try to prefetch an App Shell for it." Use only when the metadata/viewport genuinely needs the param (e.g. dynamic OG images per slug).
+
+```bash
+# Wait for canary.73 cut (uses 24h cadence from canary.72 at 2026-06-30T23:41:13Z)
+npm install next@canary
+npx next --version  # should show 16.3.0-canary.73+
+```
+
+Until canary.73 is cut (or if you're on `16.3.0-canary.72` or earlier), `next dev` will not produce the new redbox — instead `params`/`searchParams` outside `<Suspense>` will silently fall into the `Runtime` hole kind (existing "Runtime data" or "Dynamic data" redbox from #95289-era behaviour). The same fixes (wrap in `<Suspense>` or set `instant = false`) apply.
+
+**Why this matters even if you're on the stable 16.2 branch:** `partialPrefetching` is the 16.3 default-on-intent flag, and `cacheComponents` is the foundation. Once 16.3 ships as stable, the "link data" error becomes a **first-class redbox** you'll see on day one of any Cache Components adoption. The skill pre-loads the audit command + the three error numbers so it can diagnose the redbox in 30 seconds instead of 30 minutes.
+
+**Source:** [PR #95151 — [PP] Validate Shell prefetches (except gSP)](https://github.com/vercel/next.js/pull/95151) · [Commit c131314bcf0cf21c5d5624b2cf8c6dbf07375abd](https://github.com/vercel/next.js/commit/c131314bcf0cf21c5d5624b2cf8c6dbf07375abd) · [PR #94595 — [PP] Instant validation - error for unguarded static params](https://github.com/vercel/next.js/pull/94595) · [Commit 576d3a3397bf2818369636dd26d8ca4a9303bd98](https://github.com/vercel/next.js/commit/576d3a3397bf2818369636dd26d8ca4a9303bd98) · Files: `packages/next/src/server/app-render/{blocking-route-messages,dynamic-rendering}.ts` + `packages/next/src/server/app-render/instant-validation/instant-validation.tsx` + `packages/next/src/server/request/params.ts` + new `packages/next/src/server/lib/params-utils.ts` + `packages/next/errors.json` + 21 test fixtures in `test/e2e/app-dir/instant-validation/app/shells/` and `test/e2e/app-dir/instant-validation/app/invalid-runtime-{params,searchparams}/`.
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
