@@ -1243,7 +1243,7 @@ The block is **only written** when (a) an AI coding agent is detected in the env
 
 **Retirement of older knowledge Skills** — the earlier Vercel knowledge Skills (App Router conventions, caching APIs, etc., previously distributed via `skills.sh`) are **retired** in 16.3 because the bundled docs (now reachable through the managed `AGENTS.md` block) make them redundant. **Run `npx skills update` to remove the old knowledge Skills from your installed set.** The three first-party Skills above are the new recommended set; the knowledge Skills are explicitly deprecated. If you see an agent prompt that still references "Vercel App Router skill" or "Vercel Caching skill", that prompt is from the pre-16.3 era and should be rewritten.
 
-**3. Actionable errors — Instant Insights with labeled fixes + `Copy as prompt`** — when `cacheComponents: true` and a server-side `await` outside `<Suspense>` is detected, Instant Insights now presents **three labeled fixes** as a product decision with trade-offs: **Stream** (wrap in `<Suspense>`), **Cache** (`'use cache'`), or **Block** (`export const instant = false`). Each label is a button that links to the matching docs section. The **Copy as prompt** button packages the chosen fix into a paste-ready prompt for your coding agent — a 7-step checklist that walks the agent through (1) confirming browser tooling is set up, (2) identifying the failing code, (3) reading the rule docs at `https://nextjs.org/docs/messages/<error-key>` and the per-fix Patterns + Gotchas, (4) applying the chosen pattern, (5) verifying at runtime via `next-dev-loop`, (6) checking the shell isn't empty (a Suspense boundary placed too high leaves a build-passing shell with nothing in it), (7) re-checking sibling routes if shared code was touched. The same fix menu shows up in the terminal during `next dev`, and `next build` emits it when an error stops a prerender — so an agent reading errors from CI logs gets the same labeled fixes and links as an agent reading the dev overlay. **Why this matters:** the previous Instant Insights were developer-facing ("here's a fix card, click the doc link"); 16.3 makes them agent-facing ("here's a fix card, click `Copy as prompt`, paste into your agent"). The 7-step checklist tells the agent *what it can and cannot honestly call verified* — explicit "the Insight clearing in the dev overlay confirms the build is happy, but not what actually renders" wording.
+**3. Actionable errors — Instant Insights with labeled fixes + `Copy prompt`** — when `cacheComponents: true` and a server-side `await` outside `<Suspense>` is detected, Instant Insights presents **three labeled fixes** as a product decision with trade-offs. (The button label was renamed `Copy as prompt` → **`Copy prompt`** in 16.3.0-canary.73 by [PR #95309](https://github.com/vercel/next.js/pull/95309); the underlying data model was also renamed `FixOption` → `FixCard` and the grid container `FixOptionsList` → `FixCardGrid`. If you see older tutorials referencing "Copy as prompt" or "FixOption", they predate canary.73.) **Stream** (wrap in `<Suspense>`), **Cache** (`'use cache'`), or **Block** (`export const instant = false`). Each label is a button that links to the matching docs section. The **Copy prompt** button packages the chosen fix into a paste-ready prompt for your coding agent — a 7-step checklist that walks the agent through (1) confirming browser tooling is set up, (2) identifying the failing code, (3) reading the rule docs at `https://nextjs.org/docs/messages/<error-key>` and the per-fix Patterns + Gotchas, (4) applying the chosen pattern, (5) verifying at runtime via `next-dev-loop`, (6) checking the shell isn't empty (a Suspense boundary placed too high leaves a build-passing shell with nothing in it), (7) re-checking sibling routes if shared code was touched. The same fix menu shows up in the terminal during `next dev`, and `next build` emits it when an error stops a prerender — so an agent reading errors from CI logs gets the same labeled fixes and links as an agent reading the dev overlay. **Why this matters:** the previous Instant Insights were developer-facing ("here's a fix card, click the doc link"); 16.3 makes them agent-facing ("here's a fix card, click `Copy prompt`, paste into your agent"). The 7-step checklist tells the agent *what it can and cannot honestly call verified* — explicit "the Insight clearing in the dev overlay confirms the build is happy, but not what actually renders" wording.
 
 **4. MCP server — smaller and more focused** — the Next.js DevTools MCP server **removes** its embedded Next.js knowledge base, the upgrade helper, and the Cache Components helpers (these are now reachable through the bundled docs and the three first-party Skills above — keeping them in the MCP server was duplicate work). It adds **two new compilation tools**: **`get_compilation_issues`** (whole-project — returns all current compilation errors) and **`compile_route`** (single-route — returns the compilation result for one route, without doing a full `next build`). **Why this matters:** agents were running `next build` just to check whether code compiles, which is overkill while still editing. The two new tools answer the same question from the running dev server, much faster. Skills like `next-dev-loop` call the underlying `/_next/mcp` endpoints directly, so they work without extra setup. To use these tools from your own agent client, add `next-devtools-mcp` to `.mcp.json` (the MCP server discovers the running `next dev` automatically). The skill's `deployment.md` MCP section currently describes the 16.2-era MCP server with the knowledge-base tools — that section is updated alongside this one.
 
@@ -1264,7 +1264,7 @@ Install or upgrade with `npm install -g agent-browser@^0.27`. The React commands
 
 - **On a 16.1 or earlier project:** `next dev` won't auto-write AGENTS.md (the block is opt-out, but the dev server only writes it for 16.3+). Run `npx @next/codemod@canary agents-md` once, or write the managed block yourself. If you've installed the old Vercel knowledge Skills, run `npx skills update` to remove them — they're deprecated.
 - **On a 16.2 project:** `next dev` may write the managed block on next run (if the markers aren't there). The existing AGENTS.md content (from `create-next-app@16.2`) is preserved outside the markers, so no information is lost. Update your dev tooling to use `agent-browser` instead of the now-deprecated `next-browser` (see point 6).
-- **On a 16.3 project (canary/preview):** `next dev` writes the managed block automatically. Two new MCP tools (`get_compilation_issues`, `compile_route`) replace `next build` for "did my edit compile?" checks. The `next-cache-components-adoption` and `next-cache-components-optimizer` Skills replace the old "migrate to CC by hand" workflow. `Copy as prompt` in the dev overlay replaces "open the doc link and read it yourself."
+- **On a 16.3 project (canary/preview):** `next dev` writes the managed block automatically. Two new MCP tools (`get_compilation_issues`, `compile_route`) replace `next build` for "did my edit compile?" checks. The `next-cache-components-adoption` and `next-cache-components-optimizer` Skills replace the old "migrate to CC by hand" workflow. `Copy prompt` in the dev overlay replaces "open the doc link and read it yourself."
 
 **Sources:**
 - [Next.js 16.3: AI Improvements (official blog)](https://nextjs.org/blog/next-16-3-ai-improvements)
@@ -1272,7 +1272,7 @@ Install or upgrade with `npm install -g agent-browser@^0.27`. The React commands
 - [Next.js — first-party Skills directory (`vercel/next.js/tree/canary/skills`)](https://github.com/vercel/next.js/tree/canary/skills)
 - [`next-dev-loop` skill source](https://github.com/vercel/next.js/tree/canary/skills/next-dev-loop)
 - [`next-cache-components-optimizer` skill source (NEW in 16.3)](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-optimizer)
-- [Next.js docs — Actionable errors / `Copy as prompt` flow](https://nextjs.org/docs/app/guides/instant-insights)
+- [Next.js docs — Actionable errors / `Copy prompt` flow](https://nextjs.org/docs/app/guides/instant-insights)
 - [Next.js docs — Per-error pages (`/docs/messages/`)](https://nextjs.org/docs/messages/blocking-prerender-dynamic)
 - [`agent-browser` README — React DevTools profile](https://github.com/vercel-labs/agent-browser)
 - [`agent-browser` on npm (current: 0.31.1)](https://www.npmjs.com/package/agent-browser)
@@ -1280,6 +1280,31 @@ Install or upgrade with `npm install -g agent-browser@^0.27`. The React commands
 - [Next.js docs — Full Markdown bundle (`/docs/llms-full.txt`)](https://nextjs.org/docs/llms-full.txt)
 - [llms.txt convention](https://llmstxt.org)
 - [PR #95209 — `next-dev-loop` requires `agent-browser >= 0.31.1` (canary.69)](https://github.com/vercel/next.js/pull/95209)
+
+### `cacheLife` Profile Recommendations — Explicit Profile Name Recommended (16.3.0-canary.73, [PR #95311](https://github.com/vercel/next.js/pull/95311) by icyJoseph, merged 2026-07-01T13:09:25Z — docs only)
+
+The 16.3 caching guide now **explicitly recommends passing the profile name** (`cacheLife('hours')`, `cacheLife('days')`) rather than relying on the implicit `default-profile` (which is `15 minutes` revalidate / `1 hour` expire). The implicit default works for short-lived queries (data that's stale after 15 minutes is acceptable), but it's a footgun for marketing-site or blog content where 15 minutes is too aggressive — your origin gets hammered on every revalidation even though the content barely changes. The recommended pattern is:
+
+```tsx
+// ✅ Recommended — explicit profile name
+'use cache'
+async function getBlogPost(slug: string) {
+  const post = await db.posts.findUnique({ where: { slug } })
+  return post
+}
+// getBlogPost revalidates every 'hours' (= 1 hour revalidate, 1 day expire, 1 week stale)
+
+// ❌ Avoid — implicit default-profile
+'use cache'
+async function getBlogPost(slug: string) {
+  // no cacheLife() call → uses 'default-profile' (15 min revalidate)
+  // fine for live dashboards, wrong for rarely-changing CMS content
+}
+```
+
+**Overriding built-in profiles.** The five built-in profiles (`default-profile`, `hours`, `days`, `weeks`, `max`) are looked up by name; you can override any of them by exporting `cacheLife` from a file with the same name (e.g. `app/blog/cacheLife.ts` exporting `cacheLife('days', { revalidate: 60 * 60 * 24 * 7, expire: 60 * 60 * 24 * 30, stale: 60 * 60 * 24 * 30 })`). The override is local to the route tree under that directory; the `days` profile is unchanged everywhere else. The rule was previously only documented in an issue comment — PR #95311 promotes it to the public docs.
+
+**Source:** [PR #95311 — `docs: recommend explicit cacheLife and clarify overriding built-in cache profiles`](https://github.com/vercel/next.js/pull/95311) · [Commit `b3118fca`](https://github.com/vercel/next.js/commit/b3118fca)
 
 ### `useEffectEvent` — Stable Event Handlers in Effects (React 19.2)
 
@@ -1910,6 +1935,83 @@ function navigateTo(href: string, direction: 'forward' | 'back') {
 - [React ViewTransition blog](https://react.dev/blog/2025/10/01/react-19-2)
 - [Kent C. Dodds — ViewTransition tutorial](https://www.epicreact.dev/use-react-view-transition-to-smoothly-transition-images-and-titles-lu6ks)
 - [Frontend at Scale — Experimenting with View Transitions](https://frontendatscale.com/issues/43/)
+
+### `<ViewTransition>` `parentEnter` / `parentExit` — Container-Level Transitions (React 19.3.0-canary `ec0fca31-20260701`+, [PR #36690](https://github.com/facebook/react/pull/36690) by Jack Pope, merged 2026-07-01T16:16:48Z, behind `enableViewTransitionParentEnterExit` flag)
+
+React 19.2's `<ViewTransition>` only animated the specific child element. The new `parentEnter` / `parentExit` props (also gated behind the experimental `enableViewTransitionParentEnterExit` feature flag in `react/src/ReactFeatureFlags.js`) let the *parent container* also transition when any of its children transition — so the page chrome (header, side nav, toolbar) animates alongside the inner content rather than sitting still underneath.
+
+```tsx
+// Without parentEnter/parentExit (React 19.2): the inner <img> morphs, but the <div> wrapping the gallery doesn't
+// With parentEnter/parentExit (React 19.3 canary): both the inner image AND its parent <div> animate
+
+'use client'
+import { ViewTransition } from 'react'
+
+function ProductGallery({ images }: { images: string[] }) {
+  const [selected, setSelected] = useState(0)
+
+  return (
+    <ViewTransition
+      name={`gallery-wrap-${selected}`}     // child morph
+      parentEnter={{ name: 'gallery-fade-in', className: 'gallery-fade-in' }}   // parent enter
+      parentExit={{ name: 'gallery-fade-out', className: 'gallery-fade-out' }}  // parent exit
+    >
+      <ViewTransition name={`gallery-img-${selected}`}>
+        <img src={images[selected]} alt="" className="w-full aspect-square object-cover rounded-lg" />
+      </ViewTransition>
+    </ViewTransition>
+  )
+}
+```
+
+**The API surface** (from the PR description):
+
+```ts
+type ViewTransitionProps = {
+  name?: string | Array<string>
+  // existing 19.2 props
+  enter?: string | Array<string>
+  exit?: string | Array<string>
+  default?: string | Array<string>
+  // NEW 19.3 canary
+  parentEnter?: { name?: string | Array<string>; className?: string | Array<string> }
+  parentExit?:  { name?: string | Array<string>; className?: string | Array<string> }
+  parentDefault?: { name?: string | Array<string>; className?: string | Array<string> }
+}
+```
+
+**Feature flag.** The feature is off by default. To opt in (one project, dev only):
+
+```js
+// next.config.js (16.3+)
+module.exports = {
+  experimental: {
+    reactCompiler: false,  // unrelated
+    useExperimentalReact: true,
+    enableViewTransitionParentEnterExit: true,  // proposed flag name (not yet in next config)
+  },
+}
+
+// Alternative: pin to a React canary that has the flag enabled
+// 19.3.0-canary-ec0fca31-20260701 — the flag is exported from `react/src/ReactFeatureFlags.js`
+// To force-enable without going through Next.js config, set in a setup file:
+//   globalThis.__REACT_FEATURE_FLAGS__ = { enableViewTransitionParentEnterExit: true }
+```
+
+The flag isn't yet exposed in `next.config.ts` (the PR was merged 2 days ago, Next.js usually picks up React feature flags via `experimental.useExperimentalReact` + a re-export in 1–2 canaries). For now, the most reliable way to try the feature is to install `react@canary` + `react-dom@canary` in your project and let Next pick up the canary.
+
+**Common use cases:**
+
+| Use case | How to model with `parentEnter`/`parentExit` |
+|---|---|
+| Page chrome (header, sidebar) fades in/out when content cross-fades | Wrap the content area in a `<ViewTransition parentEnter/parentExit>` |
+| Card-to-detail morph where the card's parent list item also animates | Wrap each list item in a parent VT; child VT does the image morph |
+| Modal open/close where the modal backdrop and its child dialog both animate | Two VTs nested; the outer one handles the backdrop, the inner one handles the dialog content |
+| Page transitions where the entire page chrome transitions as one unit | Wrap the page layout in a single parent VT; child VTs are per-element |
+
+**SSR safety** (unchanged from 19.2): the `startViewTransition()` call only fires in the browser; the parent-level animation classes are also SSR-skipped.
+
+**Source:** [React PR #36690 — `Add parentEnter/parentExit props to ViewTransition`](https://github.com/facebook/react/pull/36690) · [Commit `ec0fca31f`](https://github.com/facebook/react/commit/ec0fca31f419e821018fc67bc88f2ce62ffb2050) · React canary `19.3.0-canary-ec0fca31-20260701` (npm dist-tag pointer moved 2026-07-01T16:30:24Z, replaces `19.3.0-canary-e2731312-20260630`)
 
 ## View Transitions API (React 19.2)
 

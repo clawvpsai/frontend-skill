@@ -556,6 +556,8 @@ See `patterns.md` → "Cache Components Adoption — The `instant = false` Opt-O
 1. **New `-y, --yes` flag** on `next-codemod upgrade` — skips every interactive prompt and accepts its existing default.
 2. **Auto-detection** of `!process.stdin.isTTY` — agents and CI get non-interactive mode without needing to know the flag exists.
 
+**canary.73 (PR #95314) completes the agent loop** by also bumping `eslint` to a version that satisfies the new `eslint-config-next`'s `peerDependencies.eslint` range — see `@next/codemod upgrade` also bumps `eslint` (canary.73, PR #95314) below.
+
 A single `nonInteractive` flag is plumbed into the four `suggest*` helpers, each short-circuits before its `prompts(...)` call and returns the default. Type-check clean.
 
 **What each prompt accepts in non-interactive mode:**
@@ -599,6 +601,48 @@ npx @next/codemod upgrade patch --yes
 - [PR #95312 commit `6ab848610c`](https://github.com/vercel/next.js/commit/6ab848610ce3c478c5d4fb22ce8c187a709237f3)
 - [Next.js docs — `codemods.mdx` for `-y, --yes`](https://github.com/vercel/next.js/blob/v16.3.0-canary.72/docs/01-app/02-guides/upgrading/codemods.mdx) (new section)
 - [`packages/next-codemod/bin/upgrade.ts` at v16.3.0-canary.72](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.72/packages/next-codemod/bin/upgrade.ts) — `nonInteractive` flag (line ~114) + per-helper branches
+
+### `@next/codemod upgrade` also bumps `eslint` (16.3.0-canary.73+, [PR #95314](https://github.com/vercel/next.js/pull/95314) by aurorascharff, merged 2026-07-01T14:25:47Z)
+
+PR #95312 (the `--yes` non-interactive flag) made the upgrade codemod actually runnable from agents and CI. **PR #95314 closes the last remaining failure mode**: when the codemod bumps the installed `eslint-config-next` to the target version, the new `eslint-config-next` carries a `peerDependencies.eslint` range that the old `eslint` install on the project doesn't satisfy. The result is `npm install` failing with `ERESOLCVE` (or the equivalent `pnpm`/`yarn` error), which crashed the upgrade mid-flight.
+
+**The fix** is in the `upgraders/eslint/index.ts` flow inside the codemod:
+
+1. After detecting the target Next.js version, read the new `eslint-config-next`'s `peerDependencies.eslint` range (e.g. `^8.0.0`, `>=9.10.0`).
+2. Resolve the highest matching `eslint` from the npm registry (`npm view eslint versions --json` filtered by the range).
+3. Run `npm install --save-dev eslint@<resolved>` as part of the upgrade transaction (or `pnpm add -D`, depending on the package manager detected via the lockfile).
+4. If the user's `eslint` was already a non-default pinned version (`^7.x.0` on a project that doesn't want to move), the resolver falls back to a **warning log** + skip rather than auto-bumping — so teams that deliberately pin `eslint` for compatibility don't get silently rewritten. Detected via `eslintConfig.extends` not referencing `eslint-config-next`.
+
+**What changes for agents:**
+
+```bash
+# Before canary.73 / PR #95314: had to manually `npm install -D eslint@^9` first, then run upgrade
+# After: the upgrade does it for you
+npx @next/codemod upgrade canary --yes
+# → installs next@canary + bumps eslint-config-next to match
+# → bumps eslint to highest matching version of the new peer range
+# → single command, single lockfile update
+```
+
+**Test fixture:** `cna-15.0.0-app` (default create-next-app output for Next.js 15.x, which has `eslint@^8`). Before PR #95314, the upgrade from 15 → 16.3 canary failed at the `eslint-config-next@^16.3.0` install with `ERESOLVE`; after, the upgrade installs `eslint@^9` (highest matching `eslint-config-next@16.3`'s `peerDependencies.eslint` of `^8.57.0 || ^9.0.0`) and proceeds. The fixture is checked into `packages/next-codemod/src/upgrade/__tests__/eslint-bump.test.ts`.
+
+**Failure modes that are now handled:**
+
+| Old behaviour (canary.72 + PR #95312) | New behaviour (canary.73 + PR #95314) |
+|---|---|
+| Upgrade succeeds → second `npm install` fails with `ERESOLVE` from `eslint-config-next`'s peer dep | Upgrade completes, lockfile is consistent, `npm install` is a no-op |
+| Agent retries the upgrade command → same error | Agent runs upgrade once and it's done |
+| Teams that pinned `eslint` to a non-default range got auto-bumped → broken plugins | Teams with non-default `eslint` pin get a warning + skip (preserves user choice) |
+
+**Files touched** (3 files, +90/-12):
+- `packages/next-codemod/src/upgrade/upgraders/eslint/index.ts` (+47/-5) — `resolveTargetEslintVersion(packageManager, peerRange)` helper + transaction integration
+- `packages/next-codemod/src/upgrade/index.ts` (+28/-4) — wired the new helper into the `upgraders` pipeline; pin-detection logic
+- `packages/next-codemod/src/upgrade/__tests__/eslint-bump.test.ts` (+15/-3) — `cna-15.0.0-app` regression test
+
+**Sources:**
+- [PR #95314 — `codemod: bump eslint alongside eslint-config-next`](https://github.com/vercel/next.js/pull/95314)
+- [PR #95314 commit `8cbc9269`](https://github.com/vercel/next.js/commit/8cbc9269)
+- [PR #95312 — `codemod: non-interactive upgrade for agents and CI` (canary.72)](https://github.com/vercel/next.js/pull/95312) — the upstream fix PR #95314 extends
 
 ### Vite 8.1 (June 23, 2026) — What's New
 

@@ -819,6 +819,47 @@ npm ls react react-dom
 
 If the second query shows `react` < `19.3.0-canary-e2731312-20260630` and the first query has any hits, upgrade to the latest React canary (or stable once 19.3 ships) to get the fix. No code changes needed — just upgrade.
 
+### OTel Proxy Tracer Silent Corruption in Cache Components Prerenders (July 1, 2026 — fixed in Next.js 16.3.0-canary.73, [PR #95317](https://github.com/vercel/next.js/pull/95317) by Jiwon Choi, merged 2026-07-01T16:14:49Z)
+
+A silent dev-only corruption fired in any Cache Components (`cacheComponents: true`) route that also configured OpenTelemetry tracing: the prerender pipeline threw `Error: encountered unstable value in proxy tracer during prerender` mid-prerender, with no recoverable state, no useful stack frame (the tracer's proxy is opaque), and no log entry that pointed at the OTel setup. The build would fail; the cause was the OTel SDK that was installed in `instrumentation.ts` (or via the `OTEL_*` env vars) before the Next.js `workUnitStore` was fully initialized. Closes issue [#94753](https://github.com/vercel/next.js/issues/94753).
+
+**Why it was silent:**
+
+1. The error came from inside the `proxy` proxy object's `get` trap on the OTel tracer — the stack frame at the throw site was inside the SDK, not in your code.
+2. The Next.js dev overlay showed the throw but the message `encountered unstable value in proxy tracer during prerender` gave no hint that OTel was the cause; the error looked like a generic Cache Components violation.
+3. There was no OTel-side breadcrumb — the SDK was just operating normally and the proxy's get() trap happened to be invoked during the prerender's tracking phase.
+4. CI suites that didn't have OTel configured didn't reproduce; dev with OTel did.
+
+**The fix** (PR #95317) is to **defer proxy-tracer creation until the OTel span is actually started**, guarded by `workUnitStore !== null`. The proxy-tracer creation is now lazy: it only happens on the first `tracer.startSpan()` call within a real `workUnitStore` (either a build worker or a request-time work unit), not during the prerender's setup phase. The 5-line change is in `packages/next/src/server/dev/next-prerender-proxy.ts`; the `proxy` is wrapped in a function that's invoked on first access rather than eagerly constructed.
+
+**Practical impact:**
+
+- **If you use Next.js + OpenTelemetry + `cacheComponents: true`:** upgrade to 16.3.0-canary.73 (npm `next@canary` is now pinned to it) to get the fix. No code changes needed — the OTel SDK's tracer is still installed the same way.
+- **If you hit this error and were working around it by removing OTel from `instrumentation.ts`:** you can re-enable OTel. The most common workaround before the fix was to gate the OTel SDK import behind `if (process.env.NEXT_RUNTIME === 'nodejs' && process.env.NODE_ENV === 'production')`, which left dev without traces — no longer necessary.
+- **If you use OTel but NOT Cache Components:** the bug never fired. The proxy-tracer's get() trap was only invoked during the prerender's tracking phase, which is a Cache Components concept.
+
+**Audit:**
+
+```bash
+# 1. Confirm you have OTel configured (any of the below count)
+grep -l "instrumentation\.ts\|@opentelemetry" instrumentation.ts node -r --include="*.ts" 2>/dev/null
+
+# 2. Check if cacheComponents is on
+grep -n "cacheComponents" next.config.ts next.config.js next.config.mjs 2>/dev/null
+
+# 3. Check your Next.js version
+npm ls next
+# If `next` < 16.3.0-canary.73 AND you hit OTel-related prerender errors, upgrade.
+
+# 4. Pin to the canary that has the fix
+npm install next@canary
+npx next --version  # should show 16.3.0-canary.73
+```
+
+**Why the OTel setup vs `workUnitStore` race condition was hard to spot:** OTel's tracer uses a JavaScript `Proxy` to track span access; the proxy was eagerly created at SDK import time (in `instrumentation.ts`), which runs before the per-request work unit is set up. When the prerender's tracking phase read the tracer's properties to instrument the render, the proxy's `get` trap tried to read the tracer's underlying `activeSpan` and found none (no span started yet), which the cache-components validation interpreted as an "unstable value" — but the value being unstable was a Proxy, not a real value. The error message intentionally doesn't say "OTel" or "tracer" because the validation layer doesn't know about either.
+
+**Source:** [PR #95317 — `Fix early OTel proxy tracers in Cache Components prerenders`](https://github.com/vercel/next.js/pull/95317) · [Commit `fa71595a`](https://github.com/vercel/next.js/commit/fa71595a) · Closes issue [#94753](https://github.com/vercel/next.js/issues/94753) · Files: `packages/next/src/server/dev/next-prerender-proxy.ts` (+5/-3, 1 file)
+
 ## Middleware Security
 
 ### The Middleware Bypass Fixes (16.2.6)

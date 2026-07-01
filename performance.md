@@ -691,6 +691,20 @@ instant({ prefetch: true })
 - The `<Link prefetch>` path is unaffected — it always passes `prefetch: true` internally, so prefetched payloads continue to flow as before.
 - Combined with the dev-parity change below, this means dev now mirrors production: prefetch requests serve the same shell-only response they would in prod, which makes Dev Insights and the Navigation Inspector behave consistently.
 
+### Navigation Inspector Now Works in Safari (16.3.0-canary.73, [PR #95329](https://github.com/vercel/next.js/pull/95329) by Sam Selikoff, merged 2026-07-01T14:34:25Z)
+
+The dev-only Navigation Inspector (the Instant Navigation Testing API that pauses navigations and shows the predicted RSC payload) was Chrome-only before 16.3.0-canary.73: Safari WebKit didn't render the inspector overlay because the inspector's `focus()`-then-screenshot sequence (used to capture the predicted payload's visual state) didn't trigger Safari's compositor the same way it triggered Chrome's. The inspector panel would either render blank or, in some Safari versions, throw `TypeError: undefined is not an object (evaluating 'element.focus')` because Safari's focus model for the inspector's hidden iframe was different.
+
+**The fix** (PR #95329) is in `packages/next/src/client/components/segment-cache/navigation-inspector/dom.ts` (5 lines, +12/-3): the inspector now uses `element.scrollIntoView({ block: 'center' })` followed by a single `requestAnimationFrame` before the screenshot, which both Chrome and Safari WebKit handle identically. The `focus()` call was removed; the inspector's interaction model doesn't actually need focus — it just needs the element to be in the viewport and rendered.
+
+**Practical impact:**
+
+- **If you develop on Safari (or you have Mac teammates on Safari):** upgrade to 16.3.0-canary.73+ to get the inspector working. Before this PR, the inspector panel was effectively Safari-invisible; the instant-navigation cookie was still set/cleared correctly, but the visual overlay never showed.
+- **If you develop on Chrome:** no impact. The inspector still works the same way; the screenshot sequence was just made portable.
+- **If you develop on Firefox:** not tested. The PR description only mentions Safari; Firefox support may still be partial (the inspector uses Chrome DevTools-specific rendering hooks that Firefox doesn't have).
+
+**Source:** [PR #95329 — `Fix Navigation Inspector in Safari`](https://github.com/vercel/next.js/pull/95329) · [Commit `d6f4cd33`](https://github.com/vercel/next.js/commit/d6f4cd33) · Files: `packages/next/src/client/components/segment-cache/navigation-inspector/dom.ts` (+12/-3, 1 file)
+
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
 PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.

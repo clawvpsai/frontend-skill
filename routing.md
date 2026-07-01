@@ -1236,11 +1236,11 @@ Until canary.72 is cut, **two workarounds**:
 
 **Source:** [PR #95289 — fix: params/searchParams in client page crashing dev instant validation](https://github.com/vercel/next.js/pull/95289) · [Commit af066a2fe5849cf2397603381600f50ab66c4467](https://github.com/vercel/next.js/commit/af066a2fe5849cf2397603381600f50ab66c4467) · Files: `packages/next/src/server/request/params.ts` + `packages/next/src/server/request/search-params.ts` + 7 e2e tests in `test/e2e/app-dir/instant-validation/`
 
-### "Link Data" Validation Errors for `params`/`searchParams` Outside `<Suspense>` — PR [#95151](https://github.com/vercel/next.js/pull/95151) + [#94595](https://github.com/vercel/next.js/pull/94595) (16.3.0-canary.73+, July 1, 2026)
+### "Link Data" Validation Errors for `params`/`searchParams` Outside `<Suspense>` — PR [#95151](https://github.com/vercel/next.js/pull/95151) + [#94595](https://github.com/vercel/next.js/pull/94595) (16.3.0-canary.73, SHIPPED 2026-07-01T16:33:19Z)
 
 When `cacheComponents: true` + `partialPrefetching: true` (or per-segment `prefetch = 'partial'` / `'unstable_eager'`) is enabled, the Instant Navigation validation pipeline now treats `params` and `searchParams` accessed outside a `<Suspense>` boundary as a **distinct error category called "link data"** — separate from "runtime data" and "dynamic data". Three new blocking-route error builders land in `packages/next/src/server/app-render/blocking-route-messages.ts` and three new entries (1390–1392) in `packages/next/errors.json`. This is the new "shell can never have link data" enforcement for partial-prefetching routes.
 
-**What's new (PR #95151, Janka Uryga, merged 2026-07-01T04:36:41Z, will be in canary.73):**
+**What's new (PR #95151, Janka Uryga, merged 2026-07-01T04:36:41Z, shipped in 16.3.0-canary.73):**
 
 The Instant Navigation pipeline previously only distinguished Runtime vs Dynamic hole kinds. PR #95151 adds a third kind — **Link** (`DynamicHoleKind.Link = 1` in `packages/next/src/server/app-render/dynamic-rendering.ts`, with the existing `Runtime` and `Dynamic` renumbered to 2 and 3) — for holes caused by `params`/`searchParams` accessed outside `<Suspense>`. The detection logic re-runs each new segment under `ShellRuntime` (a new stage added to `instant-validation.tsx`'s `SEGMENT_STAGE_ORDER`, between `Static` and `Runtime`) and "forces them into `Runtime` for the purposes of discriminating dynamic holes": if a hole is present in `ShellRuntime` but **disappears** in `Runtime`, it's a *link data* hole (link data cannot resolve in App Shell, but it can resolve in `Runtime` since the runtime render can call `prefetch({ params })`). The three new error builders:
 
@@ -1268,7 +1268,7 @@ Ways to fix this:
 
 The metadata variant points to `blocking-prerender-metadata-runtime` (fixes: `[static]` use static metadata export OR `[dynamic]` mark route as dynamic via `await connection()` inside `<Suspense>`). The viewport variant points to `blocking-prerender-viewport-runtime` (fixes: `[static]` use static viewport export OR `[block]` `export const instant = false`).
 
-**The follow-up PR #94595 (Janka Uryga, merged 2026-07-01T06:59:43Z, will be in canary.73) — extending link-data detection to `generateStaticParams`:**
+**The follow-up PR #94595 (Janka Uryga, merged 2026-07-01T06:59:43Z, shipped in 16.3.0-canary.73) — extending link-data detection to `generateStaticParams`:**
 
 Static params from `generateStaticParams` are special: they resolve at build time, but the dev/render pipeline needs to choose *when* to resolve them — and the answer depends on whether the route is rendering for an App Shell or a Static HTML Shell:
 
@@ -1319,9 +1319,9 @@ A non-zero count of `await params` lines in a `page.tsx` that has no `<Suspense`
 2. **Pre-existing `fallbackParams` bug in build validation.** Two tests marked `// TODO(app-shells): missing fallback params in build validation` — fallback params don't resolve correctly during static prerender, so a route reading `params` as fallback resolves statically when it shouldn't, and the validation error is silently missed. This is documented as a separate fix in a follow-up.
 3. **The new error kind has no new test coverage for the deprecated `prefetch = 'allow-runtime'` path.** The fixtures (`invalid-runtime-params/[slug]`, `invalid-runtime-searchparams`, `invalid-runtime-with-valid-static-parent`) all use `prefetch = 'partial'` per PR #95151's purpose. The skill's existing guidance for `allow-runtime` (read params outside `<Suspense>` blocks the shell) still holds — but the validation message is now a "link data" one, not a "runtime" one.
 
-**Migration to canary.73+:**
+**Migration to canary.73:**
 
-Once canary.73 ships (likely within 24h given the 24h cadence since canary.70), the audit command above flags every page that needs a `<Suspense>` wrap. For each match, two fixes:
+canary.73 SHIPPED on 2026-07-01T16:33:19Z (npm `canary` dist-tag pointer moved 2026-07-01T16:35Z, 6–7 hours earlier than the 24h cadence from canary.70 predicted). The audit command above flags every page that needs a `<Suspense>` wrap on canary.73. For each match, two fixes:
 
 1. **Stream the data access (preferred):** wrap the data access in `<Suspense fallback={<Skeleton/>}>`. The shell renders the skeleton; the data resolves and replaces it in place. Compatible with `prefetch = 'partial'` and the runtime stage.
 
@@ -1346,12 +1346,12 @@ Once canary.73 ships (likely within 24h given the 24h cadence since canary.70), 
 2. **Block the route from being instant (workaround for metadata/viewport where you can't easily Suspense the data):** set `export const instant = false` at the page or layout level. The link data fix card points at this — it tells the router "this route is a blocking route; don't try to prefetch an App Shell for it." Use only when the metadata/viewport genuinely needs the param (e.g. dynamic OG images per slug).
 
 ```bash
-# Wait for canary.73 cut (uses 24h cadence from canary.72 at 2026-06-30T23:41:13Z)
+# canary.73 is the current canary — install from the canary dist-tag
 npm install next@canary
-npx next --version  # should show 16.3.0-canary.73+
+npx next --version  # should show 16.3.0-canary.73
 ```
 
-Until canary.73 is cut (or if you're on `16.3.0-canary.72` or earlier), `next dev` will not produce the new redbox — instead `params`/`searchParams` outside `<Suspense>` will silently fall into the `Runtime` hole kind (existing "Runtime data" or "Dynamic data" redbox from #95289-era behaviour). The same fixes (wrap in `<Suspense>` or set `instant = false`) apply.
+If you're on `16.3.0-canary.72` or earlier, `next dev` will not produce the new redbox — instead `params`/`searchParams` outside `<Suspense>` will silently fall into the `Runtime` hole kind (existing "Runtime data" or "Dynamic data" redbox from #95289-era behaviour). The same fixes (wrap in `<Suspense>` or set `instant = false`) apply. **Upgrade to canary.73+ for the new redbox** — and use `npx @next/codemod upgrade canary --yes` (auto-enabled on non-TTY, per PR #95312; also bumps `eslint` to match `eslint-config-next`'s peer dep, per PR #95314) when running from an agent or CI.
 
 **Why this matters even if you're on the stable 16.2 branch:** `partialPrefetching` is the 16.3 default-on-intent flag, and `cacheComponents` is the foundation. Once 16.3 ships as stable, the "link data" error becomes a **first-class redbox** you'll see on day one of any Cache Components adoption. The skill pre-loads the audit command + the three error numbers so it can diagnose the redbox in 30 seconds instead of 30 minutes.
 
