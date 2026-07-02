@@ -1357,6 +1357,10 @@ If you're on `16.3.0-canary.72` or earlier, `next dev` will not produce the new 
 
 **Source:** [PR #95151 — [PP] Validate Shell prefetches (except gSP)](https://github.com/vercel/next.js/pull/95151) · [Commit c131314bcf0cf21c5d5624b2cf8c6dbf07375abd](https://github.com/vercel/next.js/commit/c131314bcf0cf21c5d5624b2cf8c6dbf07375abd) · [PR #94595 — [PP] Instant validation - error for unguarded static params](https://github.com/vercel/next.js/pull/94595) · [Commit 576d3a3397bf2818369636dd26d8ca4a9303bd98](https://github.com/vercel/next.js/commit/576d3a3397bf2818369636dd26d8ca4a9303bd98) · Files: `packages/next/src/server/app-render/{blocking-route-messages,dynamic-rendering}.ts` + `packages/next/src/server/app-render/instant-validation/instant-validation.tsx` + `packages/next/src/server/request/params.ts` + new `packages/next/src/server/lib/params-utils.ts` + `packages/next/errors.json` + 21 test fixtures in `test/e2e/app-dir/instant-validation/app/shells/` and `test/e2e/app-dir/instant-validation/app/invalid-runtime-{params,searchparams}/`.
 
+**Cross-reference — `use cache` constants that gate the prerender vs runtime stages (canary.74 rename):** the `ShellRuntime` stage above works alongside the prerender vs runtime gates defined in `packages/next/src/server/use-cache/constants.ts`. In canary.74 those gates were renamed from `DYNAMIC_EXPIRE` / `DYNAMIC_STALE` → `MIN_PRERENDERABLE_EXPIRE` (300s) / `MIN_PREFETCHABLE_STALE` (30s) for clarity at comparison sites. See patterns.md → `MIN_PRERENDERABLE_EXPIRE` / `MIN_PREFETCHABLE_STALE` Constant Rename for the threshold semantics, the constant table, and the [PR #95361](https://github.com/vercel/next.js/pull/95361) source.
+
+
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

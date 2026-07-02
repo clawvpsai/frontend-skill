@@ -702,6 +702,32 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
 | `queue` (Redis/Bull) | Background jobs that need durability across restarts |
 | `useEffect` (client) | Client-side ops like analytics after hydration |
 
+### `MIN_PRERENDERABLE_EXPIRE` / `MIN_PREFETCHABLE_STALE` Constant Rename — 16.3.0-canary.74+ ([PR #95361](https://github.com/vercel/next.js/pull/95361))
+
+Next.js 16.3.0-canary.74 renamed two internal constants in `packages/next/src/server/use-cache/constants.ts` for clarity:
+
+| Old name | New name | Value (seconds) | Purpose |
+|---|---|---|---|
+| `DYNAMIC_EXPIRE` | `MIN_PRERENDERABLE_EXPIRE` | 300 | Maximum `expire` for an entry to be included in a static prerender (PPR HTML shell). Smaller expire → more dynamic. |
+| `DYNAMIC_STALE` | `MIN_PREFETCHABLE_STALE` | 30 | Maximum `stale` for an entry to be included in a runtime prefetch (partial-prefetching App Shell). Smaller stale → more dynamic. |
+
+**Pure rename, no behaviour change.** Every comparison site changes from `expire < DYNAMIC_EXPIRE` → `expire < MIN_PRERENDERABLE_EXPIRE` and `stale < DYNAMIC_STALE` → `stale < MIN_PREFETCHABLE_STALE` — the values (300s / 30s) are identical and the semantics at every site are identical.
+
+**Why the rename matters (semantic, not functional):**
+
+The old names were confusing because the constants act as the *exclusive upper bound of the dynamic range* — i.e., the **smallest value at which an entry is treated as dynamic**. Reading `expire < DYNAMIC_EXPIRE` and parsing "if the entry is below the dynamic threshold" requires the reader to do an inversion in their head. The new names read correctly at every comparison site: `expire < MIN_PRERENDERABLE_EXPIRE` parses as "if the entry is below the minimum prerenderable expire, it's not prerenderable" — direction-of-thinking matches the comparison operator.
+
+**Concretely, this affects `'use cache'` semantics when paired with `cacheComponents: true`:**
+
+- A `'use cache'` function with `cacheLife('hours')` (default `expire = 3600` seconds) is *above* `MIN_PRERENDERABLE_EXPIRE` (300) → included in the static prerender shell.
+- A `'use cache'` function with `cacheLife('minutes')` (default `expire = 60`) is *below* `MIN_PRERENDERABLE_EXPIRE` → treated as dynamic (forced into a `<Suspense>` boundary).
+- The same threshold logic applies for `stale` vs `MIN_PREFETCHABLE_STALE` (30s) when deciding whether an entry can be served from a partial-prefetch App Shell.
+
+The values are unchanged in canary.74; this is purely a code-clarity refactor. **If you were searching for "DYNAMIC_EXPIRE" / "DYNAMIC_STALE" in the skill, the new names are what you'll find in canary.74+ source.**
+
+**Source:** [PR #95361 — `Rename DYNAMIC_EXPIRE to MIN_PRERENDERABLE_EXPIRE and DYNAMIC_STALE to MIN_PREFETCHABLE_STALE`](https://github.com/vercel/next.js/pull/95361) · Files: `packages/next/src/server/use-cache/constants.ts` (+2/-2)
+
+
 ## React Compiler 1.0 (React 19.2 + Next.js 16)
 
 The React Compiler 1.0 (October 2025) is a build-time tool that automatically optimizes component rendering — eliminating the need for manual `useMemo` and `useCallback` in most cases. It analyzes your code and generates memoized versions of components and hooks.

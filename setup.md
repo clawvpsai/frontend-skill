@@ -948,7 +948,7 @@ npx biome init  # Creates biome.json
 ```json
 // biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -1031,6 +1031,32 @@ npm install -D @biomejs/biome@latest
 npx biome migrate --write
 npx biome check --write  # Verify everything still passes
 ```
+
+
+**Biome 2.5.2 patch (July 1, 2026, npm):** Pure patch release — no breaking changes, no config rewrite required. Adds two new options to the `useNullishCoalescing` rule:
+
+```json
+{
+  "linter": {
+    "rules": {
+      "style": {
+        "useNullishCoalescing": {
+          "level": "warn",
+          "options": {
+            "ignoreBooleanCoalescing": true,  // skip `||` / `||=` inside `Boolean()` calls (falsy is intentional)
+            "ignorePrimitives": true         // skip coalescing on primitive types (string|number|boolean|...)
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- **`ignoreBooleanCoalescing`** — useful if your code does `Boolean(x || defaultValue)` (the falsy shortcut is intentional, the rule shouldn't flag it).
+- **`ignorePrimitives`** — useful if your code does `const name = user.name || 'Anonymous'` where `user.name` is `string | undefined`. Without this, the rule nudges you to `??` but for primitive primitives many teams prefer `||` for consistency with falsy handling.
+
+Both options are off by default (matching 2.5.1 behaviour); enable them per-project if the default `||` → `??` rewriting produces too many false positives for your codebase. Source: [Biome 2.5.2 release](https://github.com/biomejs/biome/releases/tag/v2.5.2). Pure patch → `biome migrate --write` is NOT required for this upgrade.
 
 
 ### Option 2: ESLint (Flat Config — Next.js 16)
