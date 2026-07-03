@@ -1364,6 +1364,93 @@ If you're on `16.3.0-canary.72` or earlier, `next dev` will not produce the new 
 
 
 
+## Server Action + Navigation Interaction Bugs — #95391 + #95392 (16.3.0-canary.76, July 2, 2026)
+
+Two silent-corruption fixes shipped in the same canary. Both involve Server Actions interacting with client-side navigation in ways that drop user state or trap the user in the wrong URL.
+
+### Navigation Reverted After a Server Action Settles — #95391 (gaearon/dan, merged 2026-07-02T22:52:24Z)
+
+When a navigation started while a Server Action was still in flight, the router would discard the action and the navigation would take its place at the head of the action queue. The discarded action still ran to completion. Since PR #82674 (shipped in 15.5.1), its completion also called `runRemainingActions`, which advances the queue — but the discarded action is no longer at the head of the queue, the navigation is. This started the next queued action while the navigation was still running, computed against router state that didn't include the navigation yet. Those actions send their requests with the previous URL, and applying their responses reverts the navigation.
+
+**Symptom:** Click a link or call `router.push()`, the destination page renders, then the router snaps back to the previous URL. Reported in #86151 with a minimal repro. There was a related stuck-forever bug (#84299) that the same fix closes.
+
+**The promise rejection path had the same problem even before #82674:** a discarded action that rejected would also advance the queue.
+
+**Fix:** Only the settlement of the action at the head of the queue may advance the queue. A discarded action's settlement (resolve or reject) now only records whether the action revalidated, and the deferred refresh is flushed once the queue goes idle. This keeps the behavior #82674 was after: no refresh for discarded actions that didn't revalidate, and a refresh for those that did — including when they settle mid-navigation, a case that could previously lose the refresh entirely.
+
+**Properties:**
+
+- **Regression from 15.5.1** (PR #82674). Verified broken in 16.2; was working in 16.1.
+- **Alternative to PR #95188** which was opened from a fork; #95391 was the same change on an upstream branch so the deploy-test jobs could run with credentials.
+- **Fixes two bugs:** #86151 (navigation reverted) + #84299 (navigation stuck forever).
+- **New e2e tests** cover both the broken case AND the case that the regressing PR #82674 was originally trying to fix. The tests are "a bit wonky and do some timing assertions" per the PR description — agent-loop reruns may need retries.
+
+**Who needs to audit:** any app that does `router.push()` / `<Link>` navigation immediately after (or during) a Server Action call. The "immediately after" case is the most common — a form submit that ends with a `router.push('/dashboard')` after the action succeeds.
+
+**Source:** [PR #95391 — `Fix navigation getting reverted when a Server Action is in flight`](https://github.com/vercel/next.js/pull/95391) · Commit `db4e6231e1` (2026-07-02T22:52:24Z) · gaearon · Fixes [#86151](https://github.com/vercel/next.js/issues/86151) (navigation reverted) + [#84299](https://github.com/vercel/next.js/issues/84299) (navigation stuck forever).
+
+### `router.push('/x'); router.refresh()` Drops the Push — #95392 (canary.76, merged 2026-07-02T19:06:41Z)
+
+**Symptom:** A `router.push('/target')` followed by `router.refresh()` ended up at `/target`, but the previous page's history entry was replaced instead of a new one being pushed. Pressing Back skipped the previous page (yanked past it) because that history entry no longer existed.
+
+```tsx
+// ❌ Dropped: previous page replaced, Back skips it
+router.push('/target')   // this entry was getting lost
+router.refresh()
+```
+
+**Why:** React commits a state whose `pushRef.pendingPush` is true (`HistoryUpdater`). Refresh-type actions (`refresh`, `hmr-refresh`, `server-patch`) create their state with a fresh `pushRef` where `pendingPush` is false. React can skip committing the superseded navigation state entirely, so `pendingPush: true` is never observed and the push never happens — `HistoryUpdater` replaces the previous page's history entry with the new URL instead of pushing a new one. Going back after that does nothing: the entry the browser returns to has no state, and the popstate handler ignores entries without state.
+
+**Regression from #88046 in 16.1.** The old router carried the previous state's `pendingPush` forward unless a reducer set it explicitly (the `handleMutable` reducer), and the refresh reducer never set it. That guard was lost in #88046, which deleted `handleMutable` and moved the final state assembly into `completeSoftNavigation`, where `pushRef` is created fresh with `pendingPush: navigateType === 'push'`. PR #95392 restores the old behavior there. There's no double push: if the navigation's state did commit, the push already happened and consumed the flag (`HistoryUpdater` mutates the `pushRef`), and its same-URL check turns a leftover flag into a replace anyway.
+
+In dev, an `hmr-refresh` dispatched while compiling the destination route on demand can supersede the navigation the same way. That's what's behind the recent `browser back to a revalidated page` flakes in `navigation.test.ts` (traced in #95385).
+
+**Who needs to audit:** any app that pairs `router.push` with `router.refresh()` in close succession. Common pattern: a `<form action={serverAction}>` whose `useFormStatus().pending` triggers a manual `router.push('/list')` followed by `router.refresh()` to clear stale cached data. Pre-canary.76 the user could not press Back to return to the form.
+
+**Source:** [PR #95392 — `Fix history push getting treated like replace when followed by refresh`](https://github.com/vercel/next.js/pull/95392) · Merged 2026-07-02T19:06:41Z · Regression from PR #88046.
+
+## Metadata Title Dropped on Soft Navigation with Cache Components — #95315 (16.3.0-canary.75, July 2, 2026)
+
+With `cacheComponents: true` + `partialPrefetching`, navigating to an already-prefetched route with a dynamic `generateMetadata` left `document.title` permanently empty until a hard reload.
+
+**The bug:** the prefetch cached the head as complete using the server's `isHeadPartial` flag, which is unreliable under Cache Components. Derive the head's partiality from `isResponsePartial` instead, as segment data already does, so a dynamic head is fetched and applied on navigation while a fully static head stays complete.
+
+Fixing the flag exposed a latent issue in the prefetch scheduler: during a speculative prefetch, the head was unconditionally runtime-prefetched, which previously went unnoticed because the head was mismarked as complete. The head is now runtime-prefetched only when a segment in the new part of the tree is a candidate for runtime prefetching — it rides along with that request rather than spawning a standalone one. If nothing in the new part of the tree is a runtime prefetch candidate, the head is fetched during the navigation instead. This makes the scheduler's metadata-only request path dead code, so it's removed.
+
+**Symptom:**
+- Soft navigation (clicking a `<Link>`) lands on the new route but `<title>` is empty.
+- Hard reload restores the title.
+- Only triggers with `cacheComponents: true` AND `partialPrefetching: true` (or per-segment `prefetch = 'partial'` / `'unstable_eager'`).
+- Only triggers when the destination route has a dynamic `generateMetadata`.
+
+**Audit:**
+```bash
+rg -l "cacheComponents:\s*true" next.config.{ts,js,mjs} app/
+rg -l "partialPrefetching" next.config.{ts,js,mjs} app/
+rg -l "export async function generateMetadata" app/ -g '*.{ts,tsx}'
+# Intersection of all three → affected
+```
+
+**Who needs to upgrade:** any project on `cacheComponents: true` with dynamic metadata. The fix is in canary.75+ and the bug is silent (no error, no warning, just an empty title) so it can go unnoticed for a long time in production.
+
+**Fixes:** [#95268](https://github.com/vercel/next.js/issues/95268).
+
+**Source:** [PR #95315 — `Fix metadata title dropped on soft navigation with Cache Components`](https://github.com/vercel/next.js/pull/95315) · Commit `27e225f468` (2026-07-02T12:16:45Z) · acdlite/Andrew Clark.
+
+## Prefetch Priority — Top-of-Document Links First — #95393 (16.3.0-canary.75, July 2, 2026)
+
+Most viewport prefetches are scheduled via a shared `IntersectionObserver`. When several links entered the viewport at once (e.g. on initial load), the observer reported them in document order and we scheduled them in that order. Because the prefetch scheduler gives the highest priority to the *most recently scheduled* task, this meant the link **lowest** in the document ended up with the highest priority — the opposite of a sensible default.
+
+**Fix:** iterate each observer batch in reverse, so the link nearest the **top** of the document is scheduled last and therefore prioritized. The topmost link isn't guaranteed to be the most important, but as a default heuristic it's more reasonable than favoring whichever link happens to be lowest in the document.
+
+**Test impact:** updates the two hover tests in `prefetch-scheduling` whose expected ordering was coupled to the old bottom-first default (the set of route trees prefetched within the concurrency limit flips from pages 7,6,5,4 to 1,2,3,4). The behaviors they assert are unchanged, and a new test covers the top-of-document prioritization.
+
+**Why this matters:** the topmost link in the viewport is almost always the most likely next click — that's why viewport-driven prefetch exists. Prioritizing the lowest link meant prefetch budget was wasted on elements the user was unlikely to click next. After #95393, prefetch bandwidth tracks expected click probability more closely.
+
+**Supersedes #94902** which was opened from a fork. The "Test new and changed tests when deployed" jobs cannot pass on fork PRs — `vercel link` fails with "No existing credentials found" because `secrets.VERCEL_ADAPTER_TEST_TOKEN` is not available to `pull_request` runs from forks. PR #95393 is the same change (rebased onto latest canary) on an upstream branch so the deploy jobs get credentials.
+
+**Source:** [PR #95393 — `Prefetch links nearest the top of the document first`](https://github.com/vercel/next.js/pull/95393) · Commit `c099530eb7` (2026-07-02T12:17:05Z) · acdlite/Andrew Clark.
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

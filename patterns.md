@@ -728,6 +728,83 @@ The values are unchanged in canary.74; this is purely a code-clarity refactor. *
 **Source:** [PR #95361 — `Rename DYNAMIC_EXPIRE to MIN_PRERENDERABLE_EXPIRE and DYNAMIC_STALE to MIN_PREFETCHABLE_STALE`](https://github.com/vercel/next.js/pull/95361) · Files: `packages/next/src/server/use-cache/constants.ts` (+2/-2)
 
 
+### Short-`expire` `'use cache'` Dev-Reload Behavior — `MIN_PRERENDERABLE_EXPIRE` Floor in `next dev` (16.3.0-canary.75+, [PR #95362](https://github.com/vercel/next.js/pull/95362) by unstubbable/Hendrik Liebau, merged 2026-07-02T09:26:09Z)
+
+A `'use cache'` value with an explicit short `expire` — typically `cacheLife({ expire: 0 })`, `cacheLife({ expire: 1 })`, or the built-in `'seconds'` profile (`expire = 1`) — was treated as a miss on every dev reload by both the built-in default handler AND custom handlers. Reloads re-ran the cache function and streamed slowly, because `expire` is the entry's expiration bound (the longest it may still be served before being treated as expired), and the dev handler had no window in which a reload could be served from the cache when `expire` was zero or one.
+
+**Why this happened:** `expire` is the entry's expiration bound in both dev and production; what differs is which threshold the built-in in-memory handler enforces. In `next dev` it serves stale entries up to `expire` to keep reloads fast; in production it drops them earlier, once past `revalidate`. An `expire` of zero therefore leaves the dev handler no window for a reload to be served from the cache, and the wrapper's serve-vs-regenerate check (which also keys on `expire`) regenerates instead.
+
+**Fix ([PR #95362](https://github.com/vercel/next.js/pull/95362)):** the built-in default handler now retains an entry for at least `MIN_PRERENDERABLE_EXPIRE` (300s) in dev, a minimum the custom front handler inherits by being a built-in default handler, and the wrapper applies the same minimum when deciding whether to serve or regenerate. That affects the **retain** and **serve** decisions only — the entry keeps its real `expire`, so the staged dev render still resolves it at the appropriate stage (not the shell stage). A short-`expire` entry is also **re-warmed in the background** on every dynamic-request render, so a reload serves the previously cached value immediately and the freshly recomputed one appears on the next reload. This is the same stale-while-revalidate trade-off already accepted for `'use cache: private'` and `cacheMaxMemorySize: 0` dev optimizations, which likewise favor a fast reload over serving a value these configurations would not otherwise cache at all.
+
+**What still differs from non-short `expire`:**
+
+- **Production behavior is unchanged.** Entries with `expire: 0` are still regenerated on every read (see PR #95363 below).
+- **Stale-while-revalidate applies.** The re-warmed entry appears one reload later, not on the current one. The reload-serves-old behavior is the same as `'use cache: private'` and `cacheMaxMemorySize: 0`.
+
+**Why `MIN_PRERENDERABLE_EXPIRE` and not `revalidate: 0`?** Forcing `revalidate: 0` would leak into the cache life propagated to an enclosing `'use cache'` and trip the nested-dynamic error with the wrong message. The `expire` floor is local to the entry, doesn't change its resolved cache life, and keeps the dev optimization invisible to nested-cache detection.
+
+**Why not just keep the resolved life and rely on existing logic?** Because a short `expire` is exactly what makes the dev handler drop the entry — the minimum retention is needed at the handler level. The `MIN_PRERENDERABLE_EXPIRE` floor is the smallest change that makes the dev reload fast without altering production semantics.
+
+**Companion PR #95363 ([Skip saving `expire: 0` values in the default cache handler in prod](https://github.com/vercel/next.js/pull/95363), canary.76+, merged 2026-07-02T21:53:18Z):** the built-in default cache handler now skips the `set()` for `expire: 0` entries in production (gated on `!process.env.__NEXT_DEV_SERVER`). The entry is regenerated on every read regardless, so persisting it is wasted work; for a remote handler it's a needless round-trip and stored payload. Dev keeps storing because the dev handler's minimum retention (#95362) serves the previously cached value across reloads while the entry re-warms in the background. New `use-cache-default-handler-expire-zero` e2e test enables `NEXT_PRIVATE_DEBUG_CACHE` and asserts on the handler's `set()` decisions; skips deployment.
+
+**Companion PR #95373 ([Fix false-positive nested-cache error for a short default profile](https://github.com/vercel/next.js/pull/95373), canary.76+, merged 2026-07-02T21:53:18Z):** overriding the `default` `cacheLife` profile with a short cache life (the built-in `default` profile's `expire` is `INFINITE_CACHE`) makes every `'use cache'` without an inline `cacheLife()` inherit that short life. In this configuration the nested-`'use cache'` error (short-`expire` and zero-`revalidate` variants) fired in two cases where it shouldn't: (1) a single non-nested `'use cache'` already resolved to a short life with nothing nested, killing the build in prod and throwing on the request in dev; (2) for a genuinely nested cache, the warning was pointless because the default profile already makes every cache a dynamic hole. Fix requires that a dynamic nested cache actually propagated its short life upward (`dynamicNestedCacheError` is set) AND that the `default` profile is itself prerenderable. Otherwise the short-lived entry is omitted as a dynamic hole instead, exactly as an inline short `cacheLife()` already was. The dev-only private-cache exclusion (`kind !== 'private'` check) is subsumed — a private cache's `revalidate: 0` is forced by us rather than by a nested cache and never carries a nested error.
+
+**Why this matters for agents:** if a `'use cache'` function looks "fine" in production but feels slow on `next dev` reloads, the most likely cause was a short `expire` (or any cache with `expire: 0` / `'seconds'` profile) without a minimum-retention floor. Pre-canary.75 this was a known sharp edge — every reload re-ran the function. Post-canary.75 it's a no-op. **Audit:**
+
+```bash
+rg -l 'cacheLife\s*\(\s*\{[^}]*expire:\s*0' app/ -g '*.{ts,tsx}'
+rg -l 'cacheLife\s*\(\s*\{[^}]*expire:\s*1' app/ -g '*.{ts,tsx}'
+rg -l "cacheLife\(\s*'seconds'\s*\)" app/ -g '*.{ts,tsx}'
+```
+
+**Use `cacheLife({ expire: 0 })` deliberately when you want server-side opt-out:**
+
+- **Conditional opt-out** — a function with an otherwise normal cache life sets `expire: 0` for a result that is not worth persisting, e.g. when an upstream fetch errored.
+- **Client-only caching** — a value is `expire: 0` by design so that it lives only in the client cache (via Cached Navigations or Runtime Prefetches when the route opts in) and never on the server.
+
+**Sources:**
+
+- [PR #95362 — `Cache short-\`expire\` \`'use cache'\` values across dev reloads`](https://github.com/vercel/next.js/pull/95362) · Commit `2850659b74` (2026-07-02T09:26:08Z) · Hendrik Liebau
+- [PR #95363 — `Skip saving \`expire: 0\` values in the default cache handler in prod`](https://github.com/vercel/next.js/pull/95363) · Commit `34dbafb46d` (2026-07-02T21:53:16Z) · Hendrik Liebau
+- [PR #95373 — `Fix false-positive nested-cache error for a short default profile`](https://github.com/vercel/next.js/pull/95373) · Commit `b420536fe8` (2026-07-02T21:53:17Z) · Hendrik Liebau
+
+### Instant Navigation Testing API — Deployed Recovery + Full-Page Loads (16.3.0-canary.75+, PR [#95222](https://github.com/vercel/next.js/pull/95222) + [#95227](https://github.com/vercel/next.js/pull/95227) + [#95398](https://github.com/vercel/next.js/pull/95398) by unstubbable, June 29–July 2, 2026)
+
+The Instant Navigation Testing API (controlled by the `__next_instant_test` cookie set by the DevTools) locks navigation to a route's static shell so you can inspect the prefetched shell before any dynamic content streams in. In `next dev` the Instant Navigation DevTools set/clear it; in any environment you can drive it by hand by setting the cookie in browser DevTools. Three companion PRs harden the deployed case:
+
+**(1) PR #95227 — `Recover from blocking routes under Instant Navigation lock when deployed` (canary.75+, merged 2026-07-02T12:51:23Z).** A blocking route (one with a Suspense boundary above `<body>`, or `export const instant = false`) has an empty static shell. When you did a full-page load of such a route while the cookie was set, that empty shell was served as a blank document with no way to release the lock, and every reload rendered the same blank shell and left you stuck.
+
+Previously the handler threw for an empty shell. In dev that surfaced as the error overlay and the catch cleared the cookie so a reload recovered. It did not recover when deployed: the cookie could only be cleared via `Set-Cookie`, which cannot take effect there because the empty shell is served from the ISR cache with its response headers already committed, so the user stayed on the blank shell across reloads. In `next start` it recovered but rendered only a generic "Internal Server Error" page.
+
+Fix: for the empty-shell case we serve a minimal document whose inline script clears the cookie client-side, so the next full-page load renders the route normally; we clear it from the document rather than with `Set-Cookie` because the headers are already committed when the shell is served from the cache. Development still throws so the error overlay shows. As a secondary improvement, `next start` now serves that same document with a readable explanation instead of the generic "Internal Server Error" page. The blocking-route test now asserts the user-facing outcome (after a reload the route renders normally) rather than transport details such as the status code and `Set-Cookie`, and it now runs on deploy as well.
+
+**(2) PR #95222 — `Make Instant Navigation Testing full-page loads work when deployed` (canary.75+, merged 2026-07-02T12:51:22Z).** With the testing API active, a full-page load (reload, MPA navigation, or direct URL entry) on a deployment failed with a minified React hydration error, and releasing the lock then hard-reloaded the page instead of resolving client-side. Client-side navigations under the lock already worked; the gap was full-page loads.
+
+The API works by injecting an inline script that sets `self.__next_instant_test`, which the client reads at `app-index` init as its hydration source. That read only happens on a full-page load; client-side navigations go through the segment cache and the lock and never read it. The script was previously injected at request time through a transform stream, which runs only when the function renders the document. On a deployed full-page load the browser instead parses the prebuilt static prelude served from the edge cache, which was prerendered without the cookie and so carried no script, leaving `self.__next_instant_test` undefined.
+
+When the testing API is enabled (in dev, or in prod via `experimental.exposeTestingApiInProductionBuild`), we embed the cookie-guarded bootstrap into the prerendered prelude through React's `bootstrapScriptContent`, so it lands in the cached static shell and runs before the client bootstrap module. That production-build flag is meant for protected preview environments, so a normal prod build never embeds the script, and even where it is embedded it stays inert on requests without the instant-navigation cookie (the prelude is shared across all requests). The same content is folded into the dynamic render path in `renderToStream`, and the now-redundant request-time transform is removed.
+
+**(3) PR #95398 — `Clear a resurrected instant cookie on unlock so a hard reload recovers` (canary.75+, merged 2026-07-02T12:51:21Z).** Under the Instant Navigation Testing lock, an MPA page load's bootstrap writes the captured cookie value asynchronously via `cookieStore`. When a scope is released (the external actor deletes the cookie), that pending write can land in the narrow gap between the delete and the deleted-event handler that tears the lock down, resurrecting the cookie after the scope has ended. If the unlock then falls back to a hard reload (which happens when the freshly loaded shell has not hydrated the router yet), the reload carries the resurrected cookie, the server serves the shell again, and the page re-enters instant mode with no scope left to release it, so the deferred content never streams in and the navigation hangs.
+
+Once the lock is released, `writeCookieValue`'s guard rejects any further captured write, so the deleted-event handler now clears the cookie right after `releaseLock` to neutralize a write that resurrected it in the gap, and an added guard ignores the re-entrant change event that the clear itself produces.
+
+This removes a family of flaky timeouts in `instant-navigation-testing-api.test.ts`, where a full-page (MPA) navigation inside an `instant()` scope would intermittently never stream in its deferred content after the scope exits.
+
+**Who needs to know:**
+
+- **Anyone testing in a deployed preview environment with the Instant Navigation DevTools cookie set** — the three PRs together make the deployed testing experience parity with `next dev`. Before canary.75 you could lock the navigation, but reload would either hang or recover incorrectly; now it recovers cleanly via the in-document cookie-clear script.
+- **Anyone enabling `experimental.exposeTestingApiInProductionBuild` for a protected preview env** — that's how the bootstrap script gets embedded into the prerendered prelude. A normal prod build never embeds it.
+- **Anyone whose `instant-navigation-testing-api.test.ts` was flaky** — most of those flakes are now fixed; if you see remaining ones, file at https://github.com/vercel/next.js/issues with the test name and CI link.
+
+**Sources:**
+
+- [PR #95227 — `Recover from blocking routes under Instant Navigation lock when deployed`](https://github.com/vercel/next.js/pull/95227) · Commit `f14048b691` (2026-07-02T12:51:20Z)
+- [PR #95222 — `Make Instant Navigation Testing full-page loads work when deployed`](https://github.com/vercel/next.js/pull/95222) · Commit `3177443336` (2026-07-02T12:51:19Z)
+- [PR #95398 — `Clear a resurrected instant cookie on unlock so a hard reload recovers`](https://github.com/vercel/next.js/pull/95398) · Commit `f15aa4e6db` (2026-07-02T12:51:18Z)
+
+
+
+
 ## React Compiler 1.0 (React 19.2 + Next.js 16)
 
 The React Compiler 1.0 (October 2025) is a build-time tool that automatically optimizes component rendering — eliminating the need for manual `useMemo` and `useCallback` in most cases. It analyzes your code and generates memoized versions of components and hooks.
@@ -1962,7 +2039,7 @@ function navigateTo(href: string, direction: 'forward' | 'back') {
 - [Kent C. Dodds — ViewTransition tutorial](https://www.epicreact.dev/use-react-view-transition-to-smoothly-transition-images-and-titles-lu6ks)
 - [Frontend at Scale — Experimenting with View Transitions](https://frontendatscale.com/issues/43/)
 
-### `<ViewTransition>` `parentEnter` / `parentExit` — Container-Level Transitions (React 19.3.0-canary `ec0fca31-20260701`+, [PR #36690](https://github.com/facebook/react/pull/36690) by Jack Pope, merged 2026-07-01T16:16:48Z, behind `enableViewTransitionParentEnterExit` flag)
+### `<ViewTransition>` `parentEnter` / `parentExit` — Container-Level Transitions (React 19.3.0-canary `3508aee6-20260702`+ (was `ec0fca31-20260701`), [PR #36690](https://github.com/facebook/react/pull/36690) by Jack Pope, merged 2026-07-01T16:16:48Z, behind `enableViewTransitionParentEnterExit` flag)
 
 React 19.2's `<ViewTransition>` only animated the specific child element. The new `parentEnter` / `parentExit` props (also gated behind the experimental `enableViewTransitionParentEnterExit` feature flag in `react/src/ReactFeatureFlags.js`) let the *parent container* also transition when any of its children transition — so the page chrome (header, side nav, toolbar) animates alongside the inner content rather than sitting still underneath.
 
@@ -2019,7 +2096,7 @@ module.exports = {
 }
 
 // Alternative: pin to a React canary that has the flag enabled
-// 19.3.0-canary-ec0fca31-20260701 — the flag is exported from `react/src/ReactFeatureFlags.js`
+// 19.3.0-canary-3508aee6-20260702 (current; was ec0fca31-20260701) — the flag is exported from `react/src/ReactFeatureFlags.js`
 // To force-enable without going through Next.js config, set in a setup file:
 //   globalThis.__REACT_FEATURE_FLAGS__ = { enableViewTransitionParentEnterExit: true }
 ```
@@ -2037,7 +2114,7 @@ The flag isn't yet exposed in `next.config.ts` (the PR was merged 2 days ago, Ne
 
 **SSR safety** (unchanged from 19.2): the `startViewTransition()` call only fires in the browser; the parent-level animation classes are also SSR-skipped.
 
-**Source:** [React PR #36690 — `Add parentEnter/parentExit props to ViewTransition`](https://github.com/facebook/react/pull/36690) · [Commit `ec0fca31f`](https://github.com/facebook/react/commit/ec0fca31f419e821018fc67bc88f2ce62ffb2050) · React canary `19.3.0-canary-ec0fca31-20260701` (npm dist-tag pointer moved 2026-07-01T16:30:24Z, replaces `19.3.0-canary-e2731312-20260630`)
+**Source:** [React PR #36690 — `Add parentEnter/parentExit props to ViewTransition`](https://github.com/facebook/react/pull/36690) · [Commit `ec0fca31f`](https://github.com/facebook/react/commit/ec0fca31f419e821018fc67bc88f2ce62ffb2050) · React canary `19.3.0-canary-3508aee6-20260702` (current, npm dist-tag pointer moved 2026-07-02T16:54:01Z, replaces `19.3.0-canary-ec0fca31-20260701` which itself replaced `19.3.0-canary-e2731312-20260630`)
 
 ## View Transitions API (React 19.2)
 

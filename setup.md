@@ -978,6 +978,103 @@ body {
 }
 ```
 
+## `.browser.ts(x)` Variants — Browser-Only Module Splitting (16.3.0-canary.76+ post-canary.76, PR [#95201](https://github.com/vercel/next.js/pull/95201) + [#95200](https://github.com/vercel/next.js/pull/95200) by Sebastian "Sebbie" Silbermann / eps1lon, merged 2026-07-03T06:45:24Z)
+
+First batch of fixes from Sebbie that addresses most of the recent bundle size regressions. Convention: when a module uses `typeof window !== 'undefined'` to conditionally require a browser-only dependency, Next.js can split the browser branch into a separate `.browser.ts(x)` sibling and resolve it via compiler alias instead of bundling both branches into the server bundle.
+
+**The pattern it replaces** (works but ships unused server code):
+
+```ts
+// some-module.ts (or .ts, .tsx — any source file)
+if (typeof window !== 'undefined') {
+  // browser-only code path
+  const { SomeBrowserOnlyDep } = require('some-browser-only-dep')
+  // ...
+} else {
+  // server-only code path
+}
+```
+
+The browser-only branch is dead code on the server, but the require call is still parsed and the dependency is still tracked in the server bundle's module graph. For modules that pull in sizable browser-only deps (analytics SDKs, charting libs, DOM utilities, IndexedDB wrappers, etc.), this can add hundreds of KB to the server bundle.
+
+**The new pattern** (same module + a `.browser` sibling):
+
+```ts
+// some-module.ts (server / shared)
+export function sharedHelper() { /* ... */ }
+
+export async function browserOnlyOp() {
+  if (typeof window === 'undefined') {
+    // server stub
+    return null
+  }
+  // dynamic require kept for backward compat; can be replaced with
+  // an import once the .browser variant is set up
+  const { SomeBrowserOnlyDep } = await import('./some-module.browser')
+  return new SomeBrowserOnlyDep()
+}
+```
+
+```ts
+// some-module.browser.ts (browser-only sibling, picked up automatically)
+import { SomeBrowserOnlyDep } from 'some-browser-only-dep'
+export { SomeBrowserOnlyDep }
+```
+
+The compiler alias maps any module that has a `.browser` sibling to that sibling when bundling for the browser target. On the server, the original module is used as-is. **No hardcoded list of browser-variant modules** — PR #95200 detects any `.browser` sibling automatically and creates the compiler alias at build time.
+
+**Files involved:**
+
+- `crates/next-core/src/browser_variant_modules.rs` — Rust side: auto-detects `.browser` siblings and registers them as compiler aliases.
+- `packages/next/src/build/browser-variant-modules.ts` — JS side: the list source for both webpack and Turbopack (kept for compatibility, but auto-augmented by detection).
+- `packages/next/src/build/create-compiler-aliases.ts` — alias wiring.
+- `.config/ast-grep/rules/no-typeof-window-require.yml` + `no-typeof-window-require-tsx.yml` (+ tests + snapshots) — a new lint rule that flags `typeof window` conditional `require()` calls and warns when the corresponding `.browser` sibling is missing. Future regressions handled automatically.
+
+**Concrete examples of files converted in the PR:**
+
+- `packages/next/src/client/components/client-boundary-params.ts` → `client-boundary-params.browser.ts`
+- `packages/next/src/client/components/navigation.ts` → `navigation.browser.ts` (the navigation-dynamic-rendering + navigation-untracked modules also got `.browser` siblings)
+- `packages/next/src/client/components/redirect.ts` → `redirect.browser.ts`
+- `packages/next/src/client/components/handle-isr-error.tsx` → `handle-isr-error.browser.tsx`
+- `packages/next/src/client/components/server-async-storage.ts` → `server-async-storage.browser.ts`
+
+Test fixtures that were hardcoded in `test/production/app-dir/browser-chunks/browser-chunks.test.ts` (51 lines of expected chunk mapping) were removed because the detection is now automatic.
+
+**Why this matters:** the PR description notes "First batch of fixes that addresses most of the recent bundle size regressions." Sebbie is systematically going through Next.js's internal modules to apply this pattern. Once the convention is established, app code can adopt it too: any time you find yourself writing `if (typeof window !== 'undefined') { require('something-big') }`, you can split out a `.browser.ts` sibling and Next.js will pick it up automatically.
+
+**Tradeoff / known limitation** (from the PR body):
+
+> "This isn't the smoothest DX yet. Ideally we'd generate the list at Next.js compile time (i.e. before publishing) to avoid having to rerun a script (I'll follow-up). Generating the list during build time (next dev or next build) is just another tiny cost users would have to pay."
+
+For now, the detection runs at `next dev` / `next build` start. The follow-up will move it to Next.js's compile time (before publishing) so apps that adopt the convention don't pay even that tiny cost.
+
+**Who needs to know:**
+
+- **Anyone debugging a recent bundle size regression** on the server bundle — most of the candidates are now eligible for `.browser` splitting via the new convention.
+- **Anyone maintaining a Next.js internal module** with a `typeof window` branch — adopt the `.browser` sibling pattern; the new ast-grep lint rule will flag missing siblings.
+- **App authors who want smaller server bundles** — you can adopt the convention in your own code; the detection is automatic.
+
+**Sources:**
+
+- [PR #95201 — `Split typeof-window server requires into .browser variants`](https://github.com/vercel/next.js/pull/95201) · Commit `d6594bd111` (2026-07-03T06:45:24Z) · Sebastian "Sebbie" Silbermann.
+- [PR #95200 — `Collect modules with browser variants statically`](https://github.com/vercel/next.js/pull/95200) · Commit `d3169de7e5` (2026-07-03T06:45:23Z) · Sebastian "Sebbie" Silbermann.
+- `.config/ast-grep/rules/no-typeof-window-require.yml` + `.tsx` variant — new lint rule with regression tests.
+
+## `cacheHandlers` Config Validation Now Anchored — PR [#95358](https://github.com/vercel/next.js/pull/95358) by Partha Shankar (16.3.0-canary.75+, merged 2026-07-02T16:12:24Z)
+
+The `cacheHandlers` config validation previously used `/[a-z-]/`, which only checked whether a key contained at least one lowercase letter or hyphen. As a result, invalid keys such as `abc123`, `abc_123`, `abc.def`, and `handler!` were accepted even though the validation error message stated handler names must only contain `a-z` and `-`. **The regex wasn't anchored** — it was checking "any character" rather than "all characters".
+
+**Fix:** Replace `/[a-z-]/` with `/^[a-z-]+$/` so the entire handler name is validated. Now the message and the enforcement match: only handler names made of lowercase letters and hyphens (e.g. `default`, `my-handler`, `cdn-cache`) are accepted; anything containing digits, underscores, dots, or other punctuation is rejected with the existing error message.
+
+**Regression tests** added in `packages/next/src/server/config.test.ts` cover both valid and invalid handler names.
+
+**Who needs to know:**
+
+- **Anyone with an existing `cacheHandlers` config that uses digits, underscores, or other characters** — your handler names were silently accepted before; upgrading to canary.75+ will now reject them. Audit with `grep -E 'cacheHandlers' next.config.ts` and update any keys to `^[a-z-]+$`.
+- **Anyone who noticed handler names like `abc123` "working" but felt uneasy** — they weren't supposed to.
+
+**Source:** [PR #95358 — `fix(config): correctly validate cacheHandlers names`](https://github.com/vercel/next.js/pull/95358) · Commit `8688f98b1e` (2026-07-02T16:12:24Z) · Files: `packages/next/src/server/config-schema.ts` (validation regex) + `packages/next/src/server/config.test.ts` (regression tests).
+
 ## Package Manager
 
 Prefer `pnpm` for monorepos and workspaces:

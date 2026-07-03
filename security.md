@@ -794,7 +794,7 @@ Avoid passing unsanitized user input to `beforeInteractive` scripts:
 />
 ```
 
-### `ReactDOM.preloadModule()` Silently Dropped `nonce` (June 29, 2026 — fixed in React canary `e2731312-20260630`)
+### `ReactDOM.preloadModule()` Silently Dropped `nonce` (June 29, 2026 — fixed in React canary `e2731312-20260630`, still in current canary `3508aee6-20260702`)
 
 React PR [#36851](https://github.com/facebook/react/pull/36851) (Udit Dewan, merged June 29, 2026) fixed a silent CSP violation in `ReactDOM.preloadModule()`. The public API accepted a `nonce` option in its type (`PreloadModuleOptions`), but the implementation only forwarded `as`, `crossOrigin`, and `integrity` to the host dispatcher — `nonce` was silently dropped. The emitted `<link rel="modulepreload">` carried no nonce attribute, so under a strict `script-src 'nonce-...'` CSP, the browser blocked the preload and the hint did nothing.
 
@@ -802,7 +802,7 @@ This is the React counterpart to the [16.2.6 XSS via CSP nonces fix](#nextjs-csp
 
 **Practical impact:**
 
-- **If you call `ReactDOM.preloadModule(href, { nonce, as, ... })` from client code with strict CSP (`script-src 'nonce-...'`)**, your `modulepreload` hints were silently blocked before this fix. After upgrading to React canary `19.3.0-canary-e2731312-20260630`+ (or the eventual React 19.3 stable), the nonce flows through and the hint loads.
+- **If you call `ReactDOM.preloadModule(href, { nonce, as, ... })` from client code with strict CSP (`script-src 'nonce-...'`)**, your `modulepreload` hints were silently blocked before this fix. After upgrading to React canary `19.3.0-canary-e2731312-20260630`+ (current canary is `19.3.0-canary-3508aee6-20260702`, but the fix shipped in `e2731312-20260630`), the nonce flows through and the hint loads.
 - **If you use Next.js's `<link rel="modulepreload">` infrastructure indirectly** (Next.js does this for bootstrap chunks), the fix is irrelevant to your code — Next.js sets nonces via the same mechanism, and React's internal bootstrap already emitted them correctly. The bug only affected the public `preloadModule()` API.
 - **If you don't use strict CSP with nonces**, you don't notice this bug — `modulepreload` links work fine without a nonce when CSP isn't enforcing one.
 - **If you only use `ReactDOM.preload()` and `ReactDOM.preinitModule()`**, you don't notice this bug — those APIs already forwarded `nonce` correctly before the fix.
@@ -817,7 +817,7 @@ grep -rn "ReactDOM\.preloadModule\|reactDom\.preloadModule" --include="*.tsx" --
 npm ls react react-dom
 ```
 
-If the second query shows `react` < `19.3.0-canary-e2731312-20260630` and the first query has any hits, upgrade to the latest React canary (or stable once 19.3 ships) to get the fix. No code changes needed — just upgrade.
+If the second query shows `react` < `19.3.0-canary-e2731312-20260630` and the first query has any hits, upgrade to the latest React canary (current: `19.3.0-canary-3508aee6-20260702`, or stable once 19.3 ships) to get the fix. No code changes needed — just upgrade.
 
 ### OTel Proxy Tracer Silent Corruption in Cache Components Prerenders (July 1, 2026 — fixed in Next.js 16.3.0-canary.73, [PR #95317](https://github.com/vercel/next.js/pull/95317) by Jiwon Choi, merged 2026-07-01T16:14:49Z)
 
