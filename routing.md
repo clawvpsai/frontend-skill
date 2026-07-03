@@ -1252,7 +1252,7 @@ The Instant Navigation pipeline previously only distinguished Runtime vs Dynamic
 
 The redbox (dev validation) and build error (static shell validation) point to `https://nextjs.org/docs/messages/blocking-prerender-{runtime,metadata-runtime,viewport-runtime}#{fix-card}` for the three fixes — same doc-anchor pattern as the runtime/dynamic variants.
 
-**The body's redbox looks like:**
+**The body's redbox (16.3.0-canary.75+ wording, PR [#95187](https://github.com/vercel/next.js/pull/95187)):**
 
 ```
 Route "/store/[slug]": Next.js encountered link data during prerendering or a navigation.
@@ -1262,9 +1262,12 @@ Route "/store/[slug]": Next.js encountered link data during prerendering or a na
 Ways to fix this:
   - [stream] Provide a placeholder with `<Suspense fallback={...}>` around the data access
     https://nextjs.org/docs/messages/blocking-prerender-runtime#wrap-in-or-move-into-suspense
-  - [block] Set `export const instant = false` to silence this warning and allow a blocking route
+  - [block] Set `export const instant = false` to allow a blocking route
     https://nextjs.org/docs/messages/blocking-prerender-runtime#allow-blocking-route
 ```
+
+> **canary.73–canary.74 wording** (still seen if you're not on canary.75+ yet): the `[block]` line read `Set \`export const instant = false\` to silence this warning and allow a blocking route`. PR #95187 drops "silence this warning and" because (a) the line was logged as `Error:` but the word "warning" was wrong at warning/manual-warning levels (or when the check only surfaces in dev), and (b) `instant = false` doesn't *silence* a problem that still exists — it declares blocking is acceptable for the route so validation stops treating it as one. The new wording matches the dev-overlay cards ("Allow blocking route", "Disable validation on this route") and the docs sections the lines link to. Two `[ignore]` variants in `instant-messages.ts` were updated the same way (`opt the route out of instant-navigation validation` and `opt the dropped segment out of instant-navigation validation`).
+
 
 The metadata variant points to `blocking-prerender-metadata-runtime` (fixes: `[static]` use static metadata export OR `[dynamic]` mark route as dynamic via `await connection()` inside `<Suspense>`). The viewport variant points to `blocking-prerender-viewport-runtime` (fixes: `[static]` use static viewport export OR `[block]` `export const instant = false`).
 

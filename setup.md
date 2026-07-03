@@ -531,6 +531,51 @@ First-class Turbopack support for compiling and serving **service workers** land
 - [PR #94923 — `[turbopack]` Discover service workers in the Turbopack analyzer (canary.71, June 29, 2026)](https://github.com/vercel/next.js/pull/94923) — the PR that "turns on" the feature
 - [PR #94924 — `[turbopack]` Add e2e tests for service workers](https://github.com/vercel/next.js/pull/94924) (open since canary.68, now landed)
 - [Next.js docs — `serviceWorkerRegistration` in PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps)
+### Turbopack Subpath Imports (`#/*` Wildcards) — 16.3.0-canary.75+ ([PR #94461](https://github.com/vercel/next.js/pull/94461), merged 2026-07-02T00:11:23Z)
+
+Turbopack's resolver had an over-eager early-rejection check that blocked **all** specifiers starting with `#/`, preventing the widely-used TypeScript `imports` field pattern `"#/*": "./src/*"` from working. The fix in PR #94461 removes the `specifier.starts_with("#/")` guard from the early-rejection condition in `resolve_package_internal_with_imports_field` so the specifier can reach the `imports`-field resolver (where `AliasMap` already handles wildcard pattern matching correctly).
+
+**Before canary.75 (canary.72–canary.74 and earlier)** — a project with this `package.json`:
+
+```json
+{
+  "imports": {
+    "#/*": "./src/*"
+  }
+}
+```
+
+And this import:
+
+```ts
+// src/main.ts
+import greeting from '#/greeting.js'
+// resolves to src/greeting.js
+```
+
+Would fail under Turbopack with the resolver returning "unresolvable" before even attempting the `imports`-field lookup. The check rejected `#/greeting` purely because it started with `#/`, but `#/something` is a perfectly valid specifier that should reach the wildcard pattern matcher. Webpack (`enhanced-resolve`) and Node.js both already supported this pattern. **After canary.75** — `import greeting from '#/greeting.js'` resolves correctly through `AliasMap`'s wildcard matching.
+
+**Concretely:**
+
+```ts
+// package.json
+{
+  "imports": {
+    "#/*": "./src/*"
+  }
+}
+
+// src/main.ts
+import greeting from '#/greeting.js'   // → src/greeting.js
+```
+
+**What still gets rejected early:** bare `#` (not a valid subpath), specifiers ending in `/` (directory traversal without a path segment). These are the only true early-rejection cases.
+
+**Who needs to upgrade:** anyone using the `"#/*": "./src/*"` subpath import pattern (TypeScript projects in particular) on Turbopack — this was a silent footgun where the project worked on `next dev --webpack` and broke on Turbopack without an obvious cause. The new test fixture in `turbopack/crates/turbopack-tests/tests/execution/turbopack/resolving/subpath-imports-slash` covers the pattern end-to-end.
+
+**Closes:** [#94290](https://github.com/vercel/next.js/issues/94290) — original issue reporting the broken pattern under Turbopack.
+
+**Source:** [PR #94461 — `fix(turbopack): allow "#/" prefixed subpath import specifiers`](https://github.com/vercel/next.js/pull/94461) · Commit `2aa1e457ab` (merged 2026-07-02T00:11:24Z) · Files: `turbopack/crates/turbopack-resolve/src/resolve.rs` (remove one `||` clause in `resolve_package_internal_with_imports_field`) + new test fixture `subpath-imports-slash/`.
 
 ### Cache Components Adoption — `cache-components-instant-false` Codemod (16.3, [#94941](https://github.com/vercel/next.js/pull/94941))
 
@@ -791,6 +836,45 @@ PR [#22825](https://github.com/vitejs/vite/pull/22825) (翠) restores the `pnpm 
 
 **Recommended Vite version for new projects (June 30, 2026):** **Vite 8.1.2** — supersedes 8.1.1 (which should be **skipped entirely**) and contains all the 8.1.1-intended fixes (the `resolve.tsconfigPaths` CSS regression fix #22775, Bundled Dev Mode fixes #22797/#22745, sourcemap field #22782, ERR_CLOSED_SERVER #22784, etc.) plus the corrected pnpm workspace-root resolution (#22825) and **minus** the two breaking changes from 8.1.1 (es-module-lexer 2.2.0 WebAssembly regression and #22687 multi-null-byte escape). The skill previously recommended 8.1.1 in the immediately-prior update; that recommendation is **withdrawn** as of this update — the previous-update's recommendation of 8.1.1 should not be acted on without also taking this update's correction.
 
+**Superseded by 8.1.3 (July 2, 2026):** The 8.1.2 "Recommended Vite version" recommendation above is now superseded by [Vite 8.1.3](#vite-813-july-2-2026--patch-release-with-es-module-lexer-230), which retains all of 8.1.2's contents **plus** the four 8.1.3 fixes (most importantly the `es-module-lexer` 2.1.0 → 2.3.0 bump in PR #22838, which removes the need for the 2.1.0 pin that 8.1.2 was forced into and brings the actual fix for the >~4 MB chunk issue that motivated the 8.1.2 revert). **Go 8.1.0 → 8.1.3 directly, or 8.1.2 → 8.1.3 for the four extra fixes.** Nothing in 8.1.2 changes; 8.1.3 is a pure additive patch on top.
+
+
+### Vite 8.1.3 (July 2, 2026) — Patch Release with es-module-lexer 2.3.0
+
+Vite 8.1.3 ([npm `latest` pointer moved 2026-07-02T04:45:03Z](https://www.npmjs.com/package/vite), 6 commits since 8.1.2, all bug fixes) is the **new recommended Vite version** as of this update. The headline is that 8.1.2's es-module-lexer 2.1.0 pin is no longer needed — **es-module-lexer 2.3.0** now ships the actual fix for the `WebAssembly.Memory.grow()` regression that 2.2.0 introduced and that 8.1.2 reverted around.
+
+**Headline — `es-module-lexer` 2.1.0 → 2.3.0 (PR [#22838](https://github.com/vitejs/vite/pull/22838), merged 2026-07-02T02:57:23Z, fixes [#22750](https://github.com/vitejs/vite/issues/22750)):**
+
+Vite 8.1.3 bumps `es-module-lexer` from `^2.1.0` (the 8.1.2 pin) to `2.3.0`. The 2.3.0 release ([es-module-lexer tag `2.3.0`, commit `dbac1c30c2`](https://github.com/guybedford/es-module-lexer/releases/tag/v2.3.0), cut 2026-07-02T01:13:23Z) ships **the actual fix for the `WebAssembly.Memory.grow(): Maximum memory size exceeded` regression** that caused Vite 8.1.1 to fail on prod output chunks >~4 MB and forced 8.1.2 to revert to 2.1.0. The fix is [#217](https://github.com/guybedford/es-module-lexer/pull/217) (es-module-lexer, merged 2026-07-02T00:52:30Z) — allows the WASM memory to grow beyond the initial 4 MB limit when sources exceed that size. 2.3.0 also adds [#211](https://github.com/guybedford/es-module-lexer/pull/211) — a minimal build exposed as `es-module-lexer/minimal` for es-module-shims integration (low-impact for Vite users; Vite doesn't import the minimal build).
+
+**Why this matters:** 8.1.2 was the recommended version only because it pinned `es-module-lexer` to 2.1.0 to dodge the 2.2.0 regression. Projects that hit the >~4 MB chunk issue on 8.1.1 (most production React apps with `lodash`, `monaco-editor`, `@mui/material`, or `react-pdf` combined into a single chunk, plus `@vitejs/plugin-react` + `@rolldown/plugin-babel` with `reactCompilerPreset`) can now upgrade all the way to 8.1.3 with **no known es-module-lexer regressions**. Going 8.1.2 → 8.1.3 should be a no-op for projects that didn't have the >~4 MB issue; for projects that did, it's the actual upgrade path.
+
+**Other fixes in 8.1.3:**
+
+| Fix | Why it matters | PR |
+|---|---|---|
+| **Inlined CSS injected after the shebang line (`es`-format chunks)** | For `es`-format chunks that start with a shebang (`#!/usr/bin/env node\n<body>`), `injectInlinedCSS` was inserting the CSS-injection code *into* the shebang line instead of after it. Result: `#!/usr/bin/env nodeinjectCSS();\n<body>` — the shebang no longer pointed at a valid interpreter, and JS treats the leading `#!...` line as a hashbang comment, so the appended injection code was dropped and the inlined CSS was never injected. The no-newline fallback (`= 0`) was also wrong: it prepended the code *before* the shebang. Fix injects at `newlinePos + 1` and appends a newline if the shebang has no trailing one. Matches the existing `importAnalysisBuild.ts` behavior for the same case. | [#22717](https://github.com/vitejs/vite/pull/22717) (翠, 02:26:49Z, commit `1534d36`) |
+| **Preload CSS for nested dynamic imports (Rolldown bug)** | In a nested dynamic import like `import('a').then(() => import('b'))` where `a` has a CSS dependency, the production build set the outer import's preload deps to `void 0`. The stylesheet for `a` was emitted to disk and listed in `__vite__mapDeps`, but nothing referenced its index, so no `<link>` was created and the CSS never loaded in production. Dev was unaffected (CSS injected by JS there). Root cause: Rolldown wraps the whole `import().then()` (from rolldown#8328 to tree-shake `import().then((m) => m.prop)`), which nests the inner `__VITE_PRELOAD__` marker before the outer one; the next-marker pairing picked the inner marker for both imports and the second write overwrote the first. Fix matches markers with a stack in a single pass (they nest like balanced brackets). Only affects Rolldown-backed builds (i.e., Vite 8+); Rollup-era Vite was unaffected because the legacy wrappe left `.then()` outside the `__vitePreload(...)` wrapper, keeping markers interleaved correctly. | [#22759](https://github.com/vitejs/vite/pull/22759) (翠, 03:55:06Z, fixes #22700, closes #22721) |
+| **SSR correct stacktrace column position for first line** | Vite's SSR stacktrace mapping applied the wrong column offset when the stack frame pointed at the first line of the source, producing off-by-one or zero column positions in error overlay. | [#22828](https://github.com/vitejs/vite/pulls/22828) (翠, 02:19:11Z, fixes [#19627](https://github.com/vitejs/vite/issues/19627)) |
+
+**Who should upgrade to 8.1.3:**
+
+- **Anyone on Vite 8.1.0 or 8.1.1** who was holding back on 8.1.2 because of the >~4 MB chunk crash — go 8.1.0 → 8.1.3 directly (you get all of 8.1.1's intended fixes plus all of 8.1.3's, with no known es-module-lexer regressions).
+- **Anyone on Vite 8.1.2** — the upgrade is safe and you get the four bug fixes above. Particularly relevant if you ship a service worker that starts with a shebang, a nested dynamic import with CSS deps behind Rolldown, or rely on SSR error overlay column positions.
+- **Anyone on Vite 8.1.1** — **skip 8.1.2** and go straight to 8.1.3. There's no scenario where 8.1.2 is preferable to 8.1.3.
+
+**Sources:**
+- [Vite 8.1.3 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.3)
+- [Vite 8.1.3 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.1.3/packages/vite/CHANGELOG.md)
+- [PR #22838 — `fix(deps): bump es-module-lexer to 2.3.0`](https://github.com/vitejs/vite/pull/22838)
+- [es-module-lexer 2.3.0 release](https://github.com/guybedford/es-module-lexer/releases/tag/v2.3.0)
+- [es-module-lexer #217 — `fix: allow wasm memory growth for sources over ~4MB`](https://github.com/guybedford/es-module-lexer/pull/217)
+- [Issue #22750 — `Dev server corrupts a method named "import"` (the root es-module-lexer regression that motivated 2.2.0 → 2.1.0 revert in 8.1.2)](https://github.com/vitejs/vite/issues/22750)
+- [PR #22717 — `fix(css): inject inlined CSS after the shebang line`](https://github.com/vitejs/vite/pull/22717)
+- [PR #22759 — `fix: preload css for nested dynamic imports`](https://github.com/vitejs/vite/pull/22759)
+- [PR #22828 — `fix(ssr): correct stacktrace column position for first line`](https://github.com/vitejs/vite/pull/22828)
+
+**Recommended Vite version for new projects (July 2, 2026):** **Vite 8.1.3** — supersedes both 8.1.1 and 8.1.2 as the recommended Vite version. 8.1.3 contains all of 8.1.2's contents (the `resolve.tsconfigPaths` CSS regression fix #22775, Bundled Dev Mode fixes #22797/#22745, sourcemap field #22782, ERR_CLOSED_SERVER #22784, the corrected pnpm workspace-root resolution #22825, etc.) **plus** the four 8.1.3 fixes (`es-module-lexer` 2.1.0 → 2.3.0 in PR #22838, which removes the need for the 2.1.0 pin and brings the >~4 MB chunk fix in; CSS-after-shebang injection in #22717; nested-dynamic-import CSS preload in #22759; SSR stacktrace column position in #22828). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.3 (or 8.1.2 → 8.1.3). The 8.1.2 recommendation is superseded by 8.1.3; nothing about 8.1.2 changes, 8.1.3 just adds four fixes on top.
 ## Next.js Configuration
 
 ### `next.config.ts`
