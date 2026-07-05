@@ -735,6 +735,54 @@ const form = useForm({
 })
 ```
 
+## `React.SubmitEvent` vs Deprecated `React.FormEvent` (React 19.2.10+)
+
+`React.FormEvent` and `React.FormEventHandler` were **deprecated in React 19.2.10** in favor of `React.SubmitEvent` and `React.SubmitEventHandler`. The old types still work but trigger a deprecation warning on every form `onSubmit` handler. Next.js 16.3.0-canary.77+ (PR [#95453](https://github.com/vercel/next.js/pull/95453) by M4cM4rco) updated the official form-handling docs to use `React.SubmitEvent`; the skill's `api.md` chat-stream example was updated to match.
+
+**Use `React.SubmitEvent<HTMLFormElement>` (React 19.2.10+):**
+
+```tsx
+// ✅ Recommended — React 19.2.10+
+'use client'
+import { useState } from 'react'
+
+async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
+  e.preventDefault()
+  // ...
+}
+
+export function MyForm() {
+  return <form onSubmit={handleSubmit}>{/* ... */}</form>
+}
+```
+
+**Avoid `React.FormEvent<HTMLFormElement>` (deprecated):**
+
+```tsx
+// ❌ Deprecated — still works but emits a deprecation warning
+async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  e.preventDefault()
+  // ...
+}
+```
+
+**Migration scope:**
+
+- Only `<form onSubmit>` handlers are affected. `onChange`, `onBlur`, `onInput`, `onFocus`, etc. continue to use `ChangeEvent`, `FocusEvent`, `FormEvent` (the `FormEvent` here refers to the broader type that includes focus/change events, not the deprecated submit-specific alias — confusingly the same name).
+- The `FormEventHandler` type alias was renamed to `SubmitEventHandler` for parity. Search for `: React.FormEventHandler` and `React.FormEvent<` in your codebase to find migration targets.
+- `SubmitEvent` is available from `react` (not `react-dom`) — same import path as the deprecated `FormEvent` was.
+
+**Codebase grep for migration:**
+
+```bash
+# Find all deprecated React.FormEvent usages
+grep -rn "React\.FormEvent" --include="*.tsx" --include="*.ts" src/
+
+# Find deprecated React.FormEventHandler usages
+grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
+```
+
+**Source:** Next.js [PR #95453 — `docs: Update FormEvent to SubmitEvent in form handling example (deprecated in React 19.2.10+)`](https://github.com/vercel/next.js/pull/95453) · [react-router issue #14795](https://github.com/remix-run/react-router/issues/14795) for the cross-framework context.
 ## Common Mistakes
 
 - **Using `any` for form data** — always use Zod `z.infer<typeof schema>`

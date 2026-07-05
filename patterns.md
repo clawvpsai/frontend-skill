@@ -1409,6 +1409,33 @@ async function getBlogPost(slug: string) {
 
 **Source:** [PR #95311 — `docs: recommend explicit cacheLife and clarify overriding built-in cache profiles`](https://github.com/vercel/next.js/pull/95311) · [Commit `b3118fca`](https://github.com/vercel/next.js/commit/b3118fca)
 
+### `cacheLife` Profile Typing — `ResolvedCacheLifeProfiles` Threads `Required<CacheLife>.default` Through the Pipeline (16.3.0-canary.77+, [PR #95428](https://github.com/vercel/next.js/pull/95428) by unstubbable)
+
+Until canary.77, the resolved `cacheLife` profile set was typed as `Partial<CacheLife>` with a required-but-optional `default` — meaning the type system would not catch a missing `default` profile and the runtime had to fall back to `assertDefaultCacheLife()` plus optional-chaining + per-`cacheLife()`-presence `InvariantError` checks. PR #95428 replaces that whole dance with a new `ResolvedCacheLifeProfiles` type whose `default` is **non-optional** (`Required<CacheLife>['default']`).
+
+**What changed in the type pipeline:**
+
+- **Config-complete (`packages/next/src/server/config/complete.ts`):** resolves user-provided `cacheLife` profiles together with the five built-ins (`default-profile`, `hours`, `days`, `weeks`, `max`) into a single non-optional map keyed by profile name.
+- **Render options (`packages/next/src/server/route-modules/render.ts`):** the resolved map is passed straight through as `cacheLifeProfiles`.
+- **Work store (`packages/next/src/server/app-render/work-store.ts`):** carries the same map so a `'use cache'` function can look up its profile by name without re-resolving.
+- **Build / export / dev workers (`packages/next/src/build/templates/app-page.ts`):** all three templates instantiate the typed map instead of `Partial<CacheLife>`.
+- **Proxy / middleware work store:** a separate sentinel whose `default` getter throws if ever read — proxy/middleware never uses `cacheLife`, so the type system enforces that the unused field cannot be accessed.
+
+**What disappeared:**
+
+- The runtime `assertDefaultCacheLife()` function — no longer needed; the type guarantees `default` is present.
+- `InvariantError` throws in the `cacheLife()` lookup helper for "profile name not in map" — replaced by a type-level guarantee plus a simple runtime check (the profile was never present at runtime either, but now the type prevents the mistake from compiling).
+- Every optional-chain (`profiles?.default`) at the call sites — the type is non-optional.
+
+**Why this matters for users:**
+
+- If you only call `cacheLife('hours')` or other named profiles, **nothing changes for you**. The runtime behavior is identical.
+- If you were somehow relying on `cacheLifeProfiles?.default` being possibly-undefined (e.g. in a custom cache handler that read it directly from the work store), you'll need to drop the `?.` — it's now non-optional.
+- The proxy/middleware work-store sentinel means **proxy/middleware code paths cannot accidentally read or write `cacheLife` profiles** — the getter throws if accessed. This is a stronger guarantee than what previously existed (where the field was just absent).
+- Less Next.js internal code overall — the runtime check is faster too (no `assertDefaultCacheLife` import + invariant creation).
+
+**Source:** [PR #95428 — `Type resolved cacheLife profiles, dropping runtime asserts`](https://github.com/vercel/next.js/pull/95428)
+
 ### `useEffectEvent` — Stable Event Handlers in Effects (React 19.2)
 
 `useEffectEvent` was previously experimental (`useEffectEvent` from `react experimental`) and is now **stable** in React 19.2. It solves the "stale closure" problem in `useEffect` — you can define event handlers inside `useEffect` that always see the latest values without needing them in the dependency array:

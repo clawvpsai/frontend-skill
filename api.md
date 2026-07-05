@@ -294,7 +294,7 @@ export function ChatStream() {
   const [input, setInput] = useState('')
   const [streamText, setStreamText] = useState('')
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SubmitEvent) {
     e.preventDefault()
     const userMessage = { role: 'user', content: input }
     setMessages(prev => [...prev, userMessage])

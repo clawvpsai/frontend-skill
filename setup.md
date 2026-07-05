@@ -1075,6 +1075,37 @@ The `cacheHandlers` config validation previously used `/[a-z-]/`, which only che
 
 **Source:** [PR #95358 — `fix(config): correctly validate cacheHandlers names`](https://github.com/vercel/next.js/pull/95358) · Commit `8688f98b1e` (2026-07-02T16:12:24Z) · Files: `packages/next/src/server/config-schema.ts` (validation regex) + `packages/next/src/server/config.test.ts` (regression tests).
 
+## `experimental.serverComponentsHmrCancellation` — Stale-Refresh Cancellation Flag (16.3.0-canary.78+, [PR #95462](https://github.com/vercel/next.js/pull/95462) by unstubbable, merged 2026-07-04T12:23:36Z)
+
+First PR in a series that lets `next dev` cancel an in-flight Server Components HMR refresh once a newer refresh supersedes it. **The flag itself is intentionally inert on its own** — flipping it to `true` in canary.78 does nothing observable yet. The plumbing (runtime config, env var, render options, build template) lands now so a follow-up PR can wire the actual cancellation logic without churning public config.
+
+**What ships in canary.78:**
+
+- `experimental.serverComponentsHmrCancellation?: boolean` — defaults `false`. Add to your `next.config.ts`:
+  ```ts
+  // next.config.ts
+  export default {
+    experimental: {
+      serverComponentsHmrCancellation: true,
+    },
+  } satisfies import('next').NextConfig
+  ```
+- `process.env.__NEXT_SERVER_COMPONENTS_HMR_CANCELLATION` — runtime override, used by the `test-cache-components-dev` CI shard to force the flag on and by `test-cache-components-prod` as a guard. Leave this alone unless you're running the Next.js test suite.
+- `RenderOptions.serverComponentsHmrCancellation` — plumbed from config through `base-server.ts` into the app-page build template.
+- Production SSR template hardcodes `false` because edge rendering does not expose the Node response-close signal that the future cancellation logic relies on. The flag is dev-only meaningful; production SSR ignores it.
+
+**Why it ships as inert plumbing:**
+
+The rollout mirrors the `cachedNavigations` pattern from earlier in 16.3 — land the type + config + env var + render option + build-template wiring first so apps can opt in early and Next.js can collect telemetry on the config shape, then enable the actual behavior in a follow-up once the cancellation mechanism is finalized. This avoids a "toggle in the dark" rollout where users flip a flag and get inconsistent behavior depending on which canary build they're running.
+
+**Who needs to know:**
+
+- **App authors:** nothing to do today. The flag is opt-in and a no-op until the follow-up lands. Tracking is for awareness only — when the behavior PR lands, your `next dev` will start cancelling stale Server Component refreshes if you have the flag on (likely recommended default going forward).
+- **Next.js contributors / test runners:** set `__NEXT_EXPERIMENTAL_SERVER_COMPONENTS_HMR_CANCELLATION=1` in your dev CI shard to exercise the flag-on path; the production shard uses the same env var as a guard against accidental production enablement (since edge SSR hardcodes `false`).
+- **Anyone debugging dev-only HMR stale-update bugs:** once the follow-up lands, set the flag to `true` to opt into the new cancellation behavior. Default remains `false` for one or two more canaries until stability is confirmed.
+
+**Source:** [PR #95462 — `Add serverComponentsHmrCancellation experimental flag`](https://github.com/vercel/next.js/pull/95462) · Commit `4eb5e7b1f1` (2026-07-04T12:23:36Z) · Files: `packages/next/src/server/config-shared.ts` (config schema) + `packages/next/src/server/base-server.ts` (render options) + `packages/next/src/build/templates/app-page.ts` (build template — hardcodes `false` for prod SSR) + `packages/next/src/server/app-render/rsc/entrypoints/rsc.ts` + `packages/next/src/server/app-render/work-unit-async-storage.external.ts` (dev-only plumbing).
+
 ## Package Manager
 
 Prefer `pnpm` for monorepos and workspaces:
