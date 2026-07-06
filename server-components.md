@@ -953,6 +953,143 @@ export function CreatePostForm() {
 - **`use()` for Context without `'use client'`** — this only works in Client Components; always add `'use client'` when consuming Context with `use()`
 - **`use cache` surviving deploys without explicit invalidation** — cache persists across deployments; add deploy-time invalidation if fresh data is needed immediately after deploy
 
+## Cache Components — 16.3 Canary Hardening (canary.72–78, June 30–July 4, 2026)
+
+Eight material PRs landed in 16.3 canary.72 → canary.78 that refine how `'use cache'`, `cacheLife()`, and instant validation behave. They are not breaking changes for normal usage, but they remove silent footguns and tighten the type surface:
+
+### 1. `'use client'` `await params`/`await searchParams` no longer crash dev instant validation — canary.72
+
+Client components that read `await props.params` or `await props.searchParams` via `use()` on a Cache Components (`cacheComponents: true`) dynamic route used to crash in dev instant validation with `Invariant: Expected to have a workUnitStore that provides validationSampleTracking. This is a bug in Next.js.` Dev-only — build passes, so CI suites miss it. Fixed in [PR #95289](https://github.com/vercel/next.js/pull/95289) by Janka Uryga (canary.72, 2026-06-30T14:38:02Z). The fix removes the validation-tracking case from `createParamsFromClient` and gates it on `workUnitStore.validationSamples` for search-params.
+
+**Practical impact:** if you read `await params` in a `'use client'` component on a dynamic route, you no longer see the redbox. This was the 6th silent-corruption fix in the past week.
+
+### 2. Constants renamed: `DYNAMIC_EXPIRE` → `MIN_PRERENDERABLE_EXPIRE` (300s) and `DYNAMIC_STALE` → `MIN_PREFETCHABLE_STALE` (30s) — canary.74
+
+The internal thresholds that gate when a `'use cache'` entry is treated as dynamic (300s) or as eligible for prefetching (30s) were renamed for clarity. **No behavior change** — only the symbol names changed. Source: [PR #95361](https://github.com/vercel/next.js/pull/95361) by Hendrik Liebau, merged 2026-07-01T18:33:02Z.
+
+```ts
+// Before (canary.73 and earlier) — these names no longer exist:
+// import { DYNAMIC_EXPIRE, DYNAMIC_STALE } from '...' // ❌ won't compile
+
+// After (canary.74+) — same numeric values, clearer names:
+// MIN_PRERENDERABLE_EXPIRE = 300  (5 minutes — gate for prerenderability)
+// MIN_PREFETCHABLE_STALE  = 30   (30 seconds  — gate for prefetch eligibility)
+```
+
+**Practical impact:** if you import these constants anywhere (advanced — most apps don't), update the import. If you've pinned to canary.73, also bump.
+
+### 3. New "Link Data" validation errors for `params`/`searchParams` accessed outside `<Suspense>` under `partialPrefetching` — canary.73
+
+On `partialPrefetching: true` (or per-segment `prefetch = 'partial'` / `'unstable_eager'`) routes, `<Link>` prefetches an App Shell that cannot access link data. The instant validation system in canary.73 adds three new blocking-route errors to catch this:
+
+| Error | Builder | Trigger |
+|---|---|---|
+| 1390 | `createLinkBodyErrorInNavigation` | `params`/`searchParams` accessed in a body Suspense boundary that doesn't include them |
+| 1391 | `createLinkMetadataError` | `params`/`searchParams` accessed in `generateMetadata` outside `<Suspense>` |
+| 1392 | `createLinkViewportError` | `params`/`searchParams` accessed in viewport boundary code |
+
+New `DynamicHoleKind.Link = 1` in `packages/next/src/server/app-render/dynamic-rendering.ts` (renumbers `Runtime` 1→2 and `Dynamic` 2→3); new `ShellRuntime` stage between `Static` and `Runtime` in `instant-validation.tsx`'s `SEGMENT_STAGE_ORDER`. Detection: if a hole is present in `ShellRuntime` but disappears in `Runtime`, it's link data.
+
+```tsx
+// ❌ Triggers error 1390 on partialPrefetching routes
+async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params  // link data, not in Suspense
+  return <PostBody id={id} />
+}
+
+// ✅ Wrap in Suspense
+async function Page({ params }: { params: Promise<{ id: string }> }) {
+  return (
+    <Suspense fallback={<Skeleton />}>
+      <PostBody params={params} />
+    </Suspense>
+  )
+}
+```
+
+Sources: [PR #95151](https://github.com/vercel/next.js/pull/95151) (Janka Uryga, 2026-07-01T04:36:41Z) + [PR #94595](https://github.com/vercel/next.js/pull/94595) (follow-up for `generateStaticParams`, 2026-07-01T06:59:43Z). Only fires with `cacheComponents: true` and `partialPrefetching: true` (or per-segment `prefetch = 'partial'`).
+
+### 4. Short-`expire` `'use cache'` values now retain across dev reloads — canary.75
+
+Companion to #5: in dev, the built-in default handler now keeps short-`expire` entries for at least `MIN_PRERENDERABLE_EXPIRE` (300s) and re-warms them in the background on every dynamic-request render. Before this PR, a short `expire` meant the next reload regenerated the value from scratch.
+
+```ts
+'use cache'
+cacheLife({ expire: 30 })  // 30 seconds
+export async function getDashboardStats() {
+  // dev: served from cache for 5 minutes (re-warmed in background)
+  // prod: regenerated every 30s as expected
+  return db.stats.findFirst()
+}
+```
+
+Source: [PR #95362](https://github.com/vercel/next.js/pull/95362) by Hendrik Liebau, merged 2026-07-02T09:26:09Z.
+
+### 5. `expire: 0` no longer persists to the default cache handler in production — canary.76
+
+`cacheLife({ expire: 0 })` produces a value that is expired the moment it is produced — the `'use cache'` wrapper regenerates it on every read rather than serving the stored copy. The built-in default handler used to write the never-to-be-served entry anyway; now it skips the `set()` call in production.
+
+```ts
+// lib/feature-flags.ts
+'use cache'
+export async function getFeatureFlags(userId: string) {
+  // expire: 0 keeps the value out of the server-side cache handler
+  // — useful for client-only caching via Cached Navigations / Runtime Prefetches,
+  //   or for opt-out inside a function that has an otherwise normal cacheLife.
+  cacheLife({ expire: 0 })
+  // ...
+}
+```
+
+**What this means:**
+- **Production** (no `__NEXT_DEV_SERVER`): default handler skips the `set()`. Zero round-trip to remote handlers, no stored payload.
+- **Development**: still stores the entry, because the default handler's minimum retention serves the previously cached value across reloads while the entry re-warms in the background.
+- A custom cache handler can opt into the same skip or not — it's per-handler.
+
+Source: [PR #95363](https://github.com/vercel/next.js/pull/95363) by Hendrik Liebau, merged 2026-07-02T11:36:41Z.
+
+### 6. False-positive nested-cache error fixed for a short default profile — canary.76
+
+Overriding the `default` `cacheLife` profile with a short cache life previously made the nested-`'use cache'` error fire in two cases where it should not have:
+
+1. A single non-nested `'use cache'` with no inline `cacheLife()` — the error fired with no nesting at all (killed the build in prod, threw in dev).
+2. A genuinely nested cache where the developer already opted into a short default — the warning was pointless because the default profile already makes every cache a dynamic hole.
+
+The error now requires (a) a dynamic nested cache that propagated its short life upward (`dynamicNestedCacheError` is set) AND (b) the `default` profile is itself prerenderable. Otherwise the short-lived entry is omitted as a dynamic hole instead — exactly as an inline short `cacheLife()` already was.
+
+**Practical impact:** if you set a short `default` cacheLife profile globally, nested caches no longer fail builds. You can use `'use cache'` freely under a short default profile.
+
+Source: [PR #95373](https://github.com/vercel/next.js/pull/95373) by Hendrik Liebau, merged 2026-07-02T11:49:53Z.
+
+### 7. `ResolvedCacheLifeProfiles` — `cacheLife` is now non-optional and the `default` profile is `Required<CacheLife>` — canary.77
+
+The runtime used to assert the default `cacheLife` profile on every `'use cache'` call because the type allowed partial profiles. Config normalization (`assignDefaultsAndValidate`) already guarantees a resolved `default` profile at config-load time, so the type system now reflects that guarantee.
+
+```ts
+// Before (canary.76 and earlier) — runtime asserts and optional chaining everywhere:
+// cacheLifeProfiles?.default?.stale  // runtime checks at every read
+// assertDefaultCacheLife(cacheLifeProfiles) // throws if missing
+
+// After (canary.77+) — type-level guarantee, no runtime asserts:
+// cacheLifeProfiles.default.stale  // direct read, no nullish check needed
+```
+
+**What changed:**
+- New `ResolvedCacheLifeProfiles` type in `packages/next/src/server/config-shared.ts` types the `default` profile as `Required<CacheLife>`.
+- The type is threaded (non-optional) through `NextConfigComplete.cacheLife`, render options, work store, and the build/export/dev workers.
+- `assertDefaultCacheLife` and the per-`cacheLife()` presence `InvariantError` are **deleted** from the runtime.
+- The proxy/middleware work store gets a sentinel whose `default` getter throws if ever read (proxy never reads `cacheLife`).
+
+**Practical impact:** your TS configs compile slightly faster (no extra type narrowing), and you can rely on `cacheLife.default.stale` / `cacheLife.default.expire` existing at runtime. The `cacheLife()` helper no longer throws when the default profile is missing — the type system prevents that path at compile time.
+
+Source: [PR #95428](https://github.com/vercel/next.js/pull/95428) by unstubbable, merged 2026-07-03T19:35:11Z.
+
+### 8. `experimental.serverComponentsHmrCancellation` flag (inert) — canary.78
+
+A new `experimental.serverComponentsHmrCancellation?: boolean` flag was added in canary.78 that **does nothing on its own**. The plumbing is in place; a follow-up PR will use it to cancel a Server Components HMR refresh once a newer refresh supersedes it. Default `false`. Behind `__NEXT_EXPERIMENTAL_SERVER_COMPONENTS_HMR_CANCELLATION` env var for CI. Production SSR hardcodes `false` (edge rendering doesn't expose the Node response-close signal the cancellation relies on).
+
+**Practical impact:** none yet — opt in only if you want to test the upcoming cancellation behavior in dev. Source: [PR #95462](https://github.com/vercel/next.js/pull/95462) by unstubbable, merged 2026-07-04T12:23:35Z.
+
 **Sources:**
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
@@ -960,3 +1097,12 @@ export function CreatePostForm() {
 - [Next.js `revalidateTag`](https://nextjs.org/docs/app/api-reference/functions/revalidateTag)
 - [Next.js `updateTag`](https://nextjs.org/docs/app/api-reference/functions/updateTag)
 - [React 19.2.7 release](https://github.com/facebook/react/releases/tag/v19.2.7)
+- [Next.js PR #95289 — client page params/searchParams dev validation fix](https://github.com/vercel/next.js/pull/95289)
+- [Next.js PR #95361 — DYNAMIC_EXPIRE→MIN_PRERENDERABLE_EXPIRE rename](https://github.com/vercel/next.js/pull/95361)
+- [Next.js PR #95151 — Validate Shell prefetches (Link Data errors 1390-1392)](https://github.com/vercel/next.js/pull/95151)
+- [Next.js PR #94595 — Link Data errors for generateStaticParams](https://github.com/vercel/next.js/pull/94595)
+- [Next.js PR #95362 — short-expire dev reload retention](https://github.com/vercel/next.js/pull/95362)
+- [Next.js PR #95363 — skip expire:0 set() in prod](https://github.com/vercel/next.js/pull/95363)
+- [Next.js PR #95373 — false-positive nested-cache error fix](https://github.com/vercel/next.js/pull/95373)
+- [Next.js PR #95428 — ResolvedCacheLifeProfiles typing](https://github.com/vercel/next.js/pull/95428)
+- [Next.js PR #95462 — serverComponentsHmrCancellation flag](https://github.com/vercel/next.js/pull/95462)

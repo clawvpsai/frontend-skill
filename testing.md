@@ -975,9 +975,124 @@ Most projects upgrade with **zero code changes** — the public API is the same.
 npx vitest migrate
 ```
 
-### Upcoming (Vitest 5.0-beta)
+### Upcoming (Vitest 5.0-beta.6, July 6, 2026)
 
-Vitest 5.0 is on beta. Three beta releases have shipped between May 19 and June 15, 2026 (beta.3 on May 19, beta.4 on June 1, beta.5 on June 15) and the breaking-change list has grown materially. **The list below supersedes anything earlier.** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
+Vitest 5.0 is on beta.6 (published 2026-07-06T06:52:52Z). Four beta releases have shipped between May 19 and July 6, 2026 (beta.3 on May 19, beta.4 on June 1, beta.5 on June 15, **beta.6 on July 6**) and the breaking-change list has grown materially. **The list below supersedes anything earlier.** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
+
+#### New breaking changes in beta.6 (July 6, 2026) — **MUST READ before bumping**
+
+**1. `screenshotDirectory` config for `browser.expect.toMatchScreenshot` — [#10592](https://github.com/vitest-dev/vitest/issues/10592)** by @macarie
+
+A new `screenshotDirectory` config option for `browser.expect.toMatchScreenshot`. If you set the screenshot output directory in your Visual Regression tests, the field is renamed / made required. The default is no longer implicit.
+
+```ts
+// vitest.browser.config.ts
+export default defineConfig({
+  test: {
+    browser: {
+      expect: {
+        toMatchScreenshot: {
+          // NEW (beta.6) — explicit path:
+          screenshotDirectory: './test/screenshots',
+        },
+      },
+    },
+  },
+})
+```
+
+**2. `vi.clearMocks()` runs by default before each test — [#10613](https://github.com/vitest-dev/vitest/issues/10613)** by @sheremet-va
+
+Mocks are now cleared by default before every test (analogous to `clearMocks: true`). This changes test behavior for any suite that relied on mock state persisting between tests.
+
+```ts
+// Before (beta.5 and earlier) — mock call counts persist between tests:
+test('a', () => { vi.mocked(fn).mockReturnValue(1); expect(fn).toHaveBeenCalled() })
+test('b', () => { /* fn.mock.calls is still 1 from test 'a' */ })
+
+// After (beta.6+) — call counts auto-cleared:
+//   If you relied on this behavior, add `clearMocks: false` in config
+//   or wrap state setup in beforeEach().
+```
+
+**3. JSON / JUnit / HTML reporter output defaults to `.vitest/` — [#10621](https://github.com/vitest-dev/vitest/issues/10621) + [#10620](https://github.com/vitest-dev/vitest/issues/10620)**
+
+Reporter output files are now written to `.vitest/` (not the project root):
+
+| Reporter | Before (beta.5) | After (beta.6+) |
+|---|---|---|
+| `json` | `./vitest-results.json` | `./.vitest/vitest-results.json` |
+| `junit` | `./junit.xml` | `./.vitest/junit.xml` |
+| `html` (UI) | `./html/` | `./.vitest/html/` |
+
+**4. `webdriverio` provider removed — [#10675](https://github.com/vitest-dev/vitest/issues/10675)** by @sheremet-va
+
+The `webdriverio` provider package is no longer published as part of `@vitest/browser`. If you were using it as a Browser Mode provider, switch to `playwright` (recommended), `preview`, `puppeteer`, or the (still experimental) `native playwright` provider.
+
+```ts
+// vitest.browser.config.ts
+export default defineConfig({
+  test: {
+    browser: {
+      // ❌ No longer available:
+      // provider: 'webdriverio',
+      // ✅ Switch to:
+      provider: 'playwright',  // or 'preview' / 'puppeteer'
+    },
+  },
+})
+```
+
+**5. `@sinonjs/fake-timers` updated — supports mocking `Temporal` — [#10654](https://github.com/vitest-dev/vitest/issues/10654)**
+
+The bundled `@sinonjs/fake-timers` is updated. New: full `Temporal` API mocking support (`Temporal.Now`, `Temporal.PlainDate`, etc.). If you have a custom `vi.useFakeTimers` config that referenced internal sinon fields, audit it.
+
+**6. Node 26: no more `localStorage` warnings — [#10293](https://github.com/vitest-dev/vitest/issues/10293)**
+
+`localStorage` warnings are no longer emitted on Node 26 (they were noisy false-positives on the latest Node). If you were silencing them with `onConsoleLog`, you can remove the filter. Worker startup also fails gracefully instead of crashing on transient errors.
+
+**7. UI: API access hardened — [#10583](https://github.com/vitest-dev/vitest/issues/10583)**
+
+The Vitest UI API endpoint tightens access controls. If you run the UI exposed on a non-localhost host, the hardening restricts endpoints that were previously accessible. Combine with `api.allowWrite: false, api.allowExec: false` (already required by the CVSS 9.8 RCE advisory, GHSA-g8mr-85jm-7xhm) when exposing the UI to a network.
+
+**8. New: `vi.when()` helper — [#10174](https://github.com/vitest-dev/vitest/issues/10174)** by @macarie
+
+A new `vi.when()` helper for conditional mocking based on test environment / arguments. Use it for environment-aware mocks (e.g., a stub that returns different values in jsdom vs. node). Non-breaking — opt-in.
+
+**Sources for beta.6:**
+- [Vitest 5.0.0-beta.6 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6)
+- [Vitest 5 migration guide (beta)](https://main.vitest.dev/guide/migration)
+
+#### Cross-version bug fixes in 4.1.10 + 3.2.7 (July 6, 2026)
+
+Two security / correctness fixes backported from beta.6 to the stable v4 + v3 lines:
+
+- **Browser Mode: fs access check in builtin commands — [#10680](https://github.com/vitest-dev/vitest/issues/10680)** — vitest 4.1.10
+- **vm: external module resolve error with deps optimizer query for encoded URI — [#10661](https://github.com/vitest-dev/vitest/issues/10661)** — vitest 4.1.10
+- **Browser Mode: fs access check in builtin commands — [#10679](https://github.com/vitest-dev/vitest/issues/10679)** — vitest 3.2.7
+
+**Action:** bump `vitest` and `@vitest/browser` to 4.1.10 (or 3.2.7 for legacy projects) when running in CI on a shared runner. The fs-access check closes a class of unintended file-system reads through Browser Mode's `cdp()` and builtin commands.
+
+#### Version pinning guidance (updated July 6, 2026)
+
+```jsonc
+// package.json
+{
+  "devDependencies": {
+    // For most projects (stable):
+    "vitest": "4.1.10",
+    "@vitest/browser": "4.1.10",
+    "@vitest/coverage-v8": "4.1.10",
+
+    // For early-adopter projects (beta; track breaking changes):
+    // "vitest": "5.0.0-beta.6",
+    // "@vitest/browser": "5.0.0-beta.6",
+
+    // For legacy Next.js 14 / Vite 5 projects:
+    // "vitest": "3.2.7"
+  }
+}
+```
 
 ### Hard requirements (beta.3 — [#10178](https://github.com/vitest-dev/vitest/issues/10178))
 
@@ -1158,7 +1273,7 @@ If your project uses `vitest bench` as a CI gate, the new API requires updating 
 - **Running Browser Mode tests without `npx playwright install`** — provider needs the browser binaries; CI must run this first
 - **Mixing `environment: 'jsdom'` with `browser.enabled: true`** — pick one per config file; browser mode does not use `environment`
 - **Running Browser Mode on a network-exposed host (`--browser.api.host=0.0.0.0`)** — CVSS 9.8 RCE on vitest < 4.1.8 via the cdp() RPC + CDP `Page.setDownloadBehavior` chain. Keep Browser Mode on localhost, set `api.allowWrite: false, api.allowExec: false` in CI, upgrade to vitest ≥ 4.1.8. See `security.md` § Vitest Browser Mode CVEs.
-- **Mixing vitest and @vitest/browser versions** — cdp() fix in 4.1.8 only protects if @vitest/browser is also ≥ 4.1.8. Pin them to matching versions: `"vitest": "4.1.9", "@vitest/browser": "4.1.9"`
+- **Mixing vitest and @vitest/browser versions** — cdp() fix in 4.1.8+ only protects if @vitest/browser is also at the matching version. Pin them together: `"vitest": "4.1.10", "@vitest/browser": "4.1.10"` (4.1.10 closed a second class of fs-access via builtin commands — backport of beta.6's #10680).
 
 **Sources:**
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
@@ -1175,3 +1290,6 @@ If your project uses `vitest bench` as a CI gate, the new API requires updating 
 - [Vitest 5.0.0-beta.5 release notes — June 15, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.5)
 - [Vitest 5.0.0-beta.4 release notes — June 1, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4)
 - [Vitest 5.0.0-beta.3 release notes — May 19, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.3)
+- [Vitest 5.0.0-beta.6 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6)
+- [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10)
+- [Vitest 3.2.7 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v3.2.7)
