@@ -1106,6 +1106,16 @@ The rollout mirrors the `cachedNavigations` pattern from earlier in 16.3 — lan
 
 **Source:** [PR #95462 — `Add serverComponentsHmrCancellation experimental flag`](https://github.com/vercel/next.js/pull/95462) · Commit `4eb5e7b1f1` (2026-07-04T12:23:36Z) · Files: `packages/next/src/server/config-shared.ts` (config schema) + `packages/next/src/server/base-server.ts` (render options) + `packages/next/src/build/templates/app-page.ts` (build template — hardcodes `false` for prod SSR) + `packages/next/src/server/app-render/rsc/entrypoints/rsc.ts` + `packages/next/src/server/app-render/work-unit-async-storage.external.ts` (dev-only plumbing).
 
+### Activation — canary.79 + canary.80 wire the cancellation through
+
+The canary.78 flag is no longer inert — two follow-up PRs landed in **canary.79 (July 7, 2026)** and **canary.80 (July 8, 2026)** that wire the actual cancellation behaviour:
+
+- **[PR #95463](https://github.com/vercel/next.js/pull/95463) `Abort superseded Server Components HMR requests on the client` (canary.79, andrewimm)** — when `experimental.serverComponentsHmrCancellation: true`, the client now aborts an in-flight Server Components HMR fetch when a newer edit lands. Uses an `AbortController` per refresh + a version-stamped HMR route param so the dev server can detect stale work.
+- **[PR #95486](https://github.com/vercel/next.js/pull/95486) `Cancel a superseded Server Components HMR refresh's server-side work` (canary.80, unstubbable)** — server-side counterpart. The dev render pipeline now respects the client abort signal and stops rendering work for a superseded refresh; previously the server kept rendering until completion and discarded the result.
+- Both gated on `process.env.__NEXT_EXPERIMENTAL_SERVER_COMPONENTS_HMR_CANCELLATION` for the CI `test-cache-components-dev` shard, with a guard in `test-cache-components-prod`.
+
+**Practical:** opt in only if you're testing the cancellation path on a non-shipping project — the flag is still experimental, and edge-rendered server components don't expose the Node response-close signal that the cancellation relies on (production SSR hardcodes `false`). For most projects, default `false` is correct until the experimental flag is documented as production-safe in a future stable.
+
 ## Package Manager
 
 Prefer `pnpm` for monorepos and workspaces:
@@ -1377,3 +1387,74 @@ my-app/
 - **`next lint` in Next.js 16** — removed; use Biome (`npx biome check`) or ESLint (`npx eslint .`) directly instead
 - **`target: "ES2022"`** — update to `"ES2025"` for Next.js 16 / React 19 compatibility
 - **React Compiler + Vite 8 + plugin-react v6** — `react({ babel: { plugins: [...] } })` no longer works; use `react({ compiler: true })` instead (oxc-based)
+
+
+## Next.js 16.3.0-canary.79–83 — Material PRs (July 7–10, 2026)
+
+**Five canaries shipped between this skill's last update (July 6) and now (July 12).** The two most impactful material PRs are the canary.78 `experimental.serverComponentsHmrCancellation` activation pair (#95463 + #95486); the rest are smaller but several are worth knowing about. Detailed in the relevant topic files where indicated.
+
+### canary.79 (July 7, 2026, tag cut 00:01Z)
+
+Material PRs:
+
+- **[PR #95463](https://github.com/vercel/next.js/pull/95463) `Abort superseded Server Components HMR requests on the client`** (andrewimm) — completes the canary.78 `experimental.serverComponentsHmrCancellation` flag by wiring the actual client-side cancellation. See `experimental.serverComponentsHmrCancellation` section above for full details.
+- **[PR #95532](https://github.com/vercel/next.js/pull/95532) `Upgrade React from 3508aee6-20260702 to 23def8fd-20260706`** — vendor React bump. Brings 3 upstream commits (incl. devtools-facade + chrome-devtools-mcp E2E).
+- **[PR #95235](https://github.com/vercel/next.js/pull/95235) `docs: remove incorrect statement that force-cache is the default`** — docs-only clarification. Force-cache is NOT the default for `'use cache'` (default is `'default-profile'`); the docs were wrong.
+- **[PR #95497](https://github.com/vercel/next.js/pull/95497) `turbo-persistence: skip directory fsync on Windows`** — Turbopack persistence-layer perf fix for Windows users; avoids the directory-level fsync that costs ~50–100ms per build on Windows filesystems.
+- **[PR #95521](https://github.com/vercel/next.js/pull/95521) `Disable supportsImmutableAssets with config.output`** — when `output: 'export'` / `'standalone'` is set, `supportsImmutableAssets` is now disabled automatically. Without this, immutable-asset hashing could disagree with the bundler's per-build content-hash output and serve stale assets.
+- **[PR #93334](https://github.com/vercel/next.js/pull/93334) `Turbopack: add all keys to dynamic exports before sealing the object`** — Turbopack internal fix; reduces HMR/Hydration mismatches from dynamic-export key drift.
+- **[PR #95446](https://github.com/vercel/next.js/pull/95446) `Also rewrite requires in page templates with Webpack`** — companion to the canary.77 Turbopack-only `.browser.ts(x)` rewrite work; Webpack page templates now get the same `.browser` resolution. Improves webpack bundle parity with Turbopack.
+- **[PR #95306](https://github.com/vercel/next.js/pull/95306) `otel: Use correct parent span for Node.js middleware`** — OTel spans for Node.js middleware now nest under the request span instead of leaking as root spans. Important if you use OpenTelemetry for distributed tracing on Node.js middleware.
+- **[PR #95357](https://github.com/vercel/next.js/pull/95357) `Fix instrumentation hook awaiting for middleware with adapters`** — when running on a Build Adapter (OpenNext / Cloudflare), `register()` in `instrumentation.ts` for middleware was hanging forever because the adapter didn't signal completion. Now the adapter propagates the await correctly.
+- **[PR #95378](https://github.com/vercel/next.js/pull/95378) `[fragment-scroll] Enable new scroll handler by default`** — fragment-scroll handler (`#section` URL hash on the same page) is now default-on. The old handler is removed. The new handler correctly handles View Transitions + Cache Components shells.
+- **[PR #95526](https://github.com/vercel/next.js/pull/95526) `fix(dev-overlay): increase fix card grid row gap to clear floating Copy prompt button`** — Instant Insights dev-overlay polish (the renamed `Copy prompt` button was overlapping the fix-card row).
+
+### canary.80 (July 8, 2026, tag cut 00:00Z)
+
+Material PRs:
+
+- **[PR #95486](https://github.com/vercel/next.js/pull/95486) `Cancel a superseded Server Components HMR refresh's server-side work`** (unstubbable) — server-side counterpart to #95463. See `experimental.serverComponentsHmrCancellation` section above.
+- **[PR #95547](https://github.com/vercel/next.js/pull/95547) `Run instrumentation for Node.js Middleware without Adapter`** — when running Node.js middleware on Vercel (no Build Adapter), `register()` in `instrumentation.ts` now actually runs. Previously this only ran when an adapter was present.
+- **[PR #95118](https://github.com/vercel/next.js/pull/95118) `Propagate maxDuration to edge adapter outputs`** — `export const maxDuration = N` (route segment config) now correctly flows through to edge adapter builds. Before this, `maxDuration` was silently dropped on edge runtime and only respected on Node runtime.
+- **[PR #95536](https://github.com/vercel/next.js/pull/95536) `Upgrade to swc 72 and rust-react-compiler`** — SWC major bump + bundles the latest rust-react-compiler into Next.js. ~20–50% build perf gain on large React apps (v0.app benchmarks). Aligns with `experimental.turbopackRustReactCompiler`.
+- **[PR #95318](https://github.com/vercel/next.js/pull/95318) `Turbopack: add more context to persistence file errors`** — Turbopack persistence errors now include the path + corrupted-file size + hash mismatch info; helps diagnose `.next/cache/turbopack/` corruption.
+
+### canary.81 (July 9, 2026, tag cut 23:59Z)
+
+Material PRs:
+
+- **[PR #95606](https://github.com/vercel/next.js/pull/95606) `Turbopack: enable import with {type: 'text'} by default`** — Turbopack now supports `import shader from './shader.glsl' with { type: 'text' }` (and `{type: 'json'}`, `{type: 'css'}`) out of the box. Previously this required an experimental flag. Useful for importing shaders, JSON configs, raw text assets, and CSS-as-string at build time without extra bundler config.
+- **[PR #95366](https://github.com/vercel/next.js/pull/95366) `Split remaining "client-node"-only modules into .browser variants`** — extension of the canary.77 `.browser.ts(x)` work (PR #95201 + #95200). More modules are now split, more bundle-size regressions fixed. If you maintain a `.browser.tsx` sibling for a `typeof window !== 'undefined'` switch in a third-party module, check the diff to see if the sibling is now auto-detected.
+- **[PR #95213](https://github.com/vercel/next.js/pull/95213) `[turbopack] Don't evict when there is little memory to save`** — Turbopack memory eviction (the canary.71 feature) was evicting aggressively even when headroom was ample. Now it skips eviction if available memory is plentiful. Reduces dev-server thrashing on memory-rich machines.
+- **[PR #95137](https://github.com/vercel/next.js/pull/95137) `[turbopack] Don't persist if there is little work to do`** — Turbopack persistence (`.next/cache/turbopack/`) was persisting even on tiny incremental builds. Now skips persistence when the work-to-persist ratio is below threshold. Speeds up small `next dev` HMR cycles.
+- **[PR #94916](https://github.com/vercel/next.js/pull/94916) `align dev and build output`** — Turbopack's dev and build output now agree on chunk naming + asset paths. Eliminates a class of "works in dev, 404s in build" bugs.
+- **[PR #95593](https://github.com/vercel/next.js/pull/95593) `fix: log "Partial Prefetching enabled" during next build`** — informational message at `next build` startup if `experimental.partialPrefetching: true` is set; previously the message only appeared at `next dev` startup.
+- **[PR #95365](https://github.com/vercel/next.js/pull/95365) `[PP] Surface URL data during prefetching as an Instant insight with rule page`** — new Instant Insights category: when a Partial Prefetching route accidentally accesses URL data (`searchParams`/`params`) before it's streamed in, the dev overlay shows a fix card with a "Rule page" link. See patterns.md → Partial Prefetching / Instant Insights for the fix workflow.
+- **[PR #95582](https://github.com/vercel/next.js/pull/95582) `Consistently gate navigation-testing-lock API on flag`** — the experimental `navigation-testing-lock` API is now strictly gated behind `experimental.exposeTestingApiInProductionBuild` even in dev; previously the gate was inconsistent and the API leaked into dev in some code paths.
+- **[PR #95581](https://github.com/vercel/next.js/pull/95581) `Upgrade React from 23def8fd-20260706 to 12a4baec-20260707`** — vendor React bump.
+- **[PR #95538](https://github.com/vercel/next.js/pull/95538) `[turbopack] Rename rscEndpoint to rscHmrEndpoint`** — Turbopack internal rename to disambiguate the HMR RSC endpoint from regular RSC endpoints. No user-facing impact unless you have a custom dev-server proxy mapping that hardcodes `rscEndpoint`.
+
+### canary.82 (July 10, 2026, tag cut 00:07Z)
+
+Material PRs:
+
+- **[PR #95554](https://github.com/vercel/next.js/pull/95554) `[turbopack] Output service workers to /_next/static/`** — Turbopack now writes compiled service workers to `/_next/static/<hash>.js` (matching Vercel's CDN conventions) instead of `/_next/`. Browser service-worker registration no longer needs a custom `Service-Worker-Allowed` header for cross-scope service workers behind a CDN. Closes the canary.68/71/81 service-worker trilogy: compile (#94920), discover (#94921), output (#95554). See setup.md → Turbopack Service Worker Support.
+- **[PR #95583](https://github.com/vercel/next.js/pull/95583) `[turbopack] Compile service workers registered from pages router pages`** — completes Pages Router parity for service workers; previously only App Router pages were scanned for `navigator.serviceWorker.register()` calls.
+- **[PR #95642](https://github.com/vercel/next.js/pull/95642) `Upgrade React from df4bd1b4-20260708 to 5123b063-20260708`** — vendor React bump.
+- **[PR #95467](https://github.com/vercel/next.js/pull/95467) `Make the agent-rules block verifiable and self-upgrading`** + **[PR #95470](https://github.com/vercel/next.js/pull/95470) `Refresh outdated agent-rules blocks on next dev and codemod upgrade`** (aurorascharff) — the `AGENTS.md` auto-update block (the `<!-- BEGIN:nextjs-agent-rules --> ... <!-- END:nextjs-agent-rules -->` managed section written by `next dev` when an AI agent is detected) now includes a content hash. When the canary moves forward, `next dev` AND `npx @next/codemod@canary upgrade preview` detect the outdated block and rewrite it in place. No more stale AGENTS.md guidance between agent runs.
+- **[PR #95493](https://github.com/vercel/next.js/pull/95493) `Normalize and validate expire and revalidate values to handle Infinity and surface mistakes early`** — `'use cache'` directives and route-segment `revalidate` exports now validate their numeric values at parse time. Previously passing `Infinity` or a negative number was silently accepted and produced non-deterministic cache behavior. Now: hard error at build/dev time with a clear message. See patterns.md → `expire` / `revalidate` validation.
+- **[PR #94859](https://github.com/vercel/next.js/pull/94859) `docs: update MCP guides for the thin next-devtools-mcp`** — the Next.js MCP server was shrunk (knowledge-base/upgrade/CC helpers REMOVED in canary.74 docs); docs now reflect the new `get_compilation_issues` / `compile_route` compilation tools and the new `next-devtools-mcp` package as the recommended install.
+- **[PR #95246](https://github.com/vercel/next.js/pull/95246) `docs(opengraph-image): load assets at module scope to keep route static under Cache Components`** — pattern note: opengraph/metadata image routes under `cacheComponents: true` must load fonts/images at module scope, not inside the component. Otherwise the route is flagged as dynamic. Documented in deployment.md → Metadata Image Route Static Prerendering.
+
+### canary.83 (July 10, 2026, tag cut 23:56Z — released ~2h before this skill update)
+
+Material PRs:
+
+- **[PR #95639](https://github.com/vercel/next.js/pull/95639) `(TypeScript 7 Support) Add experimental TypeScript CLI backend`** (wbinnssmith) — Next.js can now detect `typescript@7.x` in `package.json` and use its native Go compiler for `next typegen` and internal TS tooling, without you needing to install `@typescript/native-preview`. Cuts typegen latency ~5–10× on large codebases. See setup.md → TypeScript 7 Integration.
+- **[PR #95607](https://github.com/vercel/next.js/pull/95607) `Keep the request body a plain Readable after middleware so Readable.toWeb() doesn't hang`** — proxy/middleware (formerly middleware) was wrapping `req.body` in a `Readable.toWeb()` conversion that could hang indefinitely on long-lived requests (SSE, large file uploads). The body stays a Node `Readable` now and is only converted at the route handler boundary. Fixes a class of silent hangs on streaming endpoints.
+- **[PR #95384](https://github.com/vercel/next.js/pull/95384) `[PPF] Sync IO is only allowed in the dynamic stage`** — under Partial Prefetching (`partialPrefetching: true` / per-segment `prefetch = 'partial'` / `'unstable_eager'`), sync `fs.readFileSync` / `fs.existsSync` / `process.env.X` access during prefetch is now an error. Previously it was a warning. Forces you to either move the IO behind `'use cache'` (so it runs at build time) or mark the access as `'use cache: private'` (so it runs per-request). See patterns.md → Sync IO under Partial Prefetching.
+- **[PR #95689](https://github.com/vercel/next.js/pull/95689) `Fix support for custom-media-queries in LightningCSS`** — Tailwind v4 with `@media (--breakpoint-md)` / `@custom-media` now compiles correctly under Turbopack's LightningCSS path.
+- **[PR #95325](https://github.com/vercel/next.js/pull/95325) `docs: add incremental adoption path to Cache Components migration guide`** — the migration guide now has a step-by-step "enable on one route at a time" section. Useful for large codebases that can't migrate everything in one PR. See patterns.md → Cache Components Incremental Adoption.
+- **[PR #95629](https://github.com/vercel/next.js/pull/95629) `Clarify AI-assisted contribution policy in PR template and AGENTS.md`** — when an AI agent opens a PR, the PR template now asks for a clear "AI-assisted-by" declaration. The `AGENTS.md` managed block now includes the policy.
+
+**Source:** canary.79–83 release notes at [github.com/vercel/next.js/releases](https://github.com/vercel/next.js/releases) · npm `next@canary` dist-tag.

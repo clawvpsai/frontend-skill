@@ -1105,7 +1105,7 @@ function useWebSocket(url: string) {
 
 TypeScript 7.0 reached **Release Candidate on June 18, 2026** ([official announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)) — the entire compiler is rewritten in Go. The RC ships under the main **`typescript`** package on npm (the `tsc` binary is now the Go compiler — the separate `@typescript/native-preview` package is no longer the recommended install). Stable release is targeted within two months of the RC.
 
-**Current status:** Release Candidate (Version 7.0.1-rc) — not yet stable. Test in a branch before adopting in production. The team has been working with Bloomberg, Canva, Figma, Google, Lattice, Linear, Miro, Notion, Slack, Vanta, Vercel, and VoidZero on pre-release builds for over a year.
+**Current status:** ~~Release Candidate (Version 7.0.1-rc)~~ — **General Availability (Version 7.0.0) shipped July 8, 2026** ([official announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)) — three weeks after the RC. Install via the standard `typescript` package on npm; no `@rc` tag needed. The team has been working with Bloomberg, Canva, Figma, Google, Lattice, Linear, Miro, Notion, Slack, Vanta, Vercel, and VoidZero on pre-release builds for over a year.
 
 **Motivation:** Roughly 10× faster type-checking through native code + shared-memory parallelism. Benchmarks from Microsoft's RC announcement:
 
@@ -1119,6 +1119,15 @@ TypeScript 7.0 reached **Release Candidate on June 18, 2026** ([official announc
 
 Memory usage drops by roughly half across the board. Half the speedup is native code (no V8 JIT, no Node.js startup); the other half is parallelism the prior JS-based compiler could not provide.
 
+**GA benchmarks (July 8, 2026):** Microsoft's GA-day benchmarks reconfirm the RC numbers and add a tuned-mode result. Full-build speedup, TS 6 → 7 (Microsoft's published codebases):
+
+| Codebase | TS 6.0 | TS 7.0 (default) | Speedup (default) | TS 7.0 (tuned `--checkers 8`) | Speedup (tuned) |
+|---|---|---|---|---|---|
+| VS Code | 125.7 s | 10.6 s | **11.9×** | 7.51 s | **16.7×** |
+| Average (broad corpus) | — | — | **8–12×** | — | up to 16× |
+
+VS Code's TypeScript 7 project-load path (cold type-checker start, not full build) dropped from nearly one minute to ~10 seconds. **Verify against your own codebase** before committing a team-wide upgrade — the 10× headline number is real, but it averages across cold/warm builds and editor vs CLI; the smallest real-world numbers land closer to 8× and the largest hit ~16× with `--checkers 8` on 8+ core machines.
+
 ### The Go Compiler (`tsc` is now Go)
 
 The biggest behavioral change: in TS 7, **`npx tsc` is the Go compiler**. The separate `tsgo` binary / `@typescript/native-preview` package is now a compatibility shim, not the recommended install path. Key architectural changes:
@@ -1130,12 +1139,12 @@ The biggest behavioral change: in TS 7, **`npx tsc` is the Go compiler**. The se
 - **Same type-checker semantics** — type-checking is structurally identical to TS 6.0, just much faster
 
 ```bash
-# Install TS 7 RC — ships under the main `typescript` package now
-npm install -D typescript@rc
+# Install TS 7.0 GA — ships under the main `typescript` package, no tag needed
+npm install -D typescript
 
-# Check version — reports 7.0.1-rc
+# Check version — reports 7.0.0
 npx tsc --version
-# → Version 7.0.1-rc
+# → Version 7.0.0
 
 # Run type-checking (no build output) — same as before, just faster
 npx tsc --noEmit
@@ -1184,7 +1193,7 @@ In TS 6, `stableTypeOrdering` was an opt-in flag for deterministic union-type or
 
 ### Editor Parity is Complete
 
-Unlike the TS 7 beta (which shipped without in-editor features), the RC has **full language-service parity with TS 6.0**:
+Unlike the TS 7 beta (which shipped without in-editor features), the RC and GA have **full language-service parity with TS 6.0**:
 
 - Auto-imports
 - Expandable hover tooltips
@@ -1212,7 +1221,7 @@ npx tsc6 --version
 # → Version 6.0.x
 ```
 
-**Practical:** If a tool suddenly breaks after `npm install -D typescript@rc` (e.g. `eslint-plugin-import` can't find `typescript/lib/typescript.js`, or a custom transformer errors with "Cannot find module 'typescript'"), add `@typescript/typescript6` as a dev dependency and pin the tool's peer dep to `^6.0.0`. Microsoft has flagged this gap as a TypeScript 7.1 follow-up — for now, the compat package is the workaround.
+**Practical:** If a tool suddenly breaks after `npm install -D typescript` on a TS 7 codebase (e.g. `eslint-plugin-import` can't find `typescript/lib/typescript.js`, or a custom transformer errors with "Cannot find module 'typescript'"), add `@typescript/typescript6` as a dev dependency and pin the tool's peer dep to `^6.0.0`. Microsoft has flagged this gap as a TypeScript 7.1 follow-up — **GA reaffirmed the Compiler API is deferred to 7.1** — for now, the compat package is the only workaround. Real-world examples that hit this at GA: webpack/ts-loader pipelines, custom codemod CLIs using `typescript` as a library, ESLint plugins that walk the TS AST for custom rules. The Joe Edwards comment on the GA post summarizes the practical impact: *"most of my projects use webpack, and there seems to be no API surface in the 7.0 release for webpack loaders to utilize. I'll sadly have to wait for 7.1."*
 
 ### Breaking Changes (TS 7)
 
@@ -1366,8 +1375,9 @@ grep -r '"moduleResolution": "Classic"\|"moduleResolution": "Node"' tsconfig*.js
 npm ls @types/node @types/react  # check what's installed
 # → Add any missing @types packages explicitly
 
-# 6. Test with RC
-npm install -D typescript@rc
+# 6. Install TS 7 GA (no @rc tag needed)
+npm install -D typescript
+npx tsc --version   # → Version 7.0.0
 npx tsc --noEmit
 
 # 7. Verify editor parity (VS Code TypeScript Native Preview extension or any LSP client)
@@ -1380,13 +1390,15 @@ npm install -D @typescript/typescript6
 
 Microsoft and the community converge on this sequence:
 
-1. **Baseline on TS 6.0 first.** TS 6 is the bridge — it surfaces the deprecation warnings for options that TS 7 hard-removes. If you jump straight to TS 7 RC without cleaning up `tsconfig.json`, you get hard errors.
-2. **Run TS 7 RC in parallel.** Use `typescript@rc` on a feature branch or in a CI matrix job alongside TS 6. Compare build times and surface any tool breakage before flipping the default.
-3. **Flip the default after the tool ecosystem catches up.** Watch for TS 7.1 (the planned follow-up that closes the `@typescript/typescript6` compat gap). Until then, expect to keep `@typescript/typescript6` in the `devDependencies` of any project that uses a transformer or language-service plugin.
+1. **Baseline on TS 6.0 first.** TS 6 is the bridge — it surfaces the deprecation warnings for options that TS 7 hard-removes. If you jump straight to TS 7 GA without cleaning up `tsconfig.json`, you get hard errors.
+2. **Install TS 7 GA on a feature branch.** `npm install -D typescript` (no `@rc` tag — that's the RC tag, no longer needed). Run `npx tsc --noEmit` and check whether any tool in your pipeline (webpack/ts-loader, custom ESLint plugins, codemod CLIs) reaches into the TS internal API.
+3. **Hold the `@typescript/typescript6` fallback in `devDependencies`** for any project that uses a transformer or language-service plugin. The programmatic Compiler API is deferred to TS 7.1. If a tool fails, pin it to TS 6 via `@typescript/typescript6` + the `tsc6` shim and watch the tool's release notes for Strada-API support.
 
 ### What Stays the Same
 
 The following continue to work as before — no migration needed:
+
+> **TS 7 Template Literal Types now preserve Unicode code points** — a behavior change worth flagging: TS 7 treats Unicode code points more naturally when inferring from template literal types. Code that relied on TS 6's UTF-16 code-unit behaviour (e.g. emoji pairs split across surrogate pairs in a literal-type pattern) may now infer different types. Most projects won't notice, but if you generate types from user-provided strings or do exhaustive `Exclude<\`\${T}\`, ...>` over emoji, audit your type tests.
 
 - **`tsconfig.json` structure** — same format, same options (except removed ones above)
 - **JavaScript/JSX support** — `jsx: "react-jsx"` still works
@@ -1397,12 +1409,16 @@ The following continue to work as before — no migration needed:
 - **Editor support** — full language-service parity in VS Code via TypeScript Native Preview extension; LSP-native for any editor
 
 **Sources:**
+- [TypeScript 7.0 announcement (Microsoft, July 8, 2026)](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/)
 - [TypeScript 7.0 RC announcement (Microsoft, June 18, 2026)](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/)
 - [TypeScript 7.0 RC Moves Microsoft's Go Rewrite Into the Mainline Compiler (Visual Studio Magazine, June 22, 2026)](https://visualstudiomagazine.com/articles/2026/06/22/typescript-7-0-rc-moves-microsofts-go-rewrite-into-the-mainline-compiler.aspx)
 - [TypeScript 7.0 RC: VS Code build 77 s → 7 s benchmarks (TechTimes, June 18, 2026)](https://www.techtimes.com/articles/318666/20260618/typescript-70-rc-ships-go-compiler-cuts-vs-code-build-time-77-seconds-seven.htm)
 - [TypeScript 7 RC: the compiler rewritten in Go (jatniel.dev)](https://jatniel.dev/en/bytes/typescript-7-rc-the-compiler-rewritten-in-go-around-10x-faster)
 - [TypeScript 7.0 RC release notes & what you must update (NT Compatible)](https://www.ntcompatible.com/story/typescript-70-release-candidate-how-the-go-rewrite-slashes-build-times-and-what-you-must-update/)
 - [TypeScript 7.0 Beta — Go-based foundation](https://visualstudiomagazine.com/articles/2026/04/21/typescript-7-0-beta-arrives-on-go-based-foundation-with-10x-speed-claim.aspx)
+- [TypeScript 7 Arrives to Rock VS Code with Go-Powered Speed (Visual Studio Magazine, July 8, 2026)](https://visualstudiomagazine.com/articles/2026/07/08/typescript-7-arrives-to-rock-vs-code-with-go-powered-speed.aspx)
+- [TypeScript 7.0 Is GA: The 10x Compiler Migration Playbook (Digital Applied, July 10, 2026)](https://www.digitalapplied.com/blog/typescript-7-0-ga-native-compiler-migration-playbook-2026)
+- [TypeScript 7 Is Generally Available — What the Go-Native Compiler Actually Changes (braindetox.kr, July 9, 2026)](https://braindetox.kr/en/posts/typescript_v7_go_release_2026.html)
 - [TypeScript 7 Migration Guide](https://codingdunia.com/blog/typescript-7-migration-guide/)
 - [microsoft/typescript-go repo](https://github.com/microsoft/typescript-go)
 
@@ -1415,8 +1431,8 @@ The following continue to work as before — no migration needed:
 - **`noUncheckedIndexedAccess` off** — turn it on, handle undefined
 - **`object` type** — use `Record<string, unknown>` or specific shapes instead
 - **Legacy TypeScript targets** — `target: "ES3"` or `"ES5"` is deprecated in 6.0; use ES2025 minimum
-- **Missing `stableTypeOrdering`** — set it now to prepare for TS 7.0 (mandatory + non-disable-able in TS 7 RC, so flip it on in TS 6 to match the TS 7 behavior)
-- **Skipping TS 6 baseline** — TS 7 RC hard-errors on options that TS 6 only deprecates. Always run TS 6 first to surface all deprecation warnings before upgrading to TS 7 RC.
+- **Missing `stableTypeOrdering`** — set it now to prepare for TS 7.0 (mandatory + non-disable-able in TS 7, so flip it on in TS 6 to match the TS 7 behavior)
+- **Skipping TS 6 baseline** — TS 7 hard-errors on options that TS 6 only deprecates. Always run TS 6 first to surface all deprecation warnings before upgrading to TS 7 GA.
 - **Forgetting `@typescript/typescript6`** — if you use any tool that reaches into the TS internal API (custom transformers, language-service plugins, certain ESLint plugins), pin it to TS 6 via `@typescript/typescript6` + the `tsc6` shim until it migrates to Strada.
 - **`import defer` with named export in JSX** — use `import defer * as mod` then destructure: `const { Foo } = await mod`
 - **`import defer` in Server Components for data** — `import defer` is a bundle-splitting tool, not a data-fetching tool; use React's `use()` hook with Promises for streaming server-side data
