@@ -1116,6 +1116,174 @@ The canary.78 flag is no longer inert — two follow-up PRs landed in **canary.7
 
 **Practical:** opt in only if you're testing the cancellation path on a non-shipping project — the flag is still experimental, and edge-rendered server components don't expose the Node response-close signal that the cancellation relies on (production SSR hardcodes `false`). For most projects, default `false` is correct until the experimental flag is documented as production-safe in a future stable.
 
+## `experimental.requestInsights` — Dev-Only Request Diagnostics Stack (16.3.0-canary.84+, PR [#93974](https://github.com/vercel/next.js/pull/93974) + [#93975](https://github.com/vercel/next.js/pull/93975) + [#93976](https://github.com/vercel/next.js/pull/93976) by [@feedthejim](https://github.com/feedthejim), merged 2026-07-12T11:47:38–11:47:41Z)
+
+Request Insights is a 5-PR dev-only feature stack that records framework OTEL spans, derives a bounded request history (last 100 requests, deduped fetch records), and exposes a snapshot over a private dev endpoint + HMR so AI agents + DevTools can diagnose what a route is doing without leaving the dev server. **canary.84 ships the first 3 PRs (recording, history, transport).** The remaining 2 PRs — agent diagnosis access ([#93977](https://github.com/vercel/next.js/pull/93977)) and the DevTools request panel ([#93978](https://github.com/vercel/next.js/pull/93978)) — are still open and target canary.85/86.
+
+### What the 3 shipped PRs add
+
+1. **[PR #93974](https://github.com/vercel/next.js/pull/93974) `request insights: record local framework spans (1/5)`** — adds a dev-only `LocalSpanRecorder` + `LocalRecordingSpan` (OTEL `Span` API-compatible; satisfies the `next/dist/compiled/@opentelemetry/api` `Span` interface) that mirrors framework spans into an in-memory store when no user OTEL provider is installed. The recorder is stored on `globalThis[Symbol.for('@next/local-span-recorder')]`; `tracer.ts` consults it on every span end. Preserves existing OTEL span API behavior when a user provider is installed.
+2. **[PR #93975](https://github.com/vercel/next.js/pull/93975) `request insights: derive request history and fetch data (2/5)`** — wraps the recorder in a bounded `InMemoryRequestInsightsStore` (`MAX_REQUEST_INSIGHTS = 100`) keyed by `requestId`. Dedupes fetch records across completed `AppRender.fetch` spans vs direct fetch metrics. Sanitizes sensitive attribute keys via a `SENSITIVE_PARAM_NAME_RE` (matches `*token*` / `*secret*` / `*key*` / `*password*` / `*auth*` / `*signature*` / `*jwt*` / etc — case-insensitive) by replacing them with `'redacted'`; only the keys in `SAFE_SPAN_ATTRIBUTE_KEYS` (`http.method`, `http.route`, `http.status_code`, `http.url`, `next.fetch.cache_reason`, `next.fetch.cache_status`, `next.route`, `next.rsc`, `next.segment`, `next.span_name`, `next.span_type`, etc) pass through. URL query strings are sanitized via `sanitizeUrl()` before snapshotting. No raw header values, no auth headers, no bodies.
+3. **[PR #93976](https://github.com/vercel/next.js/pull/93976) `request insights: expose dev snapshots to tools and HMR (3/5)`** — wires the new `experimental.requestInsights?: boolean` config flag (default `false`), the private dev endpoint, and the HMR transport.
+
+### Configuration
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    // Dev-only request diagnostics. Default false.
+    // When true, next dev:
+    //   - starts the LocalSpanRecorder
+    //   - exposes GET /__nextjs_request_insights (returns the last 100 requests)
+    //   - pushes REQUEST_INSIGHTS_UPDATE messages over the HMR transport
+    requestInsights: true,
+  },
+}
+
+export default nextConfig
+```
+
+**The flag is dev-only.** `next build` and `next start` ignore it (no production exposure, no telemetry). When the flag is `false`, the endpoint returns a 404 with a helpful JSON body:
+
+```json
+{ "error": "Request Insights is not enabled. Set experimental.requestInsights = true and restart next dev." }
+```
+
+### Surface — the private dev endpoint
+
+While `next dev` is running with the flag on:
+
+```bash
+# Fetch the last 100 requests as a JSON snapshot
+curl -sS http://localhost:3000/__nextjs_request_insights | jq '.requests[0]'
+```
+
+The endpoint is dev-only (`opts.dev` gate) and additionally gated on `blockCrossSiteDEV(req, res, development.config.allowedDevOrigins, opts.hostname)` — same CSRF guard the existing dev-only Next.js internal endpoints use. Same-origin requests from `http://localhost:3000` work; cross-origin requests get a CSRF error.
+
+**Snapshot shape** (from `packages/next/src/next-devtools/shared/request-insights.ts`):
+
+```ts
+type RequestInsightsSnapshot = {
+  requests: RequestInsight[]
+}
+
+type RequestInsight = {
+  requestId: string
+  htmlRequestId: string
+  route?: string
+  url?: string
+  startTime: number
+  durationMs?: number
+  status: 'ok' | 'error' | 'pending'
+  spans: RequestInsightSpan[]  // framework OTEL spans, sanitized
+  fetches: RequestInsightFetch[]  // deduped fetch records
+}
+
+type RequestInsightFetch = {
+  url?: string
+  method?: string
+  statusCode?: number
+  startTime?: number
+  durationMs?: number
+  cacheStatus?: string
+  cacheReason?: string
+  index?: number
+}
+```
+
+### Surface — the HMR transport
+
+`HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` (`'requestInsightsUpdate'`) carries per-request updates to subscribed tools. The browser-side reducer in `dev-overlay/shared.ts` accepts two new action types:
+
+- `ACTION_REQUEST_INSIGHTS_SNAPSHOT` (`'request-insights-snapshot'`) — full snapshot replacement
+- `ACTION_REQUEST_INSIGHTS_UPDATE` (`'request-insights-update'`) — incremental per-request update
+
+The `DevBundlerService` subscribes to the in-memory store on construction (`subscribeRequestInsights` in `dev-bundler-service.ts`) and forwards each `RequestInsight` to the HMR socket. `unsub` is wired into `close()` so dev-server shutdown doesn't leak the subscription.
+
+### How an agent uses it (the planned workflow)
+
+The shipped PRs (1/5, 2/5, 3/5) provide the data path. The agent-consumption path lands in:
+
+- **PR #93977 `request insights: add agent diagnosis access (4/5)`** — `get_request_insights` and `subscribe_to_request_insights` MCP tools. Agent calls them to fetch the last 100 requests or subscribe to a live stream, then correlates the `spans[]` + `fetches[]` with the agent's own edits to the route.
+- **PR #93978 `request insights: add DevTools request panel (5/5)`** — visual panel in the dev overlay DevTools. Shows the last 100 requests as a table; clicking one shows the full span tree + fetch list with timing.
+
+**Both are still open as of canary.84 (July 12, 2026).** When they ship (expected canary.85/86), the integration points will be:
+
+- **`next-dev-loop` skill** gains a "what's this request doing?" action that calls the MCP tools to read the latest insights for the current route
+- **The `Copy prompt` button** in the Instant Insights overlay grows a "Request insights" tab that pastes the per-request data into the agent's prompt
+- **MCP `get_request_insights` / `subscribe_to_request_insights`** become standard tools in the `next-devtools-mcp` package (alongside the existing `get_compilation_issues` / `compile_route`)
+
+### What this does NOT do
+
+- **Does not record or replace the user's own OTEL provider.** The `LocalSpanRecorder` is bypassed when a user OTEL provider is installed. No double-emission, no leaks.
+- **Does not persist anything to disk.** Pure in-memory `Map<requestId, RequestInsight>` + an `order[]` array for the most-recently-inserted-first ordering. Server restart loses the buffer. The 100-request bound is hard — older requests are evicted in LRU order.
+- **Does not send any data off-box.** The endpoint is `localhost`-only by the CSRF gate; the HMR transport is the same `/_next/webpack-hmr` / Turbopack HMR socket that's already authenticated. No new outbound network surface.
+- **Does not apply to production builds.** `next build` strips the flag (config-schema + define-env default). No perf impact on prod bundles.
+- **Does not record bodies, headers, cookies, or auth tokens.** Only safe attribute keys pass through, sensitive params are redacted, URLs are sanitized. Designed to be safe to leave on in a multi-tenant dev environment.
+
+### Audit + verification commands
+
+```bash
+# Verify the flag is set
+rg 'requestInsights' next.config.ts
+
+# Verify the config-schema knows about it
+rg 'requestInsights' node_modules/next/dist/server/config-schema.d.ts 2>/dev/null   || curl -s https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/config-schema.ts | rg 'requestInsights'
+
+# Pull a snapshot from a running dev server
+curl -sS http://localhost:3000/__nextjs_request_insights | jq '.requests[].status' | sort | uniq -c
+
+# Show only failing requests with their top span
+curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | select(.status == "error") | {route, durationMs, topSpan: .spans[0].name}'
+
+# Tail spans for one request by id
+curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | select(.requestId == "abc123") | .spans[] | {name, durationMs, status}'
+```
+
+### Files touched (43 files, ~1.7k lines added, mostly test scaffolding)
+
+- `packages/next/src/server/config-shared.ts` (+9/-0) — `ExperimentalConfig.requestInsights?: boolean` + JSDoc; `requestInsights: false` default in the legacy config-defaults block
+- `packages/next/src/server/config-schema.ts` (+1/-0) — Zod entry, picked up via the existing `experimental` schema
+- `packages/next/src/build/define-env.ts` (+2/-0) — `__NEXT_REQUEST_INSIGHTS` build-time define (default `false`)
+- `packages/next/src/server/lib/trace/local-span-recorder.ts` (+473/-1) — `LocalSpanRecorder` type, `createLocalSpan` / `getActiveLocalSpan` / `isLocalRecordingSpan` / `withLocalSpan`; hex-pad synthetic trace/span IDs for visual continuity with real OTEL IDs
+- `packages/next/src/server/lib/trace/span-store.ts` (+83/-0) — `SpanStoreRecord` + `recordSpan` + `isLocalSpanRecordingEnabled`; test-only recorder hook
+- `packages/next/src/server/lib/trace/tracer.ts` (+125/-11) — recorder is consulted on span start/end; when no user OTEL provider is installed, the recorder's local span is the active one
+- `packages/next/src/server/lib/trace/request-insights.ts` (+337/-0) — `InMemoryRequestInsightsStore`; `recordSpan` / `recordFetch` / `getSnapshot`; `subscribeRequestInsights` listener registry; `sanitizeSpanAttributes` / `sanitizeUrl` / `getFetchInsight` helpers
+- `packages/next/src/server/lib/router-server.ts` (+46/-0) — `GET /__nextjs_request_insights` endpoint; CSRF-gated, dev-only, returns 404-with-helpful-error when off
+- `packages/next/src/server/lib/patch-fetch.ts` (+43/-8) — `isRequestInsightsEnabled()` check before recording a fetch metric
+- `packages/next/src/server/dev/hot-middleware.ts` (+8/-0) — emits `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` to connected clients
+- `packages/next/src/server/dev/hot-reloader-turbopack.ts` (+9/-0) — Turbopack equivalent of the above
+- `packages/next/src/server/dev/hot-reloader-types.ts` (+12/-0) — `RequestInsightsUpdateMessage` type + new `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` enum value
+- `packages/next/src/server/dev/next-dev-server.ts` (+3/-0) — sets `process.env.__NEXT_REQUEST_INSIGHTS = 'true'` when the flag is on
+- `packages/next/src/server/next-server.ts` (+8/-0) — same env-var plumbing on the next-server path
+- `packages/next/src/server/base-server.ts` (+6/-0) — request identity propagation through the existing app-render async storage (so spans across boundaries share a `requestId`)
+- `packages/next/src/server/app-render/app-render.tsx` (+4/-0) — record `app-render` span start/end
+- `packages/next/src/server/app-render/work-async-storage.external.ts` (+8/-0) — `htmlRequestId` plumbing
+- `packages/next/src/server/async-storage/work-store.ts` (+2/-0) — `workStore.htmlRequestId` field
+- `packages/next/src/server/lib/dev-bundler-service.ts` (+17/-2) — `subscribeRequestInsights` on construction, `unsub` on `close()`
+- `packages/next/src/next-devtools/dev-overlay/shared.ts` (+30/-0) — `OverlayState.requestInsights` slice + 2 new reducer action types + new `'requestInsightsUpdate'` HMR-message kind
+- `packages/next/src/next-devtools/dev-overlay.browser.tsx` (+18/-0) — browser-side reducer wired
+- `packages/next/src/next-devtools/shared/request-insights.ts` (+59/-0) — `RequestInsight` / `RequestInsightSpan` / `RequestInsightFetch` / `RequestInsightsSnapshot` types (shared with the server via a normal `import type`)
+- `packages/next/src/client/dev/hot-reloader/app/hot-reloader-app.tsx` (+6/-0) — HMR message handler dispatches the new action
+- `packages/next/src/client/dev/hot-reloader/pages/hot-reloader-pages.ts` (+1/-0) — Pages-router equivalent (no-op today, but the action type is reserved)
+- `packages/next/src/client/page-bootstrap.ts` (+1/-0) — hydrate initial snapshot from the dev server
+- `packages/next/.storybook/decorators/use-overlay-reducer.ts` (+4/-0) — Storybook wiring
+- Plus **8 new test files** under `packages/next/src/server/lib/trace/{local-span-recorder,span-store,request-insights,patch-fetch,tracer}.test.ts` (~990 lines)
+
+**Sources:**
+- [PR #93974 — `request insights: record local framework spans (1/5)`](https://github.com/vercel/next.js/pull/93974)
+- [PR #93975 — `request insights: derive request history and fetch data (2/5)`](https://github.com/vercel/next.js/pull/93975)
+- [PR #93976 — `request insights: expose dev snapshots to tools and HMR (3/5)`](https://github.com/vercel/next.js/pull/93976)
+- [PR #93977 — `request insights: add agent diagnosis access (4/5)` (open)](https://github.com/vercel/next.js/pull/93977)
+- [PR #93978 — `request insights: add DevTools request panel (5/5)` (open)](https://github.com/vercel/next.js/pull/93978)
+- [canary.84 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.84)
+- [`config-shared.ts` at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/config-shared.ts) — `requestInsights` declaration
+- [`request-insights.ts` (server) at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/lib/trace/request-insights.ts) — store + sanitization
+- [`request-insights.ts` (shared types) at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/next-devtools/shared/request-insights.ts) — `RequestInsight` shape
+
 ## Package Manager
 
 Prefer `pnpm` for monorepos and workspaces:
@@ -1457,4 +1625,18 @@ Material PRs:
 - **[PR #95325](https://github.com/vercel/next.js/pull/95325) `docs: add incremental adoption path to Cache Components migration guide`** — the migration guide now has a step-by-step "enable on one route at a time" section. Useful for large codebases that can't migrate everything in one PR. See patterns.md → Cache Components Incremental Adoption.
 - **[PR #95629](https://github.com/vercel/next.js/pull/95629) `Clarify AI-assisted contribution policy in PR template and AGENTS.md`** — when an AI agent opens a PR, the PR template now asks for a clear "AI-assisted-by" declaration. The `AGENTS.md` managed block now includes the policy.
 
-**Source:** canary.79–83 release notes at [github.com/vercel/next.js/releases](https://github.com/vercel/next.js/releases) · npm `next@canary` dist-tag.
+### canary.84 (July 12, 2026, tag cut 23:57:18Z — published ~5 min before this skill update)
+
+**Headline:** ships the first 3 PRs of a 5-PR **Request Insights** dev-diagnostics stack by @feedthejim (1/5 local recording, 2/5 request history, 3/5 dev-snapshot transport). The remaining 2 PRs (4/5 agent diagnosis access #93977, 5/5 DevTools request panel #93978) are still open and target canary.85/86. Branch advanced 2 days after canary.83 — back on the ~48h cadence. canary-branch HEAD `a7bf1202de`, 4 commits vs canary.83 (3 PRs + the tag itself).
+
+Material PRs:
+
+- **[PR #93974](https://github.com/vercel/next.js/pull/93974) `request insights: record local framework spans (1/5)`** (feedthejim) — dev-only `LocalSpanRecorder` + `LocalRecordingSpan` (OTEL `Span` API-compatible) that mirrors framework spans into an in-memory store when no user OTEL provider is installed. Hex-padded synthetic trace/span IDs. Recorder stored on `globalThis[Symbol.for('@next/local-span-recorder')]`; `tracer.ts` consults it on every span start/end. Preserves existing OTEL behavior when a user provider is installed (no double-emission). 5 files, +485/-0.
+- **[PR #93975](https://github.com/vercel/next.js/pull/93975) `request insights: derive request history and fetch data (2/5)`** (feedthejim) — wraps the recorder in a bounded `InMemoryRequestInsightsStore` (`MAX_REQUEST_INSIGHTS = 100`) keyed by `requestId`. Dedupes fetch records across completed `AppRender.fetch` spans vs direct fetch metrics. Sanitizes sensitive attribute keys via a `SENSITIVE_PARAM_NAME_RE` (matches `*token*` / `*secret*` / `*key*` / `*password*` / `*auth*` / `*signature*` / `*jwt*` / etc — case-insensitive) by replacing them with `'redacted'`; only the keys in `SAFE_SPAN_ATTRIBUTE_KEYS` (`http.method`, `http.route`, `http.status_code`, `http.url`, `next.fetch.cache_reason`, `next.fetch.cache_status`, `next.route`, `next.rsc`, `next.segment`, `next.span_name`, `next.span_type`, etc) pass through. URL query strings are sanitized via `sanitizeUrl()` before snapshotting. No raw header values, no auth headers, no bodies. 7 files, +747/-0.
+- **[PR #93976](https://github.com/vercel/next.js/pull/93976) `request insights: expose dev snapshots to tools and HMR (3/5)`** (feedthejim) — wires the new `experimental.requestInsights?: boolean` config flag (default `false`), the private dev endpoint `GET /__nextjs_request_insights` (returns 404-with-helpful-error JSON when off; CSRF-gated via `blockCrossSiteDEV` + `allowedDevOrigins` when on), and the HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` (`'requestInsightsUpdate'`) so tools/browser clients can subscribe. Two new reducer action types in `dev-overlay/shared.ts`: `ACTION_REQUEST_INSIGHTS_SNAPSHOT` + `ACTION_REQUEST_INSIGHTS_UPDATE`. `DevBundlerService` subscribes on construction; `unsub` is wired into `close()`. 12 files, +204/-1.
+- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** — **STILL OPEN** as of 2026-07-12T23:57Z. Will add `get_request_insights` and `subscribe_to_request_insights` MCP tools for agents. Expected canary.85/86.
+- **[PR #93978](https://github.com/vercel/next.js/pull/93978) `request insights: add DevTools request panel (5/5)`** — **STILL OPEN**. Will add a visual request panel to the dev overlay DevTools. Expected canary.86.
+
+**Full details** in setup.md → `experimental.requestInsights` (the new section added alongside this update).
+
+**Source:** canary.79–84 release notes at [github.com/vercel/next.js/releases](https://github.com/vercel/next.js/releases) · npm `next@canary` dist-tag.
