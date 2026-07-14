@@ -1055,3 +1055,224 @@ npx shadcn@latest add acme/toolkit/project-conventions
 
 **Sources:** [shadcn GitHub Registries changelog (June 2026)](https://ui.shadcn.com/docs/changelog/2026-06-github-registries) · [shadcn GitHub Registry docs](https://ui.shadcn.com/docs/registry/github) · [shadcn registry.json schema](https://ui.shadcn.com/docs/registry/registry-json)
 
+
+
+## shadcn 4.13.0 — Base UI is Now the Default (July 3, 2026)
+
+Released 9 days after 4.12.0 (June 26 → July 3), `shadcn@4.13.0` is the **most material shadcn CLI change since 4.0**. [PR #11082](https://github.com/shadcn-ui/ui/pull/11082) by shadcn himself flips the default headless library: **Base UI** is now the default in `npx shadcn@latest init` and `npx shadcn@latest add`. Radix UI remains fully supported and is still the second option in the CLI prompt. Per the [official changelog](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default), this is the result of "wide community adoption" of Base UI over the last year.
+
+### What changed for new projects
+
+After `npx shadcn@latest init` runs against a fresh project, the resulting `components.json` + `package.json` look like this:
+
+```json
+// components.json — defaults now point at Base UI
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+```json
+// package.json — added by the CLI
+{
+  "dependencies": {
+    "@base-ui/react": "latest"     // <-- the default; was "no headless lib" or "radix-ui" before
+  }
+}
+```
+
+If you want to keep using Radix, the CLI still asks during init: **"Which headless library would you like to use? › Base UI / Radix UI"** — and the explicit choice is recorded in `components.json` (or via `--base-color` / future `--headless` flag if you want non-interactive). If you skip the prompt with `--yes`, the default is **Base UI**.
+
+### What this means for existing projects
+
+- **If you `npx shadcn@latest add` into a project that was initialized before 4.13.0**, the CLI does NOT migrate you to Base UI. It uses whatever headless lib you already configured in `components.json` (most projects: Radix). To migrate an existing project, see the [Migration from Radix UI](#migration-from-radix-ui) section below.
+- **If you `npx shadcn@latest init` into a project that already has `components.json`**, the CLI does NOT overwrite your config. It only writes files that don't exist (`app/globals.css`, `lib/utils.ts`, etc).
+- **The chat components from 4.12.0** (`MessageScroller`, `Message`, `Bubble`, `Attachment`, `Marker`) all have separate `base-*` and `radix-*` registry items — installing one of these does NOT migrate your project to Base UI. You can still add a single `base-luma` message-scroller to a Radix project if you want; they're independent.
+
+### Migration from Radix UI
+
+If you have an existing Radix-flavored project and want to migrate to Base UI, you have two paths:
+
+**Path A — clean migration (recommended for small projects):**
+
+```bash
+# 1. Update components.json's "$schema"-derived flags (no formal headless flag yet; the CLI
+#    detects the lib from the dep installed). Install Base UI:
+npx shadcn@latest add @base-ui/react   # or: pnpm add @base-ui/react
+
+# 2. Re-add each component you use, prefixed with the new base-* registry name.
+#    The CLI will skip files that already exist unless you --force overwrite.
+npx shadcn@latest add button dialog dropdown-menu --force
+
+# 3. Diff the generated files. Most props are the same; the few that differ:
+#    - Radix: <Dialog.Root><Dialog.Trigger /><Dialog.Content>...</Dialog.Content></Dialog.Root>
+#    - Base UI: <Dialog.Root><Dialog.Trigger /><Dialog.Popup>...</Dialog.Popup></Dialog.Root>
+#    The component-API mapping is documented per-component at ui.shadcn.com/docs/components.
+#    For most "form" components (Button, Input, Label, Select) the API is identical.
+
+# 4. Remove radix packages once everything is migrated
+pnpm remove @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-popover # etc
+```
+
+**Path B — mixed (acceptable for large codebases):**
+
+Keep both `@radix-ui/*` and `@base-ui/react` in the same project. They share no global state, and Base UI's `useRender` + Radix's `Slot` are not incompatible. The risk is bundle size: a project that pulls in both pays ~30-50KB of duplicated primitive infrastructure. Acceptable for a large project mid-migration; revisit once you're 100% on Base UI.
+
+**Path C — don't migrate.** If your project is stable on Radix, stay there. Radix is still maintained, still receives security patches, and the registry items for both flavors are still updated. The skill's `styling.md` and `components.md` continue to document both; only the default flipped.
+
+### Why Base UI became the default (the official rationale)
+
+From the [Base UI as Default changelog post](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default): "When shadcn/ui launched in January 2023, it was built on Radix. At the time, nothing else came close. Unstyled headless components, great APIs, great accessibility, battle-tested in millions of apps." But the same engineers who built Radix **moved to Base UI** — the Base UI library is "Radix by the same authors, rebuilt for the post-React-Compiler era" (per the announcement). Same team, newer API, smaller bundle, better SSR story, and tighter React 19 integration (the Base UI primitives are designed around `use()` and Suspense, not the `useContext`-based Radix internals).
+
+For new projects, the choice is "use the current default unless you have a specific reason not to." For existing projects, the choice is "stay on Radix until you have a reason to migrate" — both are valid.
+
+### Source-level changes worth knowing
+
+If you maintain a custom component built ON TOP of a shadcn component, the API differences you'll hit most often are:
+
+- **`Dialog` → `Dialog` with `Popup` instead of `Content`**: the Base UI primitive is named `Popup`, the Radix one `Content`. Both take the same `className` + `forceMount` props.
+- **`Popover` → `Popover` with `Popup`**: same rename pattern.
+- **`DropdownMenu` → `Menu` with `Popup`**: Base UI's `Menu` covers what Radix split into `DropdownMenu` + `ContextMenu` + `Menubar`. One primitive, three use cases.
+- **`Tooltip` → `Tooltip` with `Popup`**: same rename.
+- **`Accordion` → `Accordion` with `Panel` instead of `Content`**: same pattern.
+
+The full mapping table is at [ui.shadcn.com/docs/components](https://ui.shadcn.com/docs/components) — every component page lists both the Base UI and Radix implementations side-by-side.
+
+**Sources:**
+- [shadcn 4.13.0 release notes](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.13.0)
+- [PR #11082 — `base-ui is now default`](https://github.com/shadcn-ui/ui/pull/11082)
+- [Base UI as the Default changelog post (July 2026)](https://ui.shadcn.com/docs/changelog/2026-07-base-ui-default)
+- [Base UI vs Radix UI API mapping](https://ui.shadcn.com/docs/components)
+- [Base UI npm package](https://www.npmjs.com/package/@base-ui/react)
+
+## shadcn/typeset (July 14, 2026) — Stream-Friendly Typography System
+
+Released the same week as 4.13.0 (just after midnight UTC on July 14, 2026), **`shadcn/typeset`** is a new typography system that ships as a **single CSS file you own** — no package, no config layer, no runtime JS. It styles your app's HTML (headings, paragraphs, lists, tables, code) the same way for blog posts, docs, and chat — and lets you tune the rhythm for each context independently.
+
+```html
+<!-- One class, everything styled -->
+<div class="typeset">
+  { content }
+</div>
+```
+
+The system is container-aware (sizes scale with the container), uses your existing theme (CSS variables), and exposes three controls: **size** (`--typeset-size`), **leading** (`--typeset-leading`), and **flow** (`--typeset-flow`).
+
+```css
+/* Tighter rhythm for chat */
+.typeset-chat {
+  --typeset-leading: 1.6;
+  --typeset-flow: 1em;
+}
+
+/* Roomier rhythm for docs */
+.typeset-docs {
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.5em;
+}
+```
+
+```tsx
+// In a streaming chat message
+<div className="typeset typeset-chat">{message}</div>
+
+// In a long-form docs article
+<article className="typeset typeset-docs">{page}</article>
+```
+
+### Why typeset exists
+
+Before typeset, every surface that rendered markdown (blog, docs, chat) needed its own `prose` or `typography` plugin and produced slightly different output for headings, lists, and code. Three different `prose-lg` and `prose-base` configurations in the same app would clash in subtle ways.
+
+With typeset, you **style the HTML elements once, then tune the rhythm for each container**. The element styles (h1, p, ul, code, table) come from the single `shadcn/typeset.css` (or whatever name you save it as). The container variants (`typeset-chat`, `typeset-docs`) are three CSS variables each.
+
+### Streaming-friendly
+
+The killer feature for chat UIs: **typeset does not restyle earlier blocks when a new block arrives**. Streaming chat apps where each message appends to a list don't have to re-render the entire list to apply a new message's typography. The class-based design means each `.typeset` block is independently styled.
+
+### Install
+
+```bash
+# Open the typeset builder at ui.shadcn.com/typeset, click "Use this typeset",
+# and either:
+#   a) copy the CSS into your globals.css
+#   b) save it as a separate file (e.g. styles/typeset.css) and @import it
+#   c) save it as styles/typeset-chat.css / styles/typeset-docs.css and
+#      @import each variant separately
+
+# Example: separate files
+```
+
+```css
+/* app/globals.css */
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+
+/* Base typeset — the element styles */
+@import "../styles/typeset.css";
+
+/* Container variants — the rhythm tunings */
+@import "../styles/typeset-chat.css";
+@import "../styles/typeset-docs.css";
+```
+
+Or in a single file, just inline the variants:
+
+```css
+.typeset { /* base */ }
+.typeset-chat {
+  --typeset-leading: 1.6;
+  --typeset-flow: 1em;
+}
+.typeset-docs {
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.5em;
+}
+```
+
+### When to use typeset vs Tailwind Typography (`@tailwindcss/typography`)
+
+| Use case | Recommendation |
+|---|---|
+| **Single-surface app** (just blog OR just docs) | Tailwind Typography's `prose` classes are still fine |
+| **Multi-surface app** (blog + docs + chat + email) | **Use shadcn/typeset** — one stylesheet, multiple container variants |
+| **Streaming chat with mixed content** (markdown + tool outputs) | **Use shadcn/typeset** — streaming-safe, container-aware |
+| **RSC app with `<Markdown>` components** | **Use shadcn/typeset** — works with any markdown renderer since it styles the output HTML |
+| **Existing project on `prose` with a single surface** | Don't migrate. Tailwind Typography still works. |
+
+### Markdown renderer compatibility
+
+Typeset styles the HTML output, so it works with **any** markdown renderer:
+- `react-markdown` (most common RSC-friendly choice)
+- `marked` + DOMPurify
+- `MDX` with `@next/mdx`
+- AI SDK `<Message>` content
+- `remark` + `rehype` pipeline
+- Server-rendered HTML from your CMS
+
+Just render the markdown to HTML and wrap the result in a `<div className="typeset">`.
+
+**Sources:**
+- [shadcn/typeset announcement (July 14, 2026)](https://ui.shadcn.com/docs/changelog/2026-07-typeset)
+- [Typeset documentation](https://ui.shadcn.com/docs/typeset)
+- [Typeset builder](https://ui.shadcn.com/typeset)
+- [shadcn changelog](https://ui.shadcn.com/docs/changelog)

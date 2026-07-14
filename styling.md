@@ -420,6 +420,95 @@ All four fixes are **silent footgun** fixes (no warning, no error before — the
 
 **Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.2`). Patch release — no code changes required.
 
+## shadcn/typeset — Stream-Friendly Typography (July 14, 2026)
+
+If your app renders markdown in multiple surfaces (blog, docs, chat, email, AI assistant output), you'll hit a recurring problem: every surface needs its own typography config, and the styles drift apart over time. **`shadcn/typeset`** is the official answer — released the same week as `shadcn@4.13.0` (July 14, 2026).
+
+It's a single CSS file that styles your HTML elements (h1, p, ul, code, table) the same way everywhere, with **three CSS variables** to tune the rhythm per container:
+
+```css
+.typeset {
+  /* Base — styles the HTML elements (headings, paragraphs, lists, code, tables) */
+}
+
+.typeset-chat {
+  --typeset-leading: 1.6;  /* line-height */
+  --typeset-flow: 1em;     /* space between blocks */
+}
+
+.typeset-docs {
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.5em;
+}
+```
+
+```tsx
+// In a streaming chat message — tighter rhythm
+<div className="typeset typeset-chat">{markdown}</div>
+
+// In a long-form docs article — roomier rhythm
+<article className="typeset typeset-docs">{markdown}</article>
+```
+
+### Why typeset instead of `@tailwindcss/typography` (Tailwind Typography / `prose`)
+
+The `prose` classes from Tailwind Typography are great for a single-surface app (just a blog, or just docs). They break down when you have multiple surfaces that need different rhythms from the same HTML elements.
+
+| Surface | Tailwind Typography approach | shadcn/typeset approach |
+|---|---|---|
+| Blog | `prose prose-lg` | `<div className="typeset">` |
+| Docs | `prose prose-base max-w-none` | `<div className="typeset typeset-docs">` |
+| Chat | `prose prose-sm` | `<div className="typeset typeset-chat">` |
+| Email | `prose prose-sm` (with overrides) | `<div className="typeset typeset-email">` |
+
+With `prose`, each surface has its own class soup; with typeset, the HTML elements are styled once, and the container class just tunes three CSS variables.
+
+### Streaming-friendly
+
+The killer feature for chat UIs: **typeset does not restyle earlier blocks when a new block arrives**. A streaming chat where each message appends to a list doesn't have to re-render the entire list to apply a new message's typography. The class-based design means each `.typeset` block is independently styled.
+
+This is why typeset pairs naturally with the shadcn 4.12.0 Chat Components (`MessageScroller`, `Message`, `Bubble`, `Attachment`, `Marker`) — wrap each `Message` content in `<div className="typeset typeset-chat">` and the streaming output stays correctly styled without re-rendering.
+
+### Install
+
+The typeset builder at [ui.shadcn.com/typeset](https://ui.shadcn.com/typeset) generates a CSS file based on your theme. Download it, then either inline it in `app/globals.css` or save as a separate file and `@import` it.
+
+```css
+/* app/globals.css */
+@import "tailwindcss";
+@import "shadcn/tailwind.css";
+
+/* Base typeset — element styles (h1, p, ul, code, table) */
+@import "../styles/typeset.css";
+
+/* Container variants — rhythm tunings */
+@import "../styles/typeset-chat.css";
+@import "../styles/typeset-docs.css";
+```
+
+Or, for a single-file approach:
+
+```css
+.typeset { /* ... element styles from the builder ... */ }
+.typeset-chat { --typeset-leading: 1.6; --typeset-flow: 1em; }
+.typeset-docs { --typeset-size: 15px; --typeset-leading: 1.75; --typeset-flow: 1.5em; }
+```
+
+### How it composes with Tailwind v4 `@theme`
+
+Typeset uses **plain CSS variables** (`--typeset-size`, `--typeset-leading`, `--typeset-flow`), not Tailwind theme tokens. This means:
+- **No `@theme inline { --typeset-size: ... }` needed.** The variables are local to each `.typeset-*` container.
+- **No conflict with Tailwind's `text-base` / `text-lg` utilities.** You can still apply Tailwind text utilities inside a typeset block; the block's `--typeset-size` is a fallback, not an override.
+- **Container queries work.** Typeset is designed to be paired with `@container` queries — the `--typeset-size` variable scales with the container's inline-size by default.
+
+**Full deep-dive and the per-component API mapping** is in `components.md` → [shadcn/typeset (July 14, 2026) — Stream-Friendly Typography System](#shadcntypeset-july-14-2026--stream-friendly-typography-system). The components doc covers the markdown-renderer compatibility matrix (react-markdown, MDX, AI SDK Message, etc).
+
+**Sources:**
+- [shadcn/typeset announcement (July 14, 2026)](https://ui.shadcn.com/docs/changelog/2026-07-typeset)
+- [Typeset documentation](https://ui.shadcn.com/docs/typeset)
+- [Typeset builder](https://ui.shadcn.com/typeset)
+
 ## shadcn/ui Theming
 
 ### CSS Variables Pattern
