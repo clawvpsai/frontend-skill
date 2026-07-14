@@ -1118,7 +1118,7 @@ The canary.78 flag is no longer inert — two follow-up PRs landed in **canary.7
 
 ## `experimental.requestInsights` — Dev-Only Request Diagnostics Stack (16.3.0-canary.84+, PR [#93974](https://github.com/vercel/next.js/pull/93974) + [#93975](https://github.com/vercel/next.js/pull/93975) + [#93976](https://github.com/vercel/next.js/pull/93976) by [@feedthejim](https://github.com/feedthejim), merged 2026-07-12T11:47:38–11:47:41Z)
 
-Request Insights is a 5-PR dev-only feature stack that records framework OTEL spans, derives a bounded request history (last 100 requests, deduped fetch records), and exposes a snapshot over a private dev endpoint + HMR so AI agents + DevTools can diagnose what a route is doing without leaving the dev server. **canary.84 ships the first 3 PRs (recording, history, transport).** The remaining 2 PRs — agent diagnosis access ([#93977](https://github.com/vercel/next.js/pull/93977)) and the DevTools request panel ([#93978](https://github.com/vercel/next.js/pull/93978)) — are still open and target canary.85/86.
+Request Insights is a 5-PR dev-only feature stack that records framework OTEL spans, derives a bounded request history (last 100 requests, deduped fetch records), and exposes a snapshot over a private dev endpoint + HMR so AI agents + DevTools can diagnose what a route is doing without leaving the dev server. **Status of the 5 PRs:** PRs 1/5 ([#93974](https://github.com/vercel/next.js/pull/93974)) + 2/5 ([#93975](https://github.com/vercel/next.js/pull/93975)) + 3/5 ([#93976](https://github.com/vercel/next.js/pull/93976)) shipped in canary.84 (July 12, 2026); 4/5 ([#93977](https://github.com/vercel/next.js/pull/93977) — `next experimental-request-insights` CLI + `get_request_insights` MCP tool) shipped in canary.85 (July 13, 2026, 12:01:53Z); 5/5 ([#93978](https://github.com/vercel/next.js/pull/93978) — DevTools request panel) merged on the canary branch 2026-07-14T11:26:19Z and will be in canary.86 (expected ~2026-07-14T23:00Z).
 
 ### What the 3 shipped PRs add
 
@@ -1137,7 +1137,7 @@ const nextConfig: NextConfig = {
     // Dev-only request diagnostics. Default false.
     // When true, next dev:
     //   - starts the LocalSpanRecorder
-    //   - exposes GET /__nextjs_request_insights (returns the last 100 requests)
+    //   - exposes GET /_next/development/request-insights (returns the last 100 requests)
     //   - pushes REQUEST_INSIGHTS_UPDATE messages over the HMR transport
     requestInsights: true,
   },
@@ -1158,7 +1158,7 @@ While `next dev` is running with the flag on:
 
 ```bash
 # Fetch the last 100 requests as a JSON snapshot
-curl -sS http://localhost:3000/__nextjs_request_insights | jq '.requests[0]'
+curl -sS http://localhost:3000/_next/development/request-insights | jq '.requests[0]'
 ```
 
 The endpoint is dev-only (`opts.dev` gate) and additionally gated on `blockCrossSiteDEV(req, res, development.config.allowedDevOrigins, opts.hostname)` — same CSRF guard the existing dev-only Next.js internal endpoints use. Same-origin requests from `http://localhost:3000` work; cross-origin requests get a CSRF error.
@@ -1203,19 +1203,81 @@ type RequestInsightFetch = {
 
 The `DevBundlerService` subscribes to the in-memory store on construction (`subscribeRequestInsights` in `dev-bundler-service.ts`) and forwards each `RequestInsight` to the HMR socket. `unsub` is wired into `close()` so dev-server shutdown doesn't leak the subscription.
 
-### How an agent uses it (the planned workflow)
+### How an agent (or the DevTools panel) consumes it — SHIPPED in canary.85 (4/5) and canary.86 (5/5)
 
-The shipped PRs (1/5, 2/5, 3/5) provide the data path. The agent-consumption path lands in:
+The agent-consumption path landed across the last two canary cuts:
 
-- **PR #93977 `request insights: add agent diagnosis access (4/5)`** — `get_request_insights` and `subscribe_to_request_insights` MCP tools. Agent calls them to fetch the last 100 requests or subscribe to a live stream, then correlates the `spans[]` + `fetches[]` with the agent's own edits to the route.
-- **PR #93978 `request insights: add DevTools request panel (5/5)`** — visual panel in the dev overlay DevTools. Shows the last 100 requests as a table; clicking one shows the full span tree + fetch list with timing.
+- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** — SHIPPED in **canary.85 (July 13, 2026, 12:01:53Z)**. Adds **two** agent-accessible surfaces, both backed by the same in-memory store:
 
-**Both are still open as of canary.84 (July 12, 2026).** When they ship (expected canary.85/86), the integration points will be:
+  - **`next experimental-request-insights` CLI** (new) — `packages/next/src/cli/next-request-insights.ts` (+201/-0) + `bin/next.ts` (+30/-0) wire the new `program.command('experimental-request-insights')` subcommand. Auto-discovers the running dev server from the project's `.next/lock` file, calls the `/_next/development/request-insights` endpoint, and prints a human summary (newest-first, default 20 requests, with per-request route + duration + status + first 5 fetches). Flags:
+    - `--url <url>` — override the auto-discovered dev server URL (must be `http://` or `https://`)
+    - `--json` — print the raw `RequestInsightsSnapshot` JSON (pipe to `jq`)
+    - `--limit <n>` — max number of recent request summaries to print (positive integer)
+  - **`get_request_insights` MCP tool** — `packages/next/src/server/mcp/tools/get-request-insights.ts` (+57/-0) is now a standard tool registered in `get-or-create-mcp-server.ts`. The tool's input schema is `{ requestId?: string, htmlRequestId?: string }` (both optional filters) and it returns the filtered `RequestInsight[]` as the MCP `content[].text` payload. The tool records its own telemetry call (`mcp/get_request_insights`) via the existing `mcpTelemetryTracker`. If `experimental.requestInsights` is off, the tool returns a friendly JSON error rather than throwing. **Note:** the original PR description suggested a `subscribe_to_request_insights` tool would land alongside — that surface was **deferred** (the live stream is already available over the HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` for browser subscribers; for MCP clients, the snapshot tool is the only shipped surface, and the call should be re-invoked on a short interval to approximate streaming).
 
-- **`next-dev-loop` skill** gains a "what's this request doing?" action that calls the MCP tools to read the latest insights for the current route
-- **The `Copy prompt` button** in the Instant Insights overlay grows a "Request insights" tab that pastes the per-request data into the agent's prompt
-- **MCP `get_request_insights` / `subscribe_to_request_insights`** become standard tools in the `next-devtools-mcp` package (alongside the existing `get_compilation_issues` / `compile_route`)
+- **[PR #93978](https://github.com/vercel/next.js/pull/93978) `request insights: add DevTools request panel (5/5)`** — SHIPPED on canary branch 2026-07-14T11:26:19Z (will be in **canary.86**, expected ~2026-07-14T23:00Z). Adds a new "Request Insights" panel in the dev-overlay DevTools (`packages/next/src/next-devtools/dev-overlay/components/request-insights/{request-insights-panel.tsx, request-list.ts, trace-viewer.ts, request-insights-panel.css, format-duration.ts}`). The panel shows:
 
+  - A retained request list with **stable selection** as new requests arrive (selected request id is preserved until the request is no longer in the 100-request buffer)
+  - A **"Page load"** marker on the exact initial document request (identified by `self.__next_r === request.requestId`)
+  - An **end-to-end trace timeline** that follows the recorded span parent/child hierarchy (timeline range is the request's full duration; outlier spans are clipped to that range)
+  - A **focused default view** showing the most useful high-level spans, and a **verbose toggle** that surfaces every recorded span for deep investigation
+  - **Fetch + cache + request + status + duration + span-count** details for the selected request
+  - **Sub-millisecond durations rendered readably** and **right-aligned request metrics** for at-a-glance comparison
+  - **Merged fetch metrics with their corresponding `AppRender.fetch` spans** so a single timeline row shows the full latency without double-counting
+
+  Empty state copy: *"Request insights will appear after the next App Router request."*
+
+**As of 16.3.0-canary.85+, the full agent loop looks like this (4/5 + 5/5 of the stack are live, canary.85 ships the MCP + CLI, canary.86 ships the DevTools panel):**
+
+1. Agent edits a route in `app/dashboard/page.tsx`.
+2. Agent calls `mcp__next-devtools-mcp__get_request_insights({ requestId: '<latest>' })` (or, for shell-only access, runs `next experimental-request-insights --json | jq '.requests[0]'`).
+3. Agent reads the `spans[]` — finds e.g. `next.fetch /api/user` took 1800ms, with `http.status_code: 500` and a `cache_reason: 'cache-miss'`.
+4. Agent correlates with the edit — the user just added a new `headers().get('x-tenant')` call in a Server Component, but the `next/cache` directive is on the same scope. Agent surfaces: "this Server Component is no longer eligible for `use cache` because it reads request-time headers; either pass the header into the cached function or split the read into a separate Server Component."
+5. Agent edits the file. Repeats.
+6. *(canary.86+ only)* The human can also pop the DevTools overlay → "Request Insights" tab to see the same data as a sortable table with span-tree drill-down — no MCP required.
+
+**The CLI is the right starting point** for shell-only agents and CI scripts (no MCP overhead, no jq one-liner required to be useful on its own). **The MCP tool is the right surface** for in-editor agents (Claude Code, Cursor, etc.) that already have `next-devtools-mcp` configured. **The DevTools panel** is the right surface for humans visually verifying what an agent just claimed.
+
+### `next experimental-request-insights` CLI (16.3.0-canary.85+, PR [#93977](https://github.com/vercel/next.js/pull/93977))
+
+A first-class CLI for reading the request insights snapshot from a running dev server, without needing curl + jq. The CLI lives in `packages/next/src/cli/next-request-insights.ts` and is wired into `bin/next.ts`.
+
+```bash
+# Auto-discover the dev server from .next/lock in the current directory
+# and print a human summary (default: newest 20 requests, 5 fetches per request)
+next experimental-request-insights
+
+# Output:
+#   Showing 20 of 23 retained requests (newest first).
+#   /dashboard 1.24s 200
+#     request abc12345 page page12345
+#     fetch 18ms 200 miss GET https://api.example.com/me
+#     fetch 240ms 200 miss GET https://api.example.com/feed
+#   /settings 312ms 200
+#     request def67890 page page67890
+#     ...
+
+# Pipe to jq for filtering
+next experimental-request-insights --json | jq '.requests[] | select(.durationMs > 1000) | {route, durationMs}'
+
+# Override the dev server URL (skips lockfile auto-discovery)
+next experimental-request-insights --url http://localhost:3000
+
+# Limit the number of requests printed
+next experimental-request-insights --limit 5
+```
+
+**Auto-discovery** reads the project's `<distDir>/lock` file (default `.next/lock`) and parses the `appUrl` field — same lockfile the rest of the dev server uses for port assignment. Discovery is bounded by `DEV_SERVER_DISCOVERY_TIMEOUT_MS = 1000` with a `DEV_SERVER_DISCOVERY_RETRY_MS = 50` poll interval. If no dev server is found, the CLI exits with: `Unable to discover a running Next.js dev server from <lockfile>. Start next dev or pass --url.`
+
+**Validation:**
+
+- `--url` must be a valid `http://` or `https://` URL (rejects `ftp://` etc.)
+- `--limit` must be a positive integer
+- Response is validated: must be a JSON object with `requests: RequestInsight[]` where each request has `fetches: []` — otherwise the CLI exits with `Invalid response from <endpoint>: expected requests and fetches to be arrays.` and dumps the raw response
+
+**Duration formatting:** sub-second values render as `120ms`, longer values as `1.24s`. Request IDs and page IDs are truncated to 8 chars for readability.
+
+**Source:** [PR #93977 — `next experimental-request-insights` CLI](https://github.com/vercel/next.js/pull/93977) · [`next-request-insights.ts` at v16.3.0-canary.85+](https://github.com/vercel/next.js/blob/v16.3.0-canary.85/packages/next/src/cli/next-request-insights.ts) · [`bin/next.ts` at v16.3.0-canary.85+](https://github.com/vercel/next.js/blob/v16.3.0-canary.85/packages/next/src/bin/next.ts)
 ### What this does NOT do
 
 - **Does not record or replace the user's own OTEL provider.** The `LocalSpanRecorder` is bypassed when a user OTEL provider is installed. No double-emission, no leaks.
@@ -1234,13 +1296,13 @@ rg 'requestInsights' next.config.ts
 rg 'requestInsights' node_modules/next/dist/server/config-schema.d.ts 2>/dev/null   || curl -s https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/config-schema.ts | rg 'requestInsights'
 
 # Pull a snapshot from a running dev server
-curl -sS http://localhost:3000/__nextjs_request_insights | jq '.requests[].status' | sort | uniq -c
+curl -sS http://localhost:3000/_next/development/request-insights | jq '.requests[].status' | sort | uniq -c
 
 # Show only failing requests with their top span
-curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | select(.status == "error") | {route, durationMs, topSpan: .spans[0].name}'
+curl -sS http://localhost:3000/_next/development/request-insights |   jq '.requests[] | select(.status == "error") | {route, durationMs, topSpan: .spans[0].name}'
 
 # Tail spans for one request by id
-curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | select(.requestId == "abc123") | .spans[] | {name, durationMs, status}'
+curl -sS http://localhost:3000/_next/development/request-insights |   jq '.requests[] | select(.requestId == "abc123") | .spans[] | {name, durationMs, status}'
 ```
 
 ### Files touched (43 files, ~1.7k lines added, mostly test scaffolding)
@@ -1252,7 +1314,7 @@ curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | s
 - `packages/next/src/server/lib/trace/span-store.ts` (+83/-0) — `SpanStoreRecord` + `recordSpan` + `isLocalSpanRecordingEnabled`; test-only recorder hook
 - `packages/next/src/server/lib/trace/tracer.ts` (+125/-11) — recorder is consulted on span start/end; when no user OTEL provider is installed, the recorder's local span is the active one
 - `packages/next/src/server/lib/trace/request-insights.ts` (+337/-0) — `InMemoryRequestInsightsStore`; `recordSpan` / `recordFetch` / `getSnapshot`; `subscribeRequestInsights` listener registry; `sanitizeSpanAttributes` / `sanitizeUrl` / `getFetchInsight` helpers
-- `packages/next/src/server/lib/router-server.ts` (+46/-0) — `GET /__nextjs_request_insights` endpoint; CSRF-gated, dev-only, returns 404-with-helpful-error when off
+- `packages/next/src/server/lib/router-server.ts` (+46/-0) — `GET /_next/development/request-insights` endpoint; CSRF-gated, dev-only, returns 404-with-helpful-error when off
 - `packages/next/src/server/lib/patch-fetch.ts` (+43/-8) — `isRequestInsightsEnabled()` check before recording a fetch metric
 - `packages/next/src/server/dev/hot-middleware.ts` (+8/-0) — emits `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` to connected clients
 - `packages/next/src/server/dev/hot-reloader-turbopack.ts` (+9/-0) — Turbopack equivalent of the above
@@ -1277,12 +1339,17 @@ curl -sS http://localhost:3000/__nextjs_request_insights |   jq '.requests[] | s
 - [PR #93974 — `request insights: record local framework spans (1/5)`](https://github.com/vercel/next.js/pull/93974)
 - [PR #93975 — `request insights: derive request history and fetch data (2/5)`](https://github.com/vercel/next.js/pull/93975)
 - [PR #93976 — `request insights: expose dev snapshots to tools and HMR (3/5)`](https://github.com/vercel/next.js/pull/93976)
-- [PR #93977 — `request insights: add agent diagnosis access (4/5)` (open)](https://github.com/vercel/next.js/pull/93977)
-- [PR #93978 — `request insights: add DevTools request panel (5/5)` (open)](https://github.com/vercel/next.js/pull/93978)
+- [PR #93977 — `request insights: add agent diagnosis access (4/5)` (SHIPPED in canary.85, 2026-07-13T12:01:53Z)](https://github.com/vercel/next.js/pull/93977)
+- [PR #93978 — `request insights: add DevTools request panel (5/5)` (SHIPPED on canary branch 2026-07-14T11:26:19Z, in canary.86)](https://github.com/vercel/next.js/pull/93978)
 - [canary.84 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.84)
+- [canary.85 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.85)
 - [`config-shared.ts` at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/config-shared.ts) — `requestInsights` declaration
 - [`request-insights.ts` (server) at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/server/lib/trace/request-insights.ts) — store + sanitization
 - [`request-insights.ts` (shared types) at v16.3.0-canary.84](https://raw.githubusercontent.com/vercel/next.js/v16.3.0-canary.84/packages/next/src/next-devtools/shared/request-insights.ts) — `RequestInsight` shape
+- [`next-request-insights.ts` CLI at v16.3.0-canary.85](https://github.com/vercel/next.js/blob/v16.3.0-canary.85/packages/next/src/cli/next-request-insights.ts) — new `next experimental-request-insights` command
+- [`get-request-insights.ts` MCP tool at v16.3.0-canary.85](https://github.com/vercel/next.js/blob/v16.3.0-canary.85/packages/next/src/server/mcp/tools/get-request-insights.ts) — `get_request_insights` MCP tool
+- [`request-insights-panel.tsx` (canary branch head)](https://github.com/vercel/next.js/blob/canary/packages/next/src/next-devtools/dev-overlay/components/request-insights/request-insights-panel.tsx) — new DevTools panel (canary.86)
+- [`trace-viewer.ts` (canary branch head)](https://github.com/vercel/next.js/blob/canary/packages/next/src/next-devtools/dev-overlay/components/request-insights/trace-viewer.ts) — span-tree + timeline + focused/verbose split
 
 ## Package Manager
 
@@ -1625,17 +1692,32 @@ Material PRs:
 - **[PR #95325](https://github.com/vercel/next.js/pull/95325) `docs: add incremental adoption path to Cache Components migration guide`** — the migration guide now has a step-by-step "enable on one route at a time" section. Useful for large codebases that can't migrate everything in one PR. See patterns.md → Cache Components Incremental Adoption.
 - **[PR #95629](https://github.com/vercel/next.js/pull/95629) `Clarify AI-assisted contribution policy in PR template and AGENTS.md`** — when an AI agent opens a PR, the PR template now asks for a clear "AI-assisted-by" declaration. The `AGENTS.md` managed block now includes the policy.
 
+### canary.86 (expected ~2026-07-14T23:00Z — in flight, 8 commits vs canary.85)
+
+The 8 post-canary.85 commits on the canary branch (will be in canary.86, npm `next@canary` dist-tag):
+
+- **[PR #93978](https://github.com/vercel/next.js/pull/93978) `request insights: add DevTools request panel (5/5)`** (feedthejim) — **the 5th and final PR of the Request Insights stack** SHIPPED. Adds the new "Request Insights" panel in the dev overlay DevTools (see setup.md → `experimental.requestInsights` → "How an agent (or the DevTools panel) consumes it" for the full feature breakdown). Source: `packages/next/src/next-devtools/dev-overlay/components/request-insights/`.
+- **[PR #95760](https://github.com/vercel/next.js/pull/95760) `docs: revalidateTag with expire zero, for route handlers`** (docs) — the `'use cache'` `expire: 0` error page was previously silent for Route Handlers; the page now mentions the `revalidateTag` alternative for the handler case.
+- **[PR #95752](https://github.com/vercel/next.js/pull/95752) `docs: Improve immutable static docs`** (docs) — wording on immutable static assets was overly strict; clarified.
+- **[PR #95620](https://github.com/vercel/next.js/pull/95620) `Add React sync development skill`** — new internal `$react-sync` skill at `.agents/skills/react-sync/` with a reusable build helper script and Corepack shim that pins pnpm to the repo version. Internal-only — the skill isn't user-facing, but Next.js contributors can now rebuild vendor React + sync into Next.js via `pnpm sync-react` without globally-pinned pnpm versions breaking workspace linking.
+- **[PR #95759](https://github.com/vercel/next.js/pull/95759) `docs: useSearchParams example stray link`** (docs) — fixed a dangling doc link in the `useSearchParams` example.
+- **[PR #95144](https://github.com/vercel/next.js/pull/95144) `Improve the NFT error message and ignore comment handling`** (Turbopack) — fixes #95125. The Turbopack "file-not-traced" error now (1) is specific about which function needs the `@turbopack-ignore` annotation, and (2) accepts `turbopackIgnore` comments anywhere in an expression — `fs.readFileSync(path.join(process.cwd(), someVar))` no longer requires annotations at both the `path.join` and the `fs.readFileSync` call sites; a single annotation in the expression tree is enough. Bubbles up through the linker and ignores the corresponding fs access APIs.
+- **[PR #95731](https://github.com/vercel/next.js/pull/95731) `Upgrade to swc 73`** — SWC major bump (now `73.x`). No new Next.js-side behavior, but pulls in the upstream SWC perf + correctness improvements (waiting on the swc major bump in swc-project/plugins before downstream plugins can use the new APIs).
+- **[PR #95725](https://github.com/vercel/next.js/pull/95725) `Update font data`** (auto-generated) — font data refresh for the next minor; no user-visible change unless you rely on a freshly-added font.
+
+**canary.85 (July 13, 2026) details** are unchanged; see canary.85 section below for the full material-PRs list and the v16.3.0-preview.6 preview that ran between canary.84 and canary.85.
+
 ### canary.84 (July 12, 2026, tag cut 23:57:18Z — published ~5 min before this skill update)
 
-**Headline:** ships the first 3 PRs of a 5-PR **Request Insights** dev-diagnostics stack by @feedthejim (1/5 local recording, 2/5 request history, 3/5 dev-snapshot transport). The remaining 2 PRs (4/5 agent diagnosis access #93977, 5/5 DevTools request panel #93978) are still open and target canary.85/86. Branch advanced 2 days after canary.83 — back on the ~48h cadence. canary-branch HEAD `a7bf1202de`, 4 commits vs canary.83 (3 PRs + the tag itself).
+**Headline (historical, July 12, 2026):** ships the first 3 PRs of a 5-PR **Request Insights** dev-diagnostics stack by @feedthejim (1/5 local recording, 2/5 request history, 3/5 dev-snapshot transport). At the time, the remaining 2 PRs (4/5 agent diagnosis access #93977, 5/5 DevTools request panel #93978) were still open. **Status now (July 14, 2026):** 4/5 shipped in canary.85 (July 13, 2026, 12:01:53Z) — `next experimental-request-insights` CLI + `get_request_insights` MCP tool; 5/5 merged on canary branch 2026-07-14T11:26:19Z and will be in canary.86 (expected ~2026-07-14T23:00Z). Branch advanced 2 days after canary.83 — back on the ~48h cadence. canary-branch HEAD `a7bf1202de`, 4 commits vs canary.83 (3 PRs + the tag itself).
 
 Material PRs:
 
 - **[PR #93974](https://github.com/vercel/next.js/pull/93974) `request insights: record local framework spans (1/5)`** (feedthejim) — dev-only `LocalSpanRecorder` + `LocalRecordingSpan` (OTEL `Span` API-compatible) that mirrors framework spans into an in-memory store when no user OTEL provider is installed. Hex-padded synthetic trace/span IDs. Recorder stored on `globalThis[Symbol.for('@next/local-span-recorder')]`; `tracer.ts` consults it on every span start/end. Preserves existing OTEL behavior when a user provider is installed (no double-emission). 5 files, +485/-0.
 - **[PR #93975](https://github.com/vercel/next.js/pull/93975) `request insights: derive request history and fetch data (2/5)`** (feedthejim) — wraps the recorder in a bounded `InMemoryRequestInsightsStore` (`MAX_REQUEST_INSIGHTS = 100`) keyed by `requestId`. Dedupes fetch records across completed `AppRender.fetch` spans vs direct fetch metrics. Sanitizes sensitive attribute keys via a `SENSITIVE_PARAM_NAME_RE` (matches `*token*` / `*secret*` / `*key*` / `*password*` / `*auth*` / `*signature*` / `*jwt*` / etc — case-insensitive) by replacing them with `'redacted'`; only the keys in `SAFE_SPAN_ATTRIBUTE_KEYS` (`http.method`, `http.route`, `http.status_code`, `http.url`, `next.fetch.cache_reason`, `next.fetch.cache_status`, `next.route`, `next.rsc`, `next.segment`, `next.span_name`, `next.span_type`, etc) pass through. URL query strings are sanitized via `sanitizeUrl()` before snapshotting. No raw header values, no auth headers, no bodies. 7 files, +747/-0.
-- **[PR #93976](https://github.com/vercel/next.js/pull/93976) `request insights: expose dev snapshots to tools and HMR (3/5)`** (feedthejim) — wires the new `experimental.requestInsights?: boolean` config flag (default `false`), the private dev endpoint `GET /__nextjs_request_insights` (returns 404-with-helpful-error JSON when off; CSRF-gated via `blockCrossSiteDEV` + `allowedDevOrigins` when on), and the HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` (`'requestInsightsUpdate'`) so tools/browser clients can subscribe. Two new reducer action types in `dev-overlay/shared.ts`: `ACTION_REQUEST_INSIGHTS_SNAPSHOT` + `ACTION_REQUEST_INSIGHTS_UPDATE`. `DevBundlerService` subscribes on construction; `unsub` is wired into `close()`. 12 files, +204/-1.
-- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** — **SHIPPED in canary.85 (July 13, 2026)**. Adds two new MCP tools to `next-devtools-mcp`: `get_request_insights` (snapshot of last 100 requests) + `subscribe_to_request_insights` (live stream). See v16.3.0-preview.6 + canary.85 section below for the full agent-loop recipe.
-- **[PR #93978](https://github.com/vercel/next.js/pull/93978) `request insights: add DevTools request panel (5/5)`** — **STILL OPEN** as of canary.85 (July 13, 2026). Will add a visual request panel to the dev overlay DevTools. Expected canary.86.
+- **[PR #93976](https://github.com/vercel/next.js/pull/93976) `request insights: expose dev snapshots to tools and HMR (3/5)`** (feedthejim) — wires the new `experimental.requestInsights?: boolean` config flag (default `false`), the private dev endpoint `GET /_next/development/request-insights` (returns 404-with-helpful-error JSON when off; CSRF-gated via `blockCrossSiteDEV` + `allowedDevOrigins` when on), and the HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` (`'requestInsightsUpdate'`) so tools/browser clients can subscribe. Two new reducer action types in `dev-overlay/shared.ts`: `ACTION_REQUEST_INSIGHTS_SNAPSHOT` + `ACTION_REQUEST_INSIGHTS_UPDATE`. `DevBundlerService` subscribes on construction; `unsub` is wired into `close()`. 12 files, +204/-1.
+- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** — **SHIPPED in canary.85 (July 13, 2026)**. Adds (1) the `get_request_insights` MCP tool — snapshot of last 100 requests, accepts `{ requestId?, htmlRequestId? }` filter args, and (2) the new `next experimental-request-insights` CLI command. The `subscribe_to_request_insights` MCP tool originally announced in the PR description was **deferred** — the live stream is already exposed via the canary.84 HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` for browser subscribers, and MCP clients re-invoke `get_request_insights` on a short interval to approximate streaming. See v16.3.0-preview.6 + canary.85 section below for the full agent-loop recipe.
+- **[PR #93978](https://github.com/vercel/next.js/pull/93978) `request insights: add DevTools request panel (5/5)`** — **SHIPPED on canary branch 2026-07-14T11:26:19Z**, will be in canary.86 (expected ~2026-07-14T23:00Z). Adds a "Request Insights" panel to the dev-overlay DevTools: a retained request list with stable selection, a "Page load" marker on the initial document request, an end-to-end trace timeline that follows the recorded span parent/child hierarchy, a focused default view + verbose toggle for deeper investigation, fetch + cache + request + status + duration + span-count details, and merged fetch-metric + `AppRender.fetch`-span display. Source: `packages/next/src/next-devtools/dev-overlay/components/request-insights/{request-insights-panel.tsx, request-list.ts, trace-viewer.ts, request-insights-panel.css, format-duration.ts}`. Empty state copy: *"Request insights will appear after the next App Router request."*
 
 **Full details** in setup.md → `experimental.requestInsights` (the new section added alongside this update).
 
@@ -1650,11 +1732,10 @@ canary.84 → canary.85 PR-by-PR diff at [compare/v16.3.0-canary.84...v16.3.0-ca
 
 **ONE material PR in canary.85 preview.6:**
 
-- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** (feedthejim) — the 4th of the 5-PR Request Insights stack ships. Adds two new MCP tools to `next-devtools-mcp`:
-  - **`get_request_insights`** — agent calls it to fetch the last 100 requests (the same `InMemoryRequestInsightsStore` snapshot exposed at `GET /__nextjs_request_insights` in canary.84). Returns the sanitized `RequestInsight[]` with `spans[]` + `fetches[]` per request.
-  - **`subscribe_to_request_insights`** — agent calls it to subscribe to a live stream of `RequestInsightsUpdate` messages. Same wire format as the canary.84 HMR transport but addressed to MCP clients instead of browser dev-overlay subscribers.
-  - Together: an agent can call `get_request_insights` to see the current state, or `subscribe_to_request_insights` to get a real-time stream while the user iterates, then correlate the `spans[]` + `fetches[]` with the agent's own edits to the route.
-  - Companion fix in the same PR: the dev-overlay browser-side reducer (`dev-overlay/shared.ts`) now also has a new action type for the agent-driven "go to request" nav (focusing the span tree on a specific `requestId`).
+- **[PR #93977](https://github.com/vercel/next.js/pull/93977) `request insights: add agent diagnosis access (4/5)`** (feedthejim) — the 4th of the 5-PR Request Insights stack ships. Adds:
+  - **`get_request_insights` MCP tool** — agent calls it to fetch the last 100 requests (the same `InMemoryRequestInsightsStore` snapshot exposed at `GET /_next/development/request-insights` in canary.84). Returns the sanitized `RequestInsight[]` with `spans[]` + `fetches[]` per request. Input schema: `{ requestId?: string, htmlRequestId?: string }` (both optional filters).
+  - **`next experimental-request-insights` CLI** — new `program.command('experimental-request-insights')` in `bin/next.ts` (+30/-0) + `cli/next-request-insights.ts` (+201/-0). Auto-discovers the running dev server from the project's `.next/lock` file and prints a human summary (route + duration + status + first 5 fetches per request). Flags: `--url <url>`, `--json`, `--limit <n>`. Replaces the need for a `curl ... | jq` one-liner for shell-only agents and CI scripts.
+  - **Note on `subscribe_to_request_insights`** — the PR description suggested a second `subscribe_to_request_insights` MCP tool would land alongside `get_request_insights` (live stream). That tool was **deferred** in the actual implementation — only `get_request_insights` ships. The live stream is still available to browser subscribers via the canary.84 HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` (`'requestInsightsUpdate'`). For MCP clients, re-invoke `get_request_insights` on a short interval (e.g. 1–2s) to approximate streaming; or use the `next experimental-request-insights` CLI in a watch loop.
   - This was the previously-docked "open" PR in canary.84 — the integration is live in canary.85+.
 
 **Plus 6 OTHER commits in canary.85 + preview.6, four material user-facing:**
@@ -1674,7 +1755,7 @@ canary.84 → canary.85 PR-by-PR diff at [compare/v16.3.0-canary.84...v16.3.0-ca
 
 **What the Request Insights 4/5 agent-diagnosis PR enables in practice**
 
-Now that `get_request_insights` + `subscribe_to_request_insights` are live, the agent loop looks like:
+Now that `get_request_insights` (canary.85+) + the new `next experimental-request-insights` CLI (canary.85+) + the new Request Insights DevTools panel (canary.86+) are live, the agent loop looks like:
 
 1. Agent edits a route in `app/dashboard/page.tsx`.
 2. Agent calls `mcp__next-devtools-mcp__get_request_insights()` to see the last 100 requests to `/dashboard`.
@@ -1683,11 +1764,11 @@ Now that `get_request_insights` + `subscribe_to_request_insights` are live, the 
 5. Agent correlates with the edit — the user just added a new `headers().get('x-tenant')` call in a Server Component, but the `next/cache` directive is on the same scope. Agent surfaces: "this Server Component is no longer eligible for `use cache` because it reads request-time headers; either pass the header into the cached function or split the read into a separate Server Component."
 6. Agent edits the file. Repeats.
 
-The 5th PR (#93978 — DevTools request panel) is still open as of canary.85 — expected canary.86. When it ships, the dev overlay will grow a "Request Insights" tab that shows the same 100-request buffer as a sortable table with span-tree drill-down.
+The 5th PR (#93978 — DevTools request panel) **shipped on the canary branch 2026-07-14T11:26:19Z** and will be in canary.86 (expected ~2026-07-14T23:00Z). When the next canary is published, the dev overlay will grow a "Request Insights" tab that shows the same 100-request buffer as a sortable table with span-tree drill-down, focused/verbose toggle, and merged fetch+span display.
 
 **Who needs to know:**
 
-- **Agent authors:** update your `next-devtools-mcp` integration to call `get_request_insights` (snapshot) or `subscribe_to_request_insights` (stream) — both are in the canary.85+ `next-devtools-mcp` package. The full PR is safe to depend on; the remaining 5/5 PR is purely UI.
+- **Agent authors:** update your `next-devtools-mcp` integration to call `get_request_insights` (snapshot — `{ requestId?, htmlRequestId? }` filter args) — registered in the canary.85+ `next-devtools-mcp` package. The `subscribe_to_request_insights` MCP tool mentioned in the original PR description was **deferred**; the live stream surface is the existing HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` for browser subscribers, and MCP clients should re-invoke `get_request_insights` on a short interval to approximate streaming. For shell-only access, the new `next experimental-request-insights` CLI (canary.85+) is the recommended entry point — no MCP overhead, prints a human summary by default, `--json` flag for raw output, `--url` flag to skip lockfile auto-discovery. The 5/5 DevTools panel PR (#93978) is now also merged on the canary branch and will be in canary.86 — once shipped, the dev overlay's "Request Insights" tab will show the same 100-request buffer as a sortable table with span-tree drill-down for visual verification.
 - **App authors:** nothing to do. The agent-diagnosis path is opt-in (via `experimental.requestInsights: true` from canary.84).
 - **Adopters of the experimental `navigation-testing-lock`:** the canary.85 fork (#95611) means the API path is now `next-devtools-mcp`'s own module — if you imported the old internal path, you'll need to update. The API surface itself is unchanged.
 - **Pages Router users on adapters (Vercel / OpenNext):** upgrade to canary.85+ to get the 404-template fix (#95264). 404s now show the Pages Router default, not the App Router default.
@@ -1697,6 +1778,6 @@ The 5th PR (#93978 — DevTools request panel) is still open as of canary.85 —
 - [canary.85 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.85)
 - [v16.3.0-preview.6 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.6)
 - [PR #93977 — `request insights: add agent diagnosis access (4/5)`](https://github.com/vercel/next.js/pull/93977)
-- [PR #93978 — `request insights: add DevTools request panel (5/5)` (still open)](https://github.com/vercel/next.js/pull/93978)
+- [PR #93978 — `request insights: add DevTools request panel (5/5)` (SHIPPED on canary branch 2026-07-14T11:26:19Z, in canary.86)](https://github.com/vercel/next.js/pull/93978)
 - [compare v16.3.0-canary.84...v16.3.0-canary.85](https://github.com/vercel/next.js/compare/v16.3.0-canary.84...v16.3.0-canary.85)
-- [`next-devtools-mcp` at v16.3.0-canary.85](https://github.com/vercel/next.js/tree/v16.3.0-canary.85/packages/next-devtools-mcp) — new `get_request_insights` / `subscribe_to_request_insights` tools
+- [`next-devtools-mcp` at v16.3.0-canary.85](https://github.com/vercel/next.js/tree/v16.3.0-canary.85/packages/next-devtools-mcp) — new `get_request_insights` MCP tool (the `subscribe_to_request_insights` tool from the PR description was deferred)

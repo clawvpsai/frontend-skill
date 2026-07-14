@@ -834,6 +834,10 @@ Next.js 16.2+ ships with a built-in MCP (Model Context Protocol) server for AI-a
   - **`compile_route`** — returns the compilation result for a single route
 - Skills like `next-dev-loop` call the underlying `/_next/mcp` endpoints directly, so they work without extra setup.
 
+**16.3.0-canary.85 update (July 13, 2026) — Request Insights MCP tool:**
+- **Added a third MCP tool** that surfaces the dev-only `experimental.requestInsights` snapshot (set `experimental.requestInsights: true` in `next.config.ts` and restart `next dev`):
+  - **`get_request_insights`** — returns the last 100 requests captured by the in-memory request-insights recorder. Input schema: `{ requestId?: string, htmlRequestId?: string }` (both optional filters). Returns the sanitized `RequestInsight[]` with `spans[]` + `fetches[]` per request. Pairs with the new **`next experimental-request-insights` CLI** for shell-only agents and CI scripts. See setup.md → `experimental.requestInsights` for the full feature breakdown.
+
 **Setup:**
 ```bash
 # Add to your Next.js project's .mcp.json
