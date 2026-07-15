@@ -7,13 +7,13 @@ Production-grade React + Next.js 16 frontend development for agents building mod
 | Layer | Technology |
 |---|---|
 | Framework | Next.js 16 (App Router) |
-| Language | TypeScript 6.x (strict) |
+| Language | TypeScript 7.0 GA (strict, Go-native compiler) |
 | Styling | Tailwind CSS v4 + shadcn/ui |
 | State | Zustand (client) + React Query / TanStack Query |
 | Forms | React Hook Form + Zod |
 | Build | Vite 8 (non-Next) / Turbopack (Next) |
 | Testing | Vitest + Playwright |
-| Auth | NextAuth.js v5 |
+| Auth | Better Auth (recommended for new SaaS) — NextAuth.js v5 / Clerk / Supabase Auth / Lucia also covered |
 
 ## Installation
 
@@ -60,7 +60,7 @@ frontend/
 ├── routing.md                # Next.js App Router patterns
 ├── forms.md                  # React Hook Form + Zod
 ├── state.md                  # Zustand + React Query
-├── auth.md                   # NextAuth.js + JWT
+├── auth.md                   # Better Auth (default) + NextAuth.js v5 + Clerk + Supabase + Lucia
 ├── api.md                    # Route handlers + Server Actions
 ├── styling.md                # Tailwind v4 + design tokens
 ├── performance.md            # Streaming, Suspense, images
@@ -69,7 +69,6 @@ frontend/
 ├── testing.md                # Vitest + Playwright
 ├── typescript.md             # Strict TypeScript patterns
 ├── patterns.md               # Composite recipes
-└── zustand.md                # Client state management
 ```
 
 ## Quick Start

@@ -875,6 +875,46 @@ Vite 8.1.3 bumps `es-module-lexer` from `^2.1.0` (the 8.1.2 pin) to `2.3.0`. The
 - [PR #22828 — `fix(ssr): correct stacktrace column position for first line`](https://github.com/vitejs/vite/pull/22828)
 
 **Recommended Vite version for new projects (July 2, 2026):** **Vite 8.1.3** — supersedes both 8.1.1 and 8.1.2 as the recommended Vite version. 8.1.3 contains all of 8.1.2's contents (the `resolve.tsconfigPaths` CSS regression fix #22775, Bundled Dev Mode fixes #22797/#22745, sourcemap field #22782, ERR_CLOSED_SERVER #22784, the corrected pnpm workspace-root resolution #22825, etc.) **plus** the four 8.1.3 fixes (`es-module-lexer` 2.1.0 → 2.3.0 in PR #22838, which removes the need for the 2.1.0 pin and brings the >~4 MB chunk fix in; CSS-after-shebang injection in #22717; nested-dynamic-import CSS preload in #22759; SSR stacktrace column position in #22828). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.3 (or 8.1.2 → 8.1.3). The 8.1.2 recommendation is superseded by 8.1.3; nothing about 8.1.2 changes, 8.1.3 just adds four fixes on top.
+
+**Superseded by 8.1.4 (July 9, 2026):** The 8.1.3 recommendation above is now superseded by [Vite 8.1.4](#vite-814-july-9-2026--patch-release-7-bug-fixes--dep-updates), which retains all of 8.1.3's contents **plus** seven more bug fixes (plus two dependency bumps). Go 8.1.0 → 8.1.4 directly, or 8.1.3 → 8.1.4 for the seven extra fixes. Nothing in 8.1.3 changes; 8.1.4 is a pure additive patch on top.
+
+### Vite 8.1.4 (July 9, 2026) — Patch Release (7 bug fixes + dep updates)
+
+Vite 8.1.4 ([released 2026-07-09T04:40Z by `sapphi-red`](https://github.com/vitejs/vite/releases/tag/v8.1.4), 10 commits since 8.1.3, 7 bug fixes plus 2 dependency bumps) is the **new recommended Vite version** as of this update. Compares: [`v8.1.3...v8.1.4`](https://github.com/vitejs/vite/compare/v8.1.3...v8.1.4). Snyk reports 0 known vulnerabilities in 8.1.4 (same as 8.1.3). Wikipedia and the [Vite npm `latest` pointer](https://www.npmjs.com/package/vite) now point at 8.1.4. **No behavior changes** — every commit is a bug fix or a non-major dependency bump.
+
+**Bug fixes in 8.1.4 (raw [CHANGELOG](https://github.com/vitejs/vite/blob/main/packages/vite/CHANGELOG.md)):**
+
+| Area | Fix | PR / Commit |
+|---|---|---|
+| **build** | Add workaround for building on [StackBlitz](https://stackblitz.com/). The StackBlitz WebContainer environment had a toolchain mismatch that prevented `vite build` from completing; the workaround is now active in 8.1.4. Unblocks production builds on StackBlitz (e.g., for teachers and StackBlitz-embedded demos). | [#22840](https://github.com/vitejs/vite/issues/22840) (commit `575c32c2`) |
+| **build** | Keep `import.meta.url` in preload function as-is. Vite's import-analysis pass was rewriting `import.meta.url` references inside the `__vitePreload(...)` function body. That changed the semantics for libraries that read `import.meta.url` to resolve the module's own URL inside the preload helper (e.g., `new URL('./data.json', import.meta.url)` used to look up JSON from the helper's URL rather than the calling module's URL). Now preserved verbatim. | [#22839](https://github.com/vitejs/vite/issues/22839) (commit `f1f90ed4`) |
+| **html** | Avoid regex backtracking in import-only check. The HTML transform's "this tag is an import-only inline module" heuristic had a regex pattern that backtracked catastrophically on long attribute values (a few KB of attribute text could lock up the dev server's transform worker for seconds). Now linear-time. | [#22848](https://github.com/vitejs/vite/issues/22848) (commit `b5868c01`) |
+| **optimizer** | Avoid optimizer run for transform request before init. The dep-optimizer was responding to `transform` requests before its initialization completed, occasionally producing wrong output for the first transform request after `vite dev` startup (the dev-overlay would show a transient "unresolved export" error that cleared on the next HMR). Now waits for init. | [#22852](https://github.com/vitejs/vite/issues/22852) (commit `72a5e219`) |
+| **ssr** | Align named-export function call stacktrace column with Node. For SSR errors that throw from inside a *named* function call (e.g., `add();` inside a server-side render function), Vite's stacktrace mapper was off-by-one column from what Node prints natively, so source maps pointed to a different column than the browser's stack frame would suggest. Brings the column in line with Node's native output for named calls — matches the same fix that #22828 shipped for the anon-function case in 8.1.3. | [#22829](https://github.com/vitejs/vite/issues/22829) (commit `173a1b64`) |
+| **css chunks** | Strip pure-CSS-chunk imports when `experimental.chunkImportMap` is enabled. Pure CSS chunks (chunks whose only exports are side-effect CSS imports) were being kept as `__vitePreload(...)` dependencies for their consumers, producing redundant `<link>` tags for CSS that no JS imports. Now stripped at build time. | [#22841](https://github.com/vitejs/vite/issues/22841) (commit `648bd049`) |
+| **deps** | `deps: update all non-major dependencies` — routine monthly dep bump. Pin for the specific diff is in the [8.1.4 release notes](https://github.com/vitejs/vite/releases/tag/v8.1.4). No API changes. | [#22865](https://github.com/vitejs/vite/issues/22865) (commit `d4295a9f`) |
+| **deps** | `deps: update rolldown-related dependencies` — keeps Vite 8's rolldown toolchain in lockstep with upstream rolldown patches. | [#22866](https://github.com/vitejs/vite/issues/22866) (commit `7cf07e4c`) |
+
+**Why this matters:**
+
+- For the **vast majority** of Vite 8.1.x users, 8.1.4 is "8.1.3 plus seven tiny fixes" and the upgrade is a no-op. The safest upgrade path is `8.1.3 → 8.1.4` (a single patch bump, no API changes).
+- The **`import.meta.url` fix (#22839)** is worth paying attention to if you use `new URL(..., import.meta.url)` to resolve sibling assets inside a preload function (rare, but people who hit it had no workaround in 8.1.3).
+- The **`html` regex backtrack fix (#22848)** is worth paying attention to if you embed large data-URI images / JSON blobs / base64 inline in `<script>` tags or `<link>` attributes — the old regex could hang dev transforms on those (production was unaffected, dev would stall).
+- The **stacktrace-column fix (#22829)** is the named-function companion to the SSR fix shipped in 8.1.3 (#22828 for anon functions). Together they make Vite's SSR error-overlay stack frames line up exactly with Node's native output, so source maps are now click-through-accurate for any frame.
+
+**Who should upgrade to 8.1.4:**
+
+- **Anyone on Vite 8.1.3** — pure additive patch; recommended upgrade. No API changes, no peer-dep changes, no behavior changes beyond the seven listed fixes.
+- **Anyone on Vite 8.1.0 / 8.1.1 / 8.1.2** — go straight to 8.1.4 (you get every fix from 8.1.1 through 8.1.4 in one bump; skip 8.1.2 and 8.1.3 unless you have a specific reason to step).
+
+**Sources:**
+
+- [Vite 8.1.4 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.4)
+- [Vite 8.1.4 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.1.4/packages/vite/CHANGELOG.md)
+- [Compare `v8.1.3...v8.1.4`](https://github.com/vitejs/vite/compare/v8.1.3...v8.1.4)
+- PRs: [#22840](https://github.com/vitejs/vite/issues/22840), [#22839](https://github.com/vitejs/vite/issues/22839), [#22848](https://github.com/vitejs/vite/issues/22848), [#22852](https://github.com/vitejs/vite/issues/22852), [#22829](https://github.com/vitejs/vite/issues/22829), [#22841](https://github.com/vitejs/vite/issues/22841)
+
+**Recommended Vite version for new projects (July 9, 2026):** **Vite 8.1.4** — supersedes 8.1.3 as the recommended Vite version (and transitively 8.1.1 / 8.1.2). 8.1.4 contains all of 8.1.3's contents (including the `es-module-lexer` 2.1.0 → 2.3.0 bump from #22838, the CSS-after-shebang injection in #22717, the nested-dynamic-import CSS preload in #22759, and the SSR stacktrace column position in #22828) **plus** seven more bug fixes (`import.meta.url` preservation in #22839, html-regex backtrack fix in #22848, optimizer init race in #22852, SSR named-call stacktrace column in #22829, pure-CSS-chunk strip in #22841, StackBlitz build workaround in #22840, and two monthly dep bumps in #22865 / #22866). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.4 (or 8.1.3 → 8.1.4). All of the 8.1.1 → 8.1.3 recommendation is preserved in 8.1.4.
 ## Next.js Configuration
 
 ### `next.config.ts`
