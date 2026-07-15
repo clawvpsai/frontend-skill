@@ -2,6 +2,8 @@
 
 ## Which Library to Use
 
+> **⚠️ BIG NEWS — July 7, 2026:** [Vercel acquired Better Auth](https://vercel.com/blog/vercel-acquires-better-auth). Founder Bereket Engida and the core team joined Vercel; Better Auth remains MIT, free, framework-agnostic, and is now under Vercel stewardship. Roadmap is pointed at the [Agent Auth Protocol](https://agentauthprotocol.com/) (AI-agent identity with scoped, revocable permissions), which feeds into [Vercel Connect](https://vercel.com/connect) and [eve](https://eve.dev). **The recommendation in this skill does not change** — Better Auth is still the default for new Next.js SaaS — but read the [post-acquisition update](#better-auth-post-acquisition-update-july-2026) below before committing to a large build.
+
 | Library | Latest stable | Cadence | License | When to Use |
 |---|---|---|---|---|
 | **NextAuth.js v5 (Auth.js)** | `5.0.0-beta.31` (April 14, 2026) | ⚠️ **Stagnant** — no new beta since April 14, 2026 (~3 months stale; previous beta.30 was October 27, 2025 — 6-month gap) | MIT | Free, framework-agnostic, integrates with Next.js 16 `proxy.ts`. Use when you don't want a hosted dependency and Auth.js v5 has the providers you need. |
@@ -64,6 +66,90 @@ For most new Next.js SaaS apps in 2026, **Better Auth is the default recommendat
 
 
 ## Better Auth — Recommended Default for New Next.js Apps
+
+### Better Auth post-acquisition update (July 7, 2026)
+
+On **July 7, 2026**, Vercel [announced the acquisition of Better Auth](https://vercel.com/blog/vercel-acquires-better-auth). What it means for skill users and what does *not* change:
+
+**What changed:**
+
+- **Governance:** Better Auth founder **Bereket Engida** and the core team are now Vercel employees. Decisions about the library's direction now sit inside a platform company.
+- **Roadmap priorities:** The team's near-term energy is going toward **agent identity** — specifically the [Agent Auth Protocol](https://agentauthprotocol.com/), an open protocol giving each AI agent its own scoped, revocable identity (so an agent acting on your behalf doesn't inherit your full permissions). That work feeds into Vercel's [Connect](https://vercel.com/connect) and [eve](https://eve.dev) platforms. ([Vercel blog](https://vercel.com/blog/vercel-acquires-better-auth), [The New Stack](https://thenewstack.io/vercel-acquires-better-auth/))
+- **Operational reality:** "Auth you own" still means you own the operational burden — the database, the session logic, the enterprise plugins, and the on-call rotation. ([WorkOS analysis, July 8, 2026](https://workos.com/blog/vercel-acquires-better-auth-migrate-to-workos))
+
+**What did *not* change (Vercel committed to all of these publicly):**
+
+- **License stays MIT** and the library is still free forever.
+- **Name stays "Better Auth"** (not re-branded to a Vercel product).
+- **Same team leads development** — Bereket and the core contributors retain decision authority over the library's direction under Vercel.
+- **Framework-agnostic** — Better Auth still runs anywhere, not just on Vercel. ([Vercel blog](https://vercel.com/blog/vercel-acquires-better-auth))
+- **Auth.js / NextAuth maintenance continues** — Better Auth absorbed Auth.js earlier in 2026; that codebase continues to receive security patches. ([noqta.tn analysis, July 8, 2026](https://noqta.tn/en/blog/vercel-acquires-better-auth-what-it-means-2026))
+- **Community governance preserved** — 850+ contributors and the existing maintainer model are unchanged. ([StartupResearcher, July 9, 2026](https://www.startupresearcher.com/news/vercel-acquires-open-source-authentication-startup-better-auth))
+
+**Decision impact for new projects in mid-2026:**
+
+| Project shape | Recommendation | Notes |
+|---|---|---|
+| New Next.js SaaS, no SAML/SCIM needed | **Better Auth** (still default) | Roadmap shift is towards agent identity, but the core library remains a high-quality, active, well-maintained TypeScript auth solution |
+| Enterprise SSO (SAML/SCIM) needed | WorkOS or Clerk | Better Auth's enterprise plugin still on the roadmap; WorkOS published a [migration playbook](https://workos.com/blog/vercel-acquires-better-auth-migrate-to-workos) the day after the acquisition |
+| Marketing site / blog / internal tool, prefer minimal dependencies | NextAuth.js v5 (now under Better Auth stewardship) | Maintenance continues; check [Auth.js discussions](https://github.com/nextauthjs/next-auth/discussions) for roadmap updates |
+| You're shipping products for AI agents to authenticate against | Watch Agent Auth Protocol | [agentauthprotocol.com](https://agentauthprotocol.com/) is the official site; this is the strategic bet behind the acquisition |
+| B2B SaaS with planned agent integration | Re-evaluate in 6–12 months | If Vercel Connect + Agent Auth mature into a production-ready agent identity stack, Better Auth's agent-auth story will likely lead the ecosystem |
+
+**Takeaway:** The acquisition *added a caveat*, not a change of recommendation. For new projects starting in mid-2026, Better Auth remains the default. Re-evaluate once Agent Auth reaches 1.0 or once Better Auth ships native SAML/SCIM.
+
+**Sources:**
+- [Vercel blog — Vercel acquires Better Auth to accelerate open source auth (July 7, 2026)](https://vercel.com/blog/vercel-acquires-better-auth)
+- [Agent Auth Protocol](https://agentauthprotocol.com/)
+- [The New Stack — Vercel acquires Better Auth to give AI agents their own identity (July 7, 2026)](https://thenewstack.io/vercel-acquires-better-auth/)
+- [WorkOS — Vercel acquired Better Auth: what it means and how to migrate (July 8, 2026)](https://workos.com/blog/vercel-acquires-better-auth-migrate-to-workos)
+- [noqta.tn — Vercel Acquires Better Auth: What It Means for Your Auth Stack (July 8, 2026)](https://noqta.tn/en/blog/vercel-acquires-better-auth-what-it-means-2026)
+- [StartupResearcher — Vercel Acquires Open Source Authentication Startup Better Auth (July 9, 2026)](https://www.startupresearcher.com/news/vercel-acquires-open-source-authentication-startup-better-auth)
+
+### Better Auth 1.7.0-rc.1 changelog (July 2, 2026)
+
+`1.7.0-rc.1` is the latest release candidate on the v1.7 line. Detailed changelog (vs. `1.7.0-rc.0`, June 29, 2026):
+
+**Features:**
+
+- **Yandex as a social OAuth provider** ([PR #9138](https://github.com/better-auth/better-auth/pull/9138)) — added to the built-in social providers list; configure the same way as GitHub/Google/VK (`socialProviders: { yandex: { clientId, clientSecret } }`). Fills the gap for products targeting RU/CIS markets.
+
+**Bug fixes (`better-auth` core):**
+
+- **`auth migrate` no longer aborts when adding required or unique columns** ([PR #10293](https://github.com/better-auth/better-auth/pull/10293)) — the migration CLI previously crashed if you added `required` or `unique` constraints to an existing table. Now it generates the right `ALTER TABLE ... ADD CONSTRAINT` statements and applies them in a transaction. **Upgrade impact:** if you were previously avoiding `unique` constraints in your auth schema, you can add them now.
+
+**Bug fixes (`@better-auth/drizzle-adapter`):**
+
+- **Affected row counting fixed for D1 and postgres-js** ([PR #10257](https://github.com/better-auth/better-auth/pull/10257)) — `update`/`delete` operations now return the number of rows they actually modified, matching the adapter contract. Affected any project using D1 (Cloudflare) or `postgres-js` (Supabase's recommended driver) for rate limiting and API-key usage limits, where counter updates were previously reporting `0` rows affected and silently breaking the limit logic.
+
+**Bug fixes (`auth` CLI — schema generator):**
+
+- **String default values are now properly escaped** in the generated Drizzle schema — prevents SQL injection when a `default` value contains quotes/special characters; previously could break schema generation entirely for fields like `additionalField: { type: 'string', default: "can't" }`.
+
+### Better Auth 1.7.0-rc.0 changelog (June 29, 2026) — ⚠️ contains a breaking change
+
+`1.7.0-rc.0` (June 29, 2026) was the first RC on the v1.7 line and shipped a **breaking schema change** that `1.7.0-rc.1` did not undo:
+
+**❗ Breaking changes (action required when upgrading from ≤1.6.x to 1.7.0):**
+
+- **Migration adds `oauthResource`, `oauthClientResource`, and a new `jwks` column.** After upgrading, run `npx @better-auth/cli generate` and apply the migration **before** deploying. Without it, OAuth integrations using `signingAlgorithm` cannot find matching keys and authentication breaks at runtime. The migration is one-way — back it up first.
+- **Custom OAuth providers must rename `OAuthProvider` to `UpstreamProvider`** and remove `defaultScopes` (now keyed under the new resource config).
+- **The `validAudiences` config is replaced by an explicit resource-first API** — re-author every OAuth-protected integration you have.
+
+**Features:**
+
+- **Explicit OAuth protected-resource modeling** replaces `validAudiences`. New `oauthResource` / `oauthClientResource` config keys describe the resource server (audience), the upstream identity provider, and the JWT signing key separately.
+- **Drizzle Relations v2 entry point** — `@better-auth/drizzle-adapter/relations-v2` ([PR #9489](https://github.com/better-auth/better-auth/pull/9489)). Use this if you're on Drizzle Relations v2 (the schema syntax that landed in `drizzle-orm@0.36+`); falls back automatically on v1.
+- **`refreshTokenParams` config** — forward extra parameters to the token endpoint during token refresh.
+
+**Bug fixes:**
+
+- **Atomic counter updates on the memory, Kysely, Drizzle, Prisma, and MongoDB adapters** — counter updates are now atomic by default, ensuring correct rate limiting and API-key usage limit enforcement (was a race condition in 1.6.x).
+- **Drizzle MySQL adapter** returns rows consumed by `update` and `delete` operations.
+- **Drizzle adapter** no longer drops `OR` clauses when mixed with `AND` conditions in `where` queries ([PR #9756](https://github.com/better-auth/better-auth/pull/9756)).
+- **MySQL insert-return handling** uses a robust cascading fallback strategy wrapped in a transaction.
+
+**Migration note for `1.7.0-rc.0` → `1.7.0-rc.1`:** No additional breaking changes. Both RCs ship the same OAuth resource modeling; `1.7.0-rc.1` only adds Yandex OAuth and the four bug fixes listed above.
 
 Better Auth is a TypeScript-first, batteries-included auth library that owns its own DB schema (no hosted dependency). It is the recommended default for new Next.js SaaS apps in 2026 — see the decision matrix above.
 

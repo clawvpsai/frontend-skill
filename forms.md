@@ -15,6 +15,8 @@
 
 ## React Hook Form 8.0 Beta — Coming Soon
 
+> **[10 Jul 2026]** **RHF 8.0.0-beta.3 SHIPPED** (commit `826ca5d`, [@bluebill1049](https://github.com/bluebill1049)) — syncs the v8 beta line with the latest master branch, bringing over the recent v7 bug fixes, performance improvements, refactors, and DX updates. Notably this merge brings v7.81.0 forward into the v8 beta line. No new breaking changes introduced. Stay on `@beta` tag (now `8.0.0-beta.3`) for forward-compatible test installs.
+
 React Hook Form 8.0 is in beta (8.0.0-beta.2) with one major API change:
 `createForm()` replaces `useForm()` as the recommended entry point. The v7 API (`useForm`, `register`, `Controller`) still works in v8 — it is not removed — but `createForm` is the new recommended pattern for new projects.
 
