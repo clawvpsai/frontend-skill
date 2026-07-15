@@ -75,6 +75,51 @@ No `SLACK_BOT_TOKEN` in `.env`. No standing secret. Every token request is logge
 - [Vercel Connect KB guide](https://vercel.com/kb/guide/vercel-connect)
 - [Vercel Connect docs](https://vercel.com/docs/connect)
 
+## Vercel Next.js Security Release Program (July 13, 2026)
+
+On July 13, 2026, the Next.js core team (Andrew Imm + Josh Story) published a [formal security release program](https://nextjs.org/blog/next-security-release-program) — Next.js is moving from "ship fixes when we have them" to a **scheduled, pre-announced monthly security release cycle**. This is the same model Node.js, React, and most major OSS runtimes adopted years ago, and it changes how skill users should plan their patch cadence.
+
+### What Changes Going Forward
+
+- **Roughly once a month**, Vercel will publish advance notice of the upcoming security release on the Next.js blog. Each notice includes the expected release timeline and the highest anticipated severity.
+- The release ships as **patch versions** on supported lines (currently Next.js 16.2 and 15.5). Skill users on Next.js 16.3 preview / canary should follow the canary branch for early fixes.
+- CVEs and detailed advisories are published on the day of the release, not pre-announced. The advance notice tells you *when* and *how severe* — not *what*.
+- The bug-bounty scope is expanded and Vercel runs the same class of internal tooling (deepsec) against Next.js that they ship to customers, so more issues reach defenders before they reach attackers.
+
+### Upcoming July 20, 2026 Release — ACT NOW
+
+The **first scheduled security release** is targeted for **Monday, July 20, 2026**. It will include patch releases for:
+
+- **Next.js 16.2.x** → next 16.2 patch
+- **Next.js 15.5.x** → next 15.5 patch
+
+The advance notice (July 13) states it covers **4 high-severity + 5 medium-severity vulnerabilities**. Specific CVEs and GHSA IDs will be published on the day.
+
+**Action items for the next 5 days:**
+
+1. **Pin a calendar reminder for July 20, 2026** to upgrade `next` and `eslint-config-next` the same day. Subscribe to the [Next.js blog RSS](https://nextjs.org/blog) or watch the [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) so you see the patch notes the moment they ship.
+2. **Audit your current Next.js version** — anything older than the latest 16.2.x or 15.5.x patch will be missing prior fixes; the July 20 release will be a drop-in replacement.
+3. **If you are on 16.3.0-canary.\* or 16.3.0-preview.\***: the canary branch receives most security fixes ahead of stable. Confirm your `next` dep resolves to a canary newer than the canary-branch HEAD on the day of the July 20 release (compare against the [`canary` npm dist-tag](https://www.npmjs.com/package/next?activeTab=versions)). Canary builds do not get formal CVE attribution, so do not run production on canary for security-sensitive apps.
+4. **If you cannot upgrade immediately** (legacy app, blocked by a regression, third-party plugin incompatibility): the same WAF rules Vercel deployed for CVE-2026-23869 will likely activate for the high-severity items here. **WAF is not a substitute for patching** — the rules are best-effort and only apply to Vercel-hosted deployments.
+5. **If you maintain an OSS Next.js plugin or example** that pins a `next` peer range: widen the range to `^16.2.0 || ^15.5.0` (or wider) so users can pick up the July 20 patch without forking your plugin.
+
+### Patch Cadence Best Practice (2026)
+
+With the new monthly cadence, the recommended workflow is:
+
+- **Production:** stay on the latest stable patch line (`next@^16.2` → `^15.5` etc.). Renovate / Dependabot should auto-open PRs within hours of each scheduled security release.
+- **Staging:** upgrade the same day. Most months the patch is a pure CVE fix with no API change.
+- **Canary/preview:** use for advance warning only — pin a specific canary version in `package.json` and rebuild on every canary bump. The canary branch gets security fixes days to weeks earlier than stable.
+- **Vendored React (Next.js ships its own React):** always upgrade `next` and `react` together. Do not pin `react` to a different version than what your `next` version bundles — Vercel backports security patches only into the bundle `next` ships, not into a separately-installed `react`.
+
+**Common mistake:** assuming "canary is ahead of stable so I am safer on canary." Canary is ahead on *features* but stable is usually behind on *patches* by a few weeks. For a security-sensitive production app, stable + prompt upgrade is the lower-risk posture; canary is for *early-warning* on a staging deploy.
+
+**Sources:**
+- [Next.js Security Release and Our Next Patch Release (July 13, 2026)](https://nextjs.org/blog/next-security-release-program)
+- [Vercel Open Source Bug Bounty (HackerOne)](https://hackerone.com/vercel-open-source)
+- [vercel-labs/deepsec — internal Next.js security tooling](https://github.com/vercel-labs/deepsec)
+
+
 ## CVE-2026-23869 — React RSC DoS (April 2026)
 
 A high-severity denial-of-service vulnerability (CVSS 7.5) in React Server Components was disclosed April 8, 2026. The bug lives in the React Flight protocol's deserialization — a specially crafted HTTP request to any App Router Server Function endpoint can trigger excessive CPU consumption, crashing the server.
@@ -1083,6 +1128,7 @@ NEXTAUTH_SECRET="..."
 - **Outbound HTTPS calls to wildcard-cert hosts without hostname validation** — CVE-2026-48618 lets Unicode dot separators (U+3002, U+FF0E, U+FF61) pass `tls.checkServerIdentity()` against `*.example.com` while resolving to a different host. If you build a URL from user input, validate the hostname is ASCII-clean and reject Unicode dots at the boundary
 - **Calling `fetch` with a hostname derived from user input** — even on a patched Node, the canonical TLS-bypass / SSRF pattern is `const host = new URL(req.body.url).hostname; await fetch(\`https://${host}/api\`)`; an attacker can supply `evil。example.com` (with U+3002) and slip past any `*.example.com` check. Use a URL allowlist, not string interpolation
 - **Trusting third-party JetBrains Marketplace AI plugins with production API keys (June 16, 2026 disclosure)** — at least 15 plugins published under 7 publisher accounts (CodePilot, StackSmith, CodeCrafter, CodeWeaver, JetCode, DailyCode, ZenCoder) exfiltrated OpenAI / Anthropic / DeepSeek / SiliconFlow / Google AI keys to attacker C2 for 8 months (~70,000 installs) before JetBrains banned them. Treat any AI provider key that was ever pasted into a JetBrains IDE settings panel before June 17, 2026 as compromised. Rotate the key, check the billing dashboard for anomalous spend, and prefer vendor-verified AI plugins only (JetBrains AI Assistant, GitHub Copilot native integration, Continue.dev, Tabnine)
+- **Missing the Vercel Next.js monthly security release** (program launched July 13, 2026 — see [Vercel Next.js Security Release Program](#vercel-next-js-security-release-program-july-13-2026) above) — Next.js now ships a scheduled, pre-announced security release on the **20th of each month** (first one: July 20, 2026, 4 high + 5 medium CVEs). Calendar a recurring reminder, watch the [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases), and configure Renovate / Dependabot to auto-open PRs for `next` and `eslint-config-next`. Same-day upgrade is the expectation; the monthly cadence means each patch is small (CVE-only, no API change) so a one-day turnaround is realistic
 - **Trusting the Node.js June 18 patch to cover all `undici` CVEs** — it only covers the version bundled with Node (`process.versions.undici`). If any package in your dependency tree pulls in its own `undici` (AWS SDK, OpenAI SDK, Anthropic SDK, Supabase, Prisma, NextAuth, WebSocket clients, etc.), `npm ls undici` may show an older version. Use `overrides` / `pnpm.overrides` to force a patched `undici` (7.28.0 / 8.5.0) across the whole tree
 
 **Sources:**

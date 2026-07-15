@@ -544,6 +544,36 @@ export function Dashboard() {
 
 **Note:** This pattern is **experimental** in TanStack Query v5 and requires the `experimental_prefetchInRender: true` client config. It is not recommended for production-critical paths yet.
 
+## TanStack Query `isServer` → `environmentManager.isServer()` (June 2, 2026 release train)
+
+The June 2, 2026 release train (`release-2026-06-02-1926`) deprecated the `isServer` property in the Next.js, Vue, and React integrations of TanStack Query. It is replaced by `environmentManager.isServer()`. The property still works in 5.101.x but will be removed in a future minor.
+
+**What changes:** if your app reads `queryClient.getDefaultOptions().isServer` or imports `isServer` from `@tanstack/react-query` / `@tanstack/react-query-nextjs`, you should switch to `environmentManager.isServer()`. The codemod path is the same: search-and-replace `isServer` with `environmentManager.isServer()`.
+
+**Why it changed:** the integrations were being mounted in environments where the *server* detection itself became environment-dependent (Cloudflare Workers with the new module-worker shim, Vercel Edge with the new streaming runtime, deno deploy v2). The new `environmentManager` abstraction is a small object exposed by every integration that knows which environment it's in — it removes the implicit assumption that the bundler decides server-vs-client at build time.
+
+**Migration:**
+
+```ts
+// ❌ Deprecated (5.101.x → removed in next minor)
+import { isServer } from '@tanstack/react-query'
+
+if (isServer) {
+  // server-side path
+}
+
+// ✅ Current
+import { environmentManager } from '@tanstack/react-query'
+
+if (environmentManager.isServer()) {
+  // server-side path
+}
+```
+
+For most apps this is a one-line change in each test/setup file. Server-only setup code (the standard `new QueryClient({ defaultOptions: { queries: { staleTime: ... } } })` in `app/providers.tsx`) does not need this — it runs only on the server by definition.
+
+**Source:** [TanStack Query `release-2026-06-02-1926` changelog](https://github.com/TanStack/query/releases/tag/release-2026-06-02-1926)
+
 ## React Query 5.101.2 — Devtools CSP `window.__nonce__` Fix + 4 Other Devtools Patches (June 27, 2026)
 
 [`@tanstack/react-query@5.101.2`](https://www.npmjs.com/package/@tanstack/react-query) shipped June 27, 2026 (20:31 UTC, ~9.5 hours before this cron). The headline fix is in `@tanstack/query-devtools@5.101.2`; `@tanstack/react-query` itself pulls it in transitively when `@tanstack/react-query-devtools` is installed. Five patches in total, four user-facing.
@@ -902,6 +932,8 @@ Follow this pattern for consistent, cache-friendly keys:
 - [Query Key Factory docs](https://tanstack.com/query/v5/docs/framework/react/community/lukemorales-query-key-factory)
 
 ## Zustand v5 — Key Migration Differences from v4
+
+**Latest stable: zustand 5.0.14** (published May 28, 2026 — fixes a type-inference bug in the Devtools initializer, [PR #3511](https://github.com/pmndrs/zustand/pull/3511) by @dbritto-dev; 5.0.13 (May 5, 2026) was a pure devtools-middleware improvement). Pin `zustand@^5.0.14` in `package.json` — there is no 5.1+ in flight; the project is in maintenance mode, not new features.
 
 Zustand v5 (5.0.14+) has three breaking changes from v4 that commonly cause test failures and runtime errors:
 
