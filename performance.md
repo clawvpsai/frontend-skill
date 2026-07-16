@@ -1517,6 +1517,34 @@ To increase client-side cache hit rates (currently many chunks are invalidated t
 
 **Not yet recommended for production** — the build-size increase is significant, and the cache-hit data hasn't been published yet. Watch the canary channel for the `experimental.turbopackComponentChunks` flag (or whatever it ships as) and the production-scale cache-hit results before enabling. If you have a very large monorepo and your cache-hit rate is the dominant pain point, this is the PR to track; otherwise wait for the analysis.
 
+### Turbopack Chunk-Group Bootstrap Inlined into Next.js (16.3.0-canary.88 in-flight, 6-PR stack: [#94586](https://github.com/vercel/next.js/pull/94586) + [#94631](https://github.com/vercel/next.js/pull/94631) + [#94664](https://github.com/vercel/next.js/pull/94664) + [#94663](https://github.com/vercel/next.js/pull/94663) + [#94666](https://github.com/vercel/next.js/pull/94666) + [#94671](https://github.com/vercel/next.js/pull/94671), all by the Turbopack team, all merged 2026-07-16T07:35:20Z–07:35:23Z on the canary branch ahead of the canary.87 tag)
+
+A 6-PR stack that **inlines the Turbopack chunk-group bootstrap runtime into Next.js itself** and drops the per-route bootstrap module that was previously emitted alongside every page. The pieces:
+
+- **[PR #94586](https://github.com/vercel/next.js/pull/94586)** — Create a shared asset that holds the browser runtime code, so multiple chunks can reference the same source of truth instead of each chunk carrying its own copy of the bootstrap helper. Reduces duplication in the chunk graph.
+- **[PR #94631](https://github.com/vercel/next.js/pull/94631)** — Create a `chunk_group_bootstrap_params()` function on the Turbopack side that produces the parameter object the runtime expects.
+- **[PR #94664](https://github.com/vercel/next.js/pull/94664)** — Add `inline_chunk_group_bootstrap` to `BrowserChunkingContext` and `chunk_group_bootstrap_params` to `ChunkGroup`, so the chunker can produce inlined bootstrap output instead of an external module reference.
+- **[PR #94663](https://github.com/vercel/next.js/pull/94663)** — Add `chunk_group_bootstrap_params` and the chunk-loading global to the build manifest, so the runtime can resolve bootstrap params from the manifest the page already has rather than waiting on a separate module.
+- **[PR #94664](https://github.com/vercel/next.js/pull/94664)** + **[PR #94666](https://github.com/vercel/next.js/pull/94666)** — Add `registerEntry()` to handle inline bootstrapping in the runtime, then inline the chunk group bootstrap in Next.js to drop the per-route runtime entirely.
+- **[PR #94671](https://github.com/vercel/next.js/pull/94671)** — Only ship pages-router routes in the client chunk-group bootstrap manifest (the App Router and pages-router manifests were previously combined; the pages-router subset is now explicit, which avoids accidentally inlining App-Router-only manifests into a pages-router boot path and vice versa).
+
+**What you actually notice:**
+
+- **Smaller per-route HTML output** — the per-route bootstrap module that used to be a separate `<script>`/chunk is now inlined into the page itself (or looked up via the manifest), so the first paint no longer has to wait for a module to load before it can start fetching app code.
+- **`output: 'standalone'` users may see a manifest shape change** — the chunk-group bootstrap manifest at `.next/build-manifest.json` (and the `app-build-manifest.json` equivalent) gains a new `bootstrap` / `global` field. Self-hosted deployments that read the manifest directly (custom OpenNext adapters, custom Edge runtimes) will need to update their parsers; Vercel's deploy pipeline handles this transparently.
+- **`output: 'export'` users** — the build output structure changes: the per-route JS bootstrap is removed from the export directory, leaving the same per-route HTML files with smaller `__NEXT_DATA__` / chunk manifests. Cache-busting still works via `NEXT_HASH_SALT` (now also server-side as of canary.87, see [PR #95738](https://github.com/vercel/next.js/pull/95738)).
+- **No public API change** — no new config flag, no `next.config.js` opt-in; the new behaviour is on by default in canary.88+ for any project that uses the `next` build output.
+
+**Audit:** `git diff v16.3.0-canary.87..v16.3.0-canary.88 -- '*.json' 'manifest*'` to see the manifest shape change; `pnpm next build` + `git diff .next/` to see the per-route output shrink.
+
+**Sources:**
+- [PR #94586 — `[turbopack] Create a shared asset with browser runtime code`](https://github.com/vercel/next.js/pull/94586) · Commit `8aefb1c7` · 2026-07-16T07:35:20Z
+- [PR #94631 — `[turbopack] Create a chunk_group_bootstrap_params() function`](https://github.com/vercel/next.js/pull/94631) · Commit `6faa5536` · 2026-07-16T07:35:21Z
+- [PR #94664 — `[turbopack] Add inline_chunk_group_bootstrap to BrowserChunkingContext`](https://github.com/vercel/next.js/pull/94664) · Commit `856765a1` · 2026-07-16T07:35:22Z
+- [PR #94663 — `[turbopack] Add chunk_group_bootstrap_params to build manifest`](https://github.com/vercel/next.js/pull/94663) · Commit `b2e7c8be` · 2026-07-16T07:35:22Z
+- [PR #94666 — `[turbopack] Inline the chunk group bootstrap in Next.js to drop the per-route runtime`](https://github.com/vercel/next.js/pull/94666) · Commit `f282e478` · 2026-07-16T07:35:23Z
+- [PR #94671 — `[turbopack] Only ship pages-router routes in the client chunk-group bootstrap manifest`](https://github.com/vercel/next.js/pull/94671) · Commit `153bf8ac` · 2026-07-16T07:35:23Z
+
 ### `cssChunking: 'graph'` Docs Landed (16.3.0-canary.87, PR [#95693](https://github.com/vercel/next.js/pull/95693) by icyJoseph, merged 2026-07-15T15:47:41Z)
 
 The `experimental.cssChunking: 'graph'` config option (introduced in canary.71) was missing user-facing docs until canary.87. The new docs section ("Balancing requests and grouping") explains how the graph algorithm decides which CSS modules to bundle together, the `weightDistribution` parameter (controls how aggressively the algorithm groups modules vs splitting for cache locality), and includes a "Choosing a strategy" + "Debugging what a route actually uses" walkthrough. The `requestCost` default was retuned from `20000` → `100000` in canary.71; the docs now explain why. Closes Linear DOC-6481 and partially DOC-3447.

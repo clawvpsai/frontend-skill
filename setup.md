@@ -1377,6 +1377,20 @@ curl -sS http://localhost:3000/_next/development/request-insights |   jq '.reque
 - `packages/next/.storybook/decorators/use-overlay-reducer.ts` (+4/-0) — Storybook wiring
 - Plus **8 new test files** under `packages/next/src/server/lib/trace/{local-span-recorder,span-store,request-insights,patch-fetch,tracer}.test.ts` (~990 lines)
 
+#### Span collection hardening — `next.span_category` + request-identity propagation (16.3.0-canary.88+, PR [#95818](https://github.com/vercel/next.js/pull/95818) by [feedthejim](https://github.com/feedthejim), merged 2026-07-16T12:24:44Z)
+
+Followup to the canary.84–86 Request Insights stack that fixes a class of dev-only span-collection bugs that affected the `get_request_insights` MCP tool, the `next experimental-request-insights` CLI, and the DevTools "Request Insights" panel. Summary of the PR:
+
+- **All non-hidden Next.js spans are now recorded locally in dev** (including non-vanilla trace and wrapped spans that the canary.84 stack missed because the original `LocalSpanRecorder` only observed the bare OTEL tracer). The existing OpenTelemetry export allowlist is preserved unless verbose tracing is enabled.
+- **Request identity is propagated before work-async storage exists** so timelines are correct even for very early spans (previously a span whose parent had no `workUnitStore` yet would have a wrong `requestId` and get filtered out as orphan). Explicit span timestamps are honored.
+- **Request duration is anchored to the `BaseServer` request span** (was previously taken from the first recorded child span, which under-counted by the span-startup window on cold start).
+- **Span categories are standardized on a new `next.span_category` attribute** — e.g. `next.span_category = 'fetch' | 'cache' | 'render' | 'compile' | 'request'`. Presentation-only UI filtering (the focused/verbose toggle in the DevTools panel) reads this attribute instead of internal span-name heuristics, so custom framework spans don't accidentally fall into a hidden category.
+- **Internal request-identity headers are filtered at ingress** to prevent the same header values from leaking into the dev-snapshot store (was previously filtered only at egress).
+
+**Why this matters in practice:** if you were getting an empty span list in `get_request_insights` despite enabling `experimental.requestInsights: true`, or if your `AppRender.fetch` spans were missing from the DevTools panel's "focused" view, this PR is the fix. It does not change the public API (the flag, endpoint, MCP tool, CLI, and DevTools panel are all unchanged) — it just makes the dev snapshot match the actual on-page behavior more accurately. **Verification:** `pnpm test-dev-turbo test/development/app-dir/request-insights/request-insights.test.ts`.
+
+**Source:** [PR #95818 — `Fix Request Insights span collection`](https://github.com/vercel/next.js/pull/95818) · Commit `491f7809` · feedthejim · merged 2026-07-16T12:24:44Z · **will be in canary.88** (canary branch HEAD at 2026-07-16T18:00Z is `491f7809`, 11 commits ahead of the canary.87 tag `50925bb80`).
+
 **Sources:**
 - [PR #93974 — `request insights: record local framework spans (1/5)`](https://github.com/vercel/next.js/pull/93974)
 - [PR #93975 — `request insights: derive request history and fetch data (2/5)`](https://github.com/vercel/next.js/pull/93975)
