@@ -1357,6 +1357,159 @@ React 19.2 adds **React Performance Tracks** — React-specific timing data visi
 - [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
 - [React prerender/resume APIs](https://react.dev/reference/react-dom/server)
 
+## 16.3 canary.72–86 Performance & Diagnostics Updates (July 1–14, 2026)
+
+Performance-specific surface that landed after this file's last full pass on July 1, 2026. The biggest addition is the **Request Insights** dev-only diagnostics stack (canary.84–86) — a brand-new way to inspect what a route is actually doing in dev. There's also a Turbopack micro-fix cluster (canary.81 + canary.85) that improves chunking determinism, dev-memory stability, and signal handling.
+
+### `experimental.requestInsights` — Dev-Only Request Diagnostics Stack (16.3.0-canary.84+ — full 5-PR stack SHIPPED in canary.86 on 2026-07-14T23:31:39Z)
+
+When diagnosing "why is this route slow?", the standard toolchain is the browser DevTools Network tab + a hand-rolled `console.log` ladder. **Request Insights** is a new dev-only diagnostics stack (5 PRs by `@feedthejim`, shipped across canary.84 → canary.85 → canary.86) that records framework OTEL spans into a bounded in-memory store and exposes them to AI agents + humans via three surfaces: an MCP tool, a CLI, and a DevTools panel. **Dev-only — never enabled in `next build` / `next start`, no telemetry, no PII leak** (sanitizes sensitive attribute keys + URL query strings before snapshotting).
+
+```ts
+// next.config.ts — opt in for the dev session
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    requestInsights: true, // default false; dev-only; no production exposure
+  },
+}
+
+export default nextConfig
+```
+
+**What it records (per request):**
+
+- **OTEL-compatible spans** mirrored from `next/dist/compiled/@opentelemetry/api` when no user OTEL provider is installed (a `LocalSpanRecorder` + `LocalRecordingSpan` satisfy the `Span` interface — existing user-installed OTEL providers are unaffected). Only *framework* spans are mirrored; user spans go through the user provider as usual.
+- **Fetch records** deduplicated across completed `AppRender.fetch` spans vs direct fetch metrics (one record per fetch URL per request, not two).
+- **HTTP metadata** (method / route / status / URL) per request.
+- **Next-specific metadata** (`next.route`, `next.rsc`, `next.segment`, `next.span_name`, `next.span_type`, `next.fetch.cache_reason`, `next.fetch.cache_status`).
+
+**Bounded store:** `MAX_REQUEST_INSIGHTS = 100` — circular buffer of the last 100 requests keyed by `requestId`. Older requests fall off; no I/O cost. The store lives on `globalThis[Symbol.for('@next/local-span-recorder')]` so HMR reloads preserve it.
+
+**Sanitization** (the part that makes this safe to expose):
+
+- **Sensitive attribute keys** (`*token*` / `*secret*` / `*key*` / `*password*` / `*auth*` / `*signature*` / `*jwt*` / etc, case-insensitive) are replaced with `'redacted'` before snapshotting. Only keys in a `SAFE_SPAN_ATTRIBUTE_KEYS` allowlist (`http.method` / `http.route` / `http.status_code` / `http.url` / `next.*` / etc) pass through unchanged.
+- **URL query strings** are sanitized via `sanitizeUrl()` before snapshotting (sensitive query params removed).
+- **No raw header values**, **no auth headers**, **no request/response bodies**.
+
+### Three ways to consume the snapshot
+
+#### 1. DevTools overlay panel (humans, canary.86+) — `packages/next/src/next-devtools/dev-overlay/components/request-insights/`
+
+A new **"Request Insights"** tab in the dev-overlay DevTools (the same overlay that holds the existing Navigation Inspector + Instant Insights tabs). Shows:
+
+- Sortable table of the last 100 requests with method / route / status / total duration
+- Click any row to drill into the span tree (parent-child span relationships, per-span duration, per-span attributes for the safe keys)
+- Fetch-record list per request (URL + cache reason + cache status)
+- Copy-as-JSON / Copy-as-prompt for sharing with an agent
+
+#### 2. `next experimental-request-insights` CLI (agents / CI, canary.85+)
+
+```bash
+# Human-readable summary of the last 100 requests
+next experimental-request-insights
+
+# Raw JSON for piping into jq / a script
+next experimental-request-insights --json | jq '.requests[] | select(.route == "/api/checkout")'
+```
+
+Perfect for shell-only agents and CI scripts that don't have an MCP client.
+
+#### 3. MCP tool (canary.85+) — `packages/next/src/server/mcp/tools/get-request-insights.ts`
+
+```ts
+// From the agent side (via the MCP client):
+const result = await mcp.call('get_request_insights', {
+  requestId: 'req-abc123',       // optional filter
+  htmlRequestId: 'html-def456',  // optional filter
+})
+// Returns: { requests: [{ requestId, spans: [...], fetches: [...], ... }] }
+```
+
+Records its own telemetry call (`mcp/get_request_insights`) via the existing `mcpTelemetryTracker`. If `experimental.requestInsights` is off, returns a friendly JSON error rather than throwing. **The originally-proposed `subscribe_to_request_insights` streaming tool was deferred** — for live updates, re-invoke the snapshot tool on a short interval (live updates ARE available over the HMR transport `HMR_MESSAGE_SENT_TO_BROWSER.REQUEST_INSIGHTS_UPDATE` for browser subscribers, but no MCP streaming tool ships in the initial cut).
+
+### Private dev endpoint (canary.84+) — `GET /_next/development/request-insights`
+
+```bash
+# Fetch the snapshot directly
+curl -sS http://localhost:3000/_next/development/request-insights | jq '.requests[0]'
+
+# Returns 404 with helpful body when the flag is off:
+# { "error": "Request Insights is not enabled. Set experimental.requestInsights = true and restart next dev." }
+```
+
+Dev-only (`opts.dev` gate) + additionally gated on `blockCrossSiteDEV(req, res, development.config.allowedDevOrigins, opts.hostname)` — same CSRF guard the existing dev-only Next.js internal endpoints use. Same-origin requests from `http://localhost:3000` work; cross-origin requests get a CSRF error.
+
+### Practical agent loop (canary.86+)
+
+1. Agent triggers a slow render → user reports "this is slow"
+2. Agent calls `mcp__next-devtools-mcp__get_request_insights` with the suspect `requestId`
+3. Reads the span tree, identifies the longest span (e.g. an uncached `fetch` to `/api/users`)
+4. Suggests `'use cache'` + `cacheTag('users')` on the data function, or memoization in a Server Component
+5. User edits the file → HMR re-renders → Request Insights reflects the new spans immediately
+6. Agent re-calls the tool, confirms the span duration dropped
+
+**Full feature breakdown** (with code samples, schema details, file paths, sources) is in `setup.md → experimental.requestInsights`. The 5-PR attribution: [PR #93974](https://github.com/vercel/next.js/pull/93974) (1/5 spans) + [PR #93975](https://github.com/vercel/next.js/pull/93975) (2/5 store) + [PR #93976](https://github.com/vercel/next.js/pull/93976) (3/5 transport) all in canary.84 (2026-07-12) + [PR #93977](https://github.com/vercel/next.js/pull/93977) (4/5 CLI + MCP tool) in canary.85 (2026-07-13) + [PR #93978](https://github.com/vercel/next.js/pull/93978) (5/5 DevTools panel) in canary.86 (2026-07-14).
+
+### `experimental.serverComponentsHmrCancellation` — HMR Perf Win (16.3.0-canary.78 flag → canary.79+.80 activation)
+
+The canary.78 flag (`serverComponentsHmrCancellation`) shipped **inert** — plumbing only, no observable behavior. The actual cancellation logic landed in two follow-up PRs:
+
+- **canary.79 (July 7, 2026)** — [PR #95463](https://github.com/vercel/next.js/pull/95463) `Abort superseded Server Components HMR requests on the client` (andrewimm): when the flag is on, the client now aborts an in-flight Server Components HMR fetch when a newer edit lands. Uses an `AbortController` per refresh + a version-stamped HMR route param so the dev server can detect stale work.
+- **canary.80 (July 8, 2026)** — [PR #95486](https://github.com/vercel/next.js/pull/95486) `Cancel a superseded Server Components HMR refresh's server-side work` (unstubbable): server-side counterpart. The dev render pipeline now respects the client abort signal and stops rendering work for a superseded refresh; previously the server kept rendering until completion and discarded the result.
+
+**Perf impact for agents doing rapid iterative edits:** every edit during an active render used to start a new render while the old one ran to completion — measurable CPU + memory waste on large apps with slow Server Components. canary.79+.80 aborts the superseded renders on both client and server, so the dev server spends its time on the *latest* edit instead of finishing abandoned ones. **Opt in:** `experimental.serverComponentsHmrCancellation: true` in `next.config.ts`. Production SSR hardcodes `false` because edge rendering doesn't expose the Node response-close signal the cancellation relies on. **Edge-rendered server components** don't benefit (production-safe cancellation requires the Node response-close signal).
+
+### Turbopack Chunking & Memory Stability — canary.81 + canary.85 Perf Wins
+
+Four small but measurable Turbopack improvements:
+
+- **canary.81 (July 8, 2026)** — [PR #95213](https://github.com/vercel/next.js/pull/95213) + [#95137](https://github.com/vercel/next.js/pull/95137) `Turbopack: don't evict when little memory` — previously, on memory-constrained systems Turbopack could evict cached compilation results even when system memory was abundant (conservative threshold). The new threshold check accounts for actual free memory before triggering eviction; on low-RAM CI runners and containerized dev envs, this means fewer unnecessary evictions and faster rebuilds after edit cycles.
+- **canary.81 (July 8, 2026)** — [PR #95606](https://github.com/vercel/next.js/pull/95606) `Turbopack: default ON for 'import with {type: "text"}'` — `import x from './x.txt' with { type: 'text' }` was previously gated behind an opt-in flag; now on by default in Turbopack. Same semantics as the spec, no user code change. Affects any app importing text-as-string assets (i18n JSON files loaded as text, template literals read from disk).
+- **canary.85 (July 13, 2026)** — [PR #95579](https://github.com/vercel/next.js/pull/95579) `Turbopack: order CSS modules by chunk-group co-occurrence in linearize` — deterministic CSS module ordering when chunk graphs co-occur (CSS modules imported by multiple chunks now linearize in a stable order based on chunk-group co-occurrence). Eliminates CSS source-order flakiness on rebuilds that could cause minor visual diffs in dev.
+- **canary.85 (July 13, 2026)** — [PR #95749](https://github.com/vercel/next.js/pull/95749) `Turbopack: switch make_production_chunks to use floats` — chunk-size math now uses `f64` instead of integer arithmetic, eliminating integer-overflow edge cases that could produce `-1`-byte chunks or weird chunk-size warnings on builds with very large assets.
+
+### Turbopack Clean SIGTERM Termination — canary.85 PR [#95692](https://github.com/vercel/next.js/pull/95692) (July 13, 2026, merged 2026-07-13T21:10:43Z)
+
+Previously, when `next dev` received SIGTERM (Ctrl+C in the terminal, Kubernetes pod shutdown, CI runner timeout), the Turbopack worker threads sometimes left zombie processes or hung cleanup. canary.85 propagates SIGTERM cleanly through the Turbopack process tree — workers exit within ~100ms of the parent receiving the signal, no zombies. **CI impact:** build runners that hit the timeout-and-kill pattern now exit cleanly, so the next build run starts from a clean process state (no leftover dev-server ports in use, no stuck file watchers).
+
+### `experimental.useTscCli` — ~10× Faster Type-Checks (16.3.0-canary.83+, PR [#95639](https://github.com/vercel/next.js/pull/95639) — TypeScript 7 Support)
+
+Adds an experimental flag that routes Next.js's type-check step through the new Go-based TypeScript 7.0 `tsc` subprocess (TS 7.0 GA shipped July 8, 2026) instead of the legacy JS-based compiler. **~10× faster type-check times on large monorepos** (the Go-based `tsc` does type checking in parallel batches that the JS-based one cannot).
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    useTscCli: true, // default false in canary.83
+  },
+}
+```
+
+**canary.86 PR [#95753](https://github.com/vercel/next.js/pull/95753) fixes the spinner UX** — previously the `next build` / `next dev` spinner rendered `Running Typescript ...` and never cleared (the normal pause/resume pattern doesn't work with a subprocess); canary.86+ stops the spinner as soon as the TSC subprocess produces output. **Compiler API is still deferred to TypeScript 7.1** — `useTscCli: true` only affects the type-check step, not the build pipeline. Full TypeScript 7 details in `typescript.md`.
+
+### Next.js 16.2.10 Stable (July 1, 2026) — Current Recommended Stable
+
+Next.js 16.2.10 stable shipped on July 1, 2026 (npm `dist-tag.latest` pointer moved 2026-07-01T20:13:14Z). 4 commits since 16.2.9 — all CI/release/docs backports, no functional changes, safe to upgrade. **For production, use 16.2.10** (the latest stable line); canary.86 is for testing 16.3 features ahead of stable. The skill's existing perf advice (`use cache` + `cacheComponents: true` + `dynamicIO: true` defaults) is unchanged on 16.2.10.
+
+**Sources for this section:**
+- [Next.js 16.3.0-canary.84 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.84) (Request Insights 1/5–3/5)
+- [Next.js 16.3.0-canary.85 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.85) (Request Insights 4/5 + Turbopack perf PRs #95579, #95749, #95692)
+- [Next.js 16.3.0-canary.86 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.86) (Request Insights 5/5 + `useTscCli` spinner fix)
+- [PR #93978 — `request insights: add DevTools request panel (5/5)`](https://github.com/vercel/next.js/pull/93978)
+- [PR #95463 — `Abort superseded Server Components HMR requests on the client`](https://github.com/vercel/next.js/pull/95463)
+- [PR #95486 — `Cancel a superseded Server Components HMR refresh's server-side work`](https://github.com/vercel/next.js/pull/95486)
+- [PR #95213 — `Turbopack: don't evict when little memory`](https://github.com/vercel/next.js/pull/95213)
+- [PR #95606 — `Turbopack: default ON for 'import with {type: "text"}'`](https://github.com/vercel/next.js/pull/95606)
+- [PR #95579 — `Turbopack: order CSS modules by chunk-group co-occurrence in linearize`](https://github.com/vercel/next.js/pull/95579)
+- [PR #95749 — `Turbopack: switch make_production_chunks to use floats`](https://github.com/vercel/next.js/pull/95749)
+- [PR #95692 — `Turbopack: clean SIGTERM termination`](https://github.com/vercel/next.js/pull/95692)
+- [PR #95639 — `experimental TypeScript CLI backend (TS 7 support)`](https://github.com/vercel/next.js/pull/95639)
+- [PR #95753 — `Better support the CLI spinner when running the TSC CLI`](https://github.com/vercel/next.js/pull/95753)
+- [Next.js 16.2.10 release notes](https://github.com/vercel/next.js/releases/tag/v16.2.10)
+- [TypeScript 7.0 GA blog post](https://devblogs.microsoft.com/typescript/typescript-7-0/) (referenced from setup.md / typescript.md)
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |
@@ -1376,3 +1529,4 @@ React 19.2 adds **React Performance Tracks** — React-specific timing data visi
 - **`useEffect` for initial data** — use server components or React Query instead
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` explicitly
 - **All `<Link>` using default `prefetch="full"`** — causes doubled origin requests in Next.js 16; disable prefetch for footer links and low-priority routes
+- **Diagnosing slow routes without `experimental.requestInsights`** — if you find yourself hand-rolling `console.log` ladders to figure out "what is this route doing?", enable `experimental.requestInsights: true` in dev (`next.config.ts`) and use the MCP tool / CLI / DevTools panel instead. Much faster diagnosis, agent-friendly output, no production exposure. See the new "16.3 canary.72–86 Performance & Diagnostics Updates" section above for the full feature breakdown.

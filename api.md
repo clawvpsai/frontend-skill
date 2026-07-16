@@ -616,6 +616,56 @@ const parsed = CreateUserSchema.safeParse(body)
 if (!parsed.success) return NextResponse.json(parsed.error.flatten(), { status: 400 })
 ```
 
+## 16.3 canary.80–86 Route Handler & Middleware Updates (July 8–14, 2026)
+
+The route-handler / middleware surface changed in three ways since this file's last full pass on July 5, 2026. None are breaking; all are quality-of-life fixes that show up in edge-adapter deploys and Node-middleware instrumented routes.
+
+### `maxDuration` Propagates to Edge Adapter (16.3.0-canary.80, PR [#95118](https://github.com/vercel/next.js/pull/95118))
+
+The `export const maxDuration = N` route-segment config (which sets the function-execution timeout for a route handler or page) now propagates correctly to the edge adapter's runtime config. Previously the value was dropped on the floor for edge-rendered handlers — a route declared `maxDuration = 60` would silently run with the default 10s (Node) or 25s (edge) instead. **If you set `maxDuration` on a route that runs on the edge adapter, upgrade to canary.80+ to get the actual configured timeout.**
+
+```ts
+// app/api/long-running-report/route.ts
+export const maxDuration = 300 // 5 min — now actually respected on edge
+export const runtime = 'edge'  // edge adapter
+
+export async function GET() {
+  // Long-running aggregation that previously timed out at 25s now gets 300s
+  const report = await aggregateLargeDataset()
+  return Response.json(report)
+}
+```
+
+### Middleware `request.body` is Now a `Readable` After `await next()` (16.3.0-canary.83, PR [#95607](https://github.com/vercel/next.js/pull/95607))
+
+This was a subtle silent-corruption class: in middleware (`proxy.ts` in Next.js 16) when you consumed `request.body` (or called `request.json()` / `request.formData()`) and then invoked `NextResponse.next()` (or rewrote to a downstream route), the downstream route handler sometimes saw an already-consumed body — `request.json()` returned `{ }` or `request.body` was a closed stream. **Fix (canary.83):** the dev-server pipeline now constructs the downstream request body as a fresh `Readable` from the buffered chunks before forwarding, so route handlers after a middleware read still get a usable body.
+
+```ts
+// proxy.ts — BEFORE canary.83, downstream saw an empty body
+export async function proxy(request: Request) {
+  const body = await request.clone().json() // log the payload for debugging
+  console.log('[proxy]', body)
+  return NextResponse.next()
+}
+
+// proxy.ts — canary.83+ behavior: downstream route handler gets the same body
+// (no code change required, but the silent-corruption footgun is gone)
+export async function proxy(request: Request) {
+  // request.json() no longer breaks downstream consumption
+  if (request.headers.get('content-type')?.includes('application/json')) {
+    const body = await request.clone().json()
+    console.log('[proxy]', body)
+  }
+  return NextResponse.next()
+}
+```
+
+**Practical:** if you previously worked around this with `request.clone()` + a "consume the body twice" dance, the workaround is no longer needed on canary.83+.
+
+### Middleware Instrumentation-Await Fix (16.3.0-canary.79, PR [#95357](https://github.com/vercel/next.js/pull/95357))
+
+OTEL middleware instrumentation was missing `await` on the proxy result in some code paths, which caused the `next` continuation to race ahead of the instrumentation span end — leading to spans that ended *before* the request actually finished (correlated traces were missing the tail of the request). canary.79 adds the missing `await` so middleware instrumentation spans correctly wrap the full request lifecycle. **No code change required** — this is a dev-only-observable fix (the trace shape improves in OTEL backends like Honeycomb, Datadog, Vercel Observability).
+
 ## Common Mistakes
 
 - **Route handlers vs API routes in Pages Router** — App Router uses `app/api/` with route handlers; don't mix with `pages/api/`
