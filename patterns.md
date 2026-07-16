@@ -82,6 +82,34 @@ This lets you connect Chrome DevTools or VS Code to your production server for l
 - [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
 - [Next.js 16.2 Turbopack improvements](https://nextjs.org/blog/next-16-2-turbopack)
 
+### App Shells Now Exclude Caches With `stale < 5 minutes` (16.3.0-canary.87+, PR [#95833](https://github.com/vercel/next.js/pull/95833) by gnoff, merged 2026-07-15T21:43:49Z)
+
+App Shells are meant to be useful for handling navigations that are **not** prefetched — they fill in the prefetch cache with a usable fallback so the user sees the right shell + layout + error boundary when they click a link that wasn't hovered first. If the underlying `'use cache'` entries have a very low `stale` time, they have to be evicted often from the client router and the App Shell's utility is undermined (a stale shell that immediately invalidates is no better than no shell at all).
+
+canary.87+ **excludes caches with `stale < 5 minutes (300s)` from App Shells**. Concretely, for the built-in default `cacheLife` profiles this means only the `seconds` profile is excluded — every other profile (`minutes`, `hours`, `days`, `max`) has a `stale` of exactly 5 minutes at the time of writing, so they pass through unchanged. The threshold is hard-coded for now; the PR notes "in the future we may want to allow for this threshold to be configured" but didn't ship a knob.
+
+**What this means in practice:**
+
+- **If you use `cacheLife('seconds')` on any data fetched by a route's App Shell** — that data is **no longer eligible to be served from the App Shell**. The shell will fall back to the runtime prefetch path (or the blocking boundary, if the route has `instant = false`). If you depended on the shell serving a 1-second-stale value, that path no longer works; bump to `cacheLife('minutes')` (or higher) for shell-eligibility.
+- **If you use a custom profile with `stale < 300s`** — same outcome. Bump `stale` to at least 300s to keep the entry shell-eligible.
+- **For everyone else** — no change. The threshold of 5 minutes was chosen specifically because every built-in non-`seconds` profile already meets it.
+
+**Why 5 minutes:** `stale` is the longest an entry may still be served before being treated as expired. Below 5 minutes, App Shell eviction + refetch happens often enough that the user-visible behavior of "shell then content" flips to "shell then loading" — at which point the App Shell's optimization is purely overhead. 5 minutes is the lowest value at which the optimization still pays for itself in the common case.
+
+**Audit:**
+
+```bash
+# Find every cacheLife profile in your project
+rg -l 'cacheLife\s*\(' app/ -g '*.{ts,tsx}'
+
+# For each, check the stale value — anything below 300s is now excluded from App Shells
+rg "cacheLife\(['\"]seconds['\"]\)|cacheLife\(\s*\{" app/ -g '*.{ts,tsx}' -A2
+```
+
+**Sources:**
+- [PR #95833 — `Exclude stale under 5 minutes from app shells`](https://github.com/vercel/next.js/pull/95833) · Commit `83e99f0a2e` · gnoff · merged 2026-07-15T21:43:49Z · canary.87
+- Related: `MIN_PREFETCHABLE_STALE` (renamed from `DYNAMIC_STALE` in [PR #95361](https://github.com/vercel/next.js/pull/95361), canary.74) is the **30s** threshold for a different question — whether an entry can be included in a partial-prefetch App Shell. The canary.87 threshold is **300s** (5 min) for whether the entry can be served from the App Shell at all. Both thresholds work in tandem: `MIN_PREFETCHABLE_STALE` is the floor for partial-prefetch eligibility, the canary.87 threshold is the floor for App Shell retention.
+
 ## App Shell Prefetch — Next.js 16.3+ (Canary Feature)
 
 **⚠️ Status:** App Shell Prefetch is a **Next.js 16.3 canary feature** — not yet stable. The current stable release (**Next.js 16.2.9**) still defaults to `prefetch="full"` (full route prefetch on hover). This section describes what is coming when 16.3 stabilizes.

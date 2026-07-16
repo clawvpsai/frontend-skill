@@ -407,6 +407,35 @@ When visiting `/photo/123` from within the app, the modal version is shown. Dire
 
 ## Navigation API
 
+### Same-Document Traversals Before Hydration Are Now Replayed (16.3.0-canary.87+, PR [#95682](https://github.com/vercel/next.js/pull/95682) by gaearon, merged 2026-07-15T17:35:16Z)
+
+There was a class of silent navigation race that hit when you navigate to a route, hard-reload, and then hit Back before the new page hydrates. The repro was:
+
+1. Open page A.
+2. Navigate to page B (client-side `<Link>`).
+3. Cmd+Shift+R on page B (hard reload — replaces the document with B's server-rendered HTML).
+4. Hit Back super fast.
+
+The router would then get confused and show page B's content with page A's URL. From then on, going Back and Forward changed the URL (and the tab title) but kept showing B's content. No error overlay, no console warning, no DevTools signal — the URL bar and the rendered content just stopped agreeing.
+
+**Why this happened.** Step 2 creates B's history entry via `pushState`. Step 3 replaces the document with B's fresh server-rendered HTML (the browser's reload discards the JS heap). Step 4 fires `popstate` to A — but at that point nothing in the JS has loaded yet, so nothing listens. Then the JS loads and hydrates B's content onto B's HTML despite technically being on the A route.
+
+**The fix.** canary.87 uses the [Navigation API](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API) to detect that the current entry is not the entry the page was started with. Once the router mounts, it replays the missed traversal the same way the existing `onPopState` handler would have handled it. The author (gaearon) noted: "I originally tried to avoid using Navigation API but wasn't sure how to detect this reliably."
+
+**What you need to know:**
+
+- **If you maintain a custom router wrapper or a `<Link>` shim that swallows popstate events** — make sure it still runs after hydration. The replay path goes through the same `app-router` reducer as a normal popstate, so custom wrappers that observe popstate get the replay for free; wrappers that intercept popstate and swallow it before the reducer sees it would also miss the replay.
+- **If you use the Browser History directly via `window.history.pushState` / `replaceState`** — the Navigation API is the right layer for canary.87+ detection, and on canary.87+ the Next.js router uses `navigation.currentEntry` (rather than relying on `popstate`) for back/forward awareness. Custom code that talks directly to `history` still works but may bypass the new "replay on hydration" behavior — prefer `<Link>` / `router.push()` / `router.back()` for navigations that should round-trip through the reducer.
+- **If you're on 16.2.x or 16.3.0-canary.86 or earlier** — the race exists in those versions. Workaround before canary.87 was to add a one-line artificial delay before the Back click (a few hundred ms), which made the test non-deterministic enough to not reproduce reliably in practice. There was no real fix prior to canary.87.
+
+**Audit:** there is no config flag or migration — the fix is on by default in canary.87+.
+
+**Sources:**
+- [PR #95682 — `Replay same-document traversals that happen before hydration`](https://github.com/vercel/next.js/pull/95682) · Commit `2ce362f312` · gaearon · merged 2026-07-15T17:35:16Z · canary.87
+- New tests added in the same PR (red before the fix): `packages/next/src/client/components/segment-cache/tests/navigation-api-replay.test.ts` (route shape)
+
+### `useRouter` (Client Component)
+
 ### `useRouter` (Client Component)
 
 ```tsx
