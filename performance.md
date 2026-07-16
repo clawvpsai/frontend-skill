@@ -1497,6 +1497,31 @@ Next.js 16.2.10 stable shipped on July 1, 2026 (npm `dist-tag.latest` pointer mo
 - [Next.js 16.3.0-canary.84 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.84) (Request Insights 1/5–3/5)
 - [Next.js 16.3.0-canary.85 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.85) (Request Insights 4/5 + Turbopack perf PRs #95579, #95749, #95692)
 - [Next.js 16.3.0-canary.86 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.86) (Request Insights 5/5 + `useTscCli` spinner fix)
+- [PR #95694 — `[turbopack] Optimize the implementation of AutoMap/AutoSet`](https://github.com/vercel/next.js/pull/95694) (canary.87)
+- [PR #95261 — `[turbopack] Generate component chunks for each merged group to increase cache hits`](https://github.com/vercel/next.js/pull/95261) (canary.87)
+- [PR #95813 — `chore: Remove stale build warning`](https://github.com/vercel/next.js/pull/95813) (canary.87)
+
+### Turbopack AutoMap/AutoSet Backed by Inline `TinyVec` (16.3.0-canary.87, PR [#95694](https://github.com/vercel/next.js/pull/95694) by lukesandberg, merged 2026-07-14T23:35:01Z)
+
+The internal Turbo Tasks storage `AutoMap` and `AutoSet` previously used a `List` variant backed by `SmallVec` (24-byte header: `len` + `cap` + `ptr` all `usize`) even though the list variant never held more than 32 elements — the size was dominated by the header. canary.87 replaces this with the existing `TinyVec` (now enhanced with an `inline` array variant) using a `NonZeroU8` length that reserves a niche the `AutoMap` enum folds its discriminant into. The result: **`AutoMap`'s minimum size drops from 24 → 16 bytes**, which in turn shrinks `TaskStorage` and the `LazyField` enum. Some inline structs in `TaskStorage` are grown to maintain the 128-byte cache-line footprint. **No user-facing change** — purely an internal perf optimization. Expect marginally lower dev-memory pressure in very large monorepos (the existing `experimental.turbopackMemoryEviction: 'full'` flag will work better in combination); no config changes required.
+
+### Turbopack Component Chunks for Each Merged Group (16.3.0-canary.87, PR [#95261](https://github.com/vercel/next.js/pull/95261) by sampoder, merged 2026-07-15T22:57:11Z — WIP, not yet recommended for production)
+
+To increase client-side cache hit rates (currently many chunks are invalidated together because they're emitted as a single merged group), Turbopack now emits per-module chunks **in addition to** the merged-group chunk, reusing the existing `OutputChunkRuntimeInfo.module_chunks` field. The browser can then selectively load just the modules it needs from a chunk without loading the whole chunk. The trade-off is more chunks and more bytes on initial build:
+
+| App | Client chunk files (baseline → PR) | Δ | Client chunk bytes (baseline → PR) | Δ |
+|---|---:|---:|---:|---:|
+| vercel-site | 3651 → 5245 | +1594 (+43.7%) | 344.5 MiB → 418.4 MiB | +73.9 MiB (+21.5%) |
+| vercel-marketing | 2242 → 2634 | +392 (+17.5%) | 163.5 MiB → 180.7 MiB | +17.2 MiB (+10.5%) |
+| **Total** | **5893 → 7879** | **+1986 (+33.7%)** | **508.0 MiB → 599.1 MiB** | **+91.1 MiB (+17.9%)** |
+
+**Not yet recommended for production** — the build-size increase is significant, and the cache-hit data hasn't been published yet. Watch the canary channel for the `experimental.turbopackComponentChunks` flag (or whatever it ships as) and the production-scale cache-hit results before enabling. If you have a very large monorepo and your cache-hit rate is the dominant pain point, this is the PR to track; otherwise wait for the analysis.
+
+### `cssChunking: 'graph'` Docs Landed (16.3.0-canary.87, PR [#95693](https://github.com/vercel/next.js/pull/95693) by icyJoseph, merged 2026-07-15T15:47:41Z)
+
+The `experimental.cssChunking: 'graph'` config option (introduced in canary.71) was missing user-facing docs until canary.87. The new docs section ("Balancing requests and grouping") explains how the graph algorithm decides which CSS modules to bundle together, the `weightDistribution` parameter (controls how aggressively the algorithm groups modules vs splitting for cache locality), and includes a "Choosing a strategy" + "Debugging what a route actually uses" walkthrough. The `requestCost` default was retuned from `20000` → `100000` in canary.71; the docs now explain why. Closes Linear DOC-6481 and partially DOC-3447.
+
+**Sources for this section:**
 - [PR #93978 — `request insights: add DevTools request panel (5/5)`](https://github.com/vercel/next.js/pull/93978)
 - [PR #95463 — `Abort superseded Server Components HMR requests on the client`](https://github.com/vercel/next.js/pull/95463)
 - [PR #95486 — `Cancel a superseded Server Components HMR refresh's server-side work`](https://github.com/vercel/next.js/pull/95486)
