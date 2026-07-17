@@ -420,6 +420,34 @@ All four fixes are **silent footgun** fixes (no warning, no error before — the
 
 **Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.2`). Patch release — no code changes required.
 
+## Tailwind v4.3.3 — Patch (July 16, 2026)
+
+A pure bug-fix release dropped the same day as the 16.3.0-canary.88 tag cut. v4.3.3 ships **nine targeted fixes** — no new features, no breaking changes, no documentation-only changes. **The CSS output is unchanged**, so you can upgrade without testing.
+
+### Fixed in v4.3.3
+
+- **`@tailwindcss/cli --watch --poll[=ms]` now works when filesystem events are unreliable or unavailable** ([#20297](https://github.com/tailwindlabs/tailwindcss/pull/20297)). The `--poll` option on `@tailwindcss/cli` was being silently ignored when combined with `--watch`; on filesystems / mounts where `fs.watch` events don't fire (Docker bind mounts in some configs, WSL2, certain network filesystems) the CLI would never rebuild. Now respects `--poll` for any value (or `--poll` with no argument = default poll interval).
+- **Canonicalization: match arbitrary hex colors against theme colors case-insensitively** ([#20298](https://github.com/tailwindlabs/tailwindcss/pull/20298)). `bg-[#fff]` was canonicalizing to `bg-[#FFF]` (kept the literal value), but theme colors like `white` (`#ffffff`) wouldn't match. Now arbitrary hex is compared case-insensitively, so `bg-[#FFF]` → `bg-white` and `bg-[#FfF]` → `bg-white`. CSS color tokens normalized.
+- **Preflight no longer overrides Firefox's native `iframe:focus-visible` outline styles** ([#20292](https://github.com/tailwindlabs/tailwindcss/pull/20292)). Preflight was injecting a global `iframe:focus-visible { outline: none }` that Firefox uses for accessibility focus indicators; Firefox's outline-on-iframe is a browser feature, not a CSS bug. Now the Preflight reset doesn't target `<iframe>` focus-visible.
+- **`theme('colors.foo')` resolves correctly when both `--color-foo` and `--color-foo-bar` exist** ([#20299](https://github.com/tailwindlabs/tailwindcss/pull/20299)). The JS-plugin theme lookup was matching the `--color-foo-bar` declaration when the user asked for `--color-foo` (longer-prefix wins); now exact-match wins, so `theme('colors.foo')` returns the value of `--color-foo` not `--color-foo-bar`.
+- **Fractional opacity modifiers work with named shadow sizes** ([#20302](https://github.com/tailwindlabs/tailwindcss/pull/20302)). `shadow-sm/12.5`, `text-shadow-sm/12.5`, `drop-shadow-sm/12.5`, and `inset-shadow-sm/12.5` were failing the `parseFloat` step and falling back to `100%` opacity; now fractional values parse correctly.
+- **Parse selectors like `[data-foo]div` as two selectors instead of one** ([#20303](https://github.com/tailwindlabs/tailwindcss/pull/20303)). Tailwind's selector parser was treating `[data-foo]div` as a single compound selector (which would never match any element) instead of as `[data-foo]` + `div` (which would match an element with `data-foo` followed by a `div` — a descendant combinator). Now parsed as two selectors with a descendant combinator between them.
+- **`@tailwindcss/postcss` rebuilds when a preprocessor like Sass changes the input CSS without changing the input file on disk** ([#20310](https://github.com/tailwindlabs/tailwindcss/pull/20310)). PostCSS plugin was watching only the on-disk file mtime; when Sass did an in-memory transform (e.g. import flattening) without writing back to disk, the plugin didn't notice. Now uses an in-memory content hash as well.
+- **CSS nesting handled even when Lightning CSS isn't run** ([#20124](https://github.com/tailwindlabs/tailwindcss/pull/20124)). `@tailwindcss/browser` and Tailwind Play use the standard CSS Nesting browser API instead of Lightning CSS for the nesting transform; previously the CSS nesting pass was being skipped when Lightning CSS was absent, producing invalid CSS. Now runs regardless of Lightning CSS.
+- **Partial excerpt hidden in upstream PR — see [v4.3.3 release notes](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.3) for the full list of 9 PRs.** (#20307, #20309, etc.)
+
+### Why This Matters in a Skill
+
+All fixes are **silent footgun** fixes (no warning, no error before — they just did the wrong thing or crashed under specific edge cases). If you have any of these in your codebase:
+
+- A CSS-driven custom-theme palette where `theme('colors.foo')` returned `undefined` because you also had `colors.foo-bar` defined — **upgrade to v4.3.3** to get exact-prefix matching back.
+- A Tailwind project that ships to Firefox and you noticed `<iframe>` focus rings were invisible — **upgrade to v4.3.3** to stop Preflight from clearing Firefox's accessibility outline.
+- A Docker / WSL2 / network-mount dev workflow where `@tailwindcss/cli --watch` never rebuilt — **upgrade to v4.3.3** and pass `--poll[=ms]` to enable polling-based change detection.
+- Code that used fractional opacity with shadow utilities like `shadow-md/12.5` — **upgrade to v4.3.3** to stop the opacity silently snapping to 100%.
+- CSS using `[data-foo]div` style selectors (uncommon but valid) that wasn't being matched — **upgrade to v4.3.3** to get the selector parsed as descendant combinator.
+
+**Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.3`). Patch release — no code changes required.
+
 ## shadcn/typeset — Stream-Friendly Typography (July 14, 2026)
 
 If your app renders markdown in multiple surfaces (blog, docs, chat, email, AI assistant output), you'll hit a recurring problem: every surface needs its own typography config, and the styles drift apart over time. **`shadcn/typeset`** is the official answer — released the same week as `shadcn@4.13.0` (July 14, 2026).

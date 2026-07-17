@@ -917,6 +917,44 @@ Vite 8.1.4 ([released 2026-07-09T04:40Z by `sapphi-red`](https://github.com/vite
 - PRs: [#22840](https://github.com/vitejs/vite/issues/22840), [#22839](https://github.com/vitejs/vite/issues/22839), [#22848](https://github.com/vitejs/vite/issues/22848), [#22852](https://github.com/vitejs/vite/issues/22852), [#22829](https://github.com/vitejs/vite/issues/22829), [#22841](https://github.com/vitejs/vite/issues/22841)
 
 **Recommended Vite version for new projects (July 9, 2026):** **Vite 8.1.4** — supersedes 8.1.3 as the recommended Vite version (and transitively 8.1.1 / 8.1.2). 8.1.4 contains all of 8.1.3's contents (including the `es-module-lexer` 2.1.0 → 2.3.0 bump from #22838, the CSS-after-shebang injection in #22717, the nested-dynamic-import CSS preload in #22759, and the SSR stacktrace column position in #22828) **plus** seven more bug fixes (`import.meta.url` preservation in #22839, html-regex backtrack fix in #22848, optimizer init race in #22852, SSR named-call stacktrace column in #22829, pure-CSS-chunk strip in #22841, StackBlitz build workaround in #22840, and two monthly dep bumps in #22865 / #22866). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.4 (or 8.1.3 → 8.1.4). All of the 8.1.1 → 8.1.3 recommendation is preserved in 8.1.4.
+
+### Vite 8.1.5 (July 16, 2026) — Patch Release (6 bug fixes + 2 doc fixes + 2 test/build refactors)
+
+Vite 8.1.5 ([released 2026-07-16T06:51:13Z](https://github.com/vitejs/vite/releases/tag/v8.1.5), [compare `v8.1.4...v8.1.5`](https://github.com/vitejs/vite/compare/v8.1.4...v8.1.5), 10 commits since 8.1.4) is the **new recommended Vite version** as of this update. The npm `latest` dist-tag pointer moved to 8.1.5 at 2026-07-16T07:00Z. **No behavior changes** — every commit is a bug fix, documentation fix, or internal refactor.
+
+**Bug fixes in 8.1.5 (raw [CHANGELOG](https://github.com/vitejs/vite/blob/v8.1.5/packages/vite/CHANGELOG.md)):**
+
+| Area | Fix | PR / Commit |
+|---|---|---|
+| **bundled-dev** | Avoid duplicated `buildEnd` ([#22931](https://github.com/vitejs/vite/issues/22931)). In `BundledDev` mode the `buildEnd` plugin hook was being invoked twice when an HMR rebuild kicked off after a lazy-compile cycle, which could break plugins that rely on `buildEnd` being called exactly once per build (e.g. resource-allocators that release temp files in `buildEnd`). Now single-fired. | commit `810032097079be1a7da0e2b09ec9d92dd07ec13f` |
+| **client** | Overlay error message format aligned with rolldown ([#22869](https://github.com/vitejs/vite/issues/22869)). The dev overlay's error message rendering was producing slightly different text than rolldown's native error reporter (different escaping for nested template literals, different line numbers in stack traces). Now matches what rolldown prints, so the dev overlay and a `vite build --logLevel info` log line show the same error text. | commit `5a72b8780705b575026617e86b0b92dea63a56a5` |
+| **module-runner** | Don't crash stack-trace source mapping when `globalThis.Buffer` is absent ([#22945](https://github.com/vitejs/vite/issues/22945)). In browser-style module-runner hosts (Cloudflare Workers, edge runtimes) `globalThis.Buffer` is `undefined`; the stack-trace mapper was reading it as if it were always defined and crashed mid-mapping. Now guarded with `typeof globalThis.Buffer === 'function' ? ... : undefined`. | commit `f8b38e316bcefbf29f762f90ee49c88cd52c43b5` |
+| **optimizer** | Respect importer module format for dynamic import interop with CJS deps ([#22951](https://github.com/vitejs/vite/issues/22951)). When the optimizer encounters a dynamic `import()` to a CJS dep, the interop wrapper was being generated assuming ESM-by-default, which produced wrong `default` exports on CJS modules that already had an ESM-shaped wrapper. Now respects the importer's module format. Fixes a class of "function missing on CJS dep" errors that only surfaced in builds with mixed CJS/ESM dep graphs. | commit `6c08c39ac4fb5868d080a51ff976a44693fc56ab` |
+| **ssr** | Scope `switch-case` declarations to the switch, not the function ([#22893](https://github.com/vitejs/vite/issues/22893)). Vite's SSR transform was hoisting `let`/`const` declarations inside `case` clauses up to function scope, which broke the lexical scoping users expect from `switch` statements (e.g. `case 1: let x = 1; case 2: let x = 2` would error in user code but Vite's transform made it silently work and produced wrong behavior). Now wraps case bodies in their own block. | commit `b59a73f76f5557492d83d097bb33b3dd02f27d51` |
+| **deps** | `deps: update all non-major dependencies` ([#22921](https://github.com/vitejs/vite/issues/22921)) — routine monthly dep bump. | commit `fef682d3f067d534a559faf6fd9baedda2e9f8f1` |
+| **deps** | `deps: update rolldown-related dependencies` ([#22922](https://github.com/vitejs/vite/issues/22922)) — keeps Vite 8's rolldown toolchain in lockstep with upstream rolldown patches. | commit `3c345e475a5546a1cc6374682af89caebfe9c593` |
+| **docs** | Fix incorrect `@default` for `build.cssMinify` ([#22948](https://github.com/vitejs/vite/issues/22948)) and for `build.lib.formats` ([#22911](https://github.com/vitejs/vite/issues/22911)). JSDoc-only — the runtime defaults are correct, the type-doc annotations were stale. | commits `c88c2361868d8e2384653e382dd0960ca1ff5b24c` + `369ed609a4aace3aee4e4194a54990694aa4e7ac` |
+| **tests** | Avoid scanner scanning all files under `__tests__` ([#22912](https://github.com/vitejs/vite/issues/22912)). Test-infrastructure only. | commit `c961cae2868cc1521457ec60583867f0440e6949` |
+
+**Why this matters:**
+
+- For the **vast majority** of Vite 8.1.x users, 8.1.5 is "8.1.4 plus six tiny fixes" and the upgrade is a no-op. The safest upgrade path is `8.1.4 → 8.1.5` (a single patch bump, no API changes).
+- The **`module-runner` `globalThis.Buffer` fix (#22945)** is worth paying attention to if you use Vite's module-runner in a browser-style host (Cloudflare Workers, Deno Deploy, Vercel Edge Functions). The crash was a silent-during-dev, hard-fail-in-prod class.
+- The **`switch-case` scoping fix (#22893)** is a subtle correctness fix: if your code had multiple `case` clauses with `let`/`const` declarations of the same name (which should be a lexical error), Vite 8.1.4 was silently hoisting them and producing wrong runtime behavior. Upgrade to get the expected error.
+
+**Who should upgrade to 8.1.5:**
+
+- **Anyone on Vite 8.1.4** — pure additive patch; recommended upgrade. No API changes, no peer-dep changes, no behavior changes beyond the six listed fixes.
+- **Anyone on Vite 8.1.0 / 8.1.1 / 8.1.2 / 8.1.3** — go straight to 8.1.5 (you get every fix from 8.1.1 through 8.1.5 in one bump).
+
+**Sources:**
+
+- [Vite 8.1.5 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.1.5)
+- [Vite 8.1.5 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.1.5/packages/vite/CHANGELOG.md)
+- [Compare `v8.1.4...v8.1.5`](https://github.com/vitejs/vite/compare/v8.1.4...v8.1.5)
+- PRs: [#22931](https://github.com/vitejs/vite/issues/22931), [#22869](https://github.com/vitejs/vite/issues/22869), [#22945](https://github.com/vitejs/vite/issues/22945), [#22951](https://github.com/vitejs/vite/issues/22951), [#22893](https://github.com/vitejs/vite/issues/22893), [#22921](https://github.com/vitejs/vite/issues/22921), [#22922](https://github.com/vitejs/vite/issues/22922)
+
+**Recommended Vite version for new projects (July 16, 2026):** **Vite 8.1.5** — supersedes 8.1.4 as the recommended Vite version (and transitively 8.1.1 / 8.1.2 / 8.1.3). 8.1.5 contains all of 8.1.4's contents (the seven 8.1.4 bug fixes + two monthly dep bumps) **plus** six more bug fixes (bundled-dev duplicate `buildEnd`, dev-overlay error format alignment with rolldown, module-runner `globalThis.Buffer` guard, optimizer importer-format-aware CJS dynamic-import interop, SSR `switch-case` lexical scoping, plus two doc fixes + one test cleanup). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.5 (or 8.1.4 → 8.1.5). All of the 8.1.1 → 8.1.4 recommendation is preserved in 8.1.5.
 ## Next.js Configuration
 
 ### `next.config.ts`

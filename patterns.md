@@ -110,6 +110,58 @@ rg "cacheLife\(['\"]seconds['\"]\)|cacheLife\(\s*\{" app/ -g '*.{ts,tsx}' -A2
 - [PR #95833 — `Exclude stale under 5 minutes from app shells`](https://github.com/vercel/next.js/pull/95833) · Commit `83e99f0a2e` · gnoff · merged 2026-07-15T21:43:49Z · canary.87
 - Related: `MIN_PREFETCHABLE_STALE` (renamed from `DYNAMIC_STALE` in [PR #95361](https://github.com/vercel/next.js/pull/95361), canary.74) is the **30s** threshold for a different question — whether an entry can be included in a partial-prefetch App Shell. The canary.87 threshold is **300s** (5 min) for whether the entry can be served from the App Shell at all. Both thresholds work in tandem: `MIN_PREFETCHABLE_STALE` is the floor for partial-prefetch eligibility, the canary.87 threshold is the floor for App Shell retention.
 
+
+### `experimental.appShells` Flag Removed — Behavior Unified With Partial Prefetching (16.3.0-canary.88+, PR [#95415](https://github.com/vercel/next.js/pull/95415) by acdlite, merged 2026-07-16T20:30:58Z, 343 +/-381 over 45 files)
+
+**⚠️ Config change:** The `experimental.appShells` config flag was an internal development flag, not meant as a public-facing option. It is now **removed entirely** from `packages/next/src/server/config-schema.ts` + `packages/next/src/server/config-shared.ts` + `packages/next/src/server/base-server.ts` + the `app-page` + `edge-ssr-app` build templates + every segment-cache prefetch test fixture (`prefetch-app-shell`, `prefetch-app-shell-global-eager`, `prefetch-fallback-retry`, `search-params`, `staleness`, `vary-params`, `sub-shell-generation-middleware`, `parallel-route-navigations`, `instant-navigation-testing-api/partial-prefetch`, `instant-navigation-testing-api/root-params`, `use-cache-non-deterministic-args`). The behavior App Shells gated is now split two ways:
+
+- **Pure optimizations** (e.g. prefetched-shell reuse on cross-page navigation, layout-state preservation across shell hops) → **land unconditionally**. No opt-in required; no measurable prefetch-cost regression for apps that don't otherwise change.
+- **Behaviors that change the number of requests the server sees** (e.g. one request for the shell + a separate request for the page data, allowing the shell to render before the route data resolves) → **gated behind `experimental.partialPrefetching: true`** (or per-segment `export const prefetch = 'partial'` / `'unstable_eager'`). This is the existing Partial Prefetching flag — it's already the canonical opt-in for "I want the new SPA-style prefetch model".
+
+**Net effect for users:**
+
+| Before canary.88 | After canary.88 |
+|---|---|
+| Set `experimental.appShells: true` to get the full behavior. | Set `experimental.partialPrefetching: true` to get the same full behavior. |
+| `experimental.appShells: false` or unset → App Shell internals inert. | No flag needed → App Shell internals run as pure optimizations (no extra requests); the request-splitting bit is gated behind Partial Prefetching only. |
+| `experimental.appShells: true` + `experimental.partialPrefetching: false` → App Shells fully on, no PP. | **Not possible** — to get the request-splitting behavior you must opt into PP (which is a superset). |
+| No flag set → legacy full-route prefetch. | No flag set → legacy full-route prefetch. |
+
+**Why this matters for skill users:** the canary.87 commit message and the partial-prefetching docs both alluded to "App Shells" as a separate concept; from canary.88 onward there is **only one knob** (`experimental.partialPrefetching`), and App Shells is just the runtime stage of Partial Prefetching, not a separate feature. Anyone who copied `experimental.appShells: true` from older 16.3 canary docs (June 2026 era) should:
+
+```diff
+ // next.config.ts
+ const config: NextConfig = {
+-  experimental: {
+-    appShells: true,            // ❌ no longer recognized in canary.88+
+-  },
++  experimental: {
++    partialPrefetching: true,   // ✅ canonical opt-in for the new prefetch model
++    // (or use `export const prefetch = 'partial'` per-segment)
++  },
+ }
+```
+
+If you leave `appShells: true` in, canary.88+ will warn about an unrecognized `experimental` key (the AGENTS.md managed block added in PR #95825 now actively steers agents away from fabricating Turbopack-related config; the same instinct applies here — the old flag is gone).
+
+**Migration audit:**
+
+```bash
+# Find every project that still has the dead flag
+rg -l "appShells\s*:\s*true" next.config.* apps/*/next.config.*
+
+# For each match: replace with partialPrefetching: true (or remove the block entirely
+# if you didn't actually need the request-splitting behavior — most projects don't).
+```
+
+**Interaction with the canary.87 5-minute-stale floor (PR #95833):** unchanged. The `cacheLife('seconds')` exclusion from App Shells still applies when you're on Partial Prefetching; the `appShells` flag's removal doesn't relax that rule. The exclusion is now documented as "App Shells on Partial Prefetching routes" rather than "App Shells under the `experimental.appShells` flag".
+
+**Sources:**
+- [PR #95415 — `Unify appShells flag with Partial Prefetching`](https://github.com/vercel/next.js/pull/95415) · acdlite / Andrew Clark · merged 2026-07-16T20:30:58Z · canary.88 · commit `bc48ef7` (45 files, +343/-381)
+- [PR #95825 — `AGENTS.md` now warns agents not to fabricate `next.config.js` options](https://github.com/vercel/next.js/pull/95825) · sampoder · merged 2026-07-15T18:57:46Z (relevant: confirms `experimental.appShells` is no longer a recognized key in the experimental schema)
+- [PR #95833 — `Exclude stale under 5 minutes from app shells`](https://github.com/vercel/next.js/pull/95833) · canary.87 (the upstream rule that PR #95415 inherits; details above)
+- [Partial Prefetching docs](https://nextjs.org/docs/app/guides/partial-prerendering) — the canonical opt-in for the new prefetch model that PR #95415 makes the home of the "full" App Shells behavior
+
 ## App Shell Prefetch — Next.js 16.3+ (Canary Feature)
 
 **⚠️ Status:** App Shell Prefetch is a **Next.js 16.3 canary feature** — not yet stable. The current stable release (**Next.js 16.2.9**) still defaults to `prefetch="full"` (full route prefetch on hover). This section describes what is coming when 16.3 stabilizes.
