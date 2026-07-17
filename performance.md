@@ -705,6 +705,22 @@ The dev-only Navigation Inspector (the Instant Navigation Testing API that pause
 
 **Source:** [PR #95329 — `Fix Navigation Inspector in Safari`](https://github.com/vercel/next.js/pull/95329) · [Commit `d6f4cd33`](https://github.com/vercel/next.js/commit/d6f4cd33) · Files: `packages/next/src/client/components/segment-cache/navigation-inspector/dom.ts` (+12/-3, 1 file)
 
+### Navigation Inspector — Back/Forward Resets to Pending (16.3.0-canary.89, [PR #95865](https://github.com/vercel/next.js/pull/95865) by acdlite, canary-branch ahead of canary.88 — merged 2026-07-17T15:44:05Z)
+
+The dev-only Navigation Inspector (Instant Navigation Testing API) previously captured *every* navigation in its trace, but a back/forward history traversal isn't the same shape as a regular navigation — it reads the entire destination from cache rather than fetching new data. In the normal case all the data is already in the bfcache and the traversal is instant, so the captured entry was misleading: the inspector's panel would show network/span activity for a navigation that never made a single request.
+
+**The fix** (PR #95865) re-models history traversal in the Nav Inspector's state machine: on any Back/Forward restore (the `restore-reducer` path), the inspector's `navigation-testing-lock` is **reset to a fresh pending scope** (`releaseLock()` flushes every still-withheld write from prior forward navigations so the pages you navigated away from finish streaming, then `acquireLock()` immediately re-arms a fresh pending scope with no gap where the lock or fetch blocker is down; the cookie flips from the captured state back to pending). The traversal's own dynamic requests are spawned ungated (the caller passes `null` instead of `getCurrentNavigationLock()` to `startPPRNavigation`) so they render from cache or fetch normally rather than being withheld behind the lock. Behavior is a no-op when the testing API is disabled or no lock is held.
+
+**Practical impact:**
+
+- **Developers using the Navigation Inspector:** the panel now correctly distinguishes "the user clicked a link and we captured it" from "the user pressed Back/Forward and we read from cache." Pressing Back/Forward returns the panel to "Waiting for navigation…" instead of showing a captured entry with no fetches. In a future canary the inspector UI may show a specific indicator for back/forward navigations; for now the pending-state reset is the signal.
+- **Production / non-testing users:** zero impact. The fix is gated behind `process.env.__NEXT_EXPOSE_TESTING_API` and only runs in dev with the Instant Navigation Testing API active.
+- **Custom dev tooling that imports `navigation-testing-lock`:** a new `resetNavigationLockToPending()` export is added to both `navigation-testing-lock.ts` (active) and `navigation-testing-lock.disabled.ts` (no-op). The `ppr-navigations.ts` module gains the same helper gated on `__NEXT_EXPOSE_TESTING_API`.
+
+Includes the regression tests from PR #95793. **Will be in 16.3.0-canary.89.**
+
+**Source:** [PR #95865 — `Back/forward set the Nav Inspector back to pending`](https://github.com/vercel/next.js/pull/95865) · Files: `packages/next/src/client/components/router-reducer/ppr-navigations.ts` (+19/-1), `packages/next/src/client/components/router-reducer/reducers/restore-reducer.ts` (+10/-3), `packages/next/src/client/components/segment-cache/navigation-testing-lock.ts` (+25/-0), `packages/next/src/client/components/segment-cache/navigation-testing-lock.disabled.ts` (+2/-0), `test/development/app-dir/instant-navs-devtools/instant-navs-devtools.test.ts` (+141/-15, 6 regression tests from #95793)
+
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
 PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.
