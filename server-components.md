@@ -337,6 +337,43 @@ export async function getTopPosts() {
 | `use cache: private` | In-memory (server-local, private) | Lowest | Compliance — data must not leave server |
 | `use cache: remote` | Platform cache (Redis/KV/etc.) | Higher | High traffic, persistent cache across restarts |
 
+## `export const instant = false` — The "Block" Path (Next.js 16.3)
+
+Next.js 16.3's Instant Navigations feature presents three explicit data-fetching choices at every server component render point. This is the third path — **"Block"** — for data that genuinely cannot be cached or streamed:
+
+### The Stream / Cache / Block Decision Framework
+
+Every `async` server component render in Next.js 16.3 must choose one of three paths:
+
+| Path | Mechanism | When to use |
+|---|---|---|
+| **Stream** | Wrap in `<Suspense>` | Data arrives quickly but unpredictably |
+| **Cache** | `'use cache'` | Data is safe to cache with a known TTL |
+| **Block** | `export const instant = false` | Data cannot be prefetched; render must wait |
+
+**The mental model:** `instant = false` tells Next.js "do not attempt to render this segment during the instant (shell-only) phase of navigation — wait for the real data." The full route renders normally on navigation, the same as it would have in Next.js 15. This is the **escape hatch**, not the default.
+
+```tsx
+// app/dashboard/page.tsx
+// This route reads request-time data that can't be cached or predicted.
+// Block it from instant nav so the navigation waits for real data.
+export const instant = false
+
+export default async function DashboardPage() {
+  const user = await getUser() // request-time, uncacheable
+  const alerts = await getAlerts(user.id)
+  return <Dashboard user={user} alerts={alerts} />
+}
+```
+
+**Key behaviors of `instant = false`:**
+- **Highest-wins resolution.** Resolution is top-down, first-explicit-config-wins — the **highest** `instant = false` in a route tree decides the whole subtree. Removing a leaf's opt-out does nothing while an ancestor still holds one.
+- **Doesn't clear sync-IO errors.** `new Date()`, `Date.now()`, `Math.random()`, `crypto.randomUUID()` called at render time still fail the prerender even with `instant = false` — fix those explicitly.
+- **Client Components don't get an opt-out.** `instant` is a Server Component segment config; exporting it from a `"use client"` module is a build error (`E1344`).
+- **Framework routes (`/-not-found`, etc.) have no user file.** Don't try to add `instant = false` to `app/not-found.tsx` — add it to `app/layout.tsx` instead (the root layout covers all framework routes).
+
+**Source:** [Next.js 16.3 — Instant Navigations blog post](https://nextjs.org/blog/next-16-3-instant-navigations) · [`export const instant` docs](https://nextjs.org/docs/app/api-reference/next-config-js/instant) · [`cache-components-instant-false` codemod](https://nextjs.org/docs/app/guides/migrating-to-cache-components)
+
 **Sources:**
 - [Next.js `use cache: private` docs](https://nextjs.org/docs/app/api-reference/directives/use-cache-private)
 - [Next.js `use cache: remote` docs](https://nextjs.org/docs/app/api-reference/directives/use-cache-remote)

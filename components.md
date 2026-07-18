@@ -1276,3 +1276,66 @@ Just render the markdown to HTML and wrap the result in a `<div className="types
 - [Typeset documentation](https://ui.shadcn.com/docs/typeset)
 - [Typeset builder](https://ui.shadcn.com/typeset)
 - [shadcn changelog](https://ui.shadcn.com/docs/changelog)
+
+## `@shadcn/helpers` (July 2026) — Test Chat UIs Without a Model, API, or API Key
+
+Released July 2026, **`@shadcn/helpers`** is a new package from shadcn/ui for writing chat UI tests and component development without requiring a live LLM, an API route, network access, or an API key. It lets you describe a conversation in code, then run it through the real `useChat` lifecycle — your UI receives native framework messages and streaming events (reasoning, tool calls, loading states, message components) exactly as it would in production.
+
+```ts
+import { createChat } from "@shadcn/helpers/ai-sdk"
+
+const chat = createChat()
+  .user("What changed in this release?")
+  .assistant("The release adds keyboard shortcuts and faster search.")
+  .user("Can you check the full release notes?")
+  .sleep(500)
+  .assistant(({ writer }) => {
+    writer.stepStart()
+    // Reasoning visible in UI
+    writer.reasoning("I should read the release notes first.")
+    // Tool call
+    writer.tool("getReleaseNotes", {
+      title: "Reading release notes",
+      input: { version: "latest" },
+    })
+    .sleep(500)
+    .output({
+      highlights: ["Keyboard shortcuts", "Faster search"],
+    })
+    // Source attribution
+    writer.sourceUrl({
+      title: "Release notes",
+      url: "https://example.com/releases",
+    })
+    // Final text response
+    writer.text("The release adds keyboard shortcuts and faster search.")
+  })
+
+// Pass to the real useChat — no model, no network
+const initialMessages = chat.get(0)
+const transport = chat.transport()
+
+export function Chat() {
+  const { messages } = useChat({
+    messages: initialMessages,
+    transport,
+  })
+  // ...
+}
+```
+
+**Two adapters ship in the package:**
+- **`@shadcn/helpers/ai-sdk`** — plugs into AI SDK's `useChat` as a transport
+- **`@shadcn/helpers/tanstack-ai`** — plugs into TanStack AI's `useChat` as a connection, streams real AG-UI events
+
+**What you can test with this:**
+- Does the reasoning step render correctly in the UI?
+- Does the tool call card show the right title and input?
+- Does the loading skeleton appear during `.sleep()`?
+- Does the output card render the highlights array?
+- Does the source attribution link appear?
+- Does the final text stream in character-by-character?
+
+All of this runs at unit-test speed with zero network I/O.
+
+**Source:** [`@shadcn/helpers` — July 2026 changelog](https://ui.shadcn.com/docs/changelog/2026-07-helpers) · [`@shadcn/helpers` AI SDK docs](https://ui.shadcn.com/docs/helpers/ai-sdk) · [`@shadcn/helpers` TanStack AI docs](https://ui.shadcn.com/docs/helpers/tanstack-ai)

@@ -1275,6 +1275,43 @@ If your project uses `vitest bench` as a CI gate, the new API requires updating 
 - **Running Browser Mode on a network-exposed host (`--browser.api.host=0.0.0.0`)** — CVSS 9.8 RCE on vitest < 4.1.8 via the cdp() RPC + CDP `Page.setDownloadBehavior` chain. Keep Browser Mode on localhost, set `api.allowWrite: false, api.allowExec: false` in CI, upgrade to vitest ≥ 4.1.8. See `security.md` § Vitest Browser Mode CVEs.
 - **Mixing vitest and @vitest/browser versions** — cdp() fix in 4.1.8+ only protects if @vitest/browser is also at the matching version. Pin them together: `"vitest": "4.1.10", "@vitest/browser": "4.1.10"` (4.1.10 closed a second class of fs-access via builtin commands — backport of beta.6's #10680).
 
+## `@next/playwright` — `instant()` Test Helper for Instant Navigations (Next.js 16.3)
+
+Next.js 16.3 ships **`@next/playwright`**, a first-party Playwright helper that lets you assert what must be **instantly visible** after a navigation — without waiting for the network. This is the E2E complement to Instant Insights in dev: write a test once, and catch regressions to your instant routes in CI.
+
+```ts
+import { expect, test } from '@playwright/test'
+import { instant } from '@next/playwright'
+
+test('product title is available immediately after navigation', async ({ page }) => {
+  await page.goto('/products/shoes')
+
+  // Assert what's visible WITHOUT waiting for the network
+  await instant(page, async () => {
+    await page.click('a[href="/products/hats"]')
+    // The shell renders instantly — these assertions fire immediately
+    await expect(page.locator('h1')).toContainText('Baseball Cap')
+    await expect(page.getByText('Checking inventory...')).toBeVisible()
+  })
+
+  // After instant() scope exits, deferred content resolves
+  await expect(page.getByText('12 in stock')).toBeVisible()
+})
+```
+
+**How it works:** `instant()` sets up a `cacheComponents`-aware navigation scope. Inside the callback, clicking a link triggers an **instant navigation** (shell-only RTT + prefetch), and assertions run against the shell immediately — no network wait. After the callback exits, Playwright resumes normal (full-payload) navigation, so deferred content assertions work normally.
+
+**Use `instant()` when you want to:**
+- Verify the shell renders the right static content immediately after a click
+- Catch regressions where a Suspense boundary is missing and the shell is blank
+- Assert that loading skeletons / pending states are visible before deferred data arrives
+
+**Do not use `instant()` for:**
+- Testing full page loads from cold (use `page.goto()` instead)
+- Testing routes that don't use `export const instant` — the helper is a no-op outside the instant nav path
+
+**Source:** [Next.js 16.3 — Instant Navigations blog post](https://nextjs.org/blog/next-16-3-instant-navigations) · [`@next/playwright` — Instant Navigation Testing API docs](https://nextjs.org/docs/app/guides/testing/instant-navigation)
+
 **Sources:**
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
 - [Vitest docs](https://vitest.dev/)
