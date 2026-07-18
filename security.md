@@ -103,6 +103,44 @@ The advance notice (July 13) states it covers **4 high-severity + 5 medium-sever
 4. **If you cannot upgrade immediately** (legacy app, blocked by a regression, third-party plugin incompatibility): the same WAF rules Vercel deployed for CVE-2026-23869 will likely activate for the high-severity items here. **WAF is not a substitute for patching** — the rules are best-effort and only apply to Vercel-hosted deployments.
 5. **If you maintain an OSS Next.js plugin or example** that pins a `next` peer range: widen the range to `^16.2.0 || ^15.5.0` (or wider) so users can pick up the July 20 patch without forking your plugin.
 
+### Pre-July-20 48-Hour Prep Checklist (Updated 2026-07-18)
+
+It is **Saturday, July 18, 2026** at the time of this writing — the scheduled security release is **Monday, July 20, 2026** (~48 hours from now). Use the weekend to finish prep so Monday is just a `npm install` + redeploy:
+
+**Saturday (today) — inventory + diff prep**
+
+1. **Run `npm list next` in every deployed app's repo.** Note the current version (e.g. `next@16.2.10`, `next@15.5.18`, `next@14.2.35`, `next@13.5.11`). Anything older than the latest 16.2.x or 15.5.x patch is missing prior fixes — the July 20 release will be a drop-in replacement for current 16.2.x / 15.5.x users.
+2. **For each app, list deployable artifacts** that pin a `next` version explicitly: Dockerfile `FROM` lines, base image digests, CI matrix versions, Helm chart values, Terraform modules, serverless function deploy configs. The July 20 patch is useless if your container image still pins `node:20-slim` + a frozen `package-lock.json` from June.
+3. **For apps on Next.js 13.x or 14.x**: those versions are NOT receiving the July 20 patch — Vercel only patches 16.2 and 15.5 lines. **Your path is to upgrade to 16.2 or 15.5 BEFORE Monday, then apply the security patch on top.** Otherwise you remain exposed to BOTH the May 2026 batch AND the July 2026 batch forever.
+4. **For apps on canary/preview** (`16.3.0-canary.*` or `16.3.0-preview.*`): the canary branch receives most security fixes ahead of stable. Confirm your `next` dep resolves to a canary newer than the canary-branch HEAD on Monday (compare against the [`canary` npm dist-tag](https://www.npmjs.com/package/next?activeTab=versions)). **Caveat:** canary builds do not get formal CVE attribution, so do not run production on canary for security-sensitive apps.
+5. **Open a tracking issue / Slack thread** per app with: current version, target version, deploy owner, ETA. The patch itself will be a one-line `next` bump; the work is the redeploy + verification.
+
+**Sunday — staging rehearsal**
+
+6. **In a non-prod environment**, run `npm install next@^16.2 --save-exact` (or `^15.5`), then `npm install` to refresh the lockfile, then `next build` + your full test suite. Confirm zero regressions. If your app has any `next.config.js` codemods pending (`npx @next/codemod@canary upgrade latest`), apply them Sunday, not Monday, so Monday is just the security bump.
+7. **If you maintain OSS Next.js plugins or examples**, widen the peer range to `^16.2.0 || ^15.5.0` (or wider) so your users can pick up the July 20 patch without forking. Examples: `peerDependencies: { "next": "^16.2.0 || ^15.5.0" }`.
+8. **Verify your CI dependency-update bot is healthy.** Renovate / Dependabot should auto-open a PR within hours of the patch's Monday publication. If your bot is broken or rate-limited, set a manual calendar reminder to check the [Next.js releases feed](https://github.com/vercel/next.js/releases) and the [Next.js blog](https://nextjs.org/blog) on Monday morning UTC.
+9. **Pre-pull the Vercel WAF rule guidance** (if you self-host). Vercel said for the May 2026 release that "Vercel has not deployed new WAF rules for this release; these advisories cannot be reliably blocked at the WAF layer." Expect the same for July — but if you're behind Cloudflare / Fastly / AWS WAF, pre-stage a rule that drops requests matching the (about-to-be-disclosed) CVSS-9+ indicators once they're published. Do not rely on this — patching is the only complete mitigation.
+
+**Monday — patch + redeploy**
+
+10. **When the patch ships** (likely 14:00–20:00 UTC per Vercel's track record), `npm install next@latest`, verify `package-lock.json` was updated, verify your Dockerfile / CI cache was busted (pass `--no-cache` to `docker build`, `docker buildx build --pull`, etc.), redeploy, verify the new version is actually serving (`curl -I https://your-app.com` and inspect headers, or `npm list next` in the running container).
+11. **Subscribe to the [Next.js blog RSS](https://nextjs.org/blog)** or watch the [vercel/next.js releases feed](https://github.com/vercel/next.js/releases). Read the actual CVE descriptions once published — they often include workarounds that matter even on the patched version (e.g. "the patch fixes the auth bypass but you should also add `matcher` config to your middleware to harden the surface").
+12. **If you self-host behind Vercel WAF**, wait for Vercel's blog post to confirm which (if any) WAF rules they deployed — they generally do not block the high-severity items, so patching is the only path.
+
+**What we know about the July 20 batch (pre-announcement, July 13):**
+
+- **4 high-severity + 5 medium-severity CVEs**
+- Patches on Next.js **16.2.x and 15.5.x** (no patches for 13.x / 14.x)
+- CVE IDs and GHSA links published the day-of
+- Aimed at: middleware / proxy bypass, Server Components / RSC, App Router / Pages Router, Image Optimization, Server Actions, and likely the canonical vuln classes that have dominated 2026 (cache poisoning, RSC payload corruption, route parameter injection)
+
+**Sources:**
+- [Next.js Security Release and Our Next Patch Release (July 13, 2026)](https://nextjs.org/blog/next-security-release-program)
+- [socket.dev: Next.js moves to scheduled security releases (July 16, 2026)](https://socket.dev/blog/nextjs-moves-to-scheduled-security-releases)
+- [byteiota: Next.js Patches 9 Vulnerabilities on July 20 — Act Now (July 17, 2026)](https://byteiota.com/next-js-patches-9-vulnerabilities-on-july-20-act-now)
+- [gbhackers: Next.js Announces July Security Release (July 16, 2026)](https://gbhackers.com/next-js-announces-july-security-release/)
+
 ### Patch Cadence Best Practice (2026)
 
 With the new monthly cadence, the recommended workflow is:

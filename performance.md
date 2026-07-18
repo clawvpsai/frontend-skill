@@ -705,7 +705,7 @@ The dev-only Navigation Inspector (the Instant Navigation Testing API that pause
 
 **Source:** [PR #95329 — `Fix Navigation Inspector in Safari`](https://github.com/vercel/next.js/pull/95329) · [Commit `d6f4cd33`](https://github.com/vercel/next.js/commit/d6f4cd33) · Files: `packages/next/src/client/components/segment-cache/navigation-inspector/dom.ts` (+12/-3, 1 file)
 
-### Navigation Inspector — Back/Forward Resets to Pending (16.3.0-canary.89, [PR #95865](https://github.com/vercel/next.js/pull/95865) by acdlite, canary-branch ahead of canary.88 — merged 2026-07-17T15:44:05Z)
+### Navigation Inspector — Back/Forward Resets to Pending (16.3.0-canary.89 SHIPPED 2026-07-17T23:55:15Z, [PR #95865](https://github.com/vercel/next.js/pull/95865) by acdlite, merged 2026-07-17T15:44:05Z)
 
 The dev-only Navigation Inspector (Instant Navigation Testing API) previously captured *every* navigation in its trace, but a back/forward history traversal isn't the same shape as a regular navigation — it reads the entire destination from cache rather than fetching new data. In the normal case all the data is already in the bfcache and the traversal is instant, so the captured entry was misleading: the inspector's panel would show network/span activity for a navigation that never made a single request.
 
@@ -717,9 +717,40 @@ The dev-only Navigation Inspector (Instant Navigation Testing API) previously ca
 - **Production / non-testing users:** zero impact. The fix is gated behind `process.env.__NEXT_EXPOSE_TESTING_API` and only runs in dev with the Instant Navigation Testing API active.
 - **Custom dev tooling that imports `navigation-testing-lock`:** a new `resetNavigationLockToPending()` export is added to both `navigation-testing-lock.ts` (active) and `navigation-testing-lock.disabled.ts` (no-op). The `ppr-navigations.ts` module gains the same helper gated on `__NEXT_EXPOSE_TESTING_API`.
 
-Includes the regression tests from PR #95793. **Will be in 16.3.0-canary.89.**
+Includes the regression tests from PR #95793. **Shipped in 16.3.0-canary.89** (2026-07-17T23:55:15Z).
 
 **Source:** [PR #95865 — `Back/forward set the Nav Inspector back to pending`](https://github.com/vercel/next.js/pull/95865) · Files: `packages/next/src/client/components/router-reducer/ppr-navigations.ts` (+19/-1), `packages/next/src/client/components/router-reducer/reducers/restore-reducer.ts` (+10/-3), `packages/next/src/client/components/segment-cache/navigation-testing-lock.ts` (+25/-0), `packages/next/src/client/components/segment-cache/navigation-testing-lock.disabled.ts` (+2/-0), `test/development/app-dir/instant-navs-devtools/instant-navs-devtools.test.ts` (+141/-15, 6 regression tests from #95793)
+### Turbopack Dev: Skip SSR Compile for Pages Only Navigated to Through Soft Navs (16.3.0-canary.89 SHIPPED 2026-07-17T23:55:15Z, [PR #95539](https://github.com/vercel/next.js/pull/95539) by sampoder, merged 2026-07-17T20:10:55Z, +460/-89 across 23 files)
+
+The single biggest user-facing PR in canary.89. Previously, Turbopack dev compiled the Client Component SSR chunk for every HTML page endpoint registered in the App Router, regardless of whether that page was ever rendered as a standalone document. Most app pages today are reached via an RSC-only soft navigation — a page rendered inside a modal, a tabbed sub-route, a `Link` with `prefetch={false}` from a parent page, a route surfaced as a fragment via `<Link>` from a deeper segment, or a route only ever visible as a child of a layout that hydrates in place. In those cases the SSR chunk is dead weight: the page is never sent as a document, only as RSC payload fragments, so the SSR build is compiled but never served.
+
+**The fix** introduces a new `OutputModeState` (per dev session) that tracks which HTML page endpoints are actually rendered as documents during the current dev session. When a page is navigated to only through RSC soft navigation, the page is added to the set of "non-SSR" pages, and its `process_ssr` flag is set to `false`. The new `mark_as_ssr_operation` turbo-tasks operation (in `crates/next-api/src/output_mode.rs`) walks the dev session's `OutputModeState` to decide which HTML page endpoints need SSR compilation; pages not in the set get:
+
+- `process_ssr = false` → the `ssr_chunking_context` collapses from a separate upcast into a `process_ssr.then_some(server_chunking_context)` no-op when not needed
+- `rscModuleMapping` for the App Router is now only emitted for pages (route handlers + metadata routes drop it)
+- `AppEndpointType::Page { ty: AppPageEndpointType::Html }` gets the existing `RscHmr` sibling variant reclassified as "HMR-only: detects Server Component changes but emits no manifests, so it cannot serve a request"
+
+Internal cleanup PR #95908 (`[turbopack] Clean up server_chunking_context`) removes the now-unused `server_chunking_context` helper in the same cycle, consolidating around the unified chunking context passed through `mark_as_ssr_operation`.
+
+**Files touched (PR #95539 + #95908, 24 files combined):** `crates/next-api/src/{app.rs, lib.rs, output_mode.rs}` (new module), `crates/next-core/src/{app_structure.rs, next_config.rs, app_page_annotations.rs}` (mark-as-ssr hook), `crates/turbopack/...` (chunking context plumbing), 23 files total.
+
+**Practical impact:**
+
+- **Dev compile time:** materially faster `next dev` first-request compile for apps with many pages that are mostly reached via RSC soft navigation. The exact ratio depends on how many of your pages are SSR-only-by-default vs RSC-soft-nav-only. For an app with 50 pages where 40 are reached only via soft nav (e.g. a single-page admin panel with deeply-nested tab routes), expect the first `next dev` request that touches a previously-uncompiled soft-nav-only page to skip the SSR build entirely.
+- **Dev memory:** lower `next dev` RSS because dead SSR chunks for soft-nav-only pages are never materialised. The `rscModuleMapping` pruning is the bigger memory win for apps with many route handlers + metadata routes.
+- **Production:** zero impact. `OutputModeState` is dev-session-scoped; the `mark_as_ssr_operation` function `bail!`s outside a dev session ("`mark_as_ssr is never called outside of a dev session`"). Production SSR runs compile every HTML page endpoint as before.
+- **Dev sessions that mix full-document and soft-nav visits:** the first time a page is rendered as a document (e.g. hard-loaded at `/dashboard/settings`), the page is added to the SSR set on-the-fly and its SSR build runs immediately; subsequent visits (full or soft) reuse that build.
+
+**How to verify on your app:**
+
+1. Open the new Turbopack runtime log section (exposed by #95908's cleanup) — `next dev` now logs per-endpoint SSR-build decisions. Look for entries like `[turbopack] skip ssr for /admin/billing (soft-nav only)` — that's the new fast-path kicking in.
+2. Time your dev startup with a tool like `hyperfine 'next dev' --warmup 1` before and after upgrading to canary.89. The improvement is most visible on cold starts for large app routers.
+3. In DevTools Memory tab, compare the heap snapshot before and after the upgrade for a long-running dev session; look for the `rscModuleMapping` entries shrinking for route handlers + metadata routes.
+
+**When this matters most:** any app with a non-trivial navigation tree where most routes are children of a shared layout (admin panels, dashboards, multi-step forms, e-commerce sites with deep product taxonomies). For a single-page-app-with-routes structure, expect 30–60% faster first-RSC-payload compile for soft-nav-only pages.
+
+**Source:** [PR #95539 — `[turbopack] Don't SSR on pages only navigated to through a soft nav`](https://github.com/vercel/next.js/pull/95539) · [PR #95908 — `[turbopack] Clean up server_chunking_context`](https://github.com/vercel/next.js/pull/95908) · Files: 23 + 1 = 24 files across `crates/next-api/`, `crates/next-core/`, `crates/turbopack/` · sampoder · merged 2026-07-17T20:10:55Z · **Shipped in 16.3.0-canary.89** (npm `canary` dist-tag pointer moved 2026-07-17T23:55:15Z).
+
 
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
