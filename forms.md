@@ -307,6 +307,194 @@ deepEqual([], {}) // → false (correct)
 - [GitHub PR #13524 — perf: make rhf more performant](https://github.com/react-hook-form/react-hook-form/pull/13524)
 - [GitHub PR #13533 — fix(deepEqual): empty array and empty plain object should not be equal](https://github.com/react-hook-form/react-hook-form/pull/13533)
 
+
+## React Hook Form 7.81.0 (July 5, 2026) — `<FieldArray>` Component + `setValue` `shrink` + 7 Fixes
+
+React Hook Form 7.81.0 was released on **July 5, 2026** (commit [`46b217e`](https://github.com/react-hook-form/react-hook-form/commit/46b217e034dd92f7aa3cb3a478815556b416b299), by @bluebill1049). It is the **last stable release of v7 to ship a meaningful new feature** — the new declarative `<FieldArray>` component export — alongside a `setValue` API quality-of-life improvement (`shrink`) and seven bug fixes spanning `useController`, `useFieldArray` reset, deep-equal date handling, and the `subscribe`/`clearErrors` interaction.
+
+### 1. `<FieldArray>` Component (New Public Export, PR [#13394](https://github.com/react-hook-form/react-hook-form/pull/13394))
+
+A **declarative component** alternative to the imperative `useFieldArray` hook. Same data shape, render-prop API:
+
+```tsx
+import { FieldArray } from 'react-hook-form'
+
+function ItemsEditor({ control }: { control: Control<FormValues> }) {
+  return (
+    <FieldArray
+      control={control}
+      name="items"
+      render={({ fields, append, remove, swap, move, insert, replace }) => (
+        <>
+          {fields.map((field, i) => (
+            <div key={field.id}>
+              <input {...control.register(`items.${i}.name` as const)} />
+              <input type="number" {...control.register(`items.${i}.qty` as const)} />
+              <button type="button" onClick={() => remove(i)}>×</button>
+            </div>
+          ))}
+          <button type="button" onClick={() => append({ name: '', qty: 1 })}>
+            Add item
+          </button>
+        </>
+      )}
+    />
+  )
+}
+```
+
+**When to use `<FieldArray>` vs `useFieldArray`:**
+
+| Pattern | Pick |
+|---|---|
+| Single field array per component, render-prop structure reads naturally | **`<FieldArray>`** (7.81+) |
+| Multiple field arrays in one component, deeply nested array paths, or needing conditional `useFieldArray` hooks | **`useFieldArray`** (still the canonical API) |
+| You want to forward the array through a component prop without exposing the `control` object | **`<FieldArray>`** — pass `control` once, render-prop keeps the rest scoped |
+| Discriminated-union form where the array is only one branch | **`useFieldArray`** (with `disabled` from 7.79+) |
+
+The imperative `useFieldArray` hook is **not deprecated**; the component is purely additive.
+
+### 2. `setValue` `shrink` API (PR [#13576](https://github.com/react-hook-form/react-hook-form/pull/13576))
+
+When you `setValue('user.address.city', 'Berlin')`, RHF historically left the parent `address` shape as-is and replaced only the leaf. The new `shrink: true` option **trims the value** so it matches the registered schema:
+
+```tsx
+// Form has user: { name: '', address: { city: '' } }
+// After setValue('user', { address: { city: 'Berlin' } }) the form is:
+//   { name: 'old-name', address: { city: 'Berlin' } }   // default name preserved
+
+setValue('user', { address: { city: 'Berlin' } }, { shrink: true })
+//   { address: { city: 'Berlin' } }                     // name trimmed off
+```
+
+**When to use `shrink: true`:**
+- Loading a sparse partial from a server and you want the form to reflect exactly that shape
+- Replacing a sub-object whose siblings should be cleared (e.g. clearing an old `email` when setting a new `phone`)
+- Tests that assert exact form-value snapshots
+
+**Default behavior is unchanged** (the leaf-only update is the right call 95% of the time). `shrink` is opt-in per-call.
+
+### 3. `useFieldArray` Reset Perf (PR [#13578](https://github.com/react-hook-form/react-hook-form/pull/13578), closes [#13577](https://github.com/react-hook-form/react-hook-form/issues/13577))
+
+Calling `reset()` on a form containing a large `useFieldArray` (200+ items) previously re-rendered every item even when the array was empty. 7.81.0 short-circuits when the new array length is zero and skips per-item reconciliation.
+
+**Impact:** noticeable in dashboards, admin tables, and bulk-edit forms. No code change required.
+
+### 4. Other Fixes in 7.81.0
+
+- **`useFieldArray` min-1 validation error location fix** (PR [#13539](https://github.com/react-hook-form/react-hook-form/pull/13539), fixes [#13538](https://github.com/react-hook-form/react-hook-form/issues/13538)) — `min` validation errors now live at the expected `errors.items[0]` path instead of getting hoisted to the parent. **Audit:** `rg "errors\.items\b" -A2 src/` — any consumer that was working around the wrong location should now see the error where it belongs.
+- **`reset()` triggers `subscribe` with correct name** (PR [#13574](https://github.com/react-hook-form/react-hook-form/pull/13574), fixes [#13569](https://github.com/react-hook-form/react-hook-form/issues/13569)) — `form.subscribe` listeners that fired `undefined` as the changed-name after a `reset()` now receive the actual changed field name.
+- **`useController` reflects cleared parent objects** (PR [#13553](https://github.com/react-hook-form/react-hook-form/pull/13553), closes [#13550](https://github.com/react-hook-form/react-hook-form/issues/13550)) — a `<Controller>` field whose parent object is cleared (`setValue('parent', undefined)`) now correctly reflects the cleared value; previously the controlled UI kept showing the stale value.
+- **`flatten` preserves `Date` values as leaf nodes** (PR [#13566](https://github.com/react-hook-form/react-hook-form/pull/13566)) — internal path-flattening utility no longer serializes `Date` to a primitive; matters for any custom resolver or schema adapter that compares Date-shaped values.
+- **`unset` guard against prototype-keyword path traversal** (PR [#13560](https://github.com/react-hook-form/react-hook-form/pull/13560), closes [#13559](https://github.com/react-hook-form/react-hook-form/issues/13559)) — `unset('__proto__.polluted')` no longer walks the prototype chain; a small but important prototype-pollution guard.
+- **`clearErrors` no longer mutates `form.subscribe` name** (PR [#13579](https://github.com/react-hook-form/react-hook-form/pull/13579), fixes [#13575](https://github.com/react-hook-form/react-hook-form/issues/13575)) — calling `clearErrors` after a form change no longer causes subsequent `form.subscribe` events to report the cleared error's name as the changed field.
+
+**Recommended RHF version after 7.81.0: `^7.81.0`** (supersedes 7.80.0). v8.0.0-beta.3 remains beta-only and is not production-recommended.
+
+**Sources:**
+- [React Hook Form 7.81.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.81.0)
+- [PR #13394 — FieldArray component](https://github.com/react-hook-form/react-hook-form/pull/13394)
+- [PR #13576 — setValue shrink](https://github.com/react-hook-form/react-hook-form/pull/13576)
+- [PR #13578 — useFieldArray reset perf](https://github.com/react-hook-form/react-hook-form/pull/13578)
+
+## React Hook Form 7.82.0 (July 18, 2026) — `delayError` + `resetDefaultValues` + `getDirtyFields` Perf
+
+> **[18 Jul 2026]** React Hook Form **7.82.0 SHIPPED TODAY** ([release v7.82.0](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.82.0)) — the third stable v7 release in 33 days (7.80.0 → 7.81.0 → 7.82.0). The headline is a new opt-in **`delayError`** option on `useForm` props AND `setValue` per-call options — a long-requested feature that lets you debounce the visibility of validation errors while the user is still typing. Plus `resetDefaultValues` is now exposed through `useFormContext` (previously you had to drill `control` to do it), a sizeable `getDirtyFields` performance pass for large forms, and five bug fixes including a `shouldDirty` regression on disabled forms.
+
+### 1. `delayError` Option on `useForm` (PR [#13337](https://github.com/react-hook-form/react-hook-form/pull/13337))
+
+When set, validation errors **do not appear immediately** — they're delayed by the configured number of milliseconds. If the user fixes the error before the delay expires, the error never appears at all:
+
+```tsx
+const form = useForm<FormValues>({
+  defaultValues: { email: '' },
+  delayError: 500, // ← NEW in 7.82.0: wait 500ms after each keystroke before showing errors
+})
+
+// Also available per-call on setValue:
+setValue('firstName', 'Bill', {
+  delayError: 500,
+  shouldValidate: true,
+})
+```
+
+**Behavior:**
+- Each keystroke (or `setValue`) starts a fresh 500ms timer.
+- If the field becomes valid before the timer fires, the error is **never shown**.
+- If the timer fires while the field is still invalid, the error appears.
+- Works alongside any validation mode (`onChange`, `onBlur`, `onTouched`, `onSubmit`).
+
+**Recommended use cases:**
+- Username / email availability checks (debounce the "username taken" error visually).
+- Form fields where the error message feels aggressive while the user is mid-type (e.g. "phone number too short" while they're still typing the first 3 digits).
+- Anywhere you'd previously written a custom `useDebouncedValue` + `setError` shim.
+
+**Default behavior is unchanged** (`delayError` is opt-in).
+
+### 2. `resetDefaultValues` Through `FormContext` (PR [#13598](https://github.com/react-hook-form/react-hook-form/pull/13598))
+
+Previously you needed access to the `control` object (or `useFormContext`) to call `resetDefaultValues`. 7.82.0 exposes it through `useFormContext` directly:
+
+```tsx
+// ✅ 7.82.0+ — works through FormContext
+function ResetButton() {
+  const { resetDefaultValues } = useFormContext()
+
+  return (
+    <button type="button" onClick={() => resetDefaultValues()}>
+      Reset to defaults
+    </button>
+  )
+}
+
+// ❌ Pre-7.82.0 — had to drill control down to the button, or use a callback
+function ResetButton({ control }: { control: Control<FormValues> }) {
+  return (
+    <button type="button" onClick={() => control._resetDefaultValues()}>
+      Reset to defaults
+    </button>
+  )
+}
+```
+
+`resetDefaultValues` differs from `reset` — it resets to the **original `defaultValues`** you passed to `useForm`, leaving any `setValue` mutations applied after mount intact for siblings. Use it for "undo my edits to this section" buttons.
+
+### 3. `getDirtyFields` Performance Pass (PR [#13590](https://github.com/react-hook-form/react-hook-form/pull/13590))
+
+Internal reimplementation of `formState.dirtyFields` traversal. Measurably faster on forms with **large or deeply nested** values:
+
+- **Before 7.82.0:** O(n × log n) key-by-key compare across the entire form value tree
+- **7.82.0:** O(n) with structural shortcut for the common "100+ fields, 90% pristine" case
+
+No code change required — `formState.dirtyFields` reads faster automatically. Most relevant for `useFormContext` consumers that derive UI state (e.g. "Save" button enabled/disabled) from `dirtyFields` on large forms.
+
+### 4. Other Fixes in 7.82.0
+
+- **`setValue({ shouldDirty: true })` now works on disabled forms** (PR [#13594](https://github.com/react-hook-form/react-hook-form/pull/13594)) — previously `shouldDirty` was silently ignored when `formState.disabled === true`; now the dirty state correctly updates. Useful for admin forms that bulk-apply values via `setValue` while the form is otherwise locked.
+- **`dirtyFields` preserves boolean values for registered array fields** (PR [#13586](https://github.com/react-hook-form/react-hook-form/pull/13586)) — `formState.dirtyFields.items[0]` is now reliably a boolean, not `undefined` or a stale object reference after a `useFieldArray` mutation. Matters for "which rows changed" diff UIs.
+- **`<FieldArray>` component re-export fix** (PR [#13596](https://github.com/react-hook-form/react-hook-form/pull/13596)) — 7.81.0 accidentally shipped the `<FieldArray>` component without re-exporting it from the package root in some bundler configurations; 7.82.0 restores the import path `import { FieldArray } from 'react-hook-form'` cleanly. **If you adopted 7.81.0 and had to use a deep import workaround, you can revert to the root import on 7.82.0.**
+- Test-suite migrated to Playwright (PR [#13589](https://github.com/react-hook-form/react-hook-form/pull/13589)) — no user-facing change, but `delayError` tests are now more reliable.
+
+**Recommended RHF version after 7.82.0: `^7.82.0`** (supersedes 7.81.0). The 7.79 → 7.80 → 7.81 → 7.82 progression is a pure additive patch train — bump freely.
+
+**Migration checklist (7.81 → 7.82):**
+
+- [ ] Run `npm install react-hook-form@^7.82.0` — no peer-dep changes
+- [ ] If you adopted 7.81.0's `<FieldArray>` via a deep import workaround, revert to `import { FieldArray } from 'react-hook-form'`
+- [ ] Audit `formState.dirtyFields` reads on disabled forms — previously broken, now works (you may want to gate behind a feature flag if it changes a "Save" button enable/disable behavior)
+- [ ] Audit `useFormContext` consumers — `resetDefaultValues` is now available without drilling `control`
+- [ ] **No migration required** if you only used the documented APIs
+
+**Sources:**
+- [React Hook Form 7.82.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.82.0)
+- [`useForm` `delayError` prop docs](https://react-hook-form.com/docs/useform#delayError)
+- [`resetDefaultValues` in `useFormContext`](https://react-hook-form.com/docs/useformcontext)
+- [PR #13337 — `delayError` feature](https://github.com/react-hook-form/react-hook-form/pull/13337)
+- [PR #13598 — `resetDefaultValues` in FormContext](https://github.com/react-hook-form/react-hook-form/pull/13598)
+- [PR #13590 — `getDirtyFields` perf](https://github.com/react-hook-form/react-hook-form/pull/13590)
+- [PR #13596 — `<FieldArray>` re-export fix](https://github.com/react-hook-form/react-hook-form/pull/13596)
+
+
 ## Basic Setup
 
 ```bash
