@@ -434,6 +434,8 @@ function ChatRoom({ roomId, theme }: Props) {
 - [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)
 - [React docs — Separating events from effects](https://react.dev/learn/separating-events-from-effects)
 
+> **React canary 19.3.0-canary-172742b4-20260716 — `useEffectEvent` `enableEffectEventMutationPhase` flag enabled everywhere** ([React PR #37039](https://github.com/facebook/react/pull/37039), merged 2026-07-16T13:21:39Z) — the previously-gated `enableEffectEventMutationPhase` flag (added by [PR #35548](https://github.com/facebook/react/pull/35548) on 2026-02-04 as a killswitch + perf optimization) is now enabled unconditionally in React's main. The flag is expected to be removed entirely by [PR #37013](https://github.com/facebook/react/pull/37013) once it ships. **Two practical effects for `useEffectEvent` users**: (1) a small perf win in any component using `useEffectEvent` (the "mutation phase" path skips a redundant commit-time check that was on by default as a safety net); (2) **a bug fix for users who combine `useEffectEvent` with View Transitions** — previously, when `enableViewTransition` was on, React was not updating the `useEffectEvent` callback when a tree went from hidden to visible; PR #37039's unconditional enable of the mutation phase also activates the fix path. **No code change needed** — just upgrade to `react@19.3.0-canary-172742b4-20260716` or later. The public `useEffectEvent` API is unchanged.
+
 ## Error Handling in Components
 
 ### Error Boundaries (Client Components)

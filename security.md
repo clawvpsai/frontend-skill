@@ -902,6 +902,44 @@ npm ls react react-dom
 
 If the second query shows `react` < `19.3.0-canary-e2731312-20260630` and the first query has any hits, upgrade to the latest React canary (current: `19.3.0-canary-3508aee6-20260702`, or stable once 19.3 ships) to get the fix. No code changes needed — just upgrade.
 
+### False-Positive Hydration Mismatch on `nonce` Attributes in Dev (July 16, 2026 — fixed in React canary `172742b4-20260716`, [PR #37030](https://github.com/facebook/react/pull/37030) by MaxwellCohen, merged 2026-07-16T16:54:10Z)
+
+Every Next.js App Router page that uses CSP with nonce-based script tags — i.e. the standard `script-src 'nonce-...'` pattern — was getting a **spurious red-box hydration mismatch error in dev on every page load**, even when the server-rendered HTML and the client render actually matched. The cause was a React Fiber bug in how it compared `nonce` attributes during hydration.
+
+**Why it was happening:**
+
+The [HTML spec](https://html.spec.whatwg.org/multipage/urls-and-fetching.html#cryptographicnonce) deliberately hides the cryptographic nonce from any read API other than the `HTMLOrSVGElement.nonce` IDL property, in order to defeat CSS attribute selectors as a side channel:
+
+> "Elements that have a nonce content attribute ensure that the cryptographic nonce is only exposed to script (and not to side-channels like CSS attribute selectors) by taking the value from the content attribute, moving it into an internal slot named [[CryptographicNonce]], exposing it to script via the HTMLOrSVGElement interface mixin, and setting the content attribute to the empty string. Unless otherwise specified, the slot's value is the empty string."
+
+React's hydration mismatch check used `element.getAttribute('nonce')` to compare the server-rendered nonce to the client-rendered one. In a real browser, that getter returns `""` (the empty string) because the spec hid it — so React always saw the client nonce as `""` and complained that `""` didn't match the server nonce. JSDOM (used in tests + in some dev paths) did **not** implement this hiding, so tests were green while real browsers saw the error.
+
+**Practical impact:**
+
+- **If you use Next.js App Router with strict CSP (`Content-Security-Policy: script-src 'nonce-...'`)** — the canonical pattern for nonce-based CSP — every dev-mode page load triggered a red-box hydration mismatch. Prod hydration completed fine because the IDs/structure matched, but dev noise was constant and obscured real hydration errors.
+- **If you use `<Script strategy="beforeInteractive">` from `next/script`** with a nonce, the same false positive fired on every navigation.
+- **If you use Pages Router with nonces** — same root cause, same error.
+- **If you don't use CSP nonces** — you didn't see this (your nonce attribute was absent on both sides, so the empty-string comparison was a non-issue).
+- **If you use loose CSP (`script-src 'self' 'unsafe-inline' ...`)** — also didn't see this.
+
+**The fix** (PR #37030) makes the test environment hide the nonce the way real browsers do, by adding a setter guard that the JSDOM element respects but the production browser path already respected. The change is dev/test-only: production browsers already implemented the spec, so the fix just brings JSDOM into alignment. (The PR author did NOT enable the nonce-hide for all tests because doing so breaks `ReactDOMFizzServer-test.js` server-side tests; the hide is enabled only where the comparison would otherwise fail in the same way a real browser would.)
+
+**Audit:**
+
+```bash
+# Find code that uses nonces with strict CSP
+grep -rn "nonce=\|nonce: \|nonce={\|getNonce\|headers.*nonce" \
+  --include="*.tsx" --include="*.ts" --include="*.jsx" --include="*.js" \
+  --include="*.ts" middleware.ts next.config.* app/ 2>/dev/null
+
+# Check your React version
+npm ls react react-dom
+```
+
+If the first query has any hits and the second query shows `react` < `19.3.0-canary-172742b4-20260716`, upgrade React to `19.3.0-canary-172742b4-20260716` or later to silence the false-positive red-box. **No code change is needed** — the hydration logic itself is correct, it's just that the dev-mode check needed to learn the spec's nonce-hiding behavior.
+
+**Source:** [React PR #37030](https://github.com/facebook/react/pull/37030) (MaxwellCohen, based on #33806, requested by @eps1lon). Related: the older `ReactDOM.preloadModule()` nonce-drop bug (above) and the Next.js 16.2.6 XSS via CSP nonces fix (below).
+
 ### OTel Proxy Tracer Silent Corruption in Cache Components Prerenders (July 1, 2026 — fixed in Next.js 16.3.0-canary.73, [PR #95317](https://github.com/vercel/next.js/pull/95317) by Jiwon Choi, merged 2026-07-01T16:14:49Z)
 
 A silent dev-only corruption fired in any Cache Components (`cacheComponents: true`) route that also configured OpenTelemetry tracing: the prerender pipeline threw `Error: encountered unstable value in proxy tracer during prerender` mid-prerender, with no recoverable state, no useful stack frame (the tracer's proxy is opaque), and no log entry that pointed at the OTel setup. The build would fail; the cause was the OTel SDK that was installed in `instrumentation.ts` (or via the `OTEL_*` env vars) before the Next.js `workUnitStore` was fully initialized. Closes issue [#94753](https://github.com/vercel/next.js/issues/94753).
