@@ -887,6 +887,40 @@ The managed block that `next dev` writes into `AGENTS.md` (the AI-agent block in
 
 **Source:** [PR #95825 — `[turbopack] Tell agents not to mention next.config.js options`](https://github.com/vercel/next.js/pull/95825) · Commit `98c9754ad8` · sampoder · merged 2026-07-15T18:57:46Z · canary.87
 
+### `experimental.outputHashSalt` and `experimental.supportsImmutableAssets` Promoted Out of `experimental` (16.3.0-canary.91, PR [#95840](https://github.com/vercel/next.js/pull/95840) + PR [#95351](https://github.com/vercel/next.js/pull/95351) by mischnic, merged 2026-07-20T14:34:59Z + 2026-07-20T13:35:15Z)
+
+Two more config flags graduate from `experimental.*` to stable `next.config.ts` keys in canary.91. Both PRs preserve the `experimental.*` alias as a fallback so existing adapters don't break — but new projects should use the stable names.
+
+**PR [#95840](https://github.com/vercel/next.js/pull/95840) — `outputHashSalt` is now stable.** The stable config key replaces `experimental.outputHashSalt`. The CLI / env-var counterpart (`NEXT_HASH_SALT`) is unchanged — see the `NEXT_HASH_SALT` section above for the canary.87 fix that made the env-var apply server-side. The two are complementary: the env-var is for build-time rotation without a config change; the config key is for checked-in configuration. Both must point at the same value if you use both, or you'll get inconsistent hashes between client and server. **Audit:** `rg "experimental\.outputHashSalt|NEXT_HASH_SALT" next.config.*` — any match in `next.config.ts` should be migrated to `outputHashSalt: '...'` (top-level).
+
+**PR [#95351](https://github.com/vercel/next.js/pull/95351) — `supportsImmutableAssets` is now stable.** The stable config key replaces `experimental.supportsImmutableAssets`. This flag controls whether Next.js emits build assets with long-cache immutable URLs (`immutable` Cache-Control + immutable URL hashing). Disable it if your CDN or proxy strips query params / fragments from hashed URLs (Cloudflare with aggressive caching, Fastly with `respect_query_string: false`, etc.). [PR #95521](https://github.com/vercel/next.js/pull/95521) (already documented in the canary.87 setup.md section) auto-disables the flag when `output: 'export'` / `output: 'standalone'` is set, because immutable-asset hashing can disagree with the bundler's per-build content-hash output in those modes. **Audit:** `rg "experimental\.supportsImmutableAssets" next.config.*` — any match in `next.config.ts` should be migrated to `supportsImmutableAssets: true` (top-level).
+
+**Migration template:**
+
+```ts
+// Before (canary.90 and earlier, still works as a fallback alias)
+const config = {
+  experimental: {
+    outputHashSalt: 'deploy-2026-07-20',
+    supportsImmutableAssets: true,
+  },
+};
+
+// After (canary.91+, recommended)
+const config = {
+  outputHashSalt: 'deploy-2026-07-20',
+  supportsImmutableAssets: true,
+};
+```
+
+The `experimental.*` aliases are kept for one minor version (canary.91 + the canary that ships with Next.js 16.3.0 stable) and removed in Next.js 17.0. No code-action required for users who set the alias and never migrate — they'll get a deprecation warning at build time, not an error.
+
+**Sources:**
+- [PR #95840 — `Move outputHashSalt out of experimental` (mischnic, 2026-07-20T14:34:59Z, canary.91)](https://github.com/vercel/next.js/pull/95840)
+- [PR #95351 — `Move immutable static assets config option out of experimental` (mischnic, 2026-07-20T13:35:15Z, canary.91, closes NAR-868)](https://github.com/vercel/next.js/pull/95351)
+- [PR #95521 — `Disable supportsImmutableAssets with config.output` (already documented, canary.87 setup.md)](https://github.com/vercel/next.js/pull/95521)
+- [Next.js canary branch ahead of canary.90 (4 commits)](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)
+
 ### Turbopack Production Builds
 Next.js 16 uses Turbopack for production builds by default:
 ```bash

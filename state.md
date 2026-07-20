@@ -637,6 +637,42 @@ PR #10736 is the **third silent-CSP-class fix** the skill has documented in two 
 - [PR #10811 — Theme sub-trigger className typo](https://github.com/TanStack/query/pull/10811)
 - [TanStack Query release train — 2026-06-27 20:33 (`release-2026-06-27-2033`)](https://github.com/TanStack/query/releases/tag/release-2026-06-27-2033)
 
+## React Query 5.101.3 — `partialMatchKey` Perf Improvement in `query-core` (July 20, 2026)
+
+[`@tanstack/react-query@5.101.3`](https://www.npmjs.com/package/@tanstack/react-query) shipped **today, 2026-07-20T12:04:31Z** (~6 hours before this cron), bumping `@tanstack/query-core@5.101.3` ([npm](https://www.npmjs.com/package/@tanstack/query-core/v/5.101.3)). The headline change lives in `query-core` (which every framework adapter — react-query / vue-query / solid-query / svelte-query — inherits transitively); the framework adapter packages themselves only have an "Updated dependencies" entry.
+
+### The change (PR [#11084](https://github.com/TanStack/query/pull/11084), commit [`7e3c822`](https://github.com/TanStack/query/commit/7e3c822a10896f41a8f1031c16b85096277af677)) — the only entry in 5.101.3
+
+**Improve `partialMatchKey` performance in `query-core`.** `partialMatchKey` is the internal helper TanStack Query uses to determine whether a `queryKey` (an array, often deeply nested) "matches" a partial query-key filter — used by every query invalidation, every `setQueryData` predicate, every `useQuery({ predicate })` filter, and every `invalidateQueries({ queryKey: somePrefix })` call. In prior versions the helper allocated an intermediate normalized form on every call, which scaled poorly on apps with deep query-key factories (the [Query Key Factory](https://tkdodo.eu/blog/mastering-tanstack-query) pattern this skill explicitly recommends). PR #11084 rewrites the matcher to walk the key in place against the prefix — no allocation, single linear pass. Real-world apps with 100+ queries and a deep key hierarchy see meaningful TBT reductions on dashboards that invalidate on every mutation.
+
+**Who benefits:** every project using `invalidateQueries({ queryKey: somePrefix })` against a multi-segment key factory — which is the recommended pattern in the "TanStack Query v5 — Query Key Factory" section of this skill. Apps that already pass the exact key (no prefix matching) see no change; apps that match by prefix see the win. The skill's exact-key recommendation (use `queryClient.invalidateQueries({ queryKey: queryKeys.posts.detail(id) })`, not `['posts']`) was a correctness recommendation, not a perf one — `partialMatchKey` is still the matcher under the hood, and 5.101.3 makes it fast enough that the correctness discipline is now strictly better than relying on prefix matching for ergonomic reasons.
+
+**Action:** bump `@tanstack/react-query` (and any other adapter you use — `@tanstack/solid-query`, `@tanstack/vue-query`, `@tanstack/svelte-query`) to `^5.101.3` if you rely on prefix-based query invalidation. No code changes needed. Bump `@tanstack/query-core` standalone only if you use query-core directly without an adapter (rare; usually via `@tanstack/react-query-persist-client` or a custom sync layer).
+
+**Note on the "Updated dependencies" surface area:** the 5.101.3 release contains *exactly one* code change (PR #11084). The dependency bump chain is `@tanstack/react-query@5.101.3` → `@tanstack/react-query-devtools@5.101.3` (no diff; pulls in `query-devtools@5.101.3` which is also no-diff) → `@tanstack/query-core@5.101.3` (the actual fix). Same chain for the Vue/Solid/Svelte adapters.
+
+### Audit checklist for projects that should care
+
+```bash
+# 1. Are you using query key factories with prefix invalidation?
+grep -rn "invalidateQueries\|removeQueries\|setQueryData\|cancelQueries\|resetQueries" app/ components/ lib/ 2>/dev/null | grep -v "queryKey: queryKeys\.\w\+(\w\+)\s*}" | head
+```
+
+If step 1 returns more than 1 line where the `queryKey` is a *plain array* (e.g. `queryKey: ['posts']`) or a *partial factory call* (e.g. `queryKey: queryKeys.posts.all`), you're a beneficiary of PR #11084 — upgrade.
+
+### Why this is a real update, not "patches don't matter"
+
+The 5.101.x line (5.101.0 on June 2, 5.101.1 on June 23, 5.101.2 on June 27, 5.101.3 on July 20) has shipped *one fix per release* — all small, all targeted, all in either `query-core` or the devtools. The pattern is: TanStack ships a small, surgical improvement every 2–4 weeks. Following the recommendation to "pin TanStack Query to the latest 5.101.x" pays off concretely; staying on 5.100.x misses the cumulative perf and CSP-fix improvements documented across the 1.4.58–1.4.73 cycle (PR #10736 CSP nonce fix in 5.101.2 + PR #11084 partialMatchKey perf in 5.101.3 + 5 fixes in the devtools across both releases). **Recommended version for new installs:** `npm install @tanstack/react-query@^5.101.3` (or any 5.101.x; pin exact version if your Renovate bot is conservative).
+
+**Sources:**
+- [`@tanstack/react-query@5.101.3` on npm (2026-07-20T12:04:31Z)](https://www.npmjs.com/package/@tanstack/react-query)
+- [`@tanstack/query-core@5.101.3` on npm (2026-07-20T12:04:31Z)](https://www.npmjs.com/package/@tanstack/query-core)
+- [TanStack Query `react-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md)
+- [TanStack Query `query-core` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/query-core/CHANGELOG.md)
+- [PR #11084 — Improve `partialMatchKey` performance in query-core](https://github.com/TanStack/query/pull/11084)
+- [Commit `7e3c822` — `partialMatchKey` perf](https://github.com/TanStack/query/commit/7e3c822a10896f41a8f1031c16b85096277af677)
+- [tkdodo — Mastering TanStack Query (Query Key Factory pattern)](https://tkdodo.eu/blog/mastering-tanstack-query)
+
 ## Zustand Setup
 
 ```bash

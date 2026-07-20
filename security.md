@@ -176,6 +176,35 @@ It is **Monday, July 20, 2026 at 12:02 UTC** — the scheduled security release 
 - [GitHub: `v16.3.0-canary.90` tag cut 2026-07-19T23:34:16Z](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.90)
 - [GitHub: PR #95761 `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z)](https://github.com/vercel/next.js/pull/95761)
 
+### July 20, 2026 — T+1h Live Status Update (Updated 2026-07-20 — 18:03Z)
+
+It is **Monday, July 20, 2026 at 18:03 UTC** — the 4-high + 5-medium CVE batch has **still not shipped** as of this cron, ~1 hour past the typical ~17:00 UTC Vercel publishing window. This is the 5th 6-hourly checkpoint on release day. Live state:
+
+- **`next@latest`** = `16.2.10` (unchanged; **no 16.2.11 yet**)
+- **`next@backport`** = `15.5.20` (unchanged; **no 15.5.21 yet**)
+- **`next@canary`** = `16.3.0-canary.90` (unchanged since 2026-07-20T03:27:13Z)
+- **canary-branch HEAD** = `8669b07f19` (per the [canary-branch comparison](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)) = **4 commits ahead of canary.90 tag `163e45e401`**:
+  1. [PR #95761](https://github.com/vercel/next.js/pull/95761) `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z, commit `094dccb25f`) — already documented above; will ship in canary.91
+  2. [PR #95351](https://github.com/vercel/next.js/pull/95351) `Move immutable static assets config option out of experimental` (mischnic, 2026-07-20T13:35:15Z) — promotes `experimental.supportsImmutableAssets` to stable; deployment.md updated
+  3. [PR #95840](https://github.com/vercel/next.js/pull/95840) `Move outputHashSalt out of experimental` (mischnic, 2026-07-20T14:34:59Z) — promotes `experimental.outputHashSalt` to stable; deployment.md updated
+  4. [PR #95631](https://github.com/vercel/next.js/pull/95631) `fix(cms-contentful): await draftMode() and use Promise<> params type` (manoraj, 2026-07-20T16:18:39Z) — fixes the Contentful CMS example to use the async `next/headers` + `Promise<params>` APIs introduced in Next.js 15; affects anyone using the `cms-contentful` starter or copying its draft-mode + dynamic-route patterns. **Action:** if your project was forked from the legacy CMS example and still uses the synchronous patterns, `await draftMode()` and update `params` to `Promise<{...}>`; see the [official Contentful example](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful) for the canonical fix.
+- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` pre-release tag; **no Vercel blog post** past July 13, 2026
+
+**Interpretation:** the release is **late by ~1 hour** vs the typical ~17:00 UTC publishing window. Three plausible explanations: (1) the security team is running a slightly longer pre-release QA pass due to the 4-high severity (a first for the monthly program; previous May 2026 batch was all-high); (2) a release engineering process issue (tag-cut but not yet pushed to npm; less likely given Vercel's automation); (3) deliberate delay to co-ordinate with a related maintenance window. The next 6-hourly cron (2026-07-21T00:03Z) will catch the live release OR a published post-mortem if it's been delayed further. **Action unchanged from the T-24h checklist** — keep the 14:00–20:00 UTC calendar block open, watch [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) live, run `npm install next@latest` the moment a patch lands, bust Docker cache, redeploy.
+
+**Bonus intelligence from this cron:** 4 new commits have landed on the canary branch since the T-5h check. **PR #95351 + PR #95840** (both by mischnic, both merged within ~1 hour of each other on 2026-07-20) promote two more `experimental.*` flags to stable. **PR #95631** is a CMS-Contentful example fix. None of these three are security-relevant — they don't change behavior, only the schema location of config keys (and an example bug fix). All three will ship in canary.91. See `deployment.md` for the new `outputHashSalt` / `supportsImmutableAssets` promotion section.
+
+**Confirmed-safe crons so far for the July 20 batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, 1.4.71 wrote the T-11h status at 06:03Z July 20, 1.4.72 wrote the T-5h status at 12:02Z July 20, this 1.4.73 update at 18:03Z July 20 confirms the patch has not landed yet, notes canary-branch is now 4 commits ahead of canary.90 (was 1 commit at the T-5h check), and records the 3 new non-security PRs (`#95351` `#95840` `#95631`) since the last cron.
+
+**Sources:**
+- [npm `next` package metadata (modified 2026-07-20T03:27:37Z)](https://registry.npmjs.org/next)
+- [GitHub: `vercel/next.js` canary-branch comparison vs canary.90 tag (4 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)
+- [GitHub: PR #95761 `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z)](https://github.com/vercel/next.js/pull/95761)
+- [GitHub: PR #95351 `Move immutable static assets config option out of experimental` (mischnic, 2026-07-20T13:35:15Z)](https://github.com/vercel/next.js/pull/95351)
+- [GitHub: PR #95840 `Move outputHashSalt out of experimental` (mischnic, 2026-07-20T14:34:59Z)](https://github.com/vercel/next.js/pull/95840)
+- [GitHub: PR #95631 `fix(cms-contentful): await draftMode() and use Promise<> params type` (manoraj, 2026-07-20T16:18:39Z)](https://github.com/vercel/next.js/pull/95631)
+- [Next.js examples — `cms-contentful` (canonical fix reference)](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful)
+
 ## CVE-2026-23869 — React RSC DoS (April 2026)
 
 A high-severity denial-of-service vulnerability (CVSS 7.5) in React Server Components was disclosed April 8, 2026. The bug lives in the React Flight protocol's deserialization — a specially crafted HTTP request to any App Router Server Function endpoint can trigger excessive CPU consumption, crashing the server.
