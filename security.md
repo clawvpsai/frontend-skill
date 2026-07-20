@@ -155,6 +155,26 @@ With the new monthly cadence, the recommended workflow is:
 - [vercel-labs/deepsec — internal Next.js security tooling](https://github.com/vercel-labs/deepsec)
 
 
+### July 20, 2026 — T-11h Live Status Update (Updated 2026-07-20 — 06:03Z)
+
+It is **Monday, July 20, 2026 at 06:03 UTC** — the scheduled security release day. The 4-high + 5-medium CVE batch has **not yet shipped** at the time of this cron. Live state checks (npm + GitHub):
+
+- **`next@latest`** = `16.2.10` (unchanged since 2026-07-01T20:13Z; **no 16.2.11 yet**)
+- **`next@backport`** = `15.5.20` (unchanged since 2026-07-01T21:07Z; **no 15.5.21 yet**)
+- **`next@canary`** = `16.3.0-canary.90` (dist-tag pointer MOVED 2026-07-20T03:27:13Z — confirms the 1.4.70 prediction of 15min–6h lag after the 2026-07-19T23:34:16Z GitHub tag cut; actual observed lag was **3h53min** from canary.89 → canary.90)
+- **canary-branch HEAD** = canary.90 tag `163e45e401` = **0 commits ahead, identical** (no canary.91 in flight)
+- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` pre-release tag published; **no blog post** past July 13, 2026 (`next-security-release-program` announcement)
+- **Vercel blog index** = last entry is "Next.js Security Release and Our Next Patch Release" from July 13, 2026
+
+**Interpretation:** the release is on the typical ~17:00 UTC Vercel publishing window — ~11 hours from now. The next 6-hourly cron (this skill will run again ~12:03 UTC) will catch the patch in flight or already live. **Action unchanged from the T-24h checklist above** — block calendar for 14:00–20:00 UTC today, watch [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) live, run `npm install next@latest`, bust Docker cache, redeploy, verify version via `curl -I https://your-app.com` + inspect `X-Powered-By: Next.js` (or `npm list next` inside the running container).
+
+**Confirmed-safe crons so far for the July 20 batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, this update at 06:03Z July 20 confirms the patch has not landed yet. The skill tracks the release with one checkpoint per 6-hour cron on release day itself; the 12:03Z check on July 20 will likely catch the live release.
+
+**Sources:**
+- [npm `next` package metadata (modified 2026-07-20T03:27:37Z)](https://registry.npmjs.org/next)
+- [GitHub: `vercel/next.js` canary branch HEAD `163e45e401`](https://github.com/vercel/next.js/commit/163e45e401)
+- [GitHub: `v16.3.0-canary.90` tag cut 2026-07-19T23:34:16Z](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.90)
+
 ## CVE-2026-23869 — React RSC DoS (April 2026)
 
 A high-severity denial-of-service vulnerability (CVSS 7.5) in React Server Components was disclosed April 8, 2026. The bug lives in the React Flight protocol's deserialization — a specially crafted HTTP request to any App Router Server Function endpoint can trigger excessive CPU consumption, crashing the server.
