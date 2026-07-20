@@ -638,13 +638,13 @@ The JetBrains team has acknowledged this and is updating their review process to
 
 ### The Pattern Is Now IDE → Registry, Not Just Registry → npm
 
-TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17), and JetBrains Marketplace (June 16) all fit the same broad pattern: **a trusted marketplace or scope is compromised, malicious versions are published, and the malicious code is buried inside working features.** The JetBrains attack is the first one in this cluster to target the **IDE runtime itself** rather than the project\'s `node_modules`. Treat IDE plugins with the same vetting rigor you would apply to npm packages — verify the publisher, check the source, audit network calls. See also `setup.md` → `AGENTS.md` for how this skill recommends documenting trusted AI tooling in the project itself.
+TanStack (May 11), node-ipc (May 15), Mini Shai-Hulud (June 1), Mastra (June 17), and JetBrains Marketplace (June 16) all fit the same broad pattern: **a trusted marketplace or scope is compromised, malicious versions are published, and the malicious code is buried inside working features.** The JetBrains attack is the first one in this cluster to target the **IDE runtime itself** rather than the project's `node_modules`. Treat IDE plugins with the same vetting rigor you would apply to npm packages — verify the publisher, check the source, audit network calls. See also `setup.md` → `AGENTS.md` for how this skill recommends documenting trusted AI tooling in the project itself.
 
 **Sources:**
 - [Aikido Security — Multiple JetBrains IDE plugins caught stealing AI keys (June 16, 2026 — full IOC list, publisher accounts, exfiltration flow)](https://www.aikido.dev/blog/multiple-jetbrains-ide-plugins-caught-stealing-ai-keys)
 - [JetBrains Marketplace Ecosystem Security Update — Addressing Malicious Third-Party AI Plugins (official disclosure, June 17, 2026)](https://blog.jetbrains.com/platform/2026/06/marketplace-ecosystem-security-update-malicious-ai-plugins)
 - [Threat-Modeling.com — JetBrains Marketplace Malicious Plugins Stealing AI API Keys from Developer Environments (June 17, 2026)](https://threat-modeling.com/jetbrains-marketplace-malicious-plugins-ai-key-theft-june-2026/)
-- [OffSeq Threat Radar — 15 JetBrains Marketplace plugins quietly stealing developers\' AI API keys (~70,000 installs)](https://radar.offseq.com/threat/15-jetbrains-marketplace-plugins-were-quietly-stea-8bacd71f)
+- [OffSeq Threat Radar — 15 JetBrains Marketplace plugins quietly stealing developers' AI API keys (~70,000 installs)](https://radar.offseq.com/threat/15-jetbrains-marketplace-plugins-were-quietly-stea-8bacd71f)
 - [SANS Stormcast Thursday June 18, 2026 — JetBrains Plugins segment (ISC overview)](https://isc.sans.edu/podcastdetail/9978)
 - [JetBrains Marketplace Approval Guidelines (the manual review process that failed)](https://plugins.jetbrains.com/docs/marketplace/jetbrains-marketplace-approval-guidelines.html#approval-process)
 
@@ -932,6 +932,8 @@ grep -rn "nonce=\|nonce: \|nonce={\|getNonce\|headers.*nonce" \
 # Check your React version
 npm ls react react-dom
 ```
+
+**Bundled into Next.js 16.3.0-canary.90** (2026-07-19T23:34:16Z, [PR #95901](https://github.com/vercel/next.js/pull/95901) — vendor React bump from `7023f501-20260714` to `172742b4-20260716`) — if you're running `next@canary@90`+, the React `172742b4-20260716` that includes PR #37030 is what `next@canary` ships INSIDE its `react.production.js` bundle at `packages/next/src/compiled/react/`. So canary.90+ users don't need a separate `react@canary@172742b4-20260716` install — the fix is automatic on canary. `npm view next dist-tags.canary` should show `16.3.0-canary.90` or later. For teams on stable `next@16.2.x` (which still bundles React 19.2.7), the fix requires either (a) a separate `npm install react@canary@172742b4-20260716` pin (Next.js will use the canary React for SSR/RSC even with the older `next` installed, since the version resolution is the user's package.json's win), (b) the July 20, 2026 Next.js Security Release (may include the React bump if Vercel decides to ship security-adjacent React fixes per their May 2026 precedent), or (c) React 19.3 stable (date TBA — React's release cadence has been ~6 months since 19.2 in Oct 2025).
 
 If the first query has any hits and the second query shows `react` < `19.3.0-canary-172742b4-20260716`, upgrade React to `19.3.0-canary-172742b4-20260716` or later to silence the false-positive red-box. **No code change is needed** — the hydration logic itself is correct, it's just that the dev-mode check needed to learn the spec's nonce-hiding behavior.
 
