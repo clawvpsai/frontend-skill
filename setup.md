@@ -955,6 +955,274 @@ Vite 8.1.5 ([released 2026-07-16T06:51:13Z](https://github.com/vitejs/vite/relea
 - PRs: [#22931](https://github.com/vitejs/vite/issues/22931), [#22869](https://github.com/vitejs/vite/issues/22869), [#22945](https://github.com/vitejs/vite/issues/22945), [#22951](https://github.com/vitejs/vite/issues/22951), [#22893](https://github.com/vitejs/vite/issues/22893), [#22921](https://github.com/vitejs/vite/issues/22921), [#22922](https://github.com/vitejs/vite/issues/22922)
 
 **Recommended Vite version for new projects (July 16, 2026):** **Vite 8.1.5** — supersedes 8.1.4 as the recommended Vite version (and transitively 8.1.1 / 8.1.2 / 8.1.3). 8.1.5 contains all of 8.1.4's contents (the seven 8.1.4 bug fixes + two monthly dep bumps) **plus** six more bug fixes (bundled-dev duplicate `buildEnd`, dev-overlay error format alignment with rolldown, module-runner `globalThis.Buffer` guard, optimizer importer-format-aware CJS dynamic-import interop, SSR `switch-case` lexical scoping, plus two doc fixes + one test cleanup). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.5 (or 8.1.4 → 8.1.5). All of the 8.1.1 → 8.1.4 recommendation is preserved in 8.1.5.
+### Vite `build.input` Option (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22642](https://github.com/vitejs/vite/pull/22642) by sapphi-red, merged 2026-07-17T07:50:31Z)
+
+**The most material new Vite feature since 8.1.5** — adds a new top-level **`build.input`** option typed as `string | string[] | Record<string, string>` that replaces manual `rollupOptions.input` declarations. Currently on Vite `main` ahead of the Vite 8.1.5 tag — will ship in either a Vite 8.1.6 patch or Vite 8.2.0 minor (no stable tag cut yet; verify with `npm view vite dist-tags`).
+
+**Why it exists (4 reasons per the PR description):**
+
+1. **Multi-page apps** — declaring multiple entrypoints declaratively without manually building `rollupOptions.input` arrays.
+2. **Environment API per-environment entrypoints** — the long-standing [issue #21336](https://github.com/vitejs/vite/issues/21336) gap where each Environment API environment needed its own entrypoint configuration.
+3. **Full-bundle mode** — Rolldown needs to know the entrypoint up front to generate the bundle efficiently; `build.input` makes that explicit.
+4. **HMR bug class** — fixes [#17806](https://github.com/vitejs/vite/issues/17806) and [#16664](https://github.com/vitejs/vite/issues/16664) where the entrypoint resolution wasn't stable across dev restarts.
+
+### Single-page setup (default behavior, unchanged)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  build: {
+    // Omit `input` — Vite auto-detects index.html and uses its <script type="module" src="...">
+  },
+})
+```
+
+### Multi-page setup (new `build.input` option)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+import { resolve } from 'node:path'
+
+export default defineConfig({
+  build: {
+    input: {
+      // key = output chunk name, value = entry HTML
+      main: resolve(__dirname, 'index.html'),
+      admin: resolve(__dirname, 'admin/index.html'),
+      blog: resolve(__dirname, 'blog/index.html'),
+    },
+  },
+})
+```
+
+This produces three HTML entrypoints in the build output, each with its own preload graph and chunk set. Replaces the old `rollupOptions.input` workaround:
+
+```ts
+// OLD pattern (still works, but `build.input` is preferred)
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        admin: resolve(__dirname, 'admin/index.html'),
+      },
+    },
+  },
+})
+```
+
+### Environment API per-environment setup (resolves issue #21336)
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  environments: {
+    client: {
+      build: {
+        input: './src/entry-client.ts',
+      },
+    },
+    ssr: {
+      build: {
+        input: './src/entry-server.ts',
+      },
+    },
+    edge: {
+      build: {
+        input: './src/entry-edge.ts',
+      },
+    },
+  },
+})
+```
+
+**Why this matters:** before `build.input`, configuring per-environment entrypoints required manual `rollupOptions.input` per environment AND duplicated HTML plugin configuration. The new option is the canonical Environment API entrypoint declaration.
+
+### Migration impact + audit recipe
+
+```bash
+# Find projects using the manual-rollup workaround
+rg -l "rollupOptions\s*:\s*{[^}]*input\s*:" vite.config.* 
+```
+
+**Migration is trivial:** replace `rollupOptions: { input: ... }` with `build: { input: ... }`. No behavior change beyond cleanup — the old pattern continues to work (Vite's `build.input` is internally passed through to `rollupOptions.input`).
+
+### Common mistakes
+
+- **Confusing `build.input` with `build.lib.entry`** — `lib.entry` is for library mode (single bundle output, no HTML); `build.input` is for app mode (multi-entry HTML, separate chunk graphs). Pick one.
+- **Using `build.input` to point at `.ts` files directly when you have an HTML entrypoint** — Vite's HTML plugin auto-discovers JS modules from `<script type="module" src="...">` tags in the HTML; pointing `input` at the `.ts` file directly skips that HTML→JS chain and produces a different output structure.
+- **Setting `build.input` to a relative path without `resolve(__dirname, ...)`** — Vite resolves `build.input` relative to the project root, but if the entry HTML lives in a subdirectory you need an absolute path or `resolve()` to anchor it.
+
+**Sources:**
+- [Vite PR #22642 — `feat: add input option`](https://github.com/vitejs/vite/pull/22642)
+- [Vite issue #21336 — Environment API per-environment entrypoints](https://github.com/vitejs/vite/issues/21336)
+- [Vite issue #17806 — HMR entrypoint stability bug](https://github.com/vitejs/vite/issues/17806)
+- [Vite issue #16664 — HMR entrypoint stability bug](https://github.com/vitejs/vite/issues/16664)
+- [Vite `build` config docs (will be updated when 8.1.6 / 8.2.0 ships)](https://vite.dev/config/build-options.html)
+
+### Vite `native` Config Loader Warnings (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22850](https://github.com/vitejs/vite/pull/22850) by sapphi-red, merged 2026-07-17T06:10:20Z)
+
+**Vite 9 will switch the default config loader from `bundle` (current) to `native` (Node's native ESM loader).** A class of features is unsupported in `native`:
+
+- `__dirname` / `__filename` usage in ESM files (no `__dirname` in ESM by default)
+- Extension-less imports in ESM files (`import './foo'` for `foo.js`)
+- Directory index imports in ESM files (`import './foo'` for `foo/index.js`)
+- JSON imports without attributes (`import './foo.json'` instead of `import foo from './foo.json' with { type: 'json' }`)
+- ESM syntax in files Node loads as CommonJS
+
+Vite 8.x now emits warnings for these under the current `bundle` loader so you can fix them ahead of the Vite 9 default change. **Warning format:**
+
+```
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`,
+which is planned to become the default in a future major version of Vite:
+  - import "./svgVirtualModulePlugin" without a file extension (vite.config-base.js:3). Add the file extension
+  - import "./matrixTestResultPlugin" without a file extension (vite.config-base.js:4). Add the file extension
+  - import "./windows83Filename" without a file extension (vite.config-base.js:5). Add the file extension
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+```
+
+**Migration recipe (today, while still on Vite 8.x):**
+
+```ts
+// vite.config.ts — fixes for native-loader compatibility
+
+// BEFORE (works in bundle, warns in native)
+import svgPlugin from './svgVirtualModulePlugin'        // ❌ extension-less
+import data from './config.json'                          // ❌ JSON without attribute
+const __dirname = import.meta.dirname                   // ❌ workaround for ESM __dirname
+
+// AFTER (works in both bundle and native)
+import svgPlugin from './svgVirtualModulePlugin.js'      // ✅ explicit extension
+import data from './config.json' with { type: 'json' }   // ✅ import attribute
+const __dirname = new URL('.', import.meta.url).pathname // ✅ URL-based __dirname
+```
+
+**Suppress warnings temporarily:**
+
+```bash
+VITE_CONFIG_NATIVE_IGNORE_WARNING=true vite build
+```
+
+Useful for meta-frameworks that load the Vite config internally and can't easily fix the warnings.
+
+**Sources:**
+- [Vite PR #22850 — `feat(config): warn features incompatible with native loader in bundle loader`](https://github.com/vitejs/vite/pull/22850)
+- [Vite issue #21546 — Original feature request](https://github.com/vitejs/vite/issues/21546)
+- [Vite 9.0 config-loader migration tracking discussion](https://github.com/vitejs/vite/discussions)
+
+### Vite `build.chunkImportMap` — CSS Chunks Now Mapped (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22947](https://github.com/vitejs/vite/pull/22947) by DebadityaHait, merged 2026-07-17T13:08:28Z, fixes [#22946](https://github.com/vitejs/vite/issues/22946))
+
+**Update to the Vite 8.1.4 fix** ([PR #22841](https://github.com/vitejs/vite/issues/22841), documented in setup.md above) that stripped pure-CSS-chunk imports when `experimental.build.chunkImportMap` is enabled. The 8.1.4 fix correctly stripped the JS-side preload references but **left the CSS preload array pointing at content-hashed filenames**, so a CSS-only change could leave a parent chunk filename unchanged while changing its cached preload array (stale preload, missing CSS until hard refresh). The new fix tracks each emitted CSS asset's originating chunk and adds a corresponding **stable CSS entry** to the generated import map, so preload rewriting uses the stable specifier instead of the content-hashed filename.
+
+**Effect:**
+
+- **Before:** CSS changes broke HMR-style incremental preload rewrites; users had to hard-refresh.
+- **After:** CSS changes are stable across incremental rebuilds; preload array updates correctly without hard refresh.
+
+**When this matters:**
+
+- Multi-page apps where CSS is shared across pages
+- Apps with a large CSS bundle that ships frequently
+- Anyone using `experimental.build.chunkImportMap: true` (the experimental flag from Vite 8.1.0)
+
+**No config change required** — the fix is in the existing chunkImportMap logic; the import map will automatically include CSS entries when this version (or later) is in your build path. Builds without `chunkImportMap` are unchanged.
+
+**Sources:**
+- [Vite PR #22947 — `fix(build): map CSS chunks in chunk import maps`](https://github.com/vitejs/vite/pull/22947)
+- [Vite issue #22946 — Reported bug](https://github.com/vitejs/vite/issues/22946)
+- [Vite PR #22841 — Original CSS chunk stripping fix in 8.1.4](https://github.com/vitejs/vite/issues/22841)
+
+### Vite `networkInterfaceName` in Dev Output (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22830](https://github.com/vitejs/vite/pull/22830) by Xavrir, merged 2026-07-17T07:01:24Z)
+
+When running `vite --host` and you have multiple network interfaces (VPN, Docker bridge, WSL, Wi-Fi), the Network URL list now labels each URL with the interface name from `os.networkInterfaces()`. Interface names are capped at 20 characters with an ellipsis to keep the column tidy.
+
+**Example output:**
+
+```
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: http://172.18.0.1:5173/     xray_tun
+  ➜  Network: http://10.233.157.11:5173/  Wi-Fi
+  ➜  Network: http://192.168.1.5:5173/    vEthernet (WSL (Hyp…
+```
+
+**Why it matters:** before this fix, the Network list was just a stack of IPs with no hint which one to open on your phone / external device. Now you can tell at a glance.
+
+**Sources:**
+- [Vite PR #22830 — `feat(dev): label network URLs with their interface name`](https://github.com/vitejs/vite/pull/22830)
+
+### Vite `root` Real-Path Resolution (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22832](https://github.com/vitejs/vite/pull/22832) by sapphi-red, merged 2026-07-17T11:12:16Z)
+
+`root` is now resolved via `fs.realpathSync` so symlinked project roots behave consistently across dev and build. Previously, when the project lived behind a symlink (e.g., `~/projects/my-app` → `/srv/code/my-app`), dev and build could resolve `root` differently, causing intermittent "file not found" errors during HMR or build.
+
+**No API change, no migration needed.** If you've been hitting symlink-related issues, upgrade to get the fix.
+
+**Sources:**
+- [Vite PR #22832 — `fix: resolve root to real path`](https://github.com/vitejs/vite/pull/22832)
+
+### Turbopack `turbopackTreeShaking` → `turbopackModuleFragments` Rename (16.3.0-canary.92 in-flight, [PR #95978](https://github.com/vercel/next.js/pull/95978) by bgw, merged 2026-07-21T01:14:11Z)
+
+The `experimental.turbopackTreeShaking` config option is **renamed** to `experimental.turbopackModuleFragments`. The old name was misleading — people thought it controlled Rolldown-style tree-shaking, but it's actually a different module-fragmentation optimization controlled by `turbopackRemoveUnusedExports` + `turbopackRemoveUnusedImports` (both default to `true`). Per [issue #95698](https://github.com/vercel/next.js/issues/95698) and the linked issues, the contributor confusion was significant.
+
+**Action for users who set `turbopackTreeShaking` in their `next.config.ts`:**
+
+```ts
+// Before (still works, emits deprecation warning)
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: {
+      turbopackTreeShaking: true,
+    },
+  },
+}
+
+// After (canonical)
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: {
+      turbopackModuleFragments: true,
+    },
+  },
+}
+```
+
+The old key will continue to work for one minor with a deprecation warning, then be removed.
+
+**Audit recipe:**
+
+```bash
+rg "turbopackTreeShaking" next.config.* 
+```
+
+**Sources:**
+- [Next.js PR #95978 — `[turbopack] Rename turbopackTreeShaking to turbopackModuleFragments`](https://github.com/vercel/next.js/pull/95978)
+- [Next.js issue #95698 — Original rename request](https://github.com/vercel/next.js/issues/95698)
+
+### Vite `PostcssUserConfig` Type Export (July 16, 2026, ahead of Vite 8.1.5 — Vite PR [#22792](https://github.com/vitejs/vite/pull/22792) by linyiru, merged 2026-07-16T11:42:15Z)
+
+`PostcssUserConfig` is now re-exported from `vite`, so PostCSS configs can be typed against the same definition Vite loads them with. Closes [issue #19109](https://github.com/vitejs/vite/issues/19109).
+
+```ts
+// postcss.config.ts — now type-safe against Vite's internal definition
+import type { PostcssUserConfig } from 'vite'
+
+const config: PostcssUserConfig = {
+  plugins: [/* ... */],
+}
+
+export default config
+```
+
+**Why this matters:** before, you had to either hand-write the type or use `any` for PostCSS configs; now you get autocomplete + type checking against the same definition Vite uses internally.
+
+**Sources:**
+- [Vite PR #22792 — `feat(css): export PostCSS config type for type-safe configs`](https://github.com/vitejs/vite/pull/22792)
+- [Vite issue #19109 — Original feature request](https://github.com/vitejs/vite/issues/19109)
+
 ## Next.js Configuration
 
 ### `next.config.ts`

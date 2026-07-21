@@ -1038,6 +1038,121 @@ function GoodComponent({ items }: Props) {
 
 
 
+## Activity + `useSyncExternalStore` — Stale State on Reveal Fixed (React main-branch ahead of canary `83840902-20260719`, [PR #36947](https://github.com/facebook/react/pull/36947) by sophiebits, merged 2026-07-21T03:39:10Z, fixes [facebook/react#27670](https://github.com/facebook/react/issues/27670))
+
+**A real bug class** for any app combining React 19.2's `<Activity>` primitive with an external store. The Activity section above documents that `mode='hidden'` tears down Effects (subscriptions, intervals, WebSockets). What wasn't fully documented: **on reveal, the component could be left stale if the store changed during the hidden period.**
+
+### The bug
+
+The reveal path: when `<Activity>` flips from `mode='hidden'` back to `'visible'`, React replays the fiber's effect list *without* an initial render to re-attach passive effects. If `updateStoreInstance` (the internal effect that re-syncs a `useSyncExternalStore` subscription with the current store snapshot) is in the passive effect list, it works. But in practice the effect is often *not* in the passive effect list — `useSyncExternalStore` schedules `updateStoreInstance` only when the snapshot has actually changed. Two manifestations:
+
+**Manifestation 1 — layout effect mutates the store during reveal:**
+
+```tsx
+'use client'
+
+function NotificationsPanel() {
+  // External store subscription
+  const unreadCount = useStore(useNotificationsStore, s => s.unreadCount)
+
+  useLayoutEffect(() => {
+    // This layout effect fires DURING the reveal commit,
+    // AFTER the subtree rendered but BEFORE the store subscription is re-attached
+    if (unreadCount > 0) {
+      notificationsStore.markAllRead()
+    }
+  }, [unreadCount])
+
+  return <div>{unreadCount} unread</div>
+}
+
+function App() {
+  const [tab, setTab] = useState('inbox')
+  return (
+    <>
+      <button onClick={() => setTab(tab === 'inbox' ? 'archive' : 'inbox')}>Switch</button>
+      <Activity mode={tab === 'inbox' ? 'visible' : 'hidden'}>
+        <NotificationsPanel />
+      </Activity>
+    </>
+  )
+}
+```
+
+Sequence of events when switching `archive` → `inbox`:
+
+1. `<Activity mode='visible'>` triggers the reveal.
+2. React replays the effect list to re-attach subscriptions.
+3. **Before** the store subscription is re-attached, the layout effect fires, calls `markAllRead()` which mutates the store.
+4. The store subscription re-attaches but reads the *post-mutation* snapshot (unread=0).
+5. The component shows `0 unread` even though there might be unread notifications.
+
+**Manifestation 2 — store changed while hidden:**
+
+```tsx
+'use client'
+
+function LiveTicker() {
+  // External WebSocket-backed store
+  const price = useStore(usePriceStore, s => s.prices.BTC)
+
+  return <div>BTC: {price}</div>
+}
+
+function App() {
+  const [view, setView] = useState('home')
+  return (
+    <>
+      <button onClick={() => setView(view === 'home' ? 'detail' : 'home')}>Switch</button>
+      <Activity mode={view === 'home' ? 'visible' : 'hidden'}>
+        <LiveTicker />
+      </Activity>
+    </>
+  )
+}
+```
+
+Sequence of events when the price feed updates BTC price while `view === 'detail'`:
+
+1. WebSocket message arrives, store updates `BTC` price.
+2. User switches `detail` → `home`, `<Activity mode='visible'>` triggers reveal.
+3. React replays the effect list. `useSyncExternalStore` reads the current snapshot (new BTC price) but doesn't kick a re-render because the subscription was never notified of the change during hidden mode.
+4. The component shows the *old* BTC price until the user navigates or another mutation occurs.
+
+### The fix (in PR #36947)
+
+`updateStoreInstance` is now **pushed unconditionally** into the effect list, but tagged with `HookHasEffect` **only under the same conditions as before**. Two outcomes:
+
+- **Regular commits** (no Activity reveal): the effect runs only when the snapshot actually changed, just like before — no perf cost.
+- **Reconnection after reveal**: the effect is forced to run, which reads the current store snapshot and triggers a re-render if the snapshot changed during the hidden period. The component re-renders with fresh data.
+
+**Practical effect:** any app using `<Activity>` + an external store (Zustand, Jotai, custom `useSyncExternalStore`, TanStack Query's `useSyncExternalStore`-based hooks like `useSyncQuery`) now correctly sees store mutations that happened during the hidden period. Previously it would silently show stale state until the user navigated or interacted.
+
+### Migration
+
+**No code change needed** — just upgrade to a React canary that includes PR #36947 (expected in the next React canary after `83840902-20260719`). Once React 19.3 stable ships, the fix is automatic.
+
+**No changes to your `<Activity>` usage, your `useSyncExternalStore` usage, or your store implementation.** The fix is purely internal to React's effect-scheduling for Activity reveals.
+
+### When this matters in practice
+
+- **Tab interfaces using `<Activity>` + a shared store** (e.g., a chat app with `feed` / `messages` / `notifications` tabs backed by a Zustand store that receives WebSocket updates)
+- **Sidebar / drawer components using `<Activity>` + an auth-store or feature-flag store** that can change while the sidebar is hidden
+- **Modal stacks using `<Activity>` + a notification store** (notifications can arrive while the modal is hidden, and the badge should reflect the new count on reveal)
+- **Dashboard widgets using `<Activity>` + a TanStack Query subscription** (queries can invalidate or fetch new data while the widget is hidden; the revealed widget should show fresh data)
+
+### Common mistakes (after the fix)
+
+- **Relying on `<Activity>` to "reset" external store state** — `<Activity>` preserves state, it doesn't reset it. If you want a store reset on hide/show, use `key={open}` to force remount, or call your store's reset action in a `useEffect` watching the `mode` prop.
+- **Combining `<Activity>` with `useTransition` for "loading" semantics** — `<Activity>` is for visibility, not for pending. Use `useTransition` or `useFormStatus` / `useActionState`'s `isPending` for loading state.
+- **Nesting `<Activity>` boundaries incorrectly** — a child `<Activity>` inside a parent `<Activity>` is fine and intentional (use case: pre-rendering content at lower priority inside a hidden panel), but if the child flips `mode='visible'` while the parent is still `'hidden'`, the child's Effects don't fire (they're transitively hidden). Fix: structure boundaries so the visible/hidden state is consistent across the chain.
+
+**Sources:**
+- [PR #36947 — `[Fiber] Detect useSyncExternalStore mutations missed while Activity tree was hidden`](https://github.com/facebook/react/pull/36947)
+- [Issue #27670 — Original bug report](https://github.com/facebook/react/issues/27670)
+- [React docs — `useSyncExternalStore`](https://react.dev/reference/react/useSyncExternalStore)
+- [React docs — `<Activity>`](https://react.dev/reference/react/Activity)
+
 ## React 19.2 New Primitives (October 2025)
 
 React 19.2 stabilizes several previously-experimental APIs and introduces new primitives for fine-grained reactivity and loading states.

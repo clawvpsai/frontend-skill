@@ -448,6 +448,52 @@ All fixes are **silent footgun** fixes (no warning, no error before — they jus
 
 **Upgrade:** `npm install tailwindcss@latest` (or just `tailwindcss@^4.3.3`). Patch release — no code changes required.
 
+## Vite `PostcssUserConfig` Type Export (July 16, 2026, ahead of Vite 8.1.5 — Vite PR [#22792](https://github.com/vitejs/vite/pull/22792) by linyiru, merged 2026-07-16T11:42:15Z, closes [#19109](https://github.com/vitejs/vite/issues/19109))
+
+`PostcssUserConfig` is now re-exported from `vite`, so PostCSS configs can be typed against the same definition Vite loads them with. **Will ship in Vite 8.1.6 / 8.2.0 (ahead of Vite 8.1.5 on `main`); not yet tagged to a stable release.**
+
+**Before** (the typical PostCSS config shape had to be hand-written or `any`-typed):
+
+```ts
+// postcss.config.ts — old pattern
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+export default config
+```
+
+**After** (typed against Vite's internal definition):
+
+```ts
+// postcss.config.ts — new typed pattern
+import type { PostcssUserConfig } from 'vite'
+
+const config: PostcssUserConfig = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+export default config
+```
+
+**Why this matters:** PostCSS plugins have heterogeneous config shapes (some are plain objects, some are arrays, some are factory functions). Vite has the canonical definition; now your config can match it for full autocomplete + type checking instead of relying on `any` or hand-maintaining the type.
+
+**Migration impact:**
+
+- **No behavior change** — this is purely a type addition.
+- **Works in any Vite-based project** once the next Vite version that includes PR #22792 ships.
+- **Independent of Tailwind v4** — the type is for PostCSS configs in general.
+
+**Sources:**
+- [Vite PR #22792 — `feat(css): export PostCSS config type for type-safe configs`](https://github.com/vitejs/vite/pull/22792)
+- [Vite issue #19109 — Original feature request](https://github.com/vitejs/vite/issues/19109)
+
 ## shadcn/typeset — Stream-Friendly Typography (July 14, 2026)
 
 If your app renders markdown in multiple surfaces (blog, docs, chat, email, AI assistant output), you'll hit a recurring problem: every surface needs its own typography config, and the styles drift apart over time. **`shadcn/typeset`** is the official answer — released the same week as `shadcn@4.13.0` (July 14, 2026).

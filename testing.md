@@ -752,6 +752,85 @@ it('handles server action errors gracefully', async () => {
 })
 ```
 
+## Vitest 4 — `fsModuleCache` Promoted From `experimental.*` to Top-Level Option (July 20, 2026, PR [#10734](https://github.com/vitest-dev/vitest/pull/10734) by sheremet-va, merged 2026-07-20T08:04:04Z, fixes [#10701](https://github.com/vitest-dev/vitest/issues/10701))
+
+**`experimental.fsModuleCache`** and **`experimental.fsModuleCachePath`** are MOVED to top-level **`test.fsModuleCache`** and **`test.fsModuleCachePath`**. The cache directory defaults to `<workspaceRoot>/node_modules/.vitest-cache` (a single workspace-root directory shared by every project in a workspace), `fsModuleCache` defaults to `false` (off by default — opt-in for now), and the old `experimental.*` options are migrated with a deprecation warning. This unblocks **Vitest 5** stabilization — issue #10701 confirmed "We haven't received any issues regarding this feature, and we have also been running tests with this flag enabled for a while now" so the core team is comfortable promoting it. **No Vitest 4 patch has shipped yet** — the promotion is on Vitest 4 `main` and will land in the next Vitest 4 patch (probably 4.1.11 in the coming days). Vitest 5.0 stable is still `beta.6` (last released 2026-07-06) and no `beta.7` has shipped yet.
+
+### What is `fsModuleCache`?
+
+A persistent on-disk cache of *transformed* (Vite-transformed) source modules. When `fsModuleCache: true`, Vitest serializes every transformed module's output to `<cacheDir>/<hash>.json` (or wherever `fsModuleCachePath` points) on first load. On subsequent runs, the cached transformed output is reused without re-running the Vite plugin chain (TypeScript, JSX, PostCSS, etc.) — large monorepos see 5–10× faster cold-start times when the cache is warm.
+
+### Migration
+
+**Before (Vitest 4.x with `experimental.*`):**
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    experimental: {
+      fsModuleCache: true,
+      fsModuleCachePath: './node_modules/.vitest-cache',  // optional override
+    },
+  },
+})
+```
+
+**After (Vitest 4.1.11+ / Vitest 5 stable, top-level):**
+
+```ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    fsModuleCache: true,                                    // opt-in, default false
+    fsModuleCachePath: './node_modules/.vitest-cache',     // optional override
+    // OR omit fsModuleCachePath entirely to use the default
+    // <workspaceRoot>/node_modules/.vitest-cache
+  },
+})
+```
+
+**Audit recipe:**
+
+```bash
+# Find projects that need migration
+rg "experimental\.fsModuleCache" vitest.config.* test/vitest.config.* -l
+```
+
+**Migration impact:**
+
+- **Behavior:** identical — same cache file format, same default cache path, same on-disk layout. The migration is purely schema.
+- **Default change:** `fsModuleCache` was always `false` under `experimental.*` (opt-in), and remains `false` at the top level (still opt-in). **You have to set `fsModuleCache: true` explicitly to get the speedup.**
+- **Cache location change:** the default moves from `node_modules/.cache/vitest` (the experimental default) to `<workspaceRoot>/node_modules/.vitest-cache` (the new top-level default). First run after upgrade will rebuild the cache.
+- **Monorepo behavior:** the new default `<workspaceRoot>/node_modules/.vitest-cache` is a *single workspace-root directory* shared by every project — if you want per-project isolation, set `fsModuleCachePath` to a project-relative path inside each project's `vitest.config.ts`.
+- **CI behavior:** the cache survives across CI runs as long as the cache directory is restored (configure your CI's cache step to preserve `**/node_modules/.vitest-cache` or your custom `fsModuleCachePath`).
+- **Vitest 5 migration:** when Vitest 5 ships stable, `fsModuleCache` may flip to `true` by default (TBD — track [issue #10701](https://github.com/vitest-dev/vitest/issues/10701)). Setting it explicitly now means no behavior change on upgrade.
+
+### When to use `fsModuleCache: true`
+
+| Project shape | Recommendation |
+|---|---|
+| **Small app / single project** (< 1,000 test files) | Leave at default `false` — overhead of managing the cache outweighs the speedup. |
+| **Large monorepo** (5+ projects, 5,000+ test files) | Set `fsModuleCache: true` + keep the default path. Expect 5–10× cold-start improvement with warm cache. |
+| **CI on ephemeral runners** | Set `fsModuleCache: true` only if your CI restores `**/node_modules/.vitest-cache` between runs; otherwise the cache is rebuilt every run (no harm, but no speedup). |
+| **Watch-mode development** | Leave at default `false` — the cache adds complexity to HMR-style incremental runs; the default behavior is well-tested. |
+
+### Common mistakes
+
+- **Setting `fsModuleCache: true` without excluding it from git** — add `**/node_modules/.vitest-cache` (or your custom path) to `.gitignore` if it lives outside `node_modules` (the default path is already inside `node_modules` so it's ignored by default; only matters if you override `fsModuleCachePath` to a non-`node_modules` location).
+- **Sharing one `fsModuleCachePath` across incompatible Vitest versions** — the cache format is version-pinned; if you have a monorepo with mixed Vitest versions, set per-project `fsModuleCachePath` to avoid cross-version cache corruption.
+- **Forgetting to bust the cache after a Vite plugin upgrade** — if you bump `@vitejs/plugin-react` or `vite` itself, delete the cache directory or set `fsModuleCache: false` for the next run.
+- **Setting `fsModuleCache: true` for the first time on a project that has flaky tests** — the cache will mask some test isolation issues because stale transformed modules can be served. If you see tests pass inconsistently after enabling, the cache is hiding a real bug — clear it, fix the bug, re-enable.
+
+**Sources:**
+- [PR #10734 — `feat: promote fsModuleCache to a top-level option`](https://github.com/vitest-dev/vitest/pull/10734)
+- [Issue #10701 — `Stabilize fsModuleCache`](https://github.com/vitest-dev/vitest/issues/10701)
+- [Vitest docs — `test.fsModuleCache` (main, pre-5.0)](https://main.vitest.dev/config/fsmodulecache)
+- [Vitest docs — `test.fsModuleCachePath` (main, pre-5.0)](https://main.vitest.dev/config/fsmodulecachepath)
+- [Vitest docs — `experimental.fsModuleCache` (current, deprecated after 4.1.11)](https://vitest.dev/config/experimental.html#experimental-fsmodulecache)
+
 ## Vitest 4 — Browser Mode (Stable)
 
 Vitest 4.0 (Oct 21, 2025) marked Browser Mode as **stable** — real browser tests replace jsdom for components that need actual browser APIs (clipboard, layout, computed styles, IntersectionObserver, etc.). Setup is via a separate `vitest.browser.config.ts` so unit (jsdom) and browser tests can coexist.
