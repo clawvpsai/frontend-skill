@@ -1422,6 +1422,75 @@ The following continue to work as before — no migration needed:
 - [TypeScript 7 Migration Guide](https://codingdunia.com/blog/typescript-7-migration-guide/)
 - [microsoft/typescript-go repo](https://github.com/microsoft/typescript-go)
 
+## TypeScript 7.0 Ecosystem Readiness — The Week-One Reality (July 16, 2026)
+
+TS 7.0.2 (the current GA — 2026-07-08) is faster than TS 6 for `tsc --noEmit` and for editor LSP via the VS Code TypeScript Native Preview extension. Microsoft ships the Go-native compiler and the language server. **But the JavaScript tooling ecosystem is NOT ready for it on day one.** This section documents the cascading breaks that the 1.4.65→1.4.74 crons tracked but did not pull into `typescript.md` — and the workaround most teams have actually adopted in week one.
+
+### The Cascade
+
+A TS 7 support issue was opened against `typescript-eslint` on GA day (issue [#12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)) and **closed as "not planned"** — `typescript-eslint`'s supported TypeScript range is `>=4.8.4 <6.1.0` and TS 7 sits entirely outside it. The fix proposal in the immediately-following issue ([#12521](https://github.com/typescript-eslint/typescript-eslint/issues/12521)) is just a friendlier error message when TS 7 is detected, not compatibility.
+
+That decision cascades upward:
+
+| Tool | Status | Why |
+|---|---|---|
+| **typescript-eslint** | ❌ Blocked | Supported range `>=4.8.4 <6.1.0`; day-one support request closed "not planned" |
+| **ESLint core** (`eslint/eslint`, `eslint/rewrite`, `eslint/js`) | ❌ Blocked | Explicitly waiting on typescript-eslint to add TS 7 support ([eslint/eslint#21070](https://github.com/eslint/eslint/issues/21070)) |
+| **Volar-based template checkers** (Vue, Svelte, MDX, Astro) | ❌ Blocked | Need the legacy programmatic API; won't run TS 7 until the stable Strada API ships in TS 7.1 |
+| **Custom transformer / language-service plugins** (ts-morph, ts-patch, certain ESLint plugins) | ⚠️ Risk | Many reach into the TS internal API; pin to TS 6 via `@typescript/typescript6` until Strada-compatible |
+| **`tsc --noEmit` / `tsgo` (the Go-native compiler)** | ✅ Works | Use this for type-checking only |
+| **VS Code TypeScript Native Preview extension** | ✅ Works | Full language-service parity for editor features (semantic highlighting, "sort imports", "remove unused imports", go-to-definition, find-references) |
+
+Sources:
+- [TypeScript 7, One Week In: The _real_ migration readiness check (Digital Applied, July 16, 2026)](https://www.digitalapplied.com/blog/typescript-7-native-compiler-early-adopter-migration-readiness)
+- [typescript-eslint issue #12518 — Day-one TS 7 support request](https://github.com/typescript-eslint/typescript-eslint/issues/12518)
+- [typescript-eslint issue #12521 — Friendlier error message proposal](https://github.com/typescript-eslint/typescript-eslint/issues/12521)
+- [ESLint issue #21070 — Update to TypeScript 7 (blocked on typescript-eslint)](https://github.com/eslint/eslint/issues/21070)
+
+### The Recommended Pattern: Split Toolchain (TS 6 + TS 7)
+
+Most teams that have shipped TS 7 in production by mid-July 2026 are running a **split toolchain**:
+
+```jsonc
+// package.json (split-toolchain pattern)
+{
+  "devDependencies": {
+    "typescript": "^7.0.2",        // GA — used by `tsgo` for build-time type-checking (fast)
+    "@typescript/typescript6": "^6.0.4", // compat fallback for tooling
+    "eslint": "^9.x.x",
+    "typescript-eslint": "^8.x.x"  // pinned to TS 6 via the @typescript/typescript6 alias
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",          // fast native type-check (TS 7 compiler)
+    "lint": "eslint . --max-warnings 0",   // TS 6-backed (types-as-comments only)
+    "build":  "next build"                 // next handles its own TS resolution
+  }
+}
+```
+
+The `tsgo` binary is the Go-native TS 7 compiler; it ships alongside `typescript@^7` and runs `tsc`-compatible type-checking ~8–12× faster than TS 6. ESLint + typescript-eslint keep using TS 6's parser via the `@typescript/typescript6` compat package, which re-exports TS 6.0 under a separate name so both can coexist.
+
+**When can you collapse back to a single toolchain?** When TS 7.1 ships with the stable Strada programmatic API (~October 2026 on Microsoft's stated 3–4 month cadence). At that point `typescript-eslint` will port onto Strada, ESLint core repos will follow, and Volar-based template checkers will resume working.
+
+### Recommended Upgrade Path (Updated for the Ecosystem Reality)
+
+1. **Baseline on TS 6.0 first.** TS 6 surfaces deprecation warnings for options TS 7 hard-removes. Jumping straight to TS 7 GA without cleaning up `tsconfig.json` produces hard errors.
+2. **Install TS 7 GA on a feature branch.** `npm install -D typescript` (the RC tag is no longer needed). Run `npx tsgo --noEmit` to type-check under TS 7.
+3. **Keep `@typescript/typescript6` in `devDependencies`** as the fallback for `typescript-eslint`, any custom transformers, language-service plugins, or codemod CLIs. Watch each tool's release notes for Strada-API support — when a tool migrates, you can drop the compat package for it.
+4. **For monorepos / OSS plugins:** set `peerDependencies: { "typescript": ">=6.0.0" }` so consumers can pick TS 6 OR TS 7 without forcing one. Don't write `>=7.0.0` unless your tool genuinely uses TS 7-only APIs.
+5. **Verify editor parity:** VS Code via the TypeScript Native Preview extension, OR any LSP-native editor with the TS 7 language-server binary in the toolchain.
+
+### TS 7.1 Preview — Strada API Lands October 2026
+
+Microsoft's stated roadmap (per the [TypeScript 7.0 GA post](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) and follow-up commentary) is to ship TS 7.1 with the stable **Strada** programmatic API — a fresh, non-backwards-compatible API designed for the Go-native compiler. TS 7.1 is expected around October 2026 on the historical 3–4 month cadence. When it ships:
+- typescript-eslint ports onto Strada (the day-one "not planned" stance reverses)
+- ESLint core repos (eslint/eslint, eslint/rewrite, eslint/js) follow
+- Volar-based template checkers (Vue / Svelte / MDX / Astro) can finally use TS 7 type-checking
+- New generation of linters, code-mods, and type-aware bundler plugins become possible
+
+Until then, the split toolchain is the practical answer. The full TS 6 baseline still ships to npm; the `@typescript/typescript6` compat package is stable; and the upgrade is reversible by deleting the `tsgo` script + uninstalling `typescript@^7`.
+
+
 ## Common Mistakes
 
 - **`any` type** — use `unknown` instead when the type is truly unknown, then narrow
@@ -1436,3 +1505,6 @@ The following continue to work as before — no migration needed:
 - **Forgetting `@typescript/typescript6`** — if you use any tool that reaches into the TS internal API (custom transformers, language-service plugins, certain ESLint plugins), pin it to TS 6 via `@typescript/typescript6` + the `tsc6` shim until it migrates to Strada.
 - **`import defer` with named export in JSX** — use `import defer * as mod` then destructure: `const { Foo } = await mod`
 - **`import defer` in Server Components for data** — `import defer` is a bundle-splitting tool, not a data-fetching tool; use React's `use()` hook with Promises for streaming server-side data
+- **Adopting TS 7 without checking the tooling chain** — `typescript-eslint` doesn't support TS 7 (`>=4.8.4 <6.1.0`); ESLint core, Vue/Svelte/Astro template checkers, and custom transformers are all blocked. Run the split toolchain (TS 7 for `tsgo` type-check, TS 6 via `@typescript/typescript6` for ESLint) until TS 7.1 ships Strada in October 2026. See the new "TS 7.0 Ecosystem Readiness" section above.
+- **Forgetting to run `npx tsgo --noEmit`** — TS 7 ships the Go-native compiler as `tsgo`; `tsc --noEmit` is still the TS 6 binary if both are installed. Check `$PATH` and the npm script wiring to make sure CI runs the fast path.
+- **Setting `peerDependencies.typescript` to `">=7.0.0"` for OSS plugins** — most consumers still run TS 6; widen to `">=6.0.0"` unless your plugin genuinely needs TS 7-only features (`import defer`, `stableTypeOrdering`, etc.)
