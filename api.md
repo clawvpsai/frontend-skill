@@ -198,6 +198,26 @@ function SubmitButton() {
   return <button type="submit" disabled={pending}>{pending ? 'Saving...' : 'Save'}</button>
 }
 ```
+### Server Action Security Hardening (16.3.0-canary.92, 2026-07-21)
+
+canary.92 shipped **five security hardening PRs** for Server Actions (plus one for redirects + one for fetch cache). All are included in 16.2.11 and 15.5.21:
+
+**PR [#96012](https://github.com/vercel/next.js/pull/96012) — Enforce `serverActions.bodySizeLimit` for Edge runtime.** Previously, `serverActions.bodySizeLimit` (the per-action body size cap) was not enforced in the Edge runtime — a crafted request could bypass it. canary.92 enforces it consistently across Node.js and Edge runtimes. **Action:** audit your `serverActions.bodySizeLimit` value in `next.config.ts`. If you use the default and have Edge-deployed Server Actions, consider setting an explicit limit.
+
+**PR [#96011](https://github.com/vercel/next.js/pull/96011) — Set correct origin for internal redirects in custom server.** When a custom server (e.g. `server.ts`, Express, Fastify) forwards a request to the Next.js router and the route handler calls `redirect()`, the `Location` header was using the custom server's origin instead of Next.js's own origin. This caused incorrect redirect URLs in deployments behind a proxy or CDN. **Action:** if you run a custom server behind a reverse proxy, re-test your `redirect()` calls after upgrading.
+
+**PR [#96010](https://github.com/vercel/next.js/pull/96010) — Ensure exotic rewrite param values are properly encoded.** Param values in rewrites that contain unusual characters (Unicode, special symbols) were not consistently URL-encoded when forwarded to the destination. This could lead to open-redirect in rewrites that concatenate params into the destination URL. **Action:** audit every `beforeFiles`/`afterFiles` rewrite that uses route params in the destination path.
+
+**PR [#96007](https://github.com/vercel/next.js/pull/96007) — Validate server reference IDs during manifest lookup.** Server Action / `use cache` IDs were previously accepted without verifying they exist in the manifest. An attacker who discovered an ID could invoke arbitrary server functions. canary.92 validates IDs against the manifest before allowing invocation. **This closes the endpoint disclosure (CVE-2026-64643) attack path.** Already-patched in 16.2.11 / 15.5.21.
+
+**PR [#95608](https://github.com/vercel/next.js/pull/95608) — Preserve `basePath` in redirect destinations.** When `basePath` is configured in `next.config.ts` and a route handler calls `redirect(url)`, the redirect's `Location` header was dropping the `basePath`. canary.92 preserves it. **Action:** if you use `basePath`, re-test redirects after upgrading.
+
+**PR [#96009](https://github.com/vercel/next.js/pull/96009) — fix(fetch-cache): key `fetch(Request, init)` by the effective request.** The two-argument form `fetch(new Request(url, init), differentInit)` had its cache key computed from the first argument only, ignoring the second. This is the root cause of CVE-2026-64648 (cache confusion). **Fix:** cache key is now derived from the effective merged request after combining both arguments. **Note:** the single-argument form `fetch(url, { body })` was already correct.
+
+**PR [#96008](https://github.com/vercel/next.js/pull/96008) — fix(incremental-cache): byte-exact fetch cache key for binary bodies.** Binary request bodies were not included byte-exactly in the fetch cache key. This allowed cache collisions between requests with different binary bodies (the UTF-16 byte sequence issue in CVE-2026-64647). **Fix:** binary bodies are now hashed byte-exactly, not normalized or truncated.
+
+**Security audit reminder:** The Server Action endpoint disclosure (CVE-2026-64643) was closed by PR #96007 — but the defense-in-depth pattern from `security.md` (auth + authorization inside every action body) remains the recommended posture. Layered security is never optional.
+
 
 ## Response Patterns
 

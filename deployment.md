@@ -168,6 +168,53 @@ echo "You are a helpful assistant." > agent/instructions.md
 ```
 
 The agent lives alongside your Next.js routes. The same project can serve both the marketing site (Next.js) and the agent (eve), and they share `vercel deploy`.
+### July 2026 Security Releases — 16.2.11 (Active LTS) + 15.5.21 (Maintenance LTS) + canary.92
+
+**The July 2026 security release shipped July 21, 2026** (1-day delay from the original July 20 target). Nine CVEs patched across Next.js 16.2.x and 15.5.x:
+
+- **4 High:** DoS via Server Actions (CVE-2026-64641), Turbopack middleware bypass with single locale (CVE-2026-64642), SSRF via rewrites with attacker-controlled hostname (CVE-2026-64645), SSRF via Server Actions on custom servers (CVE-2026-64649)
+- **5 Medium:** Image Optimization SVG DoS (CVE-2026-64644), unbounded Edge payload (CVE-2026-64646), Server Function endpoint disclosure (CVE-2026-64643), cache confusion for requests with bodies (CVE-2026-64648 + CVE-2026-64647)
+
+**Upgrade immediately:**
+```bash
+npm install next@16.2.11   # Active LTS — use this for new projects
+npm install next@15.5.21   # Maintenance LTS — for existing 15.x apps
+```
+
+**`next@canary`** = `16.3.0-canary.92` — ships all 9 security fixes + React vendor bump to `81e442ea-20260721`. This canary will become Next.js 16.3.0 stable.
+
+**LTS status:**
+- **16.2.11** — Active LTS (recommended for all new deployments)
+- **15.5.21** — Maintenance LTS (only for apps not yet on 16.x)
+- **16.3.0** (preview/canary) — next stable, expected after 16.3.0 stable ships
+
+**Next security release:** August 20, 2026 (monthly cadence per the Vercel security release program). Set a recurring calendar reminder.
+
+**canary.92 non-security PRs (7 material items):**
+- [PR #96014](https://github.com/vercel/next.js/pull/96014) — Fix Turbopack middleware matcher with i18n single locale (fixes CVE-2026-64642 — the single-locale Turbopack bypass; the security fix is in the same PR)
+- [PR #96013](https://github.com/vercel/next.js/pull/96013) — Improve performance of validating MPA form submissions
+- [PR #96006](https://github.com/vercel/next.js/pull/96006) — `next/image`: improve performance of `detectContentType()` for SVG files (SVG detection was a hot path in the Image Optimization DoS fix; this optimizes the patched code path)
+- [PR #95939](https://github.com/vercel/next.js/pull/95939) — Fix instant validation blocking navigations
+- [PR #95985](https://github.com/vercel/next.js/pull/95985) — Prevent unhandled rejections when a `use cache` cache handler errors
+- [PR #95984](https://github.com/vercel/next.js/pull/95984) — Add coverage for throwing custom `use cache` cache handler
+- [PR #95861](https://github.com/vercel/next.js/pull/95861) — docs: add upgrade section to installation and expand AI agents guide
+
+**Post-upgrade checklist:**
+1. `npm install next@latest` (or `next@15.5.21`)
+2. Bust Docker cache: `docker build --no-cache` or `docker buildx build --pull`
+3. Redeploy
+4. Verify: `curl -I https://your-app.com` → `X-Powered-By: Next.js 16.2.11`
+5. For Turbopack + single `i18n.locales` users: re-test auth/security in middleware
+6. For custom servers with Server Actions: re-test `redirect()` and forwarded requests
+7. For `basePath` users: re-test all `redirect()` destinations
+
+**Sources:**
+- [Next.js blog: July 2026 Security Release](https://nextjs.org/blog/july-2026-security-release)
+- [GitHub: v16.2.11 release notes](https://github.com/vercel/next.js/releases/tag/v16.2.11)
+- [GitHub: v15.5.21 release notes](https://github.com/vercel/next.js/releases/tag/v15.5.21)
+- [GitHub: v16.3.0-canary.92 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.92)
+- [npm `next` package (16.2.11 live)](https://registry.npmjs.org/next)
+
 
 **Sources:**
 - [Introducing eve (Vercel blog, June 17, 2026)](https://vercel.com/blog/introducing-eve)

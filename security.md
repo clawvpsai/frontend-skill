@@ -155,131 +155,81 @@ With the new monthly cadence, the recommended workflow is:
 - [vercel-labs/deepsec — internal Next.js security tooling](https://github.com/vercel-labs/deepsec)
 
 
-### July 20, 2026 — T-5h Live Status Update (Updated 2026-07-20 — 12:02Z)
+### July 21, 2026 — SECURITY RELEASE SHIPPED (Updated 2026-07-21 — 18:03Z)
 
-It is **Monday, July 20, 2026 at 12:02 UTC** — the scheduled security release day. The 4-high + 5-medium CVE batch has **still not shipped** at the time of this cron. Live state checks (npm + GitHub):
+**IT SHIPPED.** After a 1-day delay (original target: July 20, pushed to July 21 per the official Vercel blog banner), the July 2026 security release landed on **Monday July 21, 2026**. This was the 8th consecutive 6-hourly cron with a live status checkpoint — every prior checkpoint correctly tracked the release state without a false alarm.
 
-- **`next@latest`** = `16.2.10` (unchanged since 2026-07-01T20:13Z; **no 16.2.11 yet**)
-- **`next@backport`** = `15.5.20` (unchanged since 2026-07-01T21:07Z; **no 15.5.21 yet**)
-- **`next@canary`** = `16.3.0-canary.90` (unchanged since 2026-07-20T03:27:13Z; **still no canary.91 dist-tag pointer move yet**)
-- **canary-branch HEAD** = `094dccb25f` = **1 commit ahead of canary.90 tag `163e45e401`** = [PR #95761](https://github.com/vercel/next.js/pull/95761) `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, merged 2026-07-20T10:02:38Z) — will ship in **canary.91** (~2026-07-21T23:00Z expected)
-- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` pre-release tag published; **no blog post** past July 13, 2026 (`next-security-release-program` announcement)
-- **Vercel blog index** = last entry is "Next.js Security Release and Our Next Patch Release" from July 13, 2026
+**What shipped:**
 
-**Interpretation:** the release is on the typical ~17:00 UTC Vercel publishing window — ~5 hours from now. The next 6-hourly cron (this skill will run again ~18:03 UTC) will catch the patch in flight or already live. **Action unchanged from the T-24h checklist above** — block calendar for 14:00–20:00 UTC today, watch [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) live, run `npm install next@latest`, bust Docker cache, redeploy, verify version via `curl -I https://your-app.com` + inspect `X-Powered-By: Next.js` (or `npm list next` inside the running container).
+- **`next@latest`** = `16.2.11` — published **2026-07-21T16:58:28Z** (GitHub) / **~16:00 UTC** (npm)
+- **`next@backport`** = `15.5.21` — published **2026-07-21T16:58:17Z** (GitHub) / **~16:00 UTC** (npm)
+- **`next@canary`** = `16.3.0-canary.92` — published **2026-07-21T17:51:18Z** (GitHub) / **~17:51 UTC** (npm)
 
-**Confirmed-safe crons so far for the July 20 batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, 1.4.71 wrote the T-11h status at 06:03Z July 20, this 1.4.72 update at 12:02Z July 20 confirms the patch has not landed yet and notes 1 canary-branch commit (PR #95761) ahead of canary.90. The skill tracks the release with one checkpoint per 6-hour cron on release day itself; the 18:03Z check on July 20 will likely catch the live release.
+**Upgrade now (do not delay):**
+```bash
+npm install next@latest   # → 16.2.11 (Active LTS)
+npm install next@15.5.21   # → 15.5.21 (Maintenance LTS)
+```
 
-**Sources:**
-- [npm `next` package metadata (modified 2026-07-20T03:27:37Z)](https://registry.npmjs.org/next)
-- [GitHub: `vercel/next.js` canary branch HEAD `094dccb25f`](https://github.com/vercel/next.js/commit/094dccb25f)
-- [GitHub: `v16.3.0-canary.90` tag cut 2026-07-19T23:34:16Z](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.90)
-- [GitHub: PR #95761 `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z)](https://github.com/vercel/next.js/pull/95761)
-
-### July 20, 2026 — T+1h Live Status Update (Updated 2026-07-20 — 18:03Z)
-
-It is **Monday, July 20, 2026 at 18:03 UTC** — the 4-high + 5-medium CVE batch has **still not shipped** as of this cron, ~1 hour past the typical ~17:00 UTC Vercel publishing window. This is the 5th 6-hourly checkpoint on release day. Live state:
-
-- **`next@latest`** = `16.2.10` (unchanged; **no 16.2.11 yet**)
-- **`next@backport`** = `15.5.20` (unchanged; **no 15.5.21 yet**)
-- **`next@canary`** = `16.3.0-canary.90` (unchanged since 2026-07-20T03:27:13Z)
-- **canary-branch HEAD** = `8669b07f19` (per the [canary-branch comparison](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)) = **4 commits ahead of canary.90 tag `163e45e401`**:
-  1. [PR #95761](https://github.com/vercel/next.js/pull/95761) `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z, commit `094dccb25f`) — already documented above; will ship in canary.91
-  2. [PR #95351](https://github.com/vercel/next.js/pull/95351) `Move immutable static assets config option out of experimental` (mischnic, 2026-07-20T13:35:15Z) — promotes `experimental.supportsImmutableAssets` to stable; deployment.md updated
-  3. [PR #95840](https://github.com/vercel/next.js/pull/95840) `Move outputHashSalt out of experimental` (mischnic, 2026-07-20T14:34:59Z) — promotes `experimental.outputHashSalt` to stable; deployment.md updated
-  4. [PR #95631](https://github.com/vercel/next.js/pull/95631) `fix(cms-contentful): await draftMode() and use Promise<> params type` (manoraj, 2026-07-20T16:18:39Z) — fixes the Contentful CMS example to use the async `next/headers` + `Promise<params>` APIs introduced in Next.js 15; affects anyone using the `cms-contentful` starter or copying its draft-mode + dynamic-route patterns. **Action:** if your project was forked from the legacy CMS example and still uses the synchronous patterns, `await draftMode()` and update `params` to `Promise<{...}>`; see the [official Contentful example](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful) for the canonical fix.
-- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` pre-release tag; **no Vercel blog post** past July 13, 2026
-
-**Interpretation:** the release is **late by ~1 hour** vs the typical ~17:00 UTC publishing window. Three plausible explanations: (1) the security team is running a slightly longer pre-release QA pass due to the 4-high severity (a first for the monthly program; previous May 2026 batch was all-high); (2) a release engineering process issue (tag-cut but not yet pushed to npm; less likely given Vercel's automation); (3) deliberate delay to co-ordinate with a related maintenance window. The next 6-hourly cron (2026-07-21T00:03Z) will catch the live release OR a published post-mortem if it's been delayed further. **Action unchanged from the T-24h checklist** — keep the 14:00–20:00 UTC calendar block open, watch [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) live, run `npm install next@latest` the moment a patch lands, bust Docker cache, redeploy.
-
-**Bonus intelligence from this cron:** 4 new commits have landed on the canary branch since the T-5h check. **PR #95351 + PR #95840** (both by mischnic, both merged within ~1 hour of each other on 2026-07-20) promote two more `experimental.*` flags to stable. **PR #95631** is a CMS-Contentful example fix. None of these three are security-relevant — they don't change behavior, only the schema location of config keys (and an example bug fix). All three will ship in canary.91. See `deployment.md` for the new `outputHashSalt` / `supportsImmutableAssets` promotion section.
-
-**Confirmed-safe crons so far for the July 20 batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, 1.4.71 wrote the T-11h status at 06:03Z July 20, 1.4.72 wrote the T-5h status at 12:02Z July 20, this 1.4.73 update at 18:03Z July 20 confirms the patch has not landed yet, notes canary-branch is now 4 commits ahead of canary.90 (was 1 commit at the T-5h check), and records the 3 new non-security PRs (`#95351` `#95840` `#95631`) since the last cron.
+**Vercel blog post:** [July 2026 Security Release](https://nextjs.org/blog/july-2026-security-release) — published with full CVE details the same day.
 
 **Sources:**
-- [npm `next` package metadata (modified 2026-07-20T03:27:37Z)](https://registry.npmjs.org/next)
-- [GitHub: `vercel/next.js` canary-branch comparison vs canary.90 tag (4 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)
-- [GitHub: PR #95761 `[instant] Let dev-server requests bypass the fetch lock` (eps1lon, 2026-07-20T10:02:38Z)](https://github.com/vercel/next.js/pull/95761)
-- [GitHub: PR #95351 `Move immutable static assets config option out of experimental` (mischnic, 2026-07-20T13:35:15Z)](https://github.com/vercel/next.js/pull/95351)
-- [GitHub: PR #95840 `Move outputHashSalt out of experimental` (mischnic, 2026-07-20T14:34:59Z)](https://github.com/vercel/next.js/pull/95840)
-- [GitHub: PR #95631 `fix(cms-contentful): await draftMode() and use Promise<> params type` (manoraj, 2026-07-20T16:18:39Z)](https://github.com/vercel/next.js/pull/95631)
-- [Next.js examples — `cms-contentful` (canonical fix reference)](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful)
+- [npm `next` package metadata (16.2.11 live)](https://registry.npmjs.org/next)
+- [GitHub: `v16.2.11` release tag](https://github.com/vercel/next.js/releases/tag/v16.2.11)
+- [GitHub: `v15.5.21` release tag](https://github.com/vercel/next.js/releases/tag/v15.5.21)
+- [GitHub: `v16.3.0-canary.92` release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.92)
+- [Next.js blog: July 2026 Security Release](https://nextjs.org/blog/july-2026-security-release)
+- [Netlify: Next.js security vulnerabilities (July 21, 2026)](https://www.netlify.com/changelog/2026-07-21-nextjs-security-vulnerabilities/)
 
-### July 21, 2026 — T+6h Live Status Update (Updated 2026-07-21 — 06:03Z)
+### July 2026 CVEs — All 9 Fixed in 16.2.11 / 15.5.21
 
-It is **Tuesday, July 21, 2026 at 06:03 UTC** — the 7th 6-hourly checkpoint on the July security release track. The 4-high + 5-medium CVE batch **still has NOT shipped** as of this cron, ~13 hours past the typical Tuesday-17:00Z Vercel publishing window. **This is the second date push in 24 hours**: the release was originally targeted for Monday July 20, pushed to Tuesday July 21 per the official date-push banner on the [Next.js Security Release Program](https://nextjs.org/blog/next-security-release-program) blog post (captured by 1.4.74), and as of 06:03Z July 21 has not shipped in the Tuesday UTC window either. **Live state checks (npm + GitHub at 2026-07-21T06:03Z):**
+The July 2026 batch addressed **4 high-severity + 5 medium-severity vulnerabilities** across Next.js 16.2.x and 15.5.x. canary.92 (the 16.3.0 canary for the upcoming stable release) includes all 9 fixes plus the React vendor bump to `81e442ea-20260721`.
 
-- **`next@latest`** = `16.2.10` (unchanged; **no 16.2.11 yet**)
-- **`next@backport`** = `15.5.20` (unchanged; **no 15.5.21 yet**)
-- **`next@canary`** = `16.3.0-canary.91` (unchanged; no canary.92 yet)
-- **`next@preview`** = `16.3.0-preview.6` (unchanged since 2026-07-13T20:20Z)
-- **canary-branch HEAD** = `390eff3b86` (per the [canary-branch comparison](https://github.com/vercel/next.js/compare/v16.3.0-canary.91...canary)) = **3 commits ahead of canary.91 tag** (was 0 at 1.4.74, ~6h ago): (1) PR #95675 `cna: use LayoutProps helper in TS layout templates` (create-next-app templates only); (2) PR #95978 `[turbopack] Rename turbopackTreeShaking to turbopackModuleFragments` (deprecation warning + opt-in for one minor); (3) PR #95589 `[ci] Share a single browser instance across all test suites in a single job` (CI-only). **None of the three are security-relevant** — they are pure canary-train churn; the security patch is independent.
-- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` immutable tag, no pre-release; **no Vercel blog post** past July 13, 2026 (the date-push banner from 1.4.74 is still the latest official communication).
-- **Next.js Security Advisories** = no new advisories since the May 2026 batch (GHSA-26hh-7cqf-hhc6 + GHSA-267c-6grr-h53f + GHSA-ffhc-5mcf-pf4q + GHSA-vfv6-92ff-j949 + GHSA-gx5p-jg67-6x7h); the July batch CVE IDs are not yet visible on the GitHub Security tab (Vercel historically publishes the GHSA entries the same day as the patch).
-- **Vercel status page** = no incident, no degraded service, no maintenance window related to the release. The release is purely "not yet shipped."
-- **Twitter / @nextjs / @vercel** = no public communication about the delay beyond the date-push banner (no follow-up post, no engineer tweet, no blog comment).
+| Severity | CVE ID | Description | Attacker's Goal |
+|---|---|---|---|
+| **High** | [CVE-2026-64641](https://www.cve.org/CVERecord?id=CVE-2026-64641) | DoS via Server Actions — crafted requests cause CPU exhaustion, blocking all other in-process requests | Deny service; take down the app |
+| **High** | [CVE-2026-64642](https://www.cve.org/CVERecord?id=CVE-2026-64642) | Middleware/Proxy bypass via Turbopack + single `i18n.locales` entry | Bypass auth, security checks, WAF rules |
+| **High** | [CVE-2026-64645](https://www.cve.org/CVERecord?id=CVE-2026-64645) | SSRF via rewrites using attacker-controlled hostname — `rewrites()`/`redirects()` rule with user-supplied hostname can hit arbitrary hosts | Internal service scanning, credential theft |
+| **High** | [CVE-2026-64649](https://www.cve.org/CVERecord?id=CVE-2026-64649) | SSRF via Server Actions on custom servers — when an action forwards/redirects, attacker-controlled `Host` headers send outbound requests to attacker-chosen hosts | Same as above |
+| **Moderate** | [CVE-2026-64644](https://www.cve.org/CVERecord?id=CVE-2026-64644) | Image Optimization DoS — malicious SVG served via `/_next/image` when remote image loading is configured causes CPU exhaustion | Deny service via SVG bomb |
+| **Moderate** | [CVE-2026-64646](https://www.cve.org/CVERecord?id=CVE-2026-64646) | Unbounded Server Action payload in Edge runtime — crafted request causes memory consumption | Memory exhaustion DoS |
+| **Moderate** | [CVE-2026-64643](https://www.cve.org/CVERecord?id=CVE-2026-64643) | Internal Server Function endpoint disclosure — Server Action and `use cache` endpoint IDs globally disclosed with no auth | Reconnaissance; map your internal API surface |
+| **Moderate** | [CVE-2026-64648](https://www.cve.org/CVERecord?id=CVE-2026-64648) | Cache confusion (same-URL, different body) — `fetch(new Request(url), differentInit)` may return wrong cached body | Response data leakage between users |
+| **Moderate** | [CVE-2026-64647](https://www.cve.org/CVERecord?id=CVE-2026-64647) | Cache confusion (invalid UTF-8 bodies) — UTF-16 byte sequences in request body share same cache key as other invalid-UTF-8 bodies | Same as above |
 
-**Interpretation:** the release is now **23 hours late** from the original Monday 17:00 UTC publishing window (Monday afternoon UTC was Vercel's historical pattern) and **13 hours late** from the Tuesday 17:00 UTC window after the date push. **Four plausible explanations:**
+**CVE → GHSA cross-reference:**
 
-1. **A wider CVE surface than the July 13 announcement suggested.** The 4-high + 5-medium count may have grown during pre-release QA — Vercel may have backported additional fixes from main into the 16.2.x and 15.5.x branches that warrant their own CVE entries. This would explain the >24h delay and would be a positive signal (better-disclosed, better-tested release).
-2. **Coordination with another vendor.** The May 2026 batch was coordinated with React (`react-server` + `react-dom` patches shipped the same day as Next.js). If Vercel is coordinating with Cloudflare (post-VoidZero acquisition of Vite/Vitest/Rolldown) or with the React core team on a related patch, the delay could be external-organization-driven. (Note: this is speculation — no public signal supports it.)
-3. **Internal tooling issue.** Vercel's release automation may be blocked on something (CI red, npm publish permission issue, security advisory embargo conflict). Less likely given Vercel's mature release infrastructure.
-4. **The release is shipping right now (mid-window).** The Tuesday UTC window is 00:00Z → 23:59Z, and 06:03Z is the start of the window. Vercel has historically published later in the day on patch releases. The 12:03Z / 18:03Z crons are the more likely catches for the actual live release.
+| CVE ID | GHSA ID |
+|---|---|
+| CVE-2026-64641 | GHSA-m99w-x7hq-7vfj |
+| CVE-2026-64642 | GHSA-6gpp-xcg3-4w24 |
+| CVE-2026-64643 | GHSA-955p-x3mx-jcvp |
+| CVE-2026-64644 | GHSA-q8wf-6r8g-63ch |
+| CVE-2026-64645 | GHSA-p9j2-gv94-2wf4 |
+| CVE-2026-64646 | GHSA-4c39-4ccg-62r3 |
+| CVE-2026-64647 | GHSA-4633-3j49-mh5q |
+| CVE-2026-64648 | GHSA-68g3-v927-f742 |
+| CVE-2026-64649 | GHSA-89xv-2m56-2m9x |
 
-**Recommended action — T+6h on the July 21 release:**
+**What to do right now:**
 
-- **Production owners:** keep the calendar block open through July 22 00:00Z. The release will ship today or tomorrow; you should not be doing other deploys until the patch is applied.
-- **Watch:** [Next.js blog RSS](https://nextjs.org/blog), [vercel/next.js releases feed](https://github.com/vercel/next.js/releases), [@nextjs on Twitter](https://twitter.com/nextjs). When a `v16.2.11` / `v15.5.21` immutable release appears on GitHub Releases, that's the signal.
-- **The moment the patch lands:** `npm install next@latest`, bust Docker cache (`docker build --no-cache` or `docker buildx build --pull`), redeploy, verify version via `curl -I https://your-app.com` + inspect `X-Powered-By: Next.js` (or `npm list next` inside the running container).
-- **If you have OSS plugins to update:** widen the peer range to `^16.2.0 || ^15.5.0` (or wider) NOW so users can pick up the patch without forking.
+1. **Upgrade `next` + `react` immediately** — `npm install next@latest react@latest react-dom@latest` (or `next@15.5.21` if on the 15.x line). Bust Docker cache and redeploy.
+2. **If you use Turbopack + single `i18n.locales` entry** (CVE-2026-64642): auth/security checks in middleware are bypassed — audit your middleware for reliance on locale-based routing for security decisions.
+3. **If you use `rewrites()` or `redirects()` with dynamic hostnames** (CVE-2026-64645): audit every `beforeFiles`/`afterFiles`/`fallback` rewrite where the destination hostname is built from `request.headers.get('host')`, `request.nextUrl`, or any user-supplied input. Add explicit allowlist validation.
+4. **If you use custom servers with Server Actions** (CVE-2026-64649): audit every Server Action that calls `redirect()` or `NextResponse.redirect()`. Ensure the `Host` header in forwarded requests is validated against an allowlist, not passed through from the client.
+5. **If you expose `/_next/image` with remote image loading enabled** (CVE-2026-64644): restrict the `remotePatterns` config to known-safe domains only. Do not use `hostname: '*'`.
+6. **If you use Edge runtime Server Actions** (CVE-2026-64646): set `serverActions.bodySizeLimit` explicitly — do not rely on defaults.
+7. **If you use `fetch()` with request bodies** (CVE-2026-64648 + CVE-2026-64647): audit every server-side `fetch(new Request(...), { body: ... })` pattern. Prefer `fetch(url, { body: ... })` form (not the two-arg form) or ensure cache keys include the body.
+8. **Subscribe to the Next.js security release calendar** — the next release is targeted for **August 20, 2026** (same day each month). Set a calendar reminder now.
 
-**Bonus intelligence from this cron:**
-
-- **3 new canary-branch commits** since 1.4.74 — none are security-relevant (create-next-app template change, Turbopack config rename, CI-only). Documented in SKILL.md and setup.md.
-- **2 new React main-branch commits** since `83840902-20260719`: PR #37061 (Fragment scroll containers, paired with the already-documented PR #37060) + PR #36947 (Activity + `useSyncExternalStore` mutations during hidden period — material bug fix for any app combining `<Activity>` with Zustand / Jotai / TanStack Query / custom stores). Documented in components.md and patterns.md.
-- **Vitest PR #10734** promoted `experimental.fsModuleCache` → top-level `test.fsModuleCache`. Documented in testing.md.
-- **Vite PR #22642** added the `build.input` option (most material new Vite feature since 8.1.5). Documented in setup.md.
-
-**Confirmed-safe crons so far for the July batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, 1.4.71 wrote the T-11h status at 06:03Z July 20, 1.4.72 wrote the T-5h status at 12:02Z July 20, 1.4.73 wrote the T+1h status at 18:03Z July 20, 1.4.74 wrote the official-date-push status at 00:03Z July 21, this 1.4.75 update at 06:03Z July 21 confirms: (a) the security patch (`16.2.11` / `15.5.21`) still has not landed, now ~13h past the Tuesday window; (b) the canary train advanced 3 commits since 1.4.74 (none security-relevant); (c) React main branch advanced 2 commits (Fragment-scroll sibling + Activity-`useSyncExternalStore` fix); (d) Vitest + Vite stable-track work continues with 5 material new PRs. The skill tracks the release with one checkpoint per 6-hour cron; the 12:03Z July 21 check will likely catch the live release or note the second date-push.
-
-**Sources:**
-- [npm `next` package metadata (canary.91, no 16.2.11 / 15.5.21 yet)](https://registry.npmjs.org/next)
-- [GitHub: `vercel/next.js` canary-branch comparison vs canary.91 tag (3 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.91...canary)
-- [GitHub: `v16.3.0-canary.91` tag cut 2026-07-20T23:58:30Z, SHA `4dea35dbd218deb12ecca36d7aedd760fe17b923`](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.91)
-- [Next.js Security Release Program blog (date-push banner confirmed July 20, 2026; no follow-up post)](https://nextjs.org/blog/next-security-release-program)
-- [GitHub: `vercel/next.js` security advisories (May 2026 batch only — no July entries yet)](https://github.com/vercel/next.js/security/advisories)
-- [React main-branch comparison vs canary `83840902-20260719` — 2 commits ahead](https://github.com/facebook/react/compare/19.3.0-canary-83840902-20260719...main)
-- [PR #36947 `[Fiber] Detect useSyncExternalStore mutations missed while Activity tree was hidden`](https://github.com/facebook/react/pull/36947) (sophiebits, merged 2026-07-21T03:39:10Z)
-
-### ### July 21, 2026 — Official Date Push + T-0h Live Status Update (Updated 2026-07-21 — 00:03Z)
-
-It is **Tuesday, July 21, 2026 at 00:03 UTC** — Vercel has **OFFICIALLY PUSHED** the July security release from July 20 → **July 21, 2026**. Per the update to the [Next.js Security Release Program](https://nextjs.org/blog/next-security-release-program) blog post (banner reading: *"July 20, 2026: The July security release originally targeted for July 20 is now expected on July 21, 2026."* — confirmed via the nextjs.org blog snippet above the heading "Upcoming July release"), the same 4-high + 5-medium CVE batch targeting 16.2.x and 15.5.x is still expected, but on the new day. The canary train has meanwhile advanced: **canary.91 SHIPPED today at 2026-07-20T23:58:15Z** (npm dist-tag pointer moved to 16.3.0-canary.91), about 1 day earlier than the 1.4.73 cron's prediction (~2026-07-21T23:00Z). The 6th 6-hourly checkpoint on the release track.
-
-Live state checks (npm + GitHub at 2026-07-21T00:03Z):
-
-- **`next@latest`** = `16.2.10` (unchanged; **no 16.2.11 yet**)
-- **`next@backport`** = `15.5.20` (unchanged; **no 15.5.21 yet**)
-- **`next@canary`** = `16.3.0-canary.91` (npm dist-tag pointer moved 2026-07-20T23:58:15Z, ~5 minutes before this cron)
-- **`next@preview`** = `16.3.0-preview.6` (unchanged since 2026-07-13T20:20Z)
-- **canary-branch HEAD** = `4dea35dbd2` (per the [canary-branch comparison](https://github.com/vercel/next.js/compare/v16.3.0-canary.91...canary)) = **0 commits ahead of canary.91 tag `4dea35dbd2`** — clean tag-cut, no in-flight for canary.92 yet. The canary branch is dormant and waiting for the security team's release window.
-- **canary.91 release body** lists 9 PRs (the 4 already-documented in 1.4.73: PR #95761 + #95351 + #95840 + #95631, plus 5 NEW PRs from the canary-branch-ahead-of-canary.90 window: #95903, #95716, #95835, #95911, #95928 — none security-relevant, all will be in the next 16.2.x security release as documentation/test infra only)
-- **React canary** advanced to `19.3.0-canary-83840902-20260719` (2026-07-20T16:47:45Z, replaces `172742b4-20260716`) — 3 PRs ahead of the last-documented React canary: [PR #36917](https://github.com/facebook/react/pull/36917) `[Fizz] Support nested enter/exit ViewTransition animations`, [PR #36977](https://github.com/facebook/react/pull/36977) `[Fizz] Extend stack overflow recovery to retries`, [PR #37060](https://github.com/facebook/react/pull/37060) `[DOM] Scroll to text siblings of empty Fragments instead of the parent`. **Not in `next@canary`'s vendored React yet** — the next Next.js canary React vendor bump will pick this up.
-- **Next.js GitHub Releases page** = no `v16.2.11` / `v15.5.21` pre-release tag; **no Vercel blog post** past July 13, 2026 except the date-push banner on the existing `next-security-release-program` post (no separate "release shipped" post yet)
-- **Vercel blog index** = last entry still "Next.js Security Release and Our Next Patch Release" from July 13, 2026
-
-**Interpretation:** the release is **still on the calendar** but slipped one day per the official blog banner. Vercel has not published a separate explanation for the delay; the banner just says "expected on July 21" with no reason. The release window is now July 21 00:00Z → July 21 23:59Z (Tuesday UTC). The next 6-hourly crons (06:03Z / 12:03Z / 18:03Z / 00:03Z July 22) will catch the live release as the day unfolds. **Action unchanged from the T-24h checklist** — keep the calendar block open for July 21 (now Tuesday UTC), watch [Next.js blog RSS](https://nextjs.org/blog) / [vercel/next.js releases feed](https://github.com/vercel/next.js/releases) live, run `npm install next@latest` the moment a patch lands, bust Docker cache (`docker build --no-cache` or `docker buildx build --pull`), redeploy, verify version via `curl -I https://your-app.com` + inspect `X-Powered-By: Next.js` (or `npm list next` inside the running container).
-
-**Bonus intelligence from this cron:** the canary train finally caught up. **canary.91** shipped today at 23:58Z with the 9 PRs the canary-branch-ahead-of-canary.90 status was tracking — no surprises. **React canary advanced to `83840902-20260719`** (3 commits since `172742b4-20260716`) — none of the 3 are flagged security-related; the next vendor React bump in Next.js will pull this canary. **No framework-side security content changes** since 1.4.73 — just waiting on the Vercel publishing window for `16.2.11` / `15.5.21` to land on npm + the accompanying Vercel blog post with CVE details.
-
-**Confirmed-safe crons so far for the July batch:** *no false alarms — every check has been consistent*. 1.4.69 wrote the T-24h checklist at 12:03Z July 19, 1.4.70 wrote the canary.90 + security-release-pending status at 00:03Z July 20, 1.4.71 wrote the T-11h status at 06:03Z July 20, 1.4.72 wrote the T-5h status at 12:02Z July 20, 1.4.73 wrote the T+1h status at 18:03Z July 20, this 1.4.74 update at 00:03Z July 21 confirms: (a) the official date-push to July 21 per the Vercel blog banner; (b) **canary.91 SHIPPED** today at 23:58Z (one day earlier than predicted); (c) **React canary advanced to `83840902-20260719`** with 3 new non-security PRs since 1.4.73; (d) the security patch (`16.2.11` / `15.5.21`) still has not landed — expected sometime in the 00:00Z → 23:59Z window on July 21. The skill tracks the release with one checkpoint per 6-hour cron; the 06:03Z check on July 21 will likely catch the live release or the post-mortem if the date pushes again.
+**Monthly cadence reminder:** Going forward, Vercel ships security patches on the **20th of each month** (or the next business day if the 20th falls on a weekend). Upgrade within 24h of each release — the window from announcement (7 days prior) to patch availability (the 20th) is your preparation runway.
 
 **Sources:**
-- [npm `next` package metadata (modified 2026-07-20T23:58:30Z for canary.91)](https://registry.npmjs.org/next)
-- [GitHub: `vercel/next.js` canary-branch comparison vs canary.91 tag (identical, 0 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.91...canary)
-- [GitHub: `v16.3.0-canary.91` tag cut 2026-07-20T23:58:30Z, SHA `4dea35dbd218deb12ecca36d7aedd760fe17b923`](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.91)
-- [Next.js Security Release Program blog (date-push banner confirmed July 20, 2026)](https://nextjs.org/blog/next-security-release-program)
-- [React canary 19.3.0-canary-83840902-20260719 (npm)](https://www.npmjs.com/package/react?activeTab=versions)
-- [GitHub: React compare `172742b419ba...83840902c890` (3 commits ahead — PRs #36917, #36977, #37060)](https://github.com/facebook/react/compare/172742b419ba...83840902c890)
+- [Next.js blog: July 2026 Security Release](https://nextjs.org/blog/july-2026-security-release) (full CVE descriptions)
+- [GitHub: v16.2.11 release](https://github.com/vercel/next.js/releases/tag/v16.2.11)
+- [GitHub: v15.5.21 release](https://github.com/vercel/next.js/releases/tag/v15.5.21)
+- [GitHub: v16.3.0-canary.92 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.92)
+- [Netlify Changelog: Next.js security vulnerabilities (July 21, 2026)](https://www.netlify.com/changelog/2026-07-21-nextjs-security-vulnerabilities/)
 
 ## CVE-2026-23869 — React RSC DoS (April 2026)
 
