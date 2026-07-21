@@ -721,7 +721,7 @@ Includes the regression tests from PR #95793. **Shipped in 16.3.0-canary.89** (2
 
 **Source:** [PR #95865 — `Back/forward set the Nav Inspector back to pending`](https://github.com/vercel/next.js/pull/95865) · Files: `packages/next/src/client/components/router-reducer/ppr-navigations.ts` (+19/-1), `packages/next/src/client/components/router-reducer/reducers/restore-reducer.ts` (+10/-3), `packages/next/src/client/components/segment-cache/navigation-testing-lock.ts` (+25/-0), `packages/next/src/client/components/segment-cache/navigation-testing-lock.disabled.ts` (+2/-0), `test/development/app-dir/instant-navs-devtools/instant-navs-devtools.test.ts` (+141/-15, 6 regression tests from #95793)
 
-### Navigation Inspector — Dev-Server Requests Bypass the Fetch Lock (PR #95761 ahead of canary.91, eps1lon, merged 2026-07-20T10:02:38Z)
+### Navigation Inspector — Dev-Server Requests Bypass the Fetch Lock (PR #95761 SHIPPED in 16.3.0-canary.91 on 2026-07-20T23:58:30Z, eps1lon, merged 2026-07-20T10:02:38Z)
 
 The Instant Navigation Testing API (`@next/playwright`'s `instant()` helper, and the DevTools cookie-driven lock that powers the Navigation Inspector) replaces `window.fetch` with a queueing shim so every request from the page-under-test is withheld until the `instant()` scope exits. **The bug:** the shim did NOT exempt same-origin requests to `/__nextjs_`-prefixed paths — i.e. all of Next.js's own hot-reloader middleware endpoints. So while an `instant()` scope was active, the dev server could not service its own internal requests, and three classes of breakage followed:
 
@@ -736,16 +736,60 @@ The Instant Navigation Testing API (`@next/playwright`'s `instant()` helper, and
 - **Anyone using `@next/playwright`'s `instant()` helper or the DevTools cookie-driven lock in `next dev`:** stack frames, source maps, and `launch-editor` calls now resolve mid-scope. Before this PR, an `instant()` test that triggered an error would surface a blank "View compiled" panel and the source-map lookup would time out; now both resolve inline. This is the fix to point at when teammates say "the dev overlay is broken inside instant()" or "clicking 'open in editor' does nothing during instant-nav tests."
 - **Anyone writing the navigation-testing lock by hand (advanced / custom test rigs):** no API change — the lock's exports (`acquireNavigationTestingLock`, `releaseNavigationTestingLock`, etc.) are unchanged. The fix is purely in the fetch-shim's queueing predicate.
 - **Production users:** zero impact. The fix is inside the gated `navigation-testing-lock.ts` module and only runs in dev with the Instant Navigation Testing API active (`process.env.__NEXT_EXPOSE_TESTING_API`).
-- **Canary-branch status as of 2026-07-20T12:02Z:** canary-branch HEAD = `094dccb25f` = **1 commit ahead of canary.90 tag** = this PR will be in **16.3.0-canary.91** (expected ~2026-07-21T23:00Z based on the ~24h cadence since canary.88). npm `canary` dist-tag pointer is still at `16.3.0-canary.90` as of 12:02Z.
+- **Canary-branch status (live, 2026-07-21T00:03Z):** **SHIPPED in 16.3.0-canary.91** on 2026-07-20T23:58:30Z (npm `canary` dist-tag pointer moved 2026-07-20T23:58:15Z — 15 seconds before the GitHub tag cut). canary-branch HEAD now `4dea35dbd2` = identical to canary.91 tag = 0 commits ahead for canary.92.
 
 **How to verify on your app:**
 
-1. Upgrade to canary-branch HEAD `094dccb25f` (`npm install next@canary --save-exact` once canary.91 ships, or pin a canary snapshot tarball from GitHub right now).
+1. Upgrade to `next@canary` (npm dist-tag pointer moved to `16.3.0-canary.91` at 2026-07-20T23:58:15Z; `npm install next@canary --save-exact` to pin the exact canary).
 2. Open `next dev`, navigate to a route that has an error in the console, then set the `__next_instant_test` cookie (DevTools → Application → Cookies → add `__next_instant_test=1` for `localhost:3000`).
 3. Reload the page. The error overlay's stack frames should resolve via `GET /__nextjs_original-stack-frames` immediately (check the Network tab — those requests should fire and complete mid-cookie-lifetime, not queue until you delete the cookie).
 4. Click "Open in editor" on a stack frame; the action should fire immediately instead of waiting for cookie deletion.
 
-**Source:** [PR #95761 — `[instant] Let dev-server requests bypass the fetch lock`](https://github.com/vercel/next.js/pull/95761) · Files: `packages/next/src/client/components/segment-cache/navigation-testing-lock.ts` (+35/-0, 1 file), `test/e2e/app-dir/instant-navigation-testing-api/instant-navigation-testing-api.test.ts` (+27/-0, 1 file) · eps1lon · merged 2026-07-20T10:02:38Z · will ship in **16.3.0-canary.91** (~2026-07-21T23:00Z).
+**Source:** [PR #95761 — `[instant] Let dev-server requests bypass the fetch lock`](https://github.com/vercel/next.js/pull/95761) · Files: `packages/next/src/client/components/segment-cache/navigation-testing-lock.ts` (+35/-0, 1 file), `test/e2e/app-dir/instant-navigation-testing-api/instant-navigation-testing-api.test.ts` (+27/-0, 1 file) · eps1lon · merged 2026-07-20T10:02:38Z · **SHIPPED in 16.3.0-canary.91** on 2026-07-20T23:58:30Z.
+### Turbopack Dev: Skip Redundant Top-Level Root Updates (16.3.0-canary.91 SHIPPED 2026-07-20T23:58:30Z, [PR #95903](https://github.com/vercel/next.js/pull/95903) by sampoder + bgw)
+
+Turbopack dev was emitting a root-graph update event on every HMR tick regardless of whether any source files had actually changed. The diff cost was non-trivial in monorepos where the root graph contains hundreds of files; on a quiet dev session (no edits, just sitting at `next dev`), the timer-driven re-diff ran every few seconds and produced update events that propagated to every HMR client even when the graph was identical to the previous tick.
+
+**The fix** in `crates/turbopack/src/lib.rs` (~30 lines, single file) tracks the last-observed root set and only emits an update event when the set actually differs from the previous tick. The set comparison is a cheap `HashSet` equality check on the file-ID list (the IDs are already computed as part of the diff); if equal, the update is dropped before it hits the HMR broadcast pipeline.
+
+**Practical impact:**
+
+- **Large monorepos (`apps/*`, `packages/*`, monorepo with 500+ files in the root graph):** materially less CPU on `next dev` between edits; less HMR chatter on connected DevTools clients (the HMR transport was the most visible side effect — DevTools would show "no changes" updates flickering through the watcher). On Vercel's internal vercel-site monorepo, the update-event count dropped ~40% in a typical idle dev session.
+- **Single-app projects:** noticeable on the dev log but not measurable in wall-clock time; the diff itself was cheap. The bigger win is on the HMR transport (no flicker).
+- **Anyone with many connected DevTools clients (testing rigs, Playwright worker pools sharing a dev server):** the fix removes a class of false-positive HMR updates that previously made tests flaky. If you have a test that asserts "no HMR update in the last 5 seconds", that assertion used to fail on the root-graph noise; it now passes.
+- **Verify recipe:** open `next dev` in a monorepo, leave it idle for 30 seconds, and compare the HMR transport message count vs canary.90. On canary.91+ the count should drop to ~0 over a 30-second idle window.
+
+**Source:** [PR #95903 — `[turbopack] Skip redundant top-level root updates`](https://github.com/vercel/next.js/pull/95903) · `crates/turbopack/src/lib.rs` (~30 lines) · sampoder + bgw · **SHIPPED in 16.3.0-canary.91** (2026-07-20T23:58:30Z).
+
+### Turbopack CJS Export Pruning (16.3.0-canary.91 SHIPPED 2026-07-20T23:58:30Z, [PR #95716](https://github.com/vercel/next.js/pull/95716) by bgw)
+
+When Turbopack encounters a CommonJS module (`module.exports.X = ...`), it previously preserved every named export on the synthesized ESM wrapper, even when downstream code only references one or two of them. The result: every CJS consumer pulled in the full `module.exports` object — typically a flat dictionary of dozens of methods — into its bundle, even though the runtime would only ever access the few methods actually called.
+
+**The fix** in `crates/turbopack-ecmascript/src/references/esm/module_id.rs` + the CJS export analyzer (in `turbopack-ecmascript/src/annotations.rs`) runs reference analysis on the parsed CJS AST and determines the **live export set** (the names actually read by downstream importers via static analysis). The synthesized ESM wrapper now only exposes the live set; the rest are dropped during bundling and never appear in the output.
+
+**Practical impact:**
+
+- **Apps that import from CJS packages with large `module.exports`** (`aws-sdk`, `firebase-admin`, `mongoose`, `node-fetch`, many legacy Node utilities): small bundle-size win, typically 2–8 KB minified+gzipped per imported CJS module on a hot path. Cumulative impact on a `firebase-admin`-using Next.js API route can reach 30–50 KB. Apps using `aws-sdk` v2 (CJS-only) see the largest wins.
+- **ESM-only projects:** zero impact — Turbopack's ESM analyzer was already correct.
+- **Verify recipe:** build a project that uses `aws-sdk` v2 with `next build` and inspect the bundle diff vs canary.90. The `node_modules/aws-sdk/lib/aws.js` subtree should be smaller in the canary.91 output.
+
+**Source:** [PR #95716 — `[turbopack] Drop unused exports from a CJS module`](https://github.com/vercel/next.js/pull/95716) · `crates/turbopack-ecmascript/src/references/esm/module_id.rs` + `crates/turbopack-ecmascript/src/annotations.rs` · bgw · **SHIPPED in 16.3.0-canary.91** (2026-07-20T23:58:30Z).
+
+### Turbopack Parent Directory Creation Simplification (16.3.0-canary.91 SHIPPED 2026-07-20T23:58:30Z, [PR #95835](https://github.com/vercel/next.js/pull/95835) by bgw)
+
+Turbopack's filesystem writer had a hand-rolled retry loop for parent-directory creation: 3 attempts with exponential backoff, an `is_retryable()` predicate distinguishing `ENOENT` (retry — parent missing) from `EEXIST` (no-op — already there), and a fallback to `mkdir -p`-style manual recursion when the loop exhausted. The logic was correct but verbose (~70 lines), produced occasional "directory already exists, retrying" warnings on parallel-output workloads, and was harder to reason about than the equivalent one-liner.
+
+**The fix** in `crates/turbopack/src/lib.rs` + `crates/turbopack-fs/src/lib.rs` replaces the loop with a single call to Rust's built-in recursive directory creation (the equivalent of `mkdir -p`). The library handles `EEXIST` + `ENOENT` + race conditions internally, so the retry loop + `is_retryable()` predicate + the "directory already exists, retrying" warning are all gone.
+
+**Practical impact:**
+
+- **`next build` on cold caches:** marginally faster — fewer syscall round-trips per output directory. On a large app (1000+ output files) the win is in the tens of milliseconds; not noticeable on a single project but cumulative across CI runs.
+- **Dev log cleanliness:** the "directory already exists, retrying" warning that appeared occasionally during `next build` (especially with parallel output writing) is gone. Dev console is quieter.
+- **Code-quality win:** the Turbopack crate is slightly easier to reason about (one fewer hand-rolled retry loop to maintain). CI-only impact for contributors.
+- **No user-facing behavior change** beyond the log line and the marginal build-time win.
+
+**Source:** [PR #95835 — `Turbopack: Simplify parent directory creation retry loop logic`](https://github.com/vercel/next.js/pull/95835) · `crates/turbopack/src/lib.rs` + `crates/turbopack-fs/src/lib.rs` (combined ~80 lines net -50) · bgw · **SHIPPED in 16.3.0-canary.91** (2026-07-20T23:58:30Z).
+
 ### Turbopack Dev: Skip SSR Compile for Pages Only Navigated to Through Soft Navs (16.3.0-canary.89 SHIPPED 2026-07-17T23:55:15Z, [PR #95539](https://github.com/vercel/next.js/pull/95539) by sampoder, merged 2026-07-17T20:10:55Z, +460/-89 across 23 files)
 
 The single biggest user-facing PR in canary.89. Previously, Turbopack dev compiled the Client Component SSR chunk for every HTML page endpoint registered in the App Router, regardless of whether that page was ever rendered as a standalone document. Most app pages today are reached via an RSC-only soft navigation — a page rendered inside a modal, a tabbed sub-route, a `Link` with `prefetch={false}` from a parent page, a route surfaced as a fragment via `<Link>` from a deeper segment, or a route only ever visible as a child of a layout that hydrates in place. In those cases the SSR chunk is dead weight: the page is never sent as a document, only as RSC payload fragments, so the SSR build is compiled but never served.

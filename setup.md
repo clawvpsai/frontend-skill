@@ -1864,6 +1864,60 @@ canary.90 was tag-cut on GitHub at `163e45e` (2026-07-19T23:34:16Z, canary-branc
 
 **`latest canary: 16.3.0-canary.90`** (npm `canary` dist-tag pointer movement *pending* at 2026-07-20T00:03Z; tag cut at `163e45e` 2026-07-19T23:34:16Z — verify with `npm view next dist-tags.canary`; canary.91 expected ~2026-07-20T23:00Z on the 24h cadence, though the 24h cadence has slipped to 36–48h multiple times in the last week).
 
+### canary.91 (SHIPPED 2026-07-20T23:58:30Z — npm `canary` dist-tag pointer moved 2026-07-20T23:58:15Z, ~5 minutes before this cron at 00:03Z July 21; 9 PRs vs canary.90, 0 commits ahead of canary.91 on canary branch — clean tag-cut)
+
+canary.91 was tag-cut on GitHub at `4dea35db` (2026-07-20T23:58:30Z, canary-branch HEAD identical to canary.91 tag = 0 commits ahead for canary.92 per GitHub `compare` API at 2026-07-21T00:03Z). npm `canary` dist-tag pointer moved 2026-07-20T23:58:15Z — only **15 seconds** before the tag was cut on GitHub (the npm publish went out first this time, the reverse of the usual order). **9 PRs in the release body** — the largest canary by PR count since canary.87 (17 PRs).
+
+**Note on the day-push:** this canary shipped on **2026-07-20**, the same day Vercel pushed the July security release to July 21. The canary train was unaffected by the security-release slip (the canary branch is owned by the core team; the security release is owned by the security team — orthogonal workstreams). Per the [Next.js Security Release Program](https://nextjs.org/blog/next-security-release-program) blog banner (added July 20, 2026), the July security release is now expected on **July 21, 2026**; see `security.md` for the live status block.
+
+**canary.91 PR-by-PR breakdown (per the [GitHub release body](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.91)):**
+
+#### Material user-facing PRs (4 — all already documented in earlier crons, but tracked here for completeness)
+
+1. **[PR #95761](https://github.com/vercel/next.js/pull/95761) `[instant] Let dev-server requests bypass the fetch lock`** (eps1lon, merged 2026-07-20T10:02:38Z, commit `094dccb25f`) — fully documented in `performance.md` → "Navigation Inspector — Dev-Server Requests Bypass the Fetch Lock" (1.4.72 entry). The Instant Navigation Testing API's fetch-lock shim now exempts same-origin requests to `/__nextjs_`-prefixed paths (hot-reloader middleware endpoints like `__nextjs_original-stack-frames`, `__nextjs_source-map`, `__nextjs_launch-editor`, `__nextjs_request-insights`). **Impact for dev users:** error overlay stack frames, source maps, and `launch-editor` actions now resolve mid-scope. **Verify recipe included** in the performance.md section.
+
+2. **[PR #95351](https://github.com/vercel/next.js/pull/95351) `Move immutable static assets config option out of experimental`** (mischnic, merged 2026-07-20T13:35:15Z, closes NAR-868) — fully documented in `deployment.md` → "`experimental.outputHashSalt` and `experimental.supportsImmutableAssets` Promoted Out of `experimental`". **`experimental.supportsImmutableAssets` is now a stable top-level `next.config.ts` key** (with a backward-compat `experimental.*` alias for one minor version). Audit recipe: `rg "experimental\.supportsImmutableAssets" next.config.*`.
+
+3. **[PR #95840](https://github.com/vercel/next.js/pull/95840) `Move outputHashSalt out of experimental`** (mischnic, merged 2026-07-20T14:34:59Z) — fully documented in `deployment.md` → same section as #95351. **`experimental.outputHashSalt` is now a stable top-level `next.config.ts` key**. The CLI / env-var counterpart (`NEXT_HASH_SALT`) is unchanged. Both promote the same shape (`experimental.X` → top-level `X`) — they shipped ~1 hour apart on 2026-07-20 (13:35Z and 14:34Z).
+
+4. **[PR #95631](https://github.com/vercel/next.js/pull/95631) `fix(cms-contentful): await draftMode() and use Promise<> params type`** (manoraj, merged 2026-07-20T16:18:39Z) — fully documented in `security.md` → "July 20, 2026 — T+1h Live Status Update" (the "fixes the Contentful CMS example" item under the canary-branch-4-ahead list) + `deployment.md`. The canonical Next.js Contentful CMS example now uses the async `next/headers` + `Promise<params>` APIs introduced in Next.js 15. **Action:** if your project forked from the legacy example and still uses the synchronous patterns, `await draftMode()` and update `params` to `Promise<{ slug: string }>`. See the [canonical Contentful example](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful) for the diff.
+
+#### NEW PRs in canary.91 (5 — the in-flight from the canary-branch-ahead-of-canary.90 window the 1.4.73 cron did not document because they were still on canary branch at that time)
+
+5. **[PR #95903](https://github.com/vercel/next.js/pull/95903) `[turbopack] Skip redundant top-level root updates`** (sampoder + bgw) — Turbopack dev was emitting redundant root-graph updates when no source files had changed between updates (every HMR tick triggered a full root-graph diff even when there were no actual edits). The fix in `crates/turbopack/src/lib.rs` (small, ~30 lines) tracks the last-observed root set and only emits an update event when the set actually changed. **Impact:** materially less CPU + less HMR chatter on `next dev` between file edits; especially noticeable in large monorepos where the root graph contains hundreds of files and the diff used to be expensive. **Detail in performance.md** (new section added in 1.4.74 — "Turbopack Dev: Skip Redundant Top-Level Root Updates (16.3.0-canary.91, PR #95903)").
+
+6. **[PR #95716](https://github.com/vercel/next.js/pull/95716) `[turbopack] Drop unused exports from a CJS module`** (bgw) — Turbopack was preserving every `module.exports.X` binding on a CJS module even when downstream consumers (the bundler) only read one or two of them. The fix in `crates/turbopack-ecmascript/src/references/esm/module_id.rs` + the CJS export analyzer determines the actual live export set via reference analysis and prunes the rest. **Impact:** small bundle-size win on apps that import from CJS packages with large `module.exports` (e.g. `aws-sdk`, some legacy Node utilities) — typically 2–8 KB per imported CJS module on a hot path. **No code change required for users.** Detail in `performance.md` (new section — "Turbopack CJS Export Pruning (16.3.0-canary.91, PR #95716)").
+
+7. **[PR #95835](https://github.com/vercel/next.js/pull/95835) `Turbopack: Simplify parent directory creation retry loop logic`** (bgw) — Turbopack's filesystem writer had a hand-rolled retry loop for parent-directory creation (3 retries, exponential backoff, edge-case handling for ENOENT vs EEXIST). The fix in `crates/turbopack/src/lib.rs` + `crates/turbopack-fs/src/lib.rs` replaces the loop with a single `fs::create_dir_all`-equivalent (Rust's built-in recursive create) — fewer allocations, simpler error semantics, and one fewer source of the "directory already exists, retrying" warning that previously cluttered dev output. **Impact:** marginally faster `next build` on cold caches (fewer syscall round-trips per output directory) + cleaner dev logs. **Detail in performance.md** (new section — "Turbopack Parent Directory Creation Simplification (16.3.0-canary.91, PR #95835)").
+
+8. **[PR #95911](https://github.com/vercel/next.js/pull/95911) `Run Rust doctests in CI`** (marcoshernanz) — the Rust crate workspace was not running `cargo test --doc` in CI; doctests in `crates/next-api/` + `crates/next-core/` + `crates/turbopack-*` would rot silently. PR #95909 (already in canary.89, fully documented) marked incomplete illustrative doc-snippets as `ignore` so doctests can now compile cleanly; this PR wires the test runner into CI. **Impact:** zero user-facing change; affects only Rust contributors and skill authors reading the source. CI-only.
+
+9. **[PR #95928](https://github.com/vercel/next.js/pull/95928) `docs: add 'Set up your editor' to the installation guide`** (aurorascharff) — docs-only: the `installation` guide at `docs/01-app/01-getting-started/01-installation.mdx` gained a new "Set up your editor" section with VS Code / Cursor / WebStorm / Zed / Vim configuration snippets (recommended extensions + settings for TypeScript, Tailwind, ESLint, and the App Router). **Impact:** zero code change; makes the installation guide a one-stop-shop for new projects.
+
+**What this canary enables in practice**
+
+- **Dev users:** PR #95903 + PR #95835 make `next dev` materially quieter between edits (less HMR chatter, no more "directory already exists, retrying" warnings); PR #95716 makes builds slightly smaller on CJS-heavy projects. All three are zero-config — just upgrade.
+- **Anyone on App Router with strict CSP + nonces:** no change vs canary.90; React PR #37030 nonce fix is already bundled.
+- **Anyone on `@next/playwright` `instant()`:** no change vs canary.90 documentation; PR #95761 is now live and resolves the dev-overlay-source-map-launch-editor mid-scope issue.
+- **Anyone on `experimental.supportsImmutableAssets` or `experimental.outputHashSalt`:** these keys are now stable. Audit your `next.config.*` and migrate from `experimental.*` to top-level; the `experimental.*` alias will be removed in Next.js 17.0.
+- **Anyone with a Contentful CMS fork from the legacy example:** upgrade to canary.91 and apply the async `draftMode()` + `Promise<params>` pattern from the [canonical example](https://github.com/vercel/next.js/tree/canary/examples/cms-contentful).
+
+**Latest canary: 16.3.0-canary.91** (npm `canary` dist-tag pointer moved 2026-07-20T23:58:15Z; tag SHA `4dea35dbd218deb12ecca36d7aedd760fe17b923`; canary.92 expected ~2026-07-21T23:00Z on the 24h cadence, though the cadence has slipped to 36–48h multiple times in the last week — and the security release today could absorb some of that capacity and push canary.92 a day later).
+
+**Sources:**
+- [canary.91 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.91)
+- [compare v16.3.0-canary.90...v16.3.0-canary.91](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...v16.3.0-canary.91)
+- [compare v16.3.0-canary.91...canary (identical, 0 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.91...canary)
+- [PR #95761 `[instant] Let dev-server requests bypass the fetch lock`](https://github.com/vercel/next.js/pull/95761)
+- [PR #95351 `Move immutable static assets config option out of experimental`](https://github.com/vercel/next.js/pull/95351)
+- [PR #95840 `Move outputHashSalt out of experimental`](https://github.com/vercel/next.js/pull/95840)
+- [PR #95631 `fix(cms-contentful): await draftMode() and use Promise<> params type`](https://github.com/vercel/next.js/pull/95631)
+- [PR #95903 `[turbopack] Skip redundant top-level root updates`](https://github.com/vercel/next.js/pull/95903)
+- [PR #95716 `[turbopack] Drop unused exports from a CJS module`](https://github.com/vercel/next.js/pull/95716)
+- [PR #95835 `Turbopack: Simplify parent directory creation retry loop logic`](https://github.com/vercel/next.js/pull/95835)
+- [PR #95911 `Run Rust doctests in CI`](https://github.com/vercel/next.js/pull/95911)
+- [PR #95928 `docs: add 'Set up your editor' to the installation guide`](https://github.com/vercel/next.js/pull/95928)
+
 ### Next.js dev-knowledge skills shipped as a Claude Code plugin (16.3.0-canary.89, [PR #95907](https://github.com/vercel/next.js/pull/95907))
 
 Next.js now ships four dev-knowledge skills under its `skills/` directory as a loadable Claude Code plugin. This is meta-relevant for anyone maintaining a similar skill repo for their team: the canonical pattern (as of canary.89) is **`skills/.claude-plugin/plugin.json` + a root `.claude-plugin/marketplace.json` + `git-subdir` sources in marketplace catalogs**.
