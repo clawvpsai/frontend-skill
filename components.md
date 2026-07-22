@@ -1363,3 +1363,83 @@ export function Chat() {
 All of this runs at unit-test speed with zero network I/O.
 
 **Source:** [`@shadcn/helpers` — July 2026 changelog](https://ui.shadcn.com/docs/changelog/2026-07-helpers) · [`@shadcn/helpers` AI SDK docs](https://ui.shadcn.com/docs/helpers/ai-sdk) · [`@shadcn/helpers` TanStack AI docs](https://ui.shadcn.com/docs/helpers/tanstack-ai)
+
+---
+
+## React 19.3.0-canary-81e442ea-20260721 — Server Action Decoding Perf + Fragment-Blur Fix (July 21, 2026)
+
+The next React canary after `83840902-20260719` shipped 2026-07-21T16:26:12Z with **two new material PRs** (plus the two PRs from the previous cron that were already merged to main: PR #37061 Fragment-scroll + PR #36947 `useSyncExternalStore` Activity-reveal stale state). This canary is now bundled into **`next@canary@92`** (npm dist-tag 2026-07-21T17:51:18Z) and **`next@preview@7`** (npm dist-tag 2026-07-21T18:28:46Z), so any project running those tags automatically gets these fixes.
+
+### 1. PR #37090 `[FlightReply] Performance improvements when decoding` (Sebastien Silbermann, merged 2026-07-21T16:26:12Z)
+
+**A real Server Actions perf win.** The previous `decodeAction` implementation in `packages/react-server/src/ReactFlightActionServer.js` iterated through ALL form fields with `forEach`, allocated a `Set<string>` to track seen action keys, and processed each `$ACTION_*` field individually inside the loop. The new code remembers only the LAST action key seen (a single string variable `maybeActionKey`) and does the decoding ONCE outside the loop.
+
+```js
+// ❌ Before — O(n) work + Set allocation per form-field iteration
+const seenActions = new Set<string>()
+body.forEach((value, key) => {
+  if (key.startsWith('$ACTION_REF_')) {
+    if (seenActions.has(key)) return
+    seenActions.add(key)
+    action = loadServerReference(serverManifest, /* decode-bound-action */)
+  }
+  // ...
+})
+
+// ✅ After — single string + one decode outside the loop
+let maybeActionKey: null | string = null
+body.forEach((value, key) => {
+  if (key.startsWith('$ACTION_REF_')) {
+    maybeActionKey = key
+  } else if (key.startsWith('$ACTION_ID_')) {
+    maybeActionKey = key
+  }
+})
+const actionKey = maybeActionKey
+// ...single decode of actionKey outside the loop
+```
+
+Also: the prior `decodeReplyFromAsyncIterable` called `iterator.throw(reason).then(error, error)`, which allocated a new Error on every async-iterator throw path. The new code uses `.then(noop, noop)` — cheaper, no semantic change.
+
+**Practical impact** for any app that calls Server Actions from forms with many fields (multi-section checkout form, long settings form, any `<form action={serverAction}>` with >20 fields, anything using bound actions with `$ACTION_REF_*` keys): measurable reduction in per-request server-side decode time. The PR title hints at it being part of a security-patch cycle: the PR body says "Security Patches included in 19.2.8" — meaning this lands in React stable `19.2.8` (the next security-patch stable line, not yet released as of 2026-07-22).
+
+**Action:** upgrade to `next@canary@92+` (the canary.92+ dist-tag, which bundles React `81e442ea-20260721`). Stable `next@16.2.11` still ships React 19.2.7 — the fix will arrive in the next stable bump that vendors React 19.2.8. `next@preview@7` is another path to the fix.
+
+**Source:** [PR #37090 — `[FlightReply] Performance improvements when decoding`](https://github.com/facebook/react/pull/37090) · Files: 10 changed +65/-54 (the actual decode refactor is +45/-44 in `ReactFlightActionServer.js`) · merged 2026-07-21T16:26:12Z · **Shipped in React 19.3.0-canary-81e442ea-20260721** + bundled into **`next@canary@92`** (npm dist-tag 2026-07-21T17:51:18Z) + **`next@preview@7`** (2026-07-21T18:28:46Z) + **`next@canary@93`** (2026-07-21T23:55:58Z).
+
+### 2. PR #37062 `[DOM] Handle blur on Fragments below Document` (Sebastien Silbermann, merged 2026-07-21T08:26:07Z)
+
+**Pairs with PR #37060/#37061** (the Fragment-scroll fixes from `83840902` documented above). When React `blur`s an element, it first checks if the active element is within the Fragment to avoid a subtree traversal. The original code assumed `ownerDocument` returns a `Document` — but for a `Node` that IS the `Document` itself, `ownerDocument` is `null`, so the original code threw `Cannot read properties of null (reading 'activeElement')`.
+
+**The fix** adds a null-guard: if `ownerDocument` is `null`, treat the host as the Document itself (the existing path then runs without the crash). Diff (in `packages/react-dom-bindings/src/client/ReactDOMComponent.js`):
+
+```js
+// ❌ Before — crashes when called on Document itself
+const ownerDocument = container.ownerDocument
+// (when container IS the Document, ownerDocument is null)
+const activeElement = ownerDocument.activeElement // 💥 Cannot read properties of null
+
+// ✅ After — null-guard
+const ownerDocument = container.ownerDocument ?? container
+const activeElement = ownerDocument.activeElement
+```
+
+**Practical impact:** narrow. The bug only triggers when (a) you call `blur()` programmatically on an element, AND (b) the blurred element is a child of an empty Fragment whose host is `null`-document. The most common path is still `Document`-hosted, so this is a defensive fix that prevents a class of crashes in edge-case DOM structures. **No API change.**
+
+**Action:** upgrade to `next@canary@92+` (or `next@preview@7+`).
+
+**Source:** [PR #37062 — `[DOM] Handle blur on Fragments below Document`](https://github.com/facebook/react/pull/37062) · Sebbie Silbermann · merged 2026-07-21T08:26:07Z · **Shipped in React 19.3.0-canary-81e442ea-20260721** + bundled into **`next@canary@92` + `next@preview@7` + `next@canary@93`**.
+
+### Coverage: which Next.js tags ship this canary?
+
+| Next.js dist-tag | Date | Bundles React canary | Includes #37090 | Includes #37062 |
+|---|---|---|---|---|
+| `next@16.2.11` (latest) | 2026-07-21T16:58:28Z | React 19.2.7 | ❌ | ❌ |
+| `next@15.5.21` (backport) | 2026-07-21T16:58:17Z | React 19.2.7 | ❌ | ❌ |
+| `next@canary@91` | 2026-07-20T23:58:30Z | 19.3.0-canary-83840902-20260719 | ❌ | ❌ |
+| `next@canary@92` | 2026-07-21T17:51:18Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+| `next@canary@93` | 2026-07-21T23:55:58Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+| `next@preview@7` | 2026-07-21T18:28:46Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+
+If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable, wait for `next@16.2.12` (which will vendor React 19.2.8 when that lands) or `next@16.3.0` stable.
+

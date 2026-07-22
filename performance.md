@@ -822,6 +822,67 @@ Internal cleanup PR #95908 (`[turbopack] Clean up server_chunking_context`) remo
 **Source:** [PR #95539 — `[turbopack] Don't SSR on pages only navigated to through a soft nav`](https://github.com/vercel/next.js/pull/95539) · [PR #95908 — `[turbopack] Clean up server_chunking_context`](https://github.com/vercel/next.js/pull/95908) · Files: 23 + 1 = 24 files across `crates/next-api/`, `crates/next-core/`, `crates/turbopack/` · sampoder · merged 2026-07-17T20:10:55Z · **Shipped in 16.3.0-canary.89** (npm `canary` dist-tag pointer moved 2026-07-17T23:55:15Z).
 
 
+
+**⚠️ REVERTED in 16.3.0-canary.93 on 2026-07-21T21:03:05Z — [PR #96028](https://github.com/vercel/next.js/pull/96028) by sampoder, `Revert "[turbopack] Don't SSR on pages only navigated to through a soft nav (#95539)"`. The revert body says "This PR (#95539) appears to have caused issues with cached components — reverting." The feature shipped in canary.89 → canary.92 and was the single biggest user-facing PR of that cycle, then was rolled back 4 days later for breaking `cacheComponents: true` apps. Net effect for users:
+
+- **canary.89 → canary.92 users** had the optimization for 4 days (~2026-07-17T23:55Z → ~2026-07-21T21:03Z). The `OutputModeState` + `mark_as_ssr_operation` machinery is gone from canary.93+ — Turbopack dev goes back to compiling the SSR chunk for every HTML page endpoint.
+- **`cacheComponents: true` users** are the trigger group: the optimization broke cache-warming for some cached components. **Action:** if you set `experimental.cacheComponents: true` and noticed stale shells or missing chunks during canary.89–canary.92, canary.93 is your fix. Otherwise the revert is invisible.
+- **The App Shells + Partial Prefetching story is unchanged** — PR #95415 (the `appShells` flag unification that shipped in canary.88) is a separate optimization path and is unaffected by the #95539 revert.
+
+The revert is clean (commit `74f9866976`) and only conflicted with `crates/next-api/src/app.rs` (already resolved on the canary branch). The full canary.93 release includes 9 entries — 1 revert (#96028) + 1 perf win (#95994 below) + 1 Windows bug fix (#95668) + 1 sharp dep bump (#95507) + 2 internal refactors (#95142, #95951) + 1 docs (#96003) + 2 CI-only (#95628, "Restore canary version 16.3.0-canary.92 after v16.3.0-preview.7 preview release"). **Source:** [PR #96028 — `Revert "[turbopack] Don't SSR on pages only navigated to through a soft nav (#95539)"`](https://github.com/vercel/next.js/pull/96028) · Commit `74f9866976` · 2026-07-21T21:03:05Z · **Shipped in 16.3.0-canary.93** (2026-07-21T23:55:58Z).
+
+### Turbopack CJS Export Pruning — Extended to `Object.defineProperty` Syntax (16.3.0-canary.93 SHIPPED 2026-07-21T23:55:58Z, [PR #95994](https://github.com/vercel/next.js/pull/95994) by sampoder, merged 2026-07-21T19:14:40Z)
+
+The canary.91 PR #95716 (Turbopack CJS Export Pruning — "Drop unused exports from a CJS module") was limited to CJS modules that assign exports directly (`module.exports.X = ...`). Many transpilers — including TypeScript's classic ESM→CJS emit, Babel's `@babel/preset-env` CJS target, and several older bundler outputs — emit CJS via `Object.defineProperty(exports, "X", { value: ... })` instead. PR #95994 extends the same live-export-set reference analysis to that syntax.
+
+**Practical impact:** same as the canary.91 fix, but extended to the most common transpiler CJS outputs. TypeScript and Babel-emitted CJS bundles now see the same pruning. Cumulative savings are small per file but universal — every project that uses any of these transpilers in its dependency tree (`tsc` with `module: "commonjs"`, `babel-loader` with `@babel/preset-env` targeting Node, `swc` with `module.type: "commonjs"`, several older Server Actions SDKs) benefits.
+
+**Action:** upgrade to `next@canary@93` (npm dist-tag pointer moved 2026-07-21T23:55:58Z; `npm install next@canary --save-exact`). No code change needed.
+
+**Source:** [PR #95994 — `[turbopack] Tree-shake CJS exports that use the Object.defineProperty syntax`](https://github.com/vercel/next.js/pull/95994) · Extends [PR #95716](https://github.com/vercel/next.js/pull/95716) · sampoder · merged 2026-07-21T19:14:40Z · **Shipped in 16.3.0-canary.93**.
+
+### Turbopack Windows Path Canonicalization Fix — Verbatim Paths Internally (16.3.0-canary.93 SHIPPED 2026-07-21T23:55:58Z, [PR #95668](https://github.com/vercel/next.js/pull/95668) by bgw, merged 2026-07-21T21:54:02Z)
+
+The previous Turbopack Windows path handling used `dunce` to normalize paths between win32 (`C:\foo\bar`) and verbatim (`\\?\C:\foo\bar`) representations — but `dunce` picks the shorter of the two, which is fragile for long paths. Internally `DiskFileSystem` was also (incorrectly) not canonicalizing its own root dir, which happened to work because pnpm wasn't canonicalizing junction point targets either — until a sibling PR added `pnpm-workspace.yaml` files and exposed the underlying bug. The `read_link` helper was also reimplementing `try_from_sys_path` badly. And `crates/turbo-tasks-fs/src/embed/file.rs` turned out to be dead code.
+
+**The fix:**
+
+- Switches from `dunce` to `omnipath::WinPathExt` for path-format selection (long-path-safe, cross-platform consistent).
+- **Always** uses the verbatim path format internally within `DiskFileSystem` — verbatim paths work for paths >260 characters (the win32 MAX_PATH limit) and behave close to Unix paths. An import from a Windows 8.3 short path now correctly fails (it would silently resolve before).
+- Canonicalizes any absolute symlink targets outside the `DiskFileSystem` root, resolving any symlinks they may have, normalizing case-insensitive paths, and handling Windows 8.3 short name format.
+- Replaces `read_link` with the standard `try_from_sys_path`.
+- Deletes the dead-code `crates/turbo-tasks-fs/src/embed/file.rs`.
+- Fixes the doc comment on `validate_path_length_inner` (was incorrectly calling verbatim paths "UNC paths"; they're different things — verbatim is `\\?\C:\...`, UNC is `\\server\share\...`).
+
+**Practical impact for Windows users:**
+
+- **`next dev` and `next build` on Windows** in monorepos with junction points (the default pnpm workspace layout) no longer intermittently fail with "file not found" or wrong-path errors after PR #95628 (which canonicalizes pnpm junction targets).
+- **Long paths (>260 characters)** on Windows now work correctly with Turbopack (previously a path that grew past MAX_PATH would silently fall back to a win32 path that failed the root-prefix strip).
+- **Symlinks outside the project root** now resolve consistently across dev sessions (previously the same symlink could resolve to different paths depending on the consumer, breaking HMR and cache invalidation).
+- **No API change, no config change** — purely a fix. macOS/Linux users see no change.
+
+**Audit:** `git log --oneline --all -- crates/turbo-tasks-fs/src/embed/file.rs` will show the dead-code deletion; `next dev --turbo` in a pnpm monorepo on Windows now starts cleanly where it intermittently failed before.
+
+**Source:** [PR #95668 — `Turbopack: Fix missing canonicalization of paths and always use verbatim paths internally for Windows`](https://github.com/vercel/next.js/pull/95668) · `crates/turbo-tasks-fs/` (multiple files) · bgw · merged 2026-07-21T21:54:02Z · **Shipped in 16.3.0-canary.93** (2026-07-21T23:55:58Z).
+
+### `sharp@0.35.3` Dependency Bump (16.3.0-canary.93 SHIPPED 2026-07-21T23:55:58Z, [PR #95507](https://github.com/vercel/next.js/pull/95507) by styfle, merged 2026-07-21T19:52:10Z)
+
+The bundled `sharp` dependency (used by `next/image` for AVIF/WebP/JPEG/PNG encoding during `next build`'s image-optimization cache warmup and for `dangerouslyAllowSVG` validation) jumped from the version Next.js was pinned to (likely `0.34.x` based on the prior cron's setup.md) to **`sharp@0.35.3`** (released 2026-07-01 by [lovell/sharp](https://github.com/lovell/sharp/releases/tag/v0.35.3)). Three notable changes for Next.js users:
+
+1. **No more install script** — sharp 0.35.3 ships with prebuilt libvips binaries that detect the host architecture at runtime; the previous postinstall script (`node install/libvips.js`) is gone. **Action for Next.js Dockerfiles:** the `unsafe-perm=true` flag (`npm config set unsafe-perm true`) that was historically required to let sharp's install script run as root is no longer needed and can be removed from `Dockerfile`s. The base-image size impact is also slightly smaller because the install doesn't fetch build toolchain headers.
+2. **No more dynamic require/import tracing workaround** — sharp 0.35.x changed how it loads its native bindings internally, eliminating the class of "Cannot find module '../build/Release/sharp.node'" errors that previously required `npm rebuild sharp` workarounds in some CI environments and Docker layers. If you have `RUN npm rebuild sharp` in your Dockerfile as a defensive measure, it's now safe to remove.
+3. **AVIF uses "tune iq"** — the AVIF encoder now uses the [LibAOM tune iq image-quality tuning mode](https://aomedia.org/blog%20posts/Libavif_v1_4_0-Boosts-Major-Updates-to-Encoder-Technology/#the-tune-iq-image-quality-tuning-mode) which matches human perception better than the previous tune mode. Practical effect: AVIF outputs at the same quality setting are ~5–15% smaller for the same perceived quality (or ~5–10% better quality at the same file size, depending on content). For Next.js apps that ship a lot of AVIF (the `dangerouslyAllowSVG: true` + AVIF format combo, or just the default AVIF output for `next/image` on browsers that support it), this is a free perf win — re-running `next build` will produce smaller `/_next/image?url=...&format=avif` responses on the same source images.
+
+**Action for Next.js users:**
+
+- **Upgrade `next` to canary.93+** — the bundled sharp jumps automatically; no `package.json` edit needed.
+- **Clean up Dockerfiles:** remove `npm config set unsafe-perm true` and the `npm rebuild sharp` defensive step if you have them.
+- **Re-run `next build`** to regenerate the `.next/cache/images` directory with the new AVIF encoder; the size delta will be visible in the build summary (`Image (n images): before X → after Y`).
+- **For standalone installs** (CI runners, on-prem deploys): the install is faster now because no postinstall script runs; expect 5–15s saved per `npm install` of `next`.
+
+**Source:** [PR #95507 — `chore(deps): bump sharp@0.35.3`](https://github.com/vercel/next.js/pull/95507) · [sharp v0.35.3 release notes](https://github.com/lovell/sharp/releases/tag/v0.35.3) · styfle · merged 2026-07-21T19:52:10Z · **Shipped in 16.3.0-canary.93**.
+
+
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
 PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.

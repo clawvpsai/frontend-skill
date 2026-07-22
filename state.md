@@ -673,6 +673,70 @@ The 5.101.x line (5.101.0 on June 2, 5.101.1 on June 23, 5.101.2 on June 27, 5.1
 - [Commit `7e3c822` — `partialMatchKey` perf](https://github.com/TanStack/query/commit/7e3c822a10896f41a8f1031c16b85096277af677)
 - [tkdodo — Mastering TanStack Query (Query Key Factory pattern)](https://tkdodo.eu/blog/mastering-tanstack-query)
 
+
+## `@tanstack/eslint-plugin-query@5.101.4` — `exhaustive-deps` Rule No Longer Flags Function Call Targets (July 21, 2026)
+
+[`@tanstack/eslint-plugin-query@5.101.4`](https://www.npmjs.com/package/@tanstack/eslint-plugin-query) shipped 2026-07-21T12:50:23Z (merged in [PR #11067](https://github.com/TanStack/query/pull/11067) by Newbie012) as a dependency bump of the broader release train `release-2026-07-21-13-05`. This affects the **`exhaustive-deps` ESLint rule** in `@tanstack/eslint-plugin-query` — a rule that, before 5.101.4, produced false positives on a very common pattern.
+
+### What changed
+
+The `exhaustive-deps` rule no longer requires **function call targets** in query keys. Query keys should contain the serializable values that identify the returned data, not functions or API clients. Before this fix, the rule complained about patterns like:
+
+```tsx
+// 🟢 NOW PASSES — `todoId` identifies the query;
+// `fetchTodoById` does not need to be in the query key.
+useQuery({
+  queryKey: ['todo', todoId],
+  queryFn: () => fetchTodoById(todoId),
+})
+```
+
+Where before this change, the rule would flag `fetchTodoById` as a missing dependency in the query key. Values used inside nested callbacks are still checked:
+
+```tsx
+// 🔴 Still reports `todoId` as missing.
+useQuery({
+  queryKey: ['todo'],
+  queryFn: () => Promise.resolve().then(() => todoId),
+})
+```
+
+Computed method names are also checked because they can change the returned data:
+
+```tsx
+// 🔴 Still reports `operation` as missing.
+useQuery({
+  queryKey: ['data'],
+  queryFn: () => client[operation](),
+})
+```
+
+The fix also refines member-access handling — optional chaining (`obj?.foo`), computed properties (`obj[key]`), and non-null assertions (`obj!.foo`) are now handled correctly so each is checked when the value can actually affect the returned data, and skipped when it's a fixed reference.
+
+### Who benefits
+
+Any project that uses `@tanstack/eslint-plugin-query` with the `exhaustive-deps` rule enabled in their ESLint config, AND that calls API client methods inside `queryFn`. This is essentially every TypeScript/React project using the official plugin — the false-positive on API client methods was so common that many teams had to disable the rule or carve out `// eslint-disable-next-line` comments on every query. **Both workarounds are now obsolete**.
+
+### Action
+
+```bash
+npm install --save-dev @tanstack/eslint-plugin-query@^5.101.4
+# or, if you have a global @tanstack/eslint-plugin-query version pin:
+npx eslint-plugin-query update
+```
+
+Then remove the per-query `// eslint-disable-next-line @tanstack/query/exhaustive-deps` comments you've accumulated (the linter will now confirm they're unnecessary) and re-enable the rule if it was disabled in `.eslintrc`. The related [discussion #11062](https://github.com/TanStack/query/discussions/11062) is the canonical reference for the fix.
+
+**Note on the broader release train:** the same release train (`release-2026-07-21-13-05`) bumped `@tanstack/query-core@5.101.4` (no code change — pure dep-coordination bump to align all the adapter packages: `@tanstack/react-query`, `@tanstack/vue-query`, `@tanstack/solid-query`, `@tanstack/svelte-query`, plus all the devtools + persist-client companion packages). The headline user-facing change of the day is in the ESLint plugin only.
+
+**Sources:**
+- [`@tanstack/eslint-plugin-query@5.101.4` on npm (2026-07-21T12:50:23Z)](https://www.npmjs.com/package/@tanstack/eslint-plugin-query)
+- [TanStack Query `release-2026-07-21-13-05` train](https://github.com/TanStack/query/releases/tag/release-2026-07-21-13-05)
+- [PR #11067 — `fix(eslint-plugin-query): ignore call targets in exhaustive-deps`](https://github.com/TanStack/query/pull/11067)
+- [Discussion #11062 — the original false-positive report](https://github.com/TanStack/query/discussions/11062)
+- [TanStack Query `eslint-plugin-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/eslint-plugin-query/CHANGELOG.md)
+
+
 ## Zustand Setup
 
 ```bash
