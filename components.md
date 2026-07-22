@@ -1401,9 +1401,9 @@ const actionKey = maybeActionKey
 
 Also: the prior `decodeReplyFromAsyncIterable` called `iterator.throw(reason).then(error, error)`, which allocated a new Error on every async-iterator throw path. The new code uses `.then(noop, noop)` — cheaper, no semantic change.
 
-**Practical impact** for any app that calls Server Actions from forms with many fields (multi-section checkout form, long settings form, any `<form action={serverAction}>` with >20 fields, anything using bound actions with `$ACTION_REF_*` keys): measurable reduction in per-request server-side decode time. The PR title hints at it being part of a security-patch cycle: the PR body says "Security Patches included in 19.2.8" — meaning this lands in React stable `19.2.8` (the next security-patch stable line, not yet released as of 2026-07-22).
+**Practical impact** for any app that calls Server Actions from forms with many fields (multi-section checkout form, long settings form, any `<form action={serverAction}>` with >20 fields, anything using bound actions with `$ACTION_REF_*` keys): measurable reduction in per-request server-side decode time. The PR title hints at it being part of a security-patch cycle: the PR body says "Security Patches included in 19.2.8" — **and React 19.2.8 stable SHIPPED on 2026-07-21T15:49:09Z** ([GitHub release](https://github.com/facebook/react/releases/tag/v19.2.8), [`diff v19.2.7...v19.2.8`](https://github.com/facebook/react/compare/v19.2.7...v19.2.8) — 2 commits: PR #37087 `[FlightReply] Performance improvements when decoding` by @eps1lon + PR #36753 `[19.2.x] Update required references to GitHub repo`). The 1.4.78 cron line "not yet released as of 2026-07-22" was wrong by ~14h — the stable actually shipped the same day as React canary `81e442ea-20260721`, at 15:49:09Z (about 28 minutes before `next@latest` 16.2.11 published at 16:58:28Z). npm `latest` dist-tag pointer moved to `19.2.8` on release; `react@backport` = `19.0.8` (older backport line); `@types/react@19.2.17` and `@types/react-dom@19.2.3` are the matching types releases (these match up with TS 6.0/7.0 peer ranges).
 
-**Action:** upgrade to `next@canary@92+` (the canary.92+ dist-tag, which bundles React `81e442ea-20260721`). Stable `next@16.2.11` still ships React 19.2.7 — the fix will arrive in the next stable bump that vendors React 19.2.8. `next@preview@7` is another path to the fix.
+**Action:** upgrade to `next@canary@92+` (the canary.92+ dist-tag, which bundles React `81e442ea-20260721`) — OR for stable: `npm install react@19.2.8 react-dom@19.2.8` after bumping `next@16.2.11` will surface the FlightReply decode perf win even before `next@16.2.12` vendors the React bump. Next.js vendors a `react.production.js` copy under `packages/next/src/compiled/react/` for SSR/RSC, but client components use your `node_modules/react` copy for hydration — so the perf gain is realised for hydration-side decoding immediately on a `react@19.2.8` install. Verify with `npm view react dist-tags.latest` → should show `19.2.8`. `next@preview@7` is another path to the fix on the preview train.
 
 **Source:** [PR #37090 — `[FlightReply] Performance improvements when decoding`](https://github.com/facebook/react/pull/37090) · Files: 10 changed +65/-54 (the actual decode refactor is +45/-44 in `ReactFlightActionServer.js`) · merged 2026-07-21T16:26:12Z · **Shipped in React 19.3.0-canary-81e442ea-20260721** + bundled into **`next@canary@92`** (npm dist-tag 2026-07-21T17:51:18Z) + **`next@preview@7`** (2026-07-21T18:28:46Z) + **`next@canary@93`** (2026-07-21T23:55:58Z).
 
@@ -1434,12 +1434,13 @@ const activeElement = ownerDocument.activeElement
 
 | Next.js dist-tag | Date | Bundles React canary | Includes #37090 | Includes #37062 |
 |---|---|---|---|---|
-| `next@16.2.11` (latest) | 2026-07-21T16:58:28Z | React 19.2.7 | ❌ | ❌ |
-| `next@15.5.21` (backport) | 2026-07-21T16:58:17Z | React 19.2.7 | ❌ | ❌ |
+| `next@16.2.11` (latest) | 2026-07-21T16:58:28Z | React 19.2.7 (vendored) + `react@19.2.8` for client hydration if you bump `react` separately | ✅ (hydration only) | ✅ (hydration only) |
+| `next@15.5.21` (backport) | 2026-07-21T16:58:17Z | React 19.2.7 (vendored) + `react@19.2.8` for client hydration if you bump `react` separately | ✅ (hydration only) | ✅ (hydration only) |
 | `next@canary@91` | 2026-07-20T23:58:30Z | 19.3.0-canary-83840902-20260719 | ❌ | ❌ |
 | `next@canary@92` | 2026-07-21T17:51:18Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
 | `next@canary@93` | 2026-07-21T23:55:58Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
 | `next@preview@7` | 2026-07-21T18:28:46Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+| **React stable `19.2.8`** | 2026-07-21T15:49:09Z | (standalone React release) | ✅ | ❌ (only FlightReply perf landed; Fragment-blur is canary-only) |
 
-If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable, wait for `next@16.2.12` (which will vendor React 19.2.8 when that lands) or `next@16.3.0` stable.
+If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable: `npm install next@16.2.11 react@19.2.8 react-dom@19.2.8` — the `react@19.2.8` install covers client-side hydration decoding; the `next@16.2.12` (when it ships) or `next@16.3.0` stable will vendor the bump for SSR/RSC too. `next@preview@7` is the preview-train path.
 
