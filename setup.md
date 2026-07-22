@@ -2290,6 +2290,10 @@ Now that `get_request_insights` (canary.85+) + the new `next experimental-reques
 2. Agent calls `mcp__next-devtools-mcp__get_request_insights()` to see the last 100 requests to `/dashboard`.
 3. Agent filters for the request matching the edit (by `requestId` or `route` + `startTime` window).
 4. Agent reads the `spans[]` — finds e.g. `next.fetch /api/user` took 1800ms, with `http.status_code: 500` and a `cache_reason: 'cache-miss'`.
+**`npm_config_user_agent` now consulted first (16.3.0-preview.8, [PR #95879](https://github.com/vercel/next.js/pull/95879)):** Turbopack's package-manager detection now checks the `npm_config_user_agent` environment variable before falling back to lockfile heuristics. This fixes a bug where `npx next` running inside a pnpm or yarn workspace would misdetect the package manager and attempt npm-specific install paths. If you use `npx next` or `pnpm dlx next` inside a monorepo, this PR ensures Turbopack respects the actual package manager environment.
+
+**Source:** [PR #95879 — `Always consult npm_config_user_agent first`](https://github.com/vercel/next.js/pull/95879) · ships in **`next@preview@8`** + canary.94.
+
 5. Agent correlates with the edit — the user just added a new `headers().get('x-tenant')` call in a Server Component, but the `next/cache` directive is on the same scope. Agent surfaces: "this Server Component is no longer eligible for `use cache` because it reads request-time headers; either pass the header into the cached function or split the read into a separate Server Component."
 6. Agent edits the file. Repeats.
 

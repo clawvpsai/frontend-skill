@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | **NextAuth.js v5 (Auth.js)** | `5.0.0-beta.31` (April 14, 2026) | ⚠️ **Stagnant** — no new beta since April 14, 2026 (~3 months stale; previous beta.30 was October 27, 2025 — 6-month gap) | MIT | Free, framework-agnostic, integrates with Next.js 16 `proxy.ts`. Use when you don't want a hosted dependency and Auth.js v5 has the providers you need. |
 | **NextAuth.js v4** | `4.24.14` (April 14, 2026) | Maintenance only — same date as v5 beta | MIT | Existing v4 projects only. Do not start new projects on v4. |
-| **Better Auth** | `1.6.23` (June 29, 2026); `1.7.0-rc.1` (July 2, 2026) | ✅ **Active** — 1.6.16→1.6.23 in 4 weeks, 1.7.0-rc.1 3 days ago | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
+| **Better Auth** | `1.6.24` (July 22, 2026); `1.7.0-rc.1` (July 2, 2026); `1.7.0-beta.10` (July 22, 2026) | ✅ **Active** — 1.6.23→1.6.24 in 23 days, 1.7.0-rc.1 20 days ago | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
 | **Clerk** | `7.5.12` (`@clerk/nextjs` `latest`, July 3, 2026); also ships `@clerk/nextjs@latest-nextjs-v5` `5.7.6` | ✅ Active — daily canaries + weekly stables | Proprietary (free tier to 10K MAU; ~$0.02/MAU + $25/mo after) | Use when DX velocity matters more than cost/control. Pre-built UI components, organizations + MFA + passkeys out of the box. |
 | **Supabase Auth** | bundled with Supabase | Active (platform cadence) | MIT (library) + SaaS pricing | Use when you're already on Supabase (native RLS integration via `auth.uid()`). |
 | **Auth0 / WorkOS** | n/a | SaaS cadence | Proprietary | Enterprise SSO (SAML/SCIM). Better Auth doesn't have native SSO yet — see Better Auth section. |
@@ -16,7 +16,7 @@
 
 **Current state (July 2026):** The auth landscape has materially shifted in the last 6 months:
 
-1. **Better Auth has overtaken Auth.js in monthly npm downloads** for the first time (per [npm trends](https://npmtrends.com/better-auth-vs-next-auth), June 2026). 1.6.23 shipped June 29, 1.7.0-rc.1 shipped July 2 — active development.
+1. **Better Auth has overtaken Auth.js in monthly npm downloads** for the first time (per [npm trends](https://npmtrends.com/better-auth-vs-next-auth), June 2026). 1.6.23 shipped June 29, 1.7.0-rc.1 shipped July 2, 1.6.24 shipped July 22 — active development.
 2. **NextAuth v5 beta has stagnated**: beta.31 (April 14, 2026) is the latest, ~3 months old. The previous release (beta.30) was October 27, 2025 — a 6-month gap. The API is stable but the release cadence is a yellow flag if you need new providers/features. Plan for a possible Auth.js v6 announcement — check the [Auth.js discussions](https://github.com/nextauthjs/next-auth/discussions) before committing to a major build on top of it.
 3. **Clerk has matured** to v7 with React 19 + Next.js 16 support; its free tier now extends to 10K MAU (was 5K MAU pre-v7).
 
@@ -37,7 +37,7 @@
 
 NextAuth/Auth.js is no longer the default — **Better Auth is** for most new Next.js SaaS apps in 2026. Per the LogRocket April 2026 comparison of every major auth library for Next.js, and the [MakerKit July 2026 comparison](https://makerkit.dev/blog/tutorials/better-auth-vs-clerk) of Better Auth vs Clerk vs NextAuth vs Supabase Auth for production Next.js SaaS:
 
-- **Better Auth** — Open-source (MIT), TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations). GA since v1.0 (late 2024), v1.6.23 stable June 29 2026, v1.7.0-rc.1 shipped July 2 2026. Use when you want full control without rolling your own. Cost at 100K MAU: ~$50/mo (just your Postgres).
+- **Better Auth** — Open-source (MIT), TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations). GA since v1.0 (late 2024), v1.6.24 stable July 22 2026, v1.7.0-rc.1 shipped July 2 2026, v1.7.0-beta.10 shipped July 22 2026. Use when you want full control without rolling your own. Cost at 100K MAU: ~$50/mo (just your Postgres).
 - **Clerk** — Best-in-class DX, pre-built UI components, organizations + MFA + passkeys out of the box. Free tier to 10K MAU (was 5K MAU pre-v7), then ~$0.02/MAU + $25/mo base. Use when UX velocity > control. Cost at 100K MAU: ~$1,025/mo. Re-evaluate at ~10K MAU.
 - **NextAuth/Auth.js** — Free, MIT, framework-agnostic, integrates cleanly with Next.js 16's `proxy.ts`. Reasonable for marketing sites, internal tools, and OSS projects that don't need organizations or passkeys.
 - **Lucia / Oslo + custom** — Low-level primitives. Use when you need a hand-rolled auth flow with no library opinions (rare).
@@ -107,6 +107,43 @@ On **July 7, 2026**, Vercel [announced the acquisition of Better Auth](https://v
 - [StartupResearcher — Vercel Acquires Open Source Authentication Startup Better Auth (July 9, 2026)](https://www.startupresearcher.com/news/vercel-acquires-open-source-authentication-startup-better-auth)
 
 ### Better Auth 1.7.0-rc.1 changelog (July 2, 2026)
+
+### Better Auth 1.6.24 changelog (July 22, 2026)
+
+`1.6.24` is the latest **stable** release (the `latest` npm dist-tag now points here; `1.7.0-rc.1` remains on the `rc` tag). Changelog vs `1.6.23` (June 29, 2026):
+
+**Features:**
+- **`verifyIdToken` now receives request context (`ctx`) as 3rd argument** ([PR #10376](https://github.com/better-auth/better-auth/pull/10376)) — custom ID token verifiers can now read request headers (e.g. IP, `User-Agent`, `CF-Connecting-IP`) for fraud scoring or rate limiting without re-reading the request object:
+  ```ts
+  const result = await auth.api.verifyIdToken({
+    token: idToken,
+    ctx: { request: originalRequest }  // ← new 3rd arg
+  })
+  ```
+
+- **`beforeStoreCookie` option added to last-login-method plugin** ([PR #5753](https://github.com/better-auth/better-auth/pull/5753)) — enables GDPR-compliant "last login method" tracking without third-party cookies.
+
+**Bug fixes:**
+- **`get-session` endpoint now sends `no-store` cache headers** ([PR #10222](https://github.com/better-auth/better-auth/pull/10222)) — previously some CDNs/browsers cached the session response; after logout the cached session was still served. Now sends `Cache-Control: no-store`.
+- **`useSession({ throw: true })` TypeScript type corrected** ([PR #9787](https://github.com/better-auth/better-auth/pull/9787)) — `data` is correctly typed as `Session | null` (not `Session`), so TypeScript no longer errors when checking `data` in a try block.
+- **Magic-link and email-OTP now validate the `Origin` header** on cookieless requests ([PR #10368](https://github.com/better-auth/better-auth/pull/10368)) — prevents cross-origin abuse.
+- **`organization.listMembers` fixed for orgs with >100 members** ([PR #10342](https://github.com/better-auth/better-auth/pull/10342)) — previously threw "User not found for member" past ~100 members.
+- **Cold-start race condition on serverless fixed** ([PR #9862](https://github.com/better-auth/better-auth/pull/9862)) — `AsyncLocalStorage` initialization race no longer throws "No request state found" on cold starts (Cloudflare Workers, etc.).
+- **SAML IdP-initiated sign-ins now redirect to the configured `idpInitiatedCallbackUrl`** ([PR #10388](https://github.com/better-auth/better-auth/pull/10388)) — was incorrectly redirecting to the auth server URL.
+- **Kysely migration: duplicate indexes on `unique`+`index` fields fixed** ([PR #10357](https://github.com/better-auth/better-auth/pull/10357)) — single index, not two.
+- **SQLite migration: `BIGINT` recognized as a valid number type** ([PR #10316](https://github.com/better-auth/better-auth/pull/10316)) — spurious pending migration changes on `BIGINT` rate-limiter columns are gone.
+- **`CookieAttributes` index signature type made more precise** ([PR #10442](https://github.com/better-auth/better-auth/pull/10442)).
+- **Adapter query misrouting when `user.modelName` collides with another schema key fixed** ([PR #10235](https://github.com/better-auth/better-auth/pull/10235)).
+- **Drizzle duplicate index fix** ([PR #10333](https://github.com/better-auth/better-auth/pull/10333)) — same fix as Kysely, ported to the Drizzle adapter.
+- **`auth generate` no longer crashes on Convex first run** ([PR #10302](https://github.com/better-auth/better-auth/pull/10302)).
+- **Auth query revalidation and signal listeners restored after client component remount** ([PR #10379](https://github.com/better-auth/better-auth/pull/10379)).
+- **Remote MCP auth 401 challenge headers now exposed to browsers** ([PR #10290](https://github.com/better-auth/better-auth/pull/10290)) — CORS exposure headers added.
+- **OpenAPI schema updated** to include plugin user fields in `/sign-up/email` and `/update-user` bodies ([PR #10453](https://github.com/better-auth/better-auth/pull/10453)).
+- **Organization invitations now use database-generated IDs** when `advanced.database.generateId` is configured ([PR #10040](https://github.com/better-auth/better-auth/pull/10040)).
+- **`getDefaultModelName` now prefers exact schema key matches** over `modelName` aliases, preventing adapter query misrouting.
+
+**Action:** `npm install better-auth@1.6.24` (or `npm install better-auth` to pick up the new latest). All users should upgrade — the stale-session fix after logout is a correctness fix.
+
 
 `1.7.0-rc.1` is the latest release candidate on the v1.7 line. Detailed changelog (vs. `1.7.0-rc.0`, June 29, 2026):
 
