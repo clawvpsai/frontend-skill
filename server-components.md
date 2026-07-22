@@ -1046,6 +1046,18 @@ async function Page({ params }: { params: Promise<{ id: string }> }) {
 
 Sources: [PR #95151](https://github.com/vercel/next.js/pull/95151) (Janka Uryga, 2026-07-01T04:36:41Z) + [PR #94595](https://github.com/vercel/next.js/pull/94595) (follow-up for `generateStaticParams`, 2026-07-01T06:59:43Z). Only fires with `cacheComponents: true` and `partialPrefetching: true` (or per-segment `prefetch = 'partial'`).
 
+#### 4a. App Shell cache-miss fix for `generateStaticParams` — PR #95665 (canary-branch ahead of canary.93, ships in canary.94 ~2026-07-23T23:00Z)
+
+[PR #95665](https://github.com/vercel/next.js/pull/95665) (Janka Uryga, merged 2026-07-22T15:18:51Z, closes `NAR-883`) fixes a **silent cache-miss footgun** in the same code path. The bug: when an App Shell is being prerendered, the `ShellRuntime` stage is the ceiling (URL data is excluded; the prerender doesn't advance beyond `ShellRuntime`). But the prospective runtime prerender — the one that decides which inputs are "hanging" — was letting `params` / `searchParams` resolve normally instead of marking them as hanging. When `params` ended up being inputs to a cached page, those inputs weren't hanging in the prospective render and then became a cache miss in the final render (which IS past `ShellRuntime`).
+
+**The fix** adds `readonly isSessionShell: boolean` to `PrerenderStoreModernRuntime` and threads it through `createRuntimePrerenderParams`, which now calls `makeHangingParams(underlyingParams, workStore, workUnitStore)` when in `ShellRuntime` mode (was: `makeUntrackedParams(userspaceParams)`). For route handlers and other code that reads `searchParams` during prerender, new error code #1449 `"Accessed \`searchParams\` during prerendering."` enforces the new contract.
+
+**Practical effect:** if you use `cacheComponents: true` + `generateStaticParams` + `partialPrefetching: true` (or per-segment `prefetch = 'partial'` / `'unstable_eager'`) and noticed duplicate data fetches / shell-then-runtime cache misses after adding `generateStaticParams`, **upgrading to `next@canary@94` fixes it without code changes**. No public API change.
+
+Audit: `rg 'isSessionShell' packages/next/src/server/` should return 5 hits across `app-render.tsx`, `work-unit-async-storage.external.ts`, `request/params.ts` after canary.94 lands. Full impact analysis in `performance.md` → "Cache-Miss Fix in App Shell for Cached Pages with `generateStaticParams`".
+
+**Source:** [PR #95665](https://github.com/vercel/next.js/pull/95665) · 5 files +33/-11 · Janka Uryga · merged 2026-07-22T15:18:51Z · commit `63f14c6c90` · closes `NAR-883` · **Ships in `16.3.0-canary.94`**.
+
 ### 4. Short-`expire` `'use cache'` values now retain across dev reloads — canary.75
 
 Companion to #5: in dev, the built-in default handler now keeps short-`expire` entries for at least `MIN_PRERENDERABLE_EXPIRE` (300s) and re-warms them in the background on every dynamic-request render. Before this PR, a short `expire` meant the next reload regenerated the value from scratch.

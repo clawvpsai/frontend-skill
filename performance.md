@@ -883,6 +883,133 @@ The bundled `sharp` dependency (used by `next/image` for AVIF/WebP/JPEG/PNG enco
 **Source:** [PR #95507 — `chore(deps): bump sharp@0.35.3`](https://github.com/vercel/next.js/pull/95507) · [sharp v0.35.3 release notes](https://github.com/lovell/sharp/releases/tag/v0.35.3) · styfle · merged 2026-07-21T19:52:10Z · **Shipped in 16.3.0-canary.93**.
 
 
+### Fix Stale Dev `'use cache'` for Cookieless Requests + Route Handlers (canary-branch ahead of canary.93, [PR #96022](https://github.com/vercel/next.js/pull/96022) merged 2026-07-22T12:46:39Z, ships in `16.3.0-canary.94` ~2026-07-23T23:00Z)
+
+The HMR refresh hash that invalidates dev-mode `'use cache'` entries used to live in a session cookie (`__next_hmr_refresh_hash__`) — the client set it on every `processMessage(SERVER_COMPONENT_CHANGES)` and read it back on subsequent requests to include in cache keys. That broke three real classes of dev experience:
+
+| Broken class | Why it broke |
+|---|---|
+| **Cookieless requests** (privacy-mode browsers, `curl`, RSS readers, server-side prefetch from a different origin) | Never received a fresh `'use cache'` entry after an edit — no cookie meant the cache key was always the previous hash |
+| **`'use cache'` inside route handlers** | Cookie was only set from `processMessage(SERVER_COMPONENT_CHANGES)` in `hot-reloader-app.tsx` (app-router client). Route-handler requests never went through that path, so the cookie stayed stale |
+| **Apps where the HMR client hadn't connected yet** (CI smoke runs against a fresh `next dev`, Playwright headless runs disabling the dev runtime, SSR-only debugging) | Counter never advanced because no client was subscribed |
+
+**The fix (PR #96022, 18 files +289/-43)** replaces the cookie with a server-side counter (`hmrHash` in the hot-reloader), threaded through every render via `hmrRefreshHash` request meta, and folded into `"use cache"` cache keys. Key changes:
+
+- `BaseServer.getServerComponentsHmrRefreshHash()` returns the current server-components generation (overridden by `DevServer` to read from the bundler service). `BaseServer.handleRequest` now attaches `hmrRefreshHash` to every render that flows through request handling — including internal renders like dev validation/warmup that don't re-enter the top-level request handler.
+- `RequestStore` exposes `readonly hmrRefreshHash?: string`. `WorkStoreContext` mirrors it.
+- The use-cache wrapper reads `getHmrRefreshHash` (was `workUnitStore.cookies.get(NEXT_HMR_REFRESH_HASH_COOKIE)?.value`).
+- For webpack, `serverComponentsHmrRefreshHash` is updated inside `refreshServerComponents(hash)`.
+- For Turbopack, the counter advances only on subscription-driven recompiles — NOT on per-client `BUILT` messages (which would churn the hash without an edit and fail to advance it when no client is connected). The counter is returned unconditionally (`"0"` before the first edit) so `"use cache"` keys are present and consistent for every request, mirroring webpack's always-present `stats.hash`.
+- Route handlers (`packages/next/src/server/dev/turbopack-utils.ts`) now `hooks?.subscribeToChanges(...)` on the route-handler endpoint. The subscription exists only to advance the refresh hash (since route handlers have no RSC for a connected browser to refetch, `createMessage` returns nothing). On subscription error: log `Error in the "<page>" app-route HMR subscription` with `cause` set to the underlying error; `subscribeToChanges` drops the subscription on error and re-creates it next ensure.
+- `NEXT_HMR_REFRESH_HASH_COOKIE` constant is removed from `app-router-headers.ts`; the cookie is no longer set on `SERVER_COMPONENT_CHANGES`. Existing cookies in dev sessions will be ignored (no migration step required — they'll be GC'd).
+- Tests updated: `use-cache-custom-handler.test.ts`, `use-cache-default-handler-expire-zero.test.ts`, and the dedicated `use-cache-dev.test.ts` now match the cache key with a trailing optional hash element (`"[...,..."?\]"` regex form).
+
+**Practical impact:**
+
+- **No more "I edited the function but the dev server keeps serving the old value"** for cookieless clients (server-to-server fetches, headless browsers, RSS crawlers)
+- **Route handlers using `"use cache"` now revalidate** on edit, not just on the stale-5-minute `expire: 0` fallback
+- **CI dev sessions now self-invalidate** — running Playwright against a fresh `next dev` no longer gets stuck on stale cache after the file changes
+- **No production impact** — the dev-only `hmrRefreshHash` doesn't enter production cache keys (`hmrRefreshHash: undefined` in `finalRuntimeServerPrerender`)
+
+**Action:** upgrade to `next@canary@94` when it ships. No code change needed; the existing `"use cache"` functions automatically benefit.
+
+**Audit recipes:**
+- `rg '__next_hmr_refresh_hash__' .next/` → should return 0 hits after canary.94 (the cookie is gone)
+- `rg 'serverComponentsHmrRefreshHash' packages/next/src/server/dev/` → shows the new counter wiring (webpack + turbopack)
+- `rg 'subscribeToChanges' packages/next/src/server/dev/turbopack-utils.ts` → confirms the route-handler subscription is in place
+
+**Source:** [PR #96022 — `Fix stale dev 'use cache' for cookieless requests and route handlers`](https://github.com/vercel/next.js/pull/96022) · 18 files +289/-43 across `packages/next/src/server/{base-server.ts, async-storage/{request-store,work-store}.ts, dev/{hot-reloader-turbopack, hot-reloader-webpack, turbopack-utils, next-dev-server}.ts, lib/dev-bundler-service.ts, use-cache/{use-cache-wrapper, use-cache-probe-globals, use-cache-probe-scheduler, use-cache-probe-worker}.ts, request-meta.ts, route-modules/app-route/module.ts, web/adapter.ts, build/templates/app-route.ts, errors.json, client/{components/app-router-headers, dev/hot-reloader/app/hot-reloader-app, dev/hot-reloader/pages/hot-reloader-pages, page-bootstrap}.{ts,tsx}}` + 4 test updates · merged 2026-07-22T12:46:39Z · commit `286862e35b` · **Ships in `16.3.0-canary.94`** (expected ~2026-07-23T23:00Z).
+
+
+### Static Params HMR Refresh — Dedicated Message + Post-Cache Update (canary-branch ahead of canary.93, [PR #96019](https://github.com/vercel/next.js/pull/96019) + [PR #96020](https://github.com/vercel/next.js/pull/96020) merged 2026-07-22T12:24:23Z–13:00:54Z, ships in `16.3.0-canary.94`)
+
+A paired 2-PR stack that fixes a long-standing dev-loop papercut for `cacheComponents: true` apps using `generateStaticParams`. **Both PRs by Janka Uryga; both ship in `16.3.0-canary.94`.**
+
+**PR #96019 — `Emit the static paths HMR update after updating the cache`** (commit `35bf8dab73`, 2026-07-22T12:24:23Z, 1 file +33/-24 in `next-dev-server.ts`). The existing trigger (send `SERVER_COMPONENT_CHANGES` with a `generateStaticParams-${Date.now()}` hash when the static-paths cache result length changes) was emitted from the wrong branch — it fired inside `this.staticPathsCache.set` BEFORE the cache write completed. So when `fallbackParams` were read in the next render, they were still derived from the previous result, and the user saw stale params until the next refresh.
+
+The fix moves the HMR emit AFTER the `staticPathsCache.set(pathname, value)` call. After the move, the render that triggers the HMR refresh sees the new `fallbackParams` because the cache is already updated. (There's still a small reuse-the-hash-of-the-server-component-changes workaround noted in the PR TODO: "Give this its own HMR message instead of reusing `SERVER_COMPONENT_CHANGES`, which requires a `hash` whose value is meaningless here (a timestamp) and only serves to trigger a client refresh." — PR #96020 below does exactly that.)
+
+**PR #96020 — `Add a dedicated HMR message for static params changes`** (commit `a07e947a27`, 2026-07-22T13:00:54Z, 7 files +55/-11). Introduces a new `HMR_MESSAGE_SENT_TO_BROWSER.STATIC_PARAMS_CHANGED = 'staticParamsChanged'` message type and a `StaticParamsChangedMessage` interface (`{ type: STATIC_PARAMS_CHANGED }` — note: no `hash` field). Sent specifically when a route's set of statically-known params changes (e.g. `generateStaticParams` added, removed, or edited).
+
+The client handler in `hot-reloader-app.tsx`:
+```ts
+case HMR_MESSAGE_SENT_TO_BROWSER.STATIC_PARAMS_CHANGED: {
+  // Re-fetch the current router tree so the render picks up the new set of
+  // statically-known params (and thus the fresh fallbackParams). Unlike
+  // SERVER_COMPONENT_CHANGES this does not store an HMR refresh hash, so
+  // it doesn't invalidate 'use cache' entries.
+  if (RuntimeErrorHandler.hadRuntimeError || document.documentElement.id === '__next_error__') {
+    if (reloading) return
+    reloading = true
+    return window.location.reload()
+  }
+
+  startTransition(() => {
+    publicAppRouterInstance.hmrRefresh()
+    dispatcher.onRefresh()
+  })
+
+  return
+}
+```
+
+The pages-router client (`hot-reloader-pages.ts`) explicitly ignores the new message ("Only relevant to the App Router; ignored in the Pages Router client."). `page-bootstrap.ts` adds the new type to its `HMR_MESSAGE_SENT_TO_BROWSER` whitelist (alongside `ADDED_PAGE`, `REMOVED_PAGE`, `SERVER_COMPONENT_CHANGES`, `SYNC`, `BUILT`, `BUILDING`).
+
+**The big win:** because `STATIC_PARAMS_CHANGED` does NOT carry an HMR refresh hash, it does NOT invalidate `"use cache"` entries. The old timestamp-hash branch sent on `SERVER_COMPONENT_CHANGES` would over-invalidate every cached function whenever params changed. After both PRs land, `generateStaticParams` edits invalidate ONLY the relevant `fallbackParams` (via the router-tree refetch), not the entire dev `'use cache'` cache.
+
+**New test** (`test/e2e/app-dir/cache-components-errors/use-cache.util.ts`): `should clear the redbox after adding generateStaticParams via HMR` — edits a route file to add a `generateStaticParams` export while the dev error overlay is showing the "blocking route" redbox, asserts the redbox clears after the HMR refresh.
+
+**Practical impact for `cacheComponents: true` + `generateStaticParams` apps:**
+- "I added `generateStaticParams` to a page that previously had none, but my dev session is stuck on a redbox" → fixed; the redbox clears on the next dev refresh
+- "My `'use cache'` entries got nuked when I edited `generateStaticParams`" → fixed; only the route's `fallbackParams` re-fetch, the cache stays warm
+- "My static params were stale until I manually clicked save twice" → fixed; HMR refresh now fires AFTER the cache update, so the render that processes it sees the new params
+
+**Action:** upgrade to `next@canary@94` when it ships. No code change needed; the HMR protocol is backwards-compatible (old clients ignore the new message type).
+
+**Audit recipes:**
+- `rg 'STATIC_PARAMS_CHANGED' packages/next/src/` → should return 7 hits (3 in `hot-reloader-types.ts`, 1 in `hot-reloader-app.tsx`, 1 in `hot-reloader-pages.ts`, 1 in `page-bootstrap.ts`, 1 in `next-dev-server.ts`) after canary.94
+- `rg 'SERVER_COMPONENT_CHANGES.*generateStaticParams' packages/next/` → should return 0 hits after canary.94 (the timestamp-hash branch is gone)
+- `rg 'a07e947a27\|35bf8dab73' CHANGELOG.md` → verify both commits are listed in the canary.94 release body
+
+**Sources:**
+- [PR #96019 — `Emit the static paths HMR update after updating the cache`](https://github.com/vercel/next.js/pull/96019) · `packages/next/src/server/dev/next-dev-server.ts` (+33/-24) · Janka Uryga · merged 2026-07-22T12:24:23Z · commit `35bf8dab73` · **Ships in `16.3.0-canary.94`**
+- [PR #96020 — `Add a dedicated HMR message for static params changes`](https://github.com/vercel/next.js/pull/96020) · 7 files +55/-11 across `hot-reloader-types.ts`, `hot-reloader-app.tsx`, `hot-reloader-pages.ts`, `page-bootstrap.ts`, `next-dev-server.ts`, plus tests · Janka Uryga · merged 2026-07-22T13:00:54Z · commit `a07e947a27` · **Ships in `16.3.0-canary.94`**
+
+
+### Cache-Miss Fix in App Shell for Cached Pages with `generateStaticParams` (canary-branch ahead of canary.93, [PR #95665](https://github.com/vercel/next.js/pull/95665) merged 2026-07-22T15:18:51Z, ships in `16.3.0-canary.94` ~2026-07-23T23:00Z, closes `NAR-883`)
+
+A silent cache-miss footgun for `cacheComponents: true` + `generateStaticParams` + `appShells`-style prerendering (i.e. when App Shells / `partialPrefetching: true` is in play). The bug:
+
+- When an App Shell is being prerendered, the `ShellRuntime` stage is the ceiling — URL data is excluded; the prerender doesn't advance beyond `ShellRuntime`.
+- But the prospective runtime prerender (which decides what's a "hanging input") was letting `params` / `searchParams` resolve normally instead of marking them as hanging.
+- **Result:** when `params` ended up being inputs to a cached page, those inputs weren't hanging in the prospective render — and then became a cache miss in the final render (which IS past `ShellRuntime`).
+
+**The fix** (PR #95665, 5 files +33/-11 across `packages/next/src/server/app-render/{app-render.tsx, work-unit-async-storage.external.ts, request/params.ts, errors.json}`):
+1. Adds `readonly isSessionShell: boolean` to `PrerenderStoreModernRuntime`.
+2. Threads `isSessionShell: isShellPrefetch` from `prospectiveRuntimeServerPrerender(ctx, isShellPrefetch, ...)` (new arg) and `finalRuntimeServerPrerender(..., { isSessionShell: mode.type === 'session-shell-only', ... })` into the work-unit store.
+3. `createRuntimePrerenderParams` gains `workStore: WorkStore` as a new arg and now branches on `workUnitStore.isSessionShell`:
+   ```ts
+   // Was: always makeUntrackedParams(userspaceParams) when no stagedRendering
+   if (workUnitStore.isSessionShell) {
+     return makeHangingParams(underlyingParams, workStore, workUnitStore)
+   } else {
+     return makeUntrackedParams(userspaceParams)
+   }
+   ```
+4. New error code #1449 `"Accessed \`searchParams\` during prerendering."` enforces the new contract (the error was already raised; the addition is to `errors.json` for stability).
+
+**Practical impact for `cacheComponents: true` + `generateStaticParams` apps:**
+- "I added `generateStaticParams` to a cached page and now my `partialPrefetching: true` shell is doing duplicate data fetches" → fixed; the params are properly marked as hanging in the prospective render, so the final render's cache key matches and it hits
+- "My App Shell prerender succeeds but the runtime render is a cache miss" → fixed; same root cause
+- **No public API change** — `params` / `searchParams` continue to resolve to the same values; the change is purely in how the prerender classifies them as hanging vs not
+
+**Action:** upgrade to `next@canary@94` when it ships. No code change needed; existing `'use cache'` + `generateStaticParams` patterns automatically benefit.
+
+**Audit recipe:** `rg 'isSessionShell' packages/next/src/server/` → confirms the new field is threaded through both `prospectiveRuntimeServerPrerender` and `finalRuntimeServerPrerender`. `rg '1449' packages/next/errors.json` → confirms the new error code is registered.
+
+**Source:** [PR #95665 — `fix: cache miss in App Shell for cached pages with gSP`](https://github.com/vercel/next.js/pull/95665) · 5 files +33/-11 across `app-render.tsx`, `work-unit-async-storage.external.ts`, `request/params.ts`, `errors.json` · Janka Uryga · merged 2026-07-22T15:18:51Z · commit `63f14c6c90` · closes `NAR-883` · **Ships in `16.3.0-canary.94`** (expected ~2026-07-23T23:00Z).
+
+
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
 PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.

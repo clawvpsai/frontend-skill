@@ -1440,7 +1440,63 @@ const activeElement = ownerDocument.activeElement
 | `next@canary@92` | 2026-07-21T17:51:18Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
 | `next@canary@93` | 2026-07-21T23:55:58Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
 | `next@preview@7` | 2026-07-21T18:28:46Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+| `next@preview@8` | 2026-07-22T10:21:19Z | 19.3.0-canary-81e442ea-20260721 | ✅ | ✅ |
+| **canary-branch (canary.94 expected ~2026-07-23T23:00Z)** | 2026-07-22T16:50:21Z | 19.3.0-canary-711c445b-20260722 (PR #96066 bump) | ✅ | ✅ |
 | **React stable `19.2.8`** | 2026-07-21T15:49:09Z | (standalone React release) | ✅ | ❌ (only FlightReply perf landed; Fragment-blur is canary-only) |
+
+If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable: `npm install next@16.2.11 react@19.2.8 react-dom@19.2.8` — the `react@19.2.8` install covers client-side hydration decoding; the `next@16.2.12` (when it ships) or `next@16.3.0` stable will vendor the bump for SSR/RSC too. `next@preview@7` is the preview-train path.
+
+### 3. PR #37086 `[Flight] Limit fake JSX call site stacks to 10 frames` (Sebastien Silbermann, merged 2026-07-22T16:38:39Z) — shipped in React canary `711c445b-20260722`
+
+**A real dev-only Flight payload-decode perf win.** The previous `fakeJSXCallSite()` in `packages/react-client/src/ReactFlightClient.js` unconditionally captured a full Error stack on every JSX call site during dev RSC payload creation. The captured depth followed the ambient `Error.stackTraceLimit`:
+- **v8 (Chromium, Node.js)** defaults to **10** frames
+- **SpiderMonkey (Firefox)** does not support `Error.stackTraceLimit` at all
+- **JSC (Safari)** defaults to **100** frames
+
+So in Safari dev, every JSX call site in every dev RSC payload was costing 100 frames of stack capture. The fix temporarily sets `Error.stackTraceLimit = 10` (`ownerStackTraceLimit`) around the `Error('react-stack-top-frame')` construction and restores the ambient value immediately after — same approach as the earlier React PR #34864 (RSC stack-capture opt), now extended to Flight's development fake JSX call sites. Diff (in `packages/react-client/src/ReactFlightClient.js`):
+
+```js
+// ❌ Before — captures a full ambient-depth stack on every JSX call site
+/** @noinline */
+function fakeJSXCallSite() {
+  return new Error('react-stack-top-frame')
+}
+
+// ✅ After — temporarily clamps to 10 frames, restores ambient after
+const ownerStackTraceLimit = 10
+
+/** @noinline */
+function fakeJSXCallSite() {
+  let error
+  const previousStackTraceLimit = Error.stackTraceLimit
+  Error.stackTraceLimit = ownerStackTraceLimit
+  error = Error('react-stack-top-frame') // eslint-disable-line prefer-const
+  Error.stackTraceLimit = previousStackTraceLimit
+  return error
+}
+```
+
+**Benchmark numbers** (from the [PR's standalone benchmark](https://github.com/user-attachments/files/30262123/rsc-stack-trace-standalone.zip) — 4 nested Server Component levels, ambient `Error.stackTraceLimit = 50`, no debugger attached, 100 samples per variant alternating):
+
+| Case | Before | After | Improvement |
+|---|---|---|---|
+| Small | 0.40 ms/render | 0.32 ms/render | 0.07 ms (18.3%) |
+| Sprite | 31.78 ms/render | 8.35 ms/render | 23.43 ms (73.7%) |
+| Large | 48.63 ms/render | 13.68 ms/render | 34.95 ms (71.9%) |
+| 100 fuzzy cases (average) | 12.09 ms/render | 5.77 ms/render | 6.33 ms (52.3%) |
+
+**Practical effect for any app decoding RSC payloads in dev:**
+- **Large / sprite / heavy-JSX pages** see the biggest win (71-74% decode-cost reduction)
+- **Real-world impact on `next dev` first-request compile** is material — the Flight decode path runs on every RSC payload decode, including Server Component hydration, `use()`-suspended children, and `cacheSignal`-driven deferred reads
+- **When a debugger IS attached**, `Error.stackTraceLimit` has no impact on `Error()` construction cost in v8, so the win is largest on dev sessions without an active inspector
+- **Effect is dev-only** — production Flight decoders don't construct stack traces, so no prod change
+- **Safari gets the biggest absolute win** because JSC defaults to 100 frames (the ambient was worst); Firefox sees no measurable change because SpiderMonkey ignores `Error.stackTraceLimit`
+
+**Action:** `react@19.3.0-canary-711c445b-20260722` is bundled into `next@canary@94` when it ships ([PR #96066](https://github.com/vercel/next.js/pull/96066) upgrades Next's vendored React from `81e442ea-20260721` → `711c445b-20260722`, merged 2026-07-22T16:50:21Z). For standalone dev today: `npm install react@19.3.0-canary-711c445b-20260722 react-dom@19.3.0-canary-711c445b-20260722` to get the decode perf on client-side RSC decoding. Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-711c445b-20260722`.
+
+**Test coverage** (in `packages/react-client/src/__tests__/ReactFlight-test.js`): a new test `restores the stack trace limit after recreating JSX call sites` sets ambient `Error.stackTraceLimit = 50`, runs a Flight read, and asserts the ambient value is unchanged after — guards against the temporary-set leaking past `fakeJSXCallSite()`.
+
+**Source:** [PR #37086 — `[Flight] Limit fake JSX call site stacks to 10 frames`](https://github.com/facebook/react/pull/37086) · Files: 2 changed (+23/-2) in `packages/react-client/src/ReactFlightClient.js` (+14/-2 main fix) + `packages/react-client/src/__tests__/ReactFlight-test.js` (new test) · Sebastien Silbermann · merged 2026-07-22T16:38:39Z · commit `711c445bccc331b3ef85a793feb8e13dcf968fc3` · **Shipped in React `19.3.0-canary-711c445b-20260722`** (npm dist-tag moved 2026-07-22T16:41:17Z) + bundled into **`next@canary@94`** (expected ~2026-07-23T23:00Z via [PR #96066](https://github.com/vercel/next.js/pull/96066)) + **`next@preview@9`** (expected in lockstep with canary.94).
 
 If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable: `npm install next@16.2.11 react@19.2.8 react-dom@19.2.8` — the `react@19.2.8` install covers client-side hydration decoding; the `next@16.2.12` (when it ships) or `next@16.3.0` stable will vendor the bump for SSR/RSC too. `next@preview@7` is the preview-train path.
 
