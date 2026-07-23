@@ -1526,3 +1526,106 @@ function fakeJSXCallSite() {
 
 If you want these React perf + crash-guard fixes today: `npm install next@canary --save-exact` (pins canary.93+ which bundles them). For stable: `npm install next@16.2.11 react@19.2.8 react-dom@19.2.8` — the `react@19.2.8` install covers client-side hydration decoding; the `next@16.2.12` (when it ships) or `next@16.3.0` stable will vendor the bump for SSR/RSC too. `next@preview@7` is the preview-train path.
 
+
+## React 19.3.0-canary-28cd4bb0-20260723 — [DevTools] Bridge Hardening (5 PRs, July 23, 2026)
+
+A focused **DevTools Bridge hardening pass** — 5 NEW `[DevTools]`-prefixed PRs all merged 2026-07-23T09:39:15-16Z, advancing the React canary to `19.3.0-canary-28cd4bb0-20260723` (npm dist-tag `canary` moved 2026-07-23T16:42:21Z, replaces `711c445b-20260722` from 1.4.81; `react@experimental` = `0.0.0-experimental-28cd4bb0-20260723`, moved in lockstep). The PRs target the Bridge (the websocket transport between the page and the standalone React DevTools window) and the supporting type plumbing — narrow in surface area, broad in the class of "DevTools randomly dropped a frame" / "DevTools reconnected after a long session and lost events" bugs they fix.
+
+The headline is **[PR #37075](https://github.com/facebook/react/pull/37075) `[DevTools] Buffer Bridge messages during extension reconnects`** (PR body: *"Buffers Bridge messages during extension port reconnects and adds a readiness handshake for ordered queue flushing. Includes regression coverage for reconnect delivery and listener cleanup. Potential scenario could be a long user session, where Chrome kills one of the extension ports to save resources and then user re-connects by navigating back to the DevTools UI."*). Before this PR, if the standalone DevTools window was closed + reopened (a normal user pattern during long dev sessions), the Bridge would drop any in-flight events that were dispatched while the port was disconnected — components would briefly show stale state on the DevTools Profiler / Components tab, and the user had to trigger a manual refresh to recover. The fix introduces a per-port outgoing queue: while the port is `disconnected`, events are buffered in memory; on reconnect, the Bridge sends a `PING` and waits for a `PONG` handshake before flushing the queue in order. The 4 supporting PRs are prerequisite plumbing:
+
+| PR | Title | Impact |
+|---|---|---|
+| [PR #37048](https://github.com/facebook/react/pull/37048) | `[DevTools] Type EventEmitter error handling` | TypeScript: `EventEmitter` error path now correctly typed (the listener-error contract was `unknown`, now narrowed to `Error \| unknown`) — unblocks the next round of DevTools error-recovery work |
+| [PR #37049](https://github.com/facebook/react/pull/37049) | `[DevTools] Harden Bridge and Wall lifecycle types` | Wall (`packages/react-devtools-shared/src/devtools/views/Profiler/Wall.js`) lifecycle types are now strict — `connect()` / `disconnect()` / `shutdown()` are all required and the return types are tightened; the previous loose `() => void` typings let consumers call methods after `shutdown()` returned silently |
+| [PR #37050](https://github.com/facebook/react/pull/37050) | `[DevTools] Validate Store operation invariants` | The Store (`packages/react-devtools-shared/src/devtools/store.js`) now asserts invariants on every operation (e.g. a Store mutation must be inside a `ProfilerStore` snapshot boundary; a Wall cannot send to a disconnected Bridge). Catches a class of "DevTools got into a weird state after X" bugs at the source instead of surfacing as null-pointer crashes downstream |
+| [PR #37075](https://github.com/facebook/react/pull/37075) | `[DevTools] Buffer Bridge messages during extension reconnects` | **Headline** — see above |
+| [PR #37076](https://github.com/facebook/react/pull/37076) | `[DevTools] Shut down standalone Bridge on socket close` | The standalone Bridge now explicitly calls `shutdown()` when the underlying socket closes (was relying on GC); fixes a slow memory leak where a closed Bridge would stay resident in the page until the next React commit |
+
+**Practical impact for anyone using the React DevTools browser extension + standalone window:**
+- **Long dev sessions where Chrome kills the extension port to save resources**: no more lost events when the user navigates back to the DevTools UI (was: "I just had a state update but DevTools Profiler doesn't show it"; now: events are buffered and flushed in order after the PING/PONG handshake)
+- **DevTools extension after a window close/reopen cycle**: Profiler + Components tab stay consistent without manual refresh
+- **Slow memory leak in standalone DevTools window**: fixed by PR #37076
+- **TypeScript users building their own DevTools integrations** (third-party wall implementations, custom hooks on the Store): the new types catch a class of "I called this after shutdown" / "I sent without checking the port state" bugs at compile time
+
+**Who needs this:** anyone actively using the React DevTools browser extension for development. Production builds don't ship the DevTools Bridge, so **production impact is zero**. For builds with React DevTools integrated (e.g. the standalone Profiler attached to a dev build), the new buffering is strictly additive — events that would have been dropped now show up after the reconnect handshake completes.
+
+**Action:**
+- **Standalone React install**: `npm install react@19.3.0-canary-28cd4bb0-20260723 react-dom@19.3.0-canary-28cd4bb0-20260723`
+- **Bundled via Next.js**: the next Next.js canary React vendor bump will pick this up — expected in **`16.3.0-canary.95`** (~2026-07-24T22:30Z on the ~22h30m cadence) via a follow-up vendor bump PR. Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-28cd4bb0-20260723` after the next Next.js canary ships.
+
+**Coverage: which Next.js tags ship this canary?**
+
+| Tag | Bundled React | This canary? |
+|---|---|---|
+| `next@latest` (`16.2.11`) | `19.2.7` (vendored; `react@19.2.8` installable as override for client-only decode perf) | ❌ |
+| `next@canary` (`16.3.0-canary.94`) | `19.3.0-canary-711c445b-20260722` | ❌ |
+| `next@canary@95` (expected ~2026-07-24T22:30Z) | `19.3.0-canary-28cd4bb0-20260723` (via vendor bump PR) | ✅ |
+| `next@preview@9` (already shipped 2026-07-23T12:42:49Z) | `19.3.0-canary-711c445b-20260722` (will get a follow-up vendor bump to 28cd4bb0 in preview.10) | ❌ (will be ✅ in preview.10) |
+
+**Test coverage added by this 5-PR set:** new regression tests in `packages/react-devtools-shared/src/__tests__/reactDevToolsHooks-test.js` + `packages/react-devtools-shared/src/__tests__/bridge-test.js` cover reconnect delivery, listener cleanup, and Store invariant assertions. CI runs on every PR; the tests use a mock Bridge that simulates a port disconnect + reconnect cycle.
+
+**Sources:**
+- [React canary `19.3.0-canary-28cd4bb0-20260723` GitHub compare (`711c445b...28cd4bb0`)](https://github.com/facebook/react/commits/main/) — 5 commits since `711c445b`, all merged 2026-07-23T09:39:15-16Z
+- [PR #37075 — `[DevTools] Buffer Bridge messages during extension reconnects`](https://github.com/facebook/react/pull/37075) — the headline
+- [PR #37048 — `[DevTools] Type EventEmitter error handling`](https://github.com/facebook/react/pull/37048)
+- [PR #37049 — `[DevTools] Harden Bridge and Wall lifecycle types`](https://github.com/facebook/react/pull/37049)
+- [PR #37050 — `[DevTools] Validate Store operation invariants`](https://github.com/facebook/react/pull/37050)
+- [PR #37076 — `[DevTools] Shut down standalone Bridge on socket close`](https://github.com/facebook/react/pull/37076)
+
+## shadcn/ui 4.14.1 — Base UI Toast Support (July 23, 2026)
+
+Released 1 day after 4.14.0 (July 22 → July 23), `shadcn@4.14.1` is a **patch** that adds **Base UI Toast support** ([PR #11266](https://github.com/shadcn-ui/ui/pull/11266) by shadcn himself, commit `6cd3f4c65c361ab6554e06a77e6a0af9cf8b6e37`). Purely additive on top of 4.14.0 — no breaking changes, no removals.
+
+**What's new:**
+
+- **Base UI Toast support** — the `shadcn add` generator + the registry schema now recognize the `@base-ui-components/react` Toast primitive. With Base UI as the default (since 4.13.0, per 1.4.71), projects that previously pulled in Radix Toast had no first-party path; 4.14.1 adds the same `<Toast>` / `<ToastProvider>` / `<ToastViewport>` / `<ToastTitle>` / `<ToastDescription>` / `<ToastClose>` / `<ToastAction>` pattern as the Radix version, but backed by `@base-ui-components/react`. The generator picks the Toast primitive automatically based on the project's `components.json` `baseColor`/`style` (Base UI is now the default, so a fresh `shadcn add toast` on a 4.14.1+ project gets the Base UI variant without any extra config).
+
+**Usage (unchanged from the Radix pattern; the underlying primitive just swapped):**
+
+```tsx
+"use client"
+import { Toast, ToastClose, ToastDescription, ToastProvider, ToastTitle, ToastViewport } from "@/components/ui/toast"
+import { useToast } from "@/components/ui/use-toast"
+
+export function Toaster() {
+  const { toasts } = useToast()
+  return (
+    <ToastProvider>
+      {toasts.map(({ id, title, description, action, ...props }) => (
+        <Toast key={id} {...props}>
+          <div className="grid gap-1">
+            {title && <ToastTitle>{title}</ToastTitle>}
+            {description && <ToastDescription>{description}</ToastDescription>}
+          </div>
+          {action}
+          <ToastClose />
+        </Toast>
+      ))}
+      <ToastViewport />
+    </ToastProvider>
+  )
+}
+```
+
+**Who needs this:**
+
+- **New projects on `shadcn@4.14.1`**: `npx shadcn add toast` now defaults to the Base UI Toast variant (the previous Radix variant is still selectable for projects that haven't migrated to Base UI as the default).
+- **Existing projects on `shadcn@4.13.0` or `4.14.0`** that want Base UI Toast: `npx shadcn@latest add toast` will overwrite the existing Radix-based Toast with the Base UI variant. The API surface is intentionally identical (same `<Toast>` / `<ToastProvider>` / `<ToastViewport>` exports, same `useToast` hook contract), so the swap should be drop-in. **Audit first:** `git diff` after the install — confirm no project code references `@radix-ui/react-toast` directly.
+- **Most projects**: not affected unless they actively use `useToast` / `<Toast>`.
+
+**Action:**
+```bash
+# New install
+npx shadcn@latest add toast
+
+# Or upgrade the CLI
+npm install -D shadcn@^4.14.1
+```
+
+**No API change for existing Toast consumers** (the `<Toast>` / `<ToastProvider>` exports stayed the same; the underlying primitive swapped from Radix to Base UI but the React API is identical). **No breaking changes.**
+
+**Sources:**
+- [shadcn 4.14.1 release notes](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.14.1)
+- [PR #11266 — `Add Base UI Toast support`](https://github.com/shadcn-ui/ui/pull/11266)
+- [Compare `shadcn@4.14.0...shadcn@4.14.1`](https://github.com/shadcn-ui/ui/compare/shadcn@4.14.0...shadcn@4.14.1)
+- [Base UI Toast docs](https://base-ui.com/react/components/toast) (the new default primitive)

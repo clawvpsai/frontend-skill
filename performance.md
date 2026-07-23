@@ -1068,6 +1068,71 @@ A **silent-data-leakage fix** for `cacheComponents: true` + `generateStaticParam
 **Source:** [PR #95872 — `[Cache Components] Exclude dynamic params from prerenders when no generateStaticParams values is provided`](https://github.com/vercel/next.js/pull/95872) · gnoff · merged 2026-07-22T22:28:43Z · closes `NAR-882` · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
 
 
+### `next/font/google` Fetch Timeout Now Bounded on Turbopack (will ship in `16.3.0-canary.95`, [PR #95981](https://github.com/vercel/next.js/pull/95981) by styfle, merged 2026-07-23T15:40:55Z)
+
+A **hang-prevention fix** for `next/font/google` on the Turbopack path — the compile-time Google Fonts fetch could hang forever when the network stalled. Now bounded:
+
+**The bug:** `next/font/google` fetches from Google Fonts at compile time. When the connection *hangs* (captive portal, packet-dropping proxy, broken IPv6), the fetch had no timeout, so compilation blocked until the OS connect timeout (~75s) or indefinitely. This bit teams on flaky hotel Wi-Fi, in Docker builds behind corporate proxies, and in CI runners with broken egress.
+
+**The fix (PR #95981):**
+- `FetchClientConfig` gets a `connect_timeout` (10s) and total `timeout` (60s); Google Fonts overrides them to **5s / 30s** (tighter, since the Google Fonts endpoint is usually fast).
+- Transient failures retry up to **3×**, each attempt its own `duration_span!` (so the timeout is per-attempt, not cumulative).
+- On failure:
+  - **`next build`**: errors the build with the attempt count + a suggestion to switch to `next/font/local`.
+  - **`next dev`**: warns and uses the **fallback font** so dev keeps running. The dev mode gets a longer timeout in a follow-up (PR description says "Reduce the dev-mode timeout (build keeps the longer value)" is a TODO).
+
+**Practical impact:**
+- **`next build` in CI**: no more "build hangs for 75s on a Google Fonts fetch that never resolves" — bounded to 5s × 3 attempts = 15s ceiling per font, with the build failing cleanly on timeout.
+- **`next dev` on flaky networks**: app keeps working with the fallback font (the same fallback the build emits for offline mode) instead of stalling forever.
+- **No API change, no config change.** The fix is internal to `packages/font/src/google` + `FetchClientConfig`.
+
+**Who needs this:** anyone on Turbopack who hits `next/font/google` from a captive portal / corporate proxy / broken IPv6 / CI runner with restricted egress. Webpack users are unaffected (this PR is Turbopack-only; the webpack port is a follow-up TODO per the PR description).
+
+**Audit recipes:**
+- `rg 'connect_timeout' packages/font/src/` → confirms the new timeout wiring
+- `rg 'FetchClientConfig' packages/font/src/` → shows the config struct + the Google Fonts override
+
+**Source:** [PR #95981 — `fix(next/font/google): bound Google Fonts fetch timeout on Turbopack`](https://github.com/vercel/next.js/pull/95981) · styfle · merged 2026-07-23T15:40:55Z · **Will ship in `16.3.0-canary.95`** (~2026-07-24T22:30Z on the ~22h30m cadence). Related issues: [#92301](https://github.com/vercel/next.js/issues/92301), [#76473](https://github.com/vercel/next.js/issues/76473).
+
+### Rewrite Edge Server Source Map Sources in Rust, Drop JS Fallback (will ship in `16.3.0-canary.95`, [PR #95980](https://github.com/vercel/next.js/pull/95980), merged 2026-07-23T15:35:30Z)
+
+A **Turbopack correctness + cleanup PR** for the edge-runtime dev source map path. The `rewriteTurbopackSources` function has been mostly dead since [#85146](https://github.com/vercel/next.js/pull/85146); this closes the remaining gap with the edge runtime in dev (an accidental omission) and drops the JS-side munging.
+
+**The fix:** the source map source URL rewriting (which rewrites paths like `turbopack:///[project]/src/foo.ts` to relative URLs the browser can fetch) now happens entirely in Rust, in the same Turbopack build that emits the map. The JS fallback that ran in the dev server is removed — it was carrying a class of "edge runtime + Turbopack dev source maps are subtly different from production" bugs that the Rust path doesn't have.
+
+**Practical impact:**
+- **Edge runtime + Turbopack dev source maps now match production** (no more "the stack line in dev doesn't quite point at the right source").
+- **One less JS-side code path to maintain** — the `rewriteTurbopackSources` JS function + its callers are deleted.
+- **No API change, no config change.** Silent correctness fix + small build-time win from the dropped JS munging.
+
+**Who needs this:** anyone running Next.js + Turbopack + Edge Runtime in dev. Production is unaffected.
+
+**Audit recipes:**
+- `rg 'rewriteTurbopackSources' packages/next/src/` → should return 0 hits after the PR lands (function is removed)
+- `rg 'rewriteTurbopackSources' crates/next-api/src/` → confirms the Rust path exists
+
+**Source:** [PR #95980 — `Rewrite edge server source map sources in Rust, drop JS fallback`](https://github.com/vercel/next.js/pull/95980) · merged 2026-07-23T15:35:30Z · **Will ship in `16.3.0-canary.95`** (~2026-07-24T22:30Z on the ~22h30m cadence).
+
+### canary-branch status update — 9 commits ahead of canary.94 (live at 2026-07-23T18:03Z)
+
+As of this cron's run, the Next.js **canary-branch is now 9 commits ahead of `16.3.0-canary.94`** (was 4 at the 1.4.84 commit at 12:04Z, was 3 at 1.4.82, was 0 at 1.4.81, was 14 at 1.4.80 / canary.93 → canary.94 ship window). canary-branch HEAD = `aa4f46a540b7c9176c7c2b7ef22421adb4b5688e`, canary.94 tag = `b2144ddb79366682486d8ddda2b39549f7c26c5e`. Per the [GitHub `compare` API](https://github.com/vercel/next.js/compare/b2144ddb79366682486d8ddda2b39549f7c26c5e...aa4f46a540b7c9176c7c2b7ef22421adb4b5688e) — status `ahead`, 9 commits.
+
+The 9 commits, in chronological order:
+
+1. **PR #96035** `Turbopack: Use swc_core::ecma::utils::prop_name_eq for a couple of the next-custom-transforms` (2026-07-22T23:38:16Z, commit `5639c4e`) — internal cleanup, no user-facing impact. [1.4.82]
+2. **PR #95987** `Turbopack: Use Arc<PathMap> and Box<Path> to make InvalidatorMap slightly more efficient` (2026-07-22T23:38:52Z, commit `8882653`) — marginal perf + memory win, no user-facing impact. [1.4.82]
+3. **PR #96030** `Turbopack: Split up turbo-tasks-fs/src/lib.rs into smaller modules` (2026-07-22T23:38:52Z, commit `89c9487`) — refactor, no user-facing impact. [1.4.82]
+4. **PR #95828** `[Bench] Add client-trace attribution pass and document metrics to render-pipeline` (2026-07-23T07:26:03Z, commit `5f688d2`) — internal Bench pass, no user-facing impact. [1.4.84]
+5. **`v16.3.0-preview.9` tag** (2026-07-23T12:18:54Z, commit `838bd19`) — preview-train bookkeeping.
+6. **`Restore canary version 16.3.0-canary.94 after v16.3.0-preview.9 preview release`** (2026-07-23T12:18:57Z, commit `5d662af`) — canary-train bookkeeping.
+7. **PR #96097** `docs: view transitions guide — skill section, source-audit fixes, flag-removal docs` (2026-07-23T15:24:08Z, commit `28a9465`) — docs-only.
+8. **PR #95980** `Rewrite edge server source map sources in Rust, drop JS fallback` (2026-07-23T15:35:29Z, commit `2c12e4a`) — **MATERIAL** — see new section above. Will ship in canary.95.
+9. **PR #95981** `fix(next/font/google): bound Google Fonts fetch timeout on Turbopack` (2026-07-23T15:40:55Z, commit `aa4f46a`) — **MATERIAL** — see new section above. Will ship in canary.95.
+
+**Material PRs in flight for canary.95**: 2 new material entries (#95981 + #95980, both documented in the new sections above), plus the 4 internal/refactor commits (#96035 + #95987 + #96030 + #95828 from 1.4.82/1.4.84) and the 2 preview.9 bookkeeping commits. **Expected: canary.95 ships ~2026-07-24T22:30Z** on the ~22h30m cadence.
+
+**No API changes** in the 5 new commits since 1.4.84 — the only user-facing impact is the 2 material PRs (PR #95981 fix + PR #95980 Rust rewrite) documented above.
+
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)
 
 PR [#95067](https://github.com/vercel/next.js/pull/95067) (June 25, 2026) closes a long-standing dev/prod discrepancy: previously, `next dev` rendered a fully-hydrated tree for prefetch requests, while `next start` / production served the static shell only. That difference made it impossible to catch shell-only correctness issues (missing Suspense boundaries, blocking data reads, layout-vs-page mismatches) until the app shipped. After this change, dev serves the **same shell-only response** that production would, so prefetch issues surface in the dev overlay rather than in customer logs.

@@ -2409,3 +2409,39 @@ npm install --save-dev @vitejs/plugin-legacy@^8.2.2
 - [PR #23013 — `legacy: don't use newer syntax when minifying legacy chunks`](https://github.com/vitejs/vite/issues/23013)
 - [PR #22961 — `bundler: update rolldown-related deps + client-side HMR in bundled-dev`](https://github.com/vitejs/vite/issues/22961)
 - [PR #22998 — `deps: update dependency magic-string to v1`](https://github.com/vitejs/vite/issues/22998)
+
+### `next@16.3.0-preview.9` (July 23, 2026) — Preview-Train Bookkeeping
+
+`next@16.3.0-preview.9` (npm dist-tag `preview` pointer moved 2026-07-23T12:42:49Z, [release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.9)) shipped **38 minutes after the 1.4.84 cron commit at 12:04Z**. **Pure preview-train bookkeeping** — the body mirrors the canary.94 PR set (already documented at 1.4.82) plus the 1.4.84 internal refactors (PR #95828 Bench client-trace attribution + the 3 internal Turbopack refactors #96035 + #95987 + #96030). **No NEW material PRs in preview.9 that aren't already in canary.94** — preview.9 is a re-cut of canary.94 + the canary-branch-ahead-of-canary.94 commit chain on the preview train.
+
+The full preview.9 release body:
+
+| Entry | Notes |
+|---|---|
+| `[Bench] Add client-trace attribution pass and document metrics to render-pipeline` (PR #95828) | Same as 1.4.84 — internal Bench pass |
+| `Turbopack: Split up turbo-tasks-fs/src/lib.rs into smaller modules` (PR #96030) | Same as 1.4.84 — refactor |
+| `Turbopack: Use Arc<PathMap> and Box<Path> to make InvalidatorMap slightly more efficient` (PR #95987) | Same as 1.4.84 — internal perf |
+| `Turbopack: Use swc_core::ecma::utils::prop_name_eq for a couple of the next-custom-transforms` (PR #96035) | Same as 1.4.84 — internal cleanup |
+| `[Cache Components] Exclude dynamic params from prerenders when no generateStaticParams values is provided` (PR #95872) | Same as canary.94 — `performance.md` |
+| `Gate partialFallback behavior behind partialPrefetching flag` (PR #96074) | Same as canary.94 — `patterns.md` |
+| `[turbopack] Fix deployment skew protection for component chunks` (PR #96079) | Same as canary.94 — `performance.md` |
+| `Turbopack: stop copying sourcesContent into every serialized source map` (PR #95934) | Same as canary.94 — `performance.md` |
+| `Upgrade React from 81e442ea-20260721 to 711c445b-20260722` (PR #96066) | Same as canary.94 |
+| `fix: cache miss in App Shell for cached pages with gSP` (PR #95665) | Same as canary.94 — `performance.md` + `server-components.md` |
+| `skill(cc-adoption): add dev-only validation sweep reference` (PR #96057) | Same as canary.94 — `patterns.md` |
+| `Refine Cache Components and Partial Prefetching adoption skills` (PR #95817) | Same as canary.94 — `patterns.md` |
+| `[test] Move the dev-only use cache test suite to test/development` (PR #96023) | Same as canary.94 — test-only |
+| `Fix stale dev 'use cache' for cookieless requests and route handlers` (PR #96022) | Same as canary.94 — `performance.md` |
+| `[test] Add failing tests for stale route handler and page cached data` (PR #96021) | Same as canary.94 — test-only |
+| `Add a dedicated HMR message for static params changes` (PR #96020) | Same as canary.94 — `performance.md` |
+| `Emit the static paths HMR update after updating the cache` (PR #96019) | Same as canary.94 — `performance.md` |
+| `[test] Add source-mapping coverage of React's fake stack frame scripts in use cache` (PR #95945) | Same as canary.94 — test-only |
+| `Fix basePath fallback parameter parsing` (PR #95966) | Same as canary.94 — `routing.md` |
+| `Restore canary version 16.3.0-canary.93 after v16.3.0-preview.8 preview release` | canary-train bookkeeping |
+
+**Action:** None — preview.9 is identical content to canary.94 for all user-facing changes. Use **`next@canary@94`** (which is the production-tagged equivalent) over preview.9 unless you specifically need the preview-train advance notice ahead of stable. **`next@preview@9` will be superseded by `next@preview@10`** once a new canary (canary.95) ships and the preview train re-cuts.
+
+**Sources:**
+- [v16.3.0-preview.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.9)
+- [`npm view next@16.3.0-preview.9`](https://www.npmjs.com/package/next/v/16.3.0-preview.9) — confirmed published 2026-07-23T12:42:49Z
+- canary.94 release body ([v16.3.0-canary.94 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.94)) — the same PRs, already documented in 1.4.82

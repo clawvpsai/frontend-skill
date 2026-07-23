@@ -8,7 +8,7 @@
 |---|---|---|---|---|
 | **NextAuth.js v5 (Auth.js)** | `5.0.0-beta.31` (April 14, 2026) | ⚠️ **Stagnant** — no new beta since April 14, 2026 (~3 months stale; previous beta.30 was October 27, 2025 — 6-month gap) | MIT | Free, framework-agnostic, integrates with Next.js 16 `proxy.ts`. Use when you don't want a hosted dependency and Auth.js v5 has the providers you need. |
 | **NextAuth.js v4** | `4.24.14` (April 14, 2026) | Maintenance only — same date as v5 beta | MIT | Existing v4 projects only. Do not start new projects on v4. |
-| **Better Auth** | `1.6.24` (July 22, 2026); `1.7.0-rc.1` (July 2, 2026); `1.7.0-beta.10` (July 22, 2026) | ✅ **Active** — 1.6.23→1.6.24 in 23 days, 1.7.0-rc.1 20 days ago | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
+| **Better Auth** | `1.6.25` (July 23, 2026); `1.7.0-rc.1` (July 2, 2026); `1.7.0-beta.10` (July 22, 2026) | ✅ **Active** — 1.6.24→1.6.25 in 1 day, 1.7.0-rc.1 21 days ago | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
 | **Clerk** | `7.5.12` (`@clerk/nextjs` `latest`, July 3, 2026); also ships `@clerk/nextjs@latest-nextjs-v5` `5.7.6` | ✅ Active — daily canaries + weekly stables | Proprietary (free tier to 10K MAU; ~$0.02/MAU + $25/mo after) | Use when DX velocity matters more than cost/control. Pre-built UI components, organizations + MFA + passkeys out of the box. |
 | **Supabase Auth** | bundled with Supabase | Active (platform cadence) | MIT (library) + SaaS pricing | Use when you're already on Supabase (native RLS integration via `auth.uid()`). |
 | **Auth0 / WorkOS** | n/a | SaaS cadence | Proprietary | Enterprise SSO (SAML/SCIM). Better Auth doesn't have native SSO yet — see Better Auth section. |
@@ -16,7 +16,7 @@
 
 **Current state (July 2026):** The auth landscape has materially shifted in the last 6 months:
 
-1. **Better Auth has overtaken Auth.js in monthly npm downloads** for the first time (per [npm trends](https://npmtrends.com/better-auth-vs-next-auth), June 2026). 1.6.23 shipped June 29, 1.7.0-rc.1 shipped July 2, 1.6.24 shipped July 22 — active development.
+1. **Better Auth has overtaken Auth.js in monthly npm downloads** for the first time (per [npm trends](https://npmtrends.com/better-auth-vs-next-auth), June 2026). 1.6.23 shipped June 29, 1.7.0-rc.1 shipped July 2, 1.6.24 shipped July 22, 1.6.25 shipped July 23 — active development.
 2. **NextAuth v5 beta has stagnated**: beta.31 (April 14, 2026) is the latest, ~3 months old. The previous release (beta.30) was October 27, 2025 — a 6-month gap. The API is stable but the release cadence is a yellow flag if you need new providers/features. Plan for a possible Auth.js v6 announcement — check the [Auth.js discussions](https://github.com/nextauthjs/next-auth/discussions) before committing to a major build on top of it.
 3. **Clerk has matured** to v7 with React 19 + Next.js 16 support; its free tier now extends to 10K MAU (was 5K MAU pre-v7).
 
@@ -37,7 +37,7 @@
 
 NextAuth/Auth.js is no longer the default — **Better Auth is** for most new Next.js SaaS apps in 2026. Per the LogRocket April 2026 comparison of every major auth library for Next.js, and the [MakerKit July 2026 comparison](https://makerkit.dev/blog/tutorials/better-auth-vs-clerk) of Better Auth vs Clerk vs NextAuth vs Supabase Auth for production Next.js SaaS:
 
-- **Better Auth** — Open-source (MIT), TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations). GA since v1.0 (late 2024), v1.6.24 stable July 22 2026, v1.7.0-rc.1 shipped July 2 2026, v1.7.0-beta.10 shipped July 22 2026. Use when you want full control without rolling your own. Cost at 100K MAU: ~$50/mo (just your Postgres).
+- **Better Auth** — Open-source (MIT), TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations). GA since v1.0 (late 2024), v1.6.25 stable July 23 2026, v1.7.0-rc.1 shipped July 2 2026, v1.7.0-beta.10 shipped July 22 2026. Use when you want full control without rolling your own. Cost at 100K MAU: ~$50/mo (just your Postgres).
 - **Clerk** — Best-in-class DX, pre-built UI components, organizations + MFA + passkeys out of the box. Free tier to 10K MAU (was 5K MAU pre-v7), then ~$0.02/MAU + $25/mo base. Use when UX velocity > control. Cost at 100K MAU: ~$1,025/mo. Re-evaluate at ~10K MAU.
 - **NextAuth/Auth.js** — Free, MIT, framework-agnostic, integrates cleanly with Next.js 16's `proxy.ts`. Reasonable for marketing sites, internal tools, and OSS projects that don't need organizations or passkeys.
 - **Lucia / Oslo + custom** — Low-level primitives. Use when you need a hand-rolled auth flow with no library opinions (rare).
@@ -182,6 +182,28 @@ On **July 7, 2026**, Vercel [announced the acquisition of Better Auth](https://v
 - [PR #10403 — `feat(auth)!: scope accounts by issuer`](https://github.com/better-auth/better-auth/pull/10403)
 - [PR #10390 — `feat(scim)!: decouple provisioning from the organization plugin`](https://github.com/better-auth/better-auth/pull/10390)
 - [Better Auth 1.7 upgrade guide](https://better-auth.com/docs/guides/1-7-upgrade-guide)
+
+### Better Auth 1.6.25 changelog (July 23, 2026)
+
+`1.6.25` is the latest **stable** release (npm `latest` dist-tag pointer moved 2026-07-23T15:48:09Z, replaces `1.6.24` from July 22 — **the second consecutive stable release in 24 hours**, the 1.6.x line is now hot-fixing known regressions as they're reported). 4 bug fixes, **no features, no breaking changes**. Changelog vs `1.6.24`:
+
+**Bug fixes:**
+- **Apple OAuth now sends the PKCE `code_challenge` during authorization** ([PR #10294](https://github.com/better-auth/better-auth/pull/10294)) — the Apple OAuth provider was missing the `code_challenge` parameter on the authorization request, which caused Apple's token-exchange endpoint to reject the token request with `invalid_grant`. Affects every project using `socialProviders: { apple: { ... } }`. With 1.6.24, the round-trip silently failed and the user saw a generic `OAuthAccountNotLinked` or stuck on the Apple consent screen; 1.6.25 sends `code_challenge` + `code_challenge_method=S256` correctly. **Action:** upgrade from 1.6.24 to 1.6.25 immediately if you use Apple OAuth.
+- **Google One Tap now respects `disableSignUp` on the Google provider** ([PR #10479](https://github.com/better-auth/better-auth/pull/10479)) — `socialProviders.google.disableSignUp: true` was being silently ignored on the Google One Tap flow (the popup-style auto-prompt that surfaces "Continue as ..." UI), so One Tap was creating new user rows even when `signUps` were configured to be disabled. The auto-prompt code path used a different sign-up decision branch than the standard `signIn.social({ provider: 'google' })` flow. 1.6.25 unifies the two paths so `disableSignUp` is honored on both. **Action:** upgrade if you use Google One Tap with `disableSignUp: true` (security fix — the previous behaviour silently allowed account creation).
+- **Solid client now exposes `$fetch` and `$store`** ([PR #10444](https://github.com/better-auth/better-auth/pull/10444)) — the `@better-auth/solid` client (`createAuthClient` from `better-auth/solid`) was missing `$fetch` and `$store` on the client instance returned by `createAuthClient(...)`. They were exported from the underlying core package but not re-bound to the Solid client wrapper, so `authClient.$fetch('/some/route')` returned `undefined is not a function` and the Solid store helpers couldn't be wired. Affects every Solid.js + Better Auth project. 1.6.25 re-exposes both. **Action:** upgrade if you use `better-auth/solid` and were working around the missing `$fetch`/`$store`.
+- **Internal adapter query routing on `user.modelName` collisions fixed** — when a built-in table's `modelName` was set to another table's schema key (e.g. `user.modelName = "account"`), internal adapter queries were being routed to the wrong table. The fix tightens `getDefaultModelName` (the same helper from 1.6.24's bug-fix list) to prefer exact schema key matches over `modelName` aliases in all adapter call paths, not just the ones that were covered by the 1.6.24 fix. **Action:** upgrade if you have an unusual schema where built-in tables reference other tables' keys via `modelName`.
+
+**No features, no breaking changes.** Safe drop-in upgrade from 1.6.24.
+
+**Action:** `npm install better-auth@1.6.25` — recommended for all users (especially Apple OAuth users, Google One Tap users with `disableSignUp`, and Solid client users).
+
+**Sources:**
+- [Better Auth 1.6.25 GitHub release](https://github.com/better-auth/better-auth/releases/tag/v1.6.25)
+- [`better-auth` CHANGELOG @ `07a646ea`](https://github.com/better-auth/better-auth/blob/07a646ea190167370fbbb60a0fa2c3be3bec5522/packages/better-auth/CHANGELOG.md)
+- [compare `v1.6.24...v1.6.25`](https://github.com/better-auth/better-auth/compare/v1.6.24...v1.6.25)
+- [PR #10294 — `fix(apple): send PKCE code_challenge during authorization`](https://github.com/better-auth/better-auth/pull/10294)
+- [PR #10479 — `fix(google-one-tap): respect disableSignUp`](https://github.com/better-auth/better-auth/pull/10479)
+- [PR #10444 — `fix(solid): expose $fetch and $store on the Solid client`](https://github.com/better-auth/better-auth/pull/10444)
 
 ### Better Auth 1.7.0-rc.1 changelog (July 2, 2026)
 
