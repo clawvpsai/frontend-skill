@@ -883,7 +883,7 @@ The bundled `sharp` dependency (used by `next/image` for AVIF/WebP/JPEG/PNG enco
 **Source:** [PR #95507 — `chore(deps): bump sharp@0.35.3`](https://github.com/vercel/next.js/pull/95507) · [sharp v0.35.3 release notes](https://github.com/lovell/sharp/releases/tag/v0.35.3) · styfle · merged 2026-07-21T19:52:10Z · **Shipped in 16.3.0-canary.93**.
 
 
-### Fix Stale Dev `'use cache'` for Cookieless Requests + Route Handlers (canary-branch ahead of canary.93, [PR #96022](https://github.com/vercel/next.js/pull/96022) merged 2026-07-22T12:46:39Z, ships in `16.3.0-canary.94` ~2026-07-23T23:00Z)
+### Fix Stale Dev `'use cache'` for Cookieless Requests + Route Handlers (**SHIPPED in `16.3.0-canary.94`** 2026-07-23T00:02:38Z, [PR #96022](https://github.com/vercel/next.js/pull/96022) merged 2026-07-22T12:46:39Z)
 
 The HMR refresh hash that invalidates dev-mode `'use cache'` entries used to live in a session cookie (`__next_hmr_refresh_hash__`) — the client set it on every `processMessage(SERVER_COMPONENT_CHANGES)` and read it back on subsequent requests to include in cache keys. That broke three real classes of dev experience:
 
@@ -918,10 +918,10 @@ The HMR refresh hash that invalidates dev-mode `'use cache'` entries used to liv
 - `rg 'serverComponentsHmrRefreshHash' packages/next/src/server/dev/` → shows the new counter wiring (webpack + turbopack)
 - `rg 'subscribeToChanges' packages/next/src/server/dev/turbopack-utils.ts` → confirms the route-handler subscription is in place
 
-**Source:** [PR #96022 — `Fix stale dev 'use cache' for cookieless requests and route handlers`](https://github.com/vercel/next.js/pull/96022) · 18 files +289/-43 across `packages/next/src/server/{base-server.ts, async-storage/{request-store,work-store}.ts, dev/{hot-reloader-turbopack, hot-reloader-webpack, turbopack-utils, next-dev-server}.ts, lib/dev-bundler-service.ts, use-cache/{use-cache-wrapper, use-cache-probe-globals, use-cache-probe-scheduler, use-cache-probe-worker}.ts, request-meta.ts, route-modules/app-route/module.ts, web/adapter.ts, build/templates/app-route.ts, errors.json, client/{components/app-router-headers, dev/hot-reloader/app/hot-reloader-app, dev/hot-reloader/pages/hot-reloader-pages, page-bootstrap}.{ts,tsx}}` + 4 test updates · merged 2026-07-22T12:46:39Z · commit `286862e35b` · **Ships in `16.3.0-canary.94`** (expected ~2026-07-23T23:00Z).
+**Source:** [PR #96022 — `Fix stale dev 'use cache' for cookieless requests and route handlers`](https://github.com/vercel/next.js/pull/96022) · 18 files +289/-43 across `packages/next/src/server/{base-server.ts, async-storage/{request-store,work-store}.ts, dev/{hot-reloader-turbopack, hot-reloader-webpack, turbopack-utils, next-dev-server}.ts, lib/dev-bundler-service.ts, use-cache/{use-cache-wrapper, use-cache-probe-globals, use-cache-probe-scheduler, use-cache-probe-worker}.ts, request-meta.ts, route-modules/app-route/module.ts, web/adapter.ts, build/templates/app-route.ts, errors.json, client/{components/app-router-headers, dev/hot-reloader/app/hot-reloader-app, dev/hot-reloader/pages/hot-reloader-pages, page-bootstrap}.{ts,tsx}}` + 4 test updates · merged 2026-07-22T12:46:39Z · commit `286862e35b` · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
 
 
-### Static Params HMR Refresh — Dedicated Message + Post-Cache Update (canary-branch ahead of canary.93, [PR #96019](https://github.com/vercel/next.js/pull/96019) + [PR #96020](https://github.com/vercel/next.js/pull/96020) merged 2026-07-22T12:24:23Z–13:00:54Z, ships in `16.3.0-canary.94`)
+### Static Params HMR Refresh — Dedicated Message + Post-Cache Update (**SHIPPED in `16.3.0-canary.94`** 2026-07-23T00:02:38Z, [PR #96019](https://github.com/vercel/next.js/pull/96019) + [PR #96020](https://github.com/vercel/next.js/pull/96020) merged 2026-07-22T12:24:23Z–13:00:54Z)
 
 A paired 2-PR stack that fixes a long-standing dev-loop papercut for `cacheComponents: true` apps using `generateStaticParams`. **Both PRs by Janka Uryga; both ship in `16.3.0-canary.94`.**
 
@@ -976,7 +976,7 @@ The pages-router client (`hot-reloader-pages.ts`) explicitly ignores the new mes
 - [PR #96020 — `Add a dedicated HMR message for static params changes`](https://github.com/vercel/next.js/pull/96020) · 7 files +55/-11 across `hot-reloader-types.ts`, `hot-reloader-app.tsx`, `hot-reloader-pages.ts`, `page-bootstrap.ts`, `next-dev-server.ts`, plus tests · Janka Uryga · merged 2026-07-22T13:00:54Z · commit `a07e947a27` · **Ships in `16.3.0-canary.94`**
 
 
-### Cache-Miss Fix in App Shell for Cached Pages with `generateStaticParams` (canary-branch ahead of canary.93, [PR #95665](https://github.com/vercel/next.js/pull/95665) merged 2026-07-22T15:18:51Z, ships in `16.3.0-canary.94` ~2026-07-23T23:00Z, closes `NAR-883`)
+### Cache-Miss Fix in App Shell for Cached Pages with `generateStaticParams` (**SHIPPED in `16.3.0-canary.94`** 2026-07-23T00:02:38Z, [PR #95665](https://github.com/vercel/next.js/pull/95665) merged 2026-07-22T15:18:51Z, closes `NAR-883`)
 
 A silent cache-miss footgun for `cacheComponents: true` + `generateStaticParams` + `appShells`-style prerendering (i.e. when App Shells / `partialPrefetching: true` is in play). The bug:
 
@@ -1007,7 +1007,65 @@ A silent cache-miss footgun for `cacheComponents: true` + `generateStaticParams`
 
 **Audit recipe:** `rg 'isSessionShell' packages/next/src/server/` → confirms the new field is threaded through both `prospectiveRuntimeServerPrerender` and `finalRuntimeServerPrerender`. `rg '1449' packages/next/errors.json` → confirms the new error code is registered.
 
-**Source:** [PR #95665 — `fix: cache miss in App Shell for cached pages with gSP`](https://github.com/vercel/next.js/pull/95665) · 5 files +33/-11 across `app-render.tsx`, `work-unit-async-storage.external.ts`, `request/params.ts`, `errors.json` · Janka Uryga · merged 2026-07-22T15:18:51Z · commit `63f14c6c90` · closes `NAR-883` · **Ships in `16.3.0-canary.94`** (expected ~2026-07-23T23:00Z).
+**Source:** [PR #95665 — `fix: cache miss in App Shell for cached pages with gSP`](https://github.com/vercel/next.js/pull/95665) · 5 files +33/-11 across `app-render.tsx`, `work-unit-async-storage.external.ts`, `request/params.ts`, `errors.json` · Janka Uryga · merged 2026-07-22T15:18:51Z · commit `63f14c6c90` · closes `NAR-883` · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+
+
+### Turbopack: Stop Copying `sourcesContent` Into Every Serialized Source Map (SHIPPED in `16.3.0-canary.94` 2026-07-23T00:02:38Z, [PR #95934](https://github.com/vercel/next.js/pull/95934) by bgw, merged 2026-07-22T20:11:33Z)
+
+A significant **Turbopack dev-memory win** — ~15-20% peak dev memory reduction on dependency-heavy apps. The bug: every module's source map was inlining `sourcesContent` (the full original source text) into the serialized JSON rope, so every subsequent transformation had to re-copy the entire `sourcesContent` block:
+
+- Rewriting the `sources` URLs for each chunking context copied the entire map per context.
+- Embedding the module map into a chunk's sectioned map copied it again per layer.
+
+In a measured dependency-heavy app, source maps were **57% of module factory bytes** and `sourcesContent` alone was **36%**. Each module's source text ended up resident ~5 times over.
+
+**The fix:** `StructuredSourceMap` keeps the map in field form until the moment of emission. Fields never modified (`mappings`, `names`, `version`) are stored as verbatim raw JSON snippets (rope sharing, no re-serialization). `sources` (the one field rewrites modify) is stored typed. End result:
+
+- **Measured impact (vercel.com-style dependency graph, walking 15 routes):** peak memory **3.0 GB → 2.6 GB** (`-15.2%`, `p = 2/12870 = 0.00016` exact permutation test). Internal app: ~20% peak dev memory win.
+- **No API change.** `dev` only — production source maps (`next start`) are unaffected because they go through a different serialization path.
+- **No config change.**
+
+**Why this matters for dev sessions on monorepos:** if you've ever watched `next dev` slowly eat 4-6 GB on a Vercel-sized dependency tree, this PR is the most material single-PR Turbopack memory win since canary.71's `experimental.turbopackMemoryEviction: 'full'` (which already cut ~90% on vercel.com).
+
+**Source:** [PR #95934 — `Turbopack: stop copying sourcesContent into every serialized source map`](https://github.com/vercel/next.js/pull/95934) · 1 file +147/-107 in `crates/turbopack-core/src/source_map.rs` (and structured source map rewire) · bgw · merged 2026-07-22T20:11:33Z · fixes [issue #81161](https://github.com/vercel/next.js/issues/81161) · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+
+
+### Turbopack: Fix Deployment Skew Protection for Component Chunks (SHIPPED in `16.3.0-canary.94` 2026-07-23T00:02:38Z, [PR #96079](https://github.com/vercel/next.js/pull/96079) by bgw, merged 2026-07-22T20:27:12Z)
+
+A **deployment-skew correctness fix** for Turbopack — fixes a class of "page errors out after deploy" footguns where the dev server's serialized component chunks had an implicit assumption that chunks were plain strings. After [#95261](https://github.com/vercel/next.js/pull/95261) (a recent change to chunk representation), the assumption was wrong; Turbopack would emit skewed chunks when the deployed server had a different chunk shape than the local server.
+
+**The fix:** generalize the chunk-identity check to accept the new chunk shape from #95261. The PR is mostly a regression test (`Almost all of this diff is a regression test.` per the PR body) — the production fix is a 1-line conditional.
+
+**Who needs this:** any Next.js + Turbopack project that uses [React PR #37095](https://github.com/react/react/pull/37095) (the upcoming React Server Components reference fix) — the new React ref-shape was the reproducer.
+
+**No API change, no config change.** Silent correctness fix.
+
+**Audit:** `rg 'skew.*chunk\|chunk.*skew' packages/next/src/` should show the new guard; the test in `test/e2e/turbopack-deployment-skew/` should pass after upgrading.
+
+**Source:** [PR #96079 — `[turbopack] Fix deployment skew protection for component chunks`](https://github.com/vercel/next.js/pull/96079) · mostly test + 1 file in `crates/next-api/src/` · bgw · merged 2026-07-22T20:27:12Z · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+
+
+### Cache Components: Exclude Dynamic Params from Prerenders When No `generateStaticParams` Values Provided (SHIPPED in `16.3.0-canary.94` 2026-07-23T00:02:38Z, [PR #95872](https://github.com/vercel/next.js/pull/95872) by gnoff, merged 2026-07-22T22:28:43Z, closes `NAR-882`)
+
+A **silent-data-leakage fix** for `cacheComponents: true` + `generateStaticParams` (or empty `generateStaticParams`) + self-hosted / Vercel Adapter routes that prerender static pages. Two failure modes:
+
+1. **Self-hosted + Vercel Adapter — routes with empty shells during build.** A route without a `fallback: true` that has an empty shell during the build prerenders misses with ALL params (instead of just the ones declared in `generateStaticParams`). This means a cache hit for one URL silently serves the same shell as a different URL.
+
+2. **All Next.js environments — root params not in cache.** Any route matching a root param not already in the cache prerenders with all params regardless of whether they were omitted from `generateStaticParams`. This caused cache collisions between routes that should have produced different prerendered shells.
+
+**The fix** (PR #95872): the prerender decision now correctly excludes dynamic params that aren't in the static-params set. For Vercel Adapter specifically, only the declared static params are prerendered (not the implicit "all params" set).
+
+**Comprehensive test matrix added** to catch regressions in these kinds of prerender decisions.
+
+**Practical impact for `cacheComponents: true` apps using `generateStaticParams`:**
+
+- "My route with partial `generateStaticParams` coverage is prerendering with params that shouldn't be there" → fixed; the prerender set is now bounded by the declared static params.
+- "Two URLs that should produce different prerendered shells are sharing the same shell" → fixed; root-param-not-in-cache case is handled.
+- **No public API change** — `generateStaticParams` continues to work the same way; the change is purely in which params are emitted into the prerendered shell.
+
+**Action:** upgrade to `next@canary@94`. No code change needed.
+
+**Source:** [PR #95872 — `[Cache Components] Exclude dynamic params from prerenders when no generateStaticParams values is provided`](https://github.com/vercel/next.js/pull/95872) · gnoff · merged 2026-07-22T22:28:43Z · closes `NAR-882` · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
 
 
 ### Production Prefetch Shells Now Replicated in Dev (16.3.0-preview.5)

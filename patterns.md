@@ -111,6 +111,57 @@ rg "cacheLife\(['\"]seconds['\"]\)|cacheLife\(\s*\{" app/ -g '*.{ts,tsx}' -A2
 - Related: `MIN_PREFETCHABLE_STALE` (renamed from `DYNAMIC_STALE` in [PR #95361](https://github.com/vercel/next.js/pull/95361), canary.74) is the **30s** threshold for a different question — whether an entry can be included in a partial-prefetch App Shell. The canary.87 threshold is **300s** (5 min) for whether the entry can be served from the App Shell at all. Both thresholds work in tandem: `MIN_PREFETCHABLE_STALE` is the floor for partial-prefetch eligibility, the canary.87 threshold is the floor for App Shell retention.
 
 
+### `partialFallback` Re-Gated Behind `partialPrefetching` (SHIPPED in `16.3.0-canary.94` 2026-07-23T00:02:38Z, [PR #96074](https://github.com/vercel/next.js/pull/96074) by gnoff, merged 2026-07-22T21:06:42Z)
+
+`partialFallback` is an internal flag in the **build output** that controls ISR behavior for Cache Components apps: when enabled, pages that aren't generated at build time get upgraded to a full ISR entry on the first request. That's a useful optimization for a known traffic pattern, but it had a cost-side footgun: **even a prefetch request was sufficient to trigger the upgrade**, which could cause an explosion in ISR costs in apps where prefetch fanout is wider than real navigation fanout (the common case).
+
+**The fix (PR #96074, gnoff, merged 2026-07-22T21:06:42Z):** the `partialFallback` flag is **turned back off by default** until a new build-output configuration can differentiate between a shell-prefetch request (no `prefetch` prop on the link) and an actual prefetch (`prefetch={true}`).
+
+**The carve-out for `experimental.partialPrefetching: true` apps:** when a project opts into Partial Prefetching, **`partialFallback` stays `true`**. Why: in a Partial Prefetching app, per-link prefetch requests are always opt-in (`prefetch={true}` required to trigger a real fetch). So even without the new ISR-differentiation mechanism, the upgrade cost is bounded — there's at most **one request per distinct route** (not per distinct URL), which is the right granularity. That single-request-per-route upgrade is left in place until the new mechanism lands.
+
+**Practical impact for `cacheComponents: true` apps:**
+
+- **Default (`cacheComponents: true` without `experimental.partialPrefetching: true`):** prefetch traffic no longer triggers ISR upgrades. Cache-miss + ISR-upgrade path only fires on real navigations. If you saw unexpected ISR-cache growth on a non-PP project, upgrade to canary.94 and verify the size stays bounded.
+- **With `experimental.partialPrefetching: true`:** unchanged — `partialFallback` remains `true`, the bounded one-request-per-route upgrade continues. Wait for the follow-up build-output config to differentiate shell vs full prefetches (not yet designed; PR #96074 is a safety brake, not the final shape).
+- **With `experimental.partialPrefetching: false` (or unset) + `cacheComponents: true`:** prefetch-no-upgrade is the new default. If you depended on the prefetch-triggered-upgrade behavior, opt in to `partialPrefetching: true`.
+
+**No public API change, no `next.config.ts` change.** The flag is in the build output, not the user-visible config.
+
+**Source:** [PR #96074 — `Gate partialFallback behavior behind partialPrefetching flag`](https://github.com/vercel/next.js/pull/96074) · gnoff · merged 2026-07-22T21:06:42Z · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+
+
+### `next-cache-components-adoption` Skill Refinements + Dev-Only Validation Sweep (SHIPPED in `16.3.0-canary.94` 2026-07-23T00:02:38Z, [PR #95817](https://github.com/vercel/next.js/pull/95817) by aurorascharff + [PR #96057](https://github.com/vercel/next.js/pull/96057) by aurorascharff, merged 2026-07-22T14:08:08Z + 15:01:18Z)
+
+Two coordinated refinements to the **adoption skills** shipped in canary.94 — both aimed at improving first-attempt success rates when an agent drives Cache Components or Partial Prefetching adoption against a real app.
+
+**PR #95817 — `Refine Cache Components and Partial Prefetching adoption skills`** (aurorascharff, 2026-07-22T14:08:08Z, 11 files +52/-52 across `docs/01-app/02-guides/{adopting-partial-prefetching, instant-navigation, runtime-prefetching}.mdx` + `docs/01-app/03-api-reference/01-directives/use-cache.mdx` + `docs/01-app/03-api-reference/03-file-conventions/02-route-segment-config/instant.mdx` + `skills/next-cache-components-adoption/{SKILL.md, references/per-page-decisions.md}` + `skills/next-cache-components-optimizer/{SKILL.md, reference/patterns.md, test-template.md}` + `skills/next-partial-prefetching-adoption/SKILL.md`):
+
+- **PPF skill — URL-data sweep reworked to feature-by-feature with a resumable hand-off.** The old "scan everything, fix everything in one pass" was too aggressive for large apps; the new flow walks one feature at a time and records state so an agent can resume after an interruption. The `## requires` section now says unfinished Cache Components adoption **does not gate** the PPF skill — Prerender insights are non-blocking dev signals expected on a fresh branch; only a build-blocking failure stops the run.
+- **PPF skill — install `next-dev-loop` without asking, and verify a real blocker before falling back.** Removes the permission prompt that previously interrupted agents in sandboxed environments; the skill now installs `next-dev-loop` automatically when it's missing.
+- **CC skill — dropped the hard-coded `agent-browser` version pin.** Replaced with the documented minimum (0.27) so the skill stays correct as `agent-browser` ships new versions without forcing skill updates.
+- **CC skill — updated the PPF cross-reference** to the current enable-first flow (the prior cross-reference pointed at an outdated sequence).
+- **Docs — `runtime-prefetching`:** the per-card server cost of `allow-runtime` grids is now correctly framed as specific to `prefetch={true}`, with hover-triggered prefetch as the mitigation. (Previously the cost framing applied to all prefetches, which overstated the impact.)
+- **Docs — `use-cache`:** the request-API restriction now follows the call stack (`next-request-in-use-cache`, can pass build and fail under `next start`) — previously the doc implied it was a hard block at build time, which isn't accurate. The nested-`cacheLife` build error and its fix are now documented inline.
+- **Docs — `instant` route segment config:** removed a stale `version: draft` so the page publishes (was preventing the page from showing up in search/docs index).
+
+**PR #96057 — `skill(cc-adoption): add dev-only validation sweep reference`** (aurorascharff, 2026-07-22T15:01:18Z, 2 files +30/-2 in `skills/next-cache-components-adoption/{SKILL.md, references/dev-only-validations.md}`):
+
+- Adds an optional post-adoption reference for the `next-cache-components-adoption` skill — `references/dev-only-validations.md` — that walks the loop of "after build passes, sweep the dev-only insights". The mechanics mirror the tested `next-partial-prefetching-adoption` skill: reuse `next-dev-loop` preflight, load each route in `next dev`, read the Insights tab + dev log, fix.
+- The `## Further reading` section now recommends the sweep and drops the standalone Prefetching bullet (the PPF adoption skill already carries that).
+- **Why this exists:** after CC adoption the build passes, but dev validation (default `validationLevel: 'warning'`) still raises instant-navigation insights on every page load that never fail the build. The skill had no recipe for sweeping them — this closes that gap as the recommended next step for users who don't want to adopt Partial Prefetching.
+
+**Practical impact for agents driving CC / PPF adoption:**
+
+- **First-attempt success rate improves** — the feature-by-feature PPF sweep, automatic `next-dev-loop` install, and the dev-only validation sweep all address the most common "the skill loops because it didn't quite finish" failure mode.
+- **Docs are accurate again** — the `runtime-prefetching` cost framing, the `use-cache` request-API block, and the `instant` route segment config publish-state are all corrected.
+- **Migration:** no code change needed. Update your skill pin (`npx skills update`) after upgrading `next` to canary.94.
+
+**Sources:**
+
+- [PR #95817 — `Refine Cache Components and Partial Prefetching adoption skills`](https://github.com/vercel/next.js/pull/95817) · aurorascharff · merged 2026-07-22T14:08:08Z · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+- [PR #96057 — `skill(cc-adoption): add dev-only validation sweep reference`](https://github.com/vercel/next.js/pull/96057) · aurorascharff · merged 2026-07-22T15:01:18Z · **Shipped in `16.3.0-canary.94`** (2026-07-23T00:02:38Z).
+
+
 ### `experimental.appShells` Flag Removed — Behavior Unified With Partial Prefetching (16.3.0-canary.88+, PR [#95415](https://github.com/vercel/next.js/pull/95415) by acdlite, merged 2026-07-16T20:30:58Z, 343 +/-381 over 45 files)
 
 **⚠️ Config change:** The `experimental.appShells` config flag was an internal development flag, not meant as a public-facing option. It is now **removed entirely** from `packages/next/src/server/config-schema.ts` + `packages/next/src/server/config-shared.ts` + `packages/next/src/server/base-server.ts` + the `app-page` + `edge-ssr-app` build templates + every segment-cache prefetch test fixture (`prefetch-app-shell`, `prefetch-app-shell-global-eager`, `prefetch-fallback-retry`, `search-params`, `staleness`, `vary-params`, `sub-shell-generation-middleware`, `parallel-route-navigations`, `instant-navigation-testing-api/partial-prefetch`, `instant-navigation-testing-api/root-params`, `use-cache-non-deterministic-args`). The behavior App Shells gated is now split two ways:

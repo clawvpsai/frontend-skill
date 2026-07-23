@@ -106,6 +106,83 @@ On **July 7, 2026**, Vercel [announced the acquisition of Better Auth](https://v
 - [noqta.tn — Vercel Acquires Better Auth: What It Means for Your Auth Stack (July 8, 2026)](https://noqta.tn/en/blog/vercel-acquires-better-auth-what-it-means-2026)
 - [StartupResearcher — Vercel Acquires Open Source Authentication Startup Better Auth (July 9, 2026)](https://www.startupresearcher.com/news/vercel-acquires-open-source-authentication-startup-better-auth)
 
+### Better Auth 1.7.0-rc.2 changelog (July 22, 2026) — ⚠️ contains BREAKING changes ahead of 1.7.0 stable
+
+`1.7.0-rc.2` is the second RC on the v1.7 line (npm dist-tag `rc` now points here; `1.7.0-rc.1` is superseded). **Three breaking changes** that all 1.7.0-stable upgraders need to handle — diff the prior `1.7.0-rc.0 → rc.1 → rc.2` chain carefully when planning the upgrade:
+
+**❗ Breaking changes (action required when upgrading from ≤1.6.x or from `1.7.0-rc.0/rc.1` to `1.7.0-rc.2`+):**
+
+1. **`experimental.joins` moved to `advanced.database.joins`** ([PR #10359](https://github.com/better-auth/better-auth/pull/10359)). The old location under `experimental` is removed:
+
+   ```ts
+   // ❌ Pre-1.7.0-rc.2 (removed)
+   experimental: { joins: true }
+
+   // ✅ 1.7.0-rc.2+
+   advanced: {
+     database: {
+       joins: true,
+     },
+   }
+   ```
+
+   Adapters that support native joins (Drizzle, Prisma, Kysely, MongoDB) use them when enabled; adapters that can't fall back to additional queries and combine results client-side. **Action:** migrate the config key; re-run `npx auth@latest generate` (Drizzle/Prisma) to make sure schema relations include every required relation for the native-join queries; check the audit `rg 'experimental.*joins' better-auth.config.*` to find any project that still has the old shape.
+
+2. **Accounts are now scoped by issuer (`feat(auth)!: scope accounts by issuer`, [PR #10403](https://github.com/better-auth/better-auth/pull/10403))** — the biggest breaking change in the 1.7 line. Renames + new required columns + new identity model:
+
+   - **`Account.accountId` → `Account.providerAccountId`** (the column that stores the upstream provider's stable identifier for that linked account).
+   - **`Account.issuer` is now required** (the trusted upstream issuer for this account). The generated schema migration **cannot assign trusted issuers or resolve existing identity collisions automatically** — manual backfill per the 1.7 upgrade guide is required before deploying.
+   - **Account-specific APIs** (e.g. account listing, account-linking) select the local `Account.id` through `accountId`. Token and provider-profile APIs can instead select the signed account cookie via `useAccountCookie: true`.
+   - **Credential accounts** use `local:credential` as their issuer and the linked user's stable `id` as their provider identity.
+   - **OAuth provider identity** now comes from raw verified profiles. OIDC discovery uses `sub`; plain OAuth uses `id`; providers can declare `accountSubject` for another immutable field. Better Auth no longer switches between `sub` and `id` at runtime. **`getUserInfo().user` no longer carries provider identity**, and **`mapProfileToUser` cannot return `id`**. Read the selected identity from `accountInfo.account.providerAccountId` instead of `accountInfo.user.id`.
+   - **SSO account subjects are now protocol-defined**: OIDC uses the verified `sub` claim; SAML uses the signed `NameID`; `mapping.id` is removed from both configurations. A manual SAML configuration without metadata XML must set `idpMetadata.entityID` (because `samlConfig.issuer` identifies the service provider and no longer acts as the IdP identity).
+   - The generic `microsoftEntraId` helper now requires a concrete tenant GUID; use the built-in Microsoft provider for multi-tenant authorities.
+   - **Migration:** apply the reviewed account-identity backfill in the Better Auth 1.7 upgrade guide before deploying. The generated schema migration will not assign trusted issuers or resolve existing identity collisions automatically — expect to write a data migration script per environment.
+
+3. **SCIM decoupled from the organization plugin** ([PR #10390](https://github.com/better-auth/better-auth/pull/10390)) — replaces the previous SCIM configuration, client APIs, database schema, and organization-backed Group model. Existing SCIM installations **cannot migrate provisioning state in place** — the 1.7 upgrade guide requires a full directory reprovisioning before resuming SCIM traffic. If you don't use SCIM, ignore this change.
+
+   Tangential correctness win included: deferred database side effects now run only after a successful transaction. A rolled-back User update no longer refreshes its cached profile; a rolled-back bulk session revocation no longer invalidates sessions.
+
+**Features:**
+
+- **`verifyIdToken` now receives request context (`ctx`) as a 3rd argument** ([PR #10376](https://github.com/better-auth/better-auth/pull/10376)) — same as 1.6.24; promoted to stable here.
+- **Compound table indexes** ([PR #10402](https://github.com/better-auth/better-auth/pull/10402)) — declare multi-column indexes on auth tables directly in your Better Auth schema config. Faster lookups on common compound queries (org + user, account + provider).
+- **`beforeStoreCookie` option for `last-login-method` plugin** ([PR #5753](https://github.com/better-auth/better-auth/pull/5753)) — GDPR compliance (same as 1.6.24).
+- **`getOrganization` for metadata-only fetches** ([PR #10397](https://github.com/better-auth/better-auth/pull/10397)) — pulls the organization record without joining members, useful for header/footer displays.
+- **Transactional OIDC user resolution** for SSO ([PR #10473](https://github.com/better-auth/better-auth/pull/10473)) — the SSO user-resolution path is now wrapped in a transaction so partial resolution can't leave orphaned rows.
+
+**Bug fixes (`better-auth` core):**
+
+- **`auth generate` no longer fails on Convex first-run** ([PR #10302](https://github.com/better-auth/better-auth/pull/10302)) — same as 1.6.24.
+- **`get-session` sends `Cache-Control: no-store`** ([PR #10222](https://github.com/better-auth/better-auth/pull/10322)) — same as 1.6.24.
+- **`useSession({ throw: true })` type fixed** ([PR #9787](https://github.com/better-auth/better-auth/pull/9787)) — same as 1.6.24.
+- **SQLite `BIGINT` recognized as valid number type** ([PR #10316](https://github.com/better-auth/better-auth/pull/10316)) — same as 1.6.24.
+- **`CookieAttributes` index signature tightened** ([PR #10442](https://github.com/better-auth/better-auth/pull/10442)) — same as 1.6.24.
+- **Adapter query misrouting on `user.modelName` collisions** ([PR #10235](https://github.com/better-auth/better-auth/pull/10235)) — same as 1.6.24.
+- **Drizzle duplicate index fix** ([PR #10333](https://github.com/better-auth/better-auth/pull/10333)) — same as 1.6.24.
+- **Kysely duplicate index fix** ([PR #10357](https://github.com/better-auth/better-auth/pull/10357)) — same as 1.6.24.
+- **Cold-start `AsyncLocalStorage` race on serverless** ([PR #9862](https://github.com/better-auth/better-auth/pull/9862)) — same as 1.6.24.
+- **Magic-link and email-OTP `Origin` validation on cookieless sends** ([PR #10368](https://github.com/better-auth/better-auth/pull/10368)) — same as 1.6.24.
+- **`organization.listMembers` limit applied to the user fetch** ([PR #10342](https://github.com/better-auth/better-auth/pull/10342)) — same as 1.6.24.
+- **`auth generate` schema now uses database-generated IDs for invitations** ([PR #10040](https://github.com/better-auth/better-auth/pull/10040)) — same as 1.6.24.
+- **Auth query revalidation and signal listeners restored after remount** ([PR #10379](https://github.com/better-auth/better-auth/pull/10379)) — same as 1.6.24.
+- **Request clone failures inside verification callbacks** ([PR #10336](https://github.com/better-auth/better-auth/pull/10336)) — same as 1.6.24.
+- **Drizzle-kit peer range widened** ([PR #10299](https://github.com/better-auth/better-auth/pull/10299)) — supports newer Drizzle-kit versions.
+- **SIWE addressless nonces** ([PR #10234](https://github.com/better-auth/better-auth/pull/10234)) — Ethereum Sign-In With Ethereum now issues nonces that don't bind to a wallet address, allowing per-session rotation without losing the in-flight nonce.
+- **Remote MCP auth challenge headers exposed** ([PR #10290](https://github.com/better-auth/better-auth/pull/10290)) — same as 1.6.24.
+- **OpenAPI schema includes plugin user fields on `/sign-up/email` + `/update-user`** ([PR #10453](https://github.com/better-auth/better-auth/pull/10453)) — same as 1.6.24.
+
+**Action for stable users (`better-auth@1.6.24`):** *don't upgrade to `1.7.0-rc.2` yet* — it carries the breaking schema changes (`Account.accountId → providerAccountId`, `Account.issuer` required, `experimental.joins → advanced.database.joins`, SCIM rewrite). Wait for `1.7.0` stable. The skill will add the official migration cookbook once `1.7.0` ships.
+
+**Action for users already on `1.7.0-rc.0/rc.1`:** run `npx @better-auth/cli@latest generate` to regenerate the schema, then manually backfill `Account.issuer` per the 1.7 upgrade guide (the auto-migration can't resolve identity collisions), then upgrade to `1.7.0-rc.2`. If you use `experimental.joins`, move the config to `advanced.database.joins` first. If you use SCIM, treat the upgrade as a cutover — re-provision your directory before resuming traffic.
+
+**Sources:**
+- [Better Auth v1.7.0-rc.2 release notes (2026-07-22T19:58:53Z)](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.2)
+- [PR #10359 — `chore!: move joins to advanced.database.joins`](https://github.com/better-auth/better-auth/pull/10359)
+- [PR #10403 — `feat(auth)!: scope accounts by issuer`](https://github.com/better-auth/better-auth/pull/10403)
+- [PR #10390 — `feat(scim)!: decouple provisioning from the organization plugin`](https://github.com/better-auth/better-auth/pull/10390)
+- [Better Auth 1.7 upgrade guide](https://better-auth.com/docs/guides/1-7-upgrade-guide)
+
 ### Better Auth 1.7.0-rc.1 changelog (July 2, 2026)
 
 ### Better Auth 1.6.24 changelog (July 22, 2026)

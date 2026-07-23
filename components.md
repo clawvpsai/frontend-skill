@@ -1186,6 +1186,32 @@ The full mapping table is at [ui.shadcn.com/docs/components](https://ui.shadcn.c
 - [Base UI vs Radix UI API mapping](https://ui.shadcn.com/docs/components)
 - [Base UI npm package](https://www.npmjs.com/package/@base-ui/react)
 
+## shadcn/ui 4.14.0 — Icon Migration Support (July 22, 2026)
+
+Released 19 days after 4.13.0 (July 3 → July 22), `shadcn@4.14.0` adds **icon migration support** ([PR #11241](https://github.com/shadcn-ui/ui/pull/11241) by shadcn himself, commit `3c26ee2dbd3a772c1cddc2c76249cc1cb0a250d5`). One feature, scoped:
+
+**What's new:**
+
+- **Icon migration** — `npx shadcn migrate icons` (and the underlying migration engine) can now convert an existing project's icon set from one library to another (`lucide → heroicons`, `lucide → tabler`, custom registries → first-party icons, etc.). Previously the migration CLI could only handle component-level changes; icon-level migration was a manual sed job. The new command:
+  - scans the project's component imports + usage sites for icon components,
+  - maps old icon names to new icon names via a registry-defined table (shipped in `shadcn`'s default config for `lucide → heroicons` + `lucide → tabler`),
+  - rewrites imports + JSX in place,
+  - leaves your `components.json` registry / style / base-color config untouched.
+
+**Who needs this:**
+
+- **Projects migrating icon libraries** (most common case: from `lucide-react` to `@heroicons/react` or to `react-icons`).
+- **Projects consolidating on a first-party icon registry** — the new migration runs against a single registry, so projects using multiple icon libraries can normalize to one.
+- **Most projects:** not affected — if you started on one icon library and stayed there, the migration command is a no-op.
+
+**Action:** `npx shadcn@latest migrate icons` (or `npx shadcn migrate icons --from lucide --to heroicons` for an explicit pair).
+
+**No API change, no breaking changes.** 4.14.0 is purely additive on top of 4.13.0 — the Base UI default from 4.13.0 is preserved, the `shadcn/typeset` integration from the same week is preserved, the `@shadcn/react` `message-scroller` package from 4.12.0 is preserved. Safe to upgrade from 4.13.x.
+
+**Sources:**
+- [shadcn 4.14.0 release notes](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.14.0)
+- [PR #11241 — `add support for icon migration`](https://github.com/shadcn-ui/ui/pull/11241)
+
 ## shadcn/typeset (July 14, 2026) — Stream-Friendly Typography System
 
 Released the same week as 4.13.0 (just after midnight UTC on July 14, 2026), **`shadcn/typeset`** is a new typography system that ships as a **single CSS file you own** — no package, no config layer, no runtime JS. It styles your app's HTML (headings, paragraphs, lists, tables, code) the same way for blog posts, docs, and chat — and lets you tune the rhythm for each context independently.

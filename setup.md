@@ -955,6 +955,67 @@ Vite 8.1.5 ([released 2026-07-16T06:51:13Z](https://github.com/vitejs/vite/relea
 - PRs: [#22931](https://github.com/vitejs/vite/issues/22931), [#22869](https://github.com/vitejs/vite/issues/22869), [#22945](https://github.com/vitejs/vite/issues/22945), [#22951](https://github.com/vitejs/vite/issues/22951), [#22893](https://github.com/vitejs/vite/issues/22893), [#22921](https://github.com/vitejs/vite/issues/22921), [#22922](https://github.com/vitejs/vite/issues/22922)
 
 **Recommended Vite version for new projects (July 16, 2026):** **Vite 8.1.5** — supersedes 8.1.4 as the recommended Vite version (and transitively 8.1.1 / 8.1.2 / 8.1.3). 8.1.5 contains all of 8.1.4's contents (the seven 8.1.4 bug fixes + two monthly dep bumps) **plus** six more bug fixes (bundled-dev duplicate `buildEnd`, dev-overlay error format alignment with rolldown, module-runner `globalThis.Buffer` guard, optimizer importer-format-aware CJS dynamic-import interop, SSR `switch-case` lexical scoping, plus two doc fixes + one test cleanup). **Skip 8.1.1 entirely** — go 8.1.0 → 8.1.5 (or 8.1.4 → 8.1.5). All of the 8.1.1 → 8.1.4 recommendation is preserved in 8.1.5.
+### Vite 8.2.0-beta.0 (July 22, 2026) — First Beta of the 8.2 Line
+
+Vite 8.2.0-beta.0 ([released 2026-07-22T06:41:43Z](https://github.com/vitejs/vite/releases/tag/v8.2.0-beta.0), [compare `v8.1.5...v8.2.0-beta.0`](https://github.com/vitejs/vite/compare/v8.1.5...v8.2.0-beta.0), npm `beta` dist-tag pointer moved) is the **first beta of the Vite 8.2 minor line** — it consolidates a 6-PR set of features + bug fixes that were already merged to Vite `main` between 2026-07-16 and 2026-07-22 (the prior skill cycle documented them as "ahead of Vite 8.1.5"). **No breaking changes from 8.1.x** — every commit is either a new feature, a bug fix, a dep bump, or a doc/test/refactor.
+
+**Status:** BETA — not recommended for production. Use in projects that want to lock in the new `build.input` option + the native-loader warnings ahead of the Vite 9 default-loader switch. Pin with `"vite": "8.2.0-beta.0"` in `package.json` (npm `beta` dist-tag) and watch for `8.2.0-beta.1` / `8.2.0` in the coming weeks.
+
+**Features in 8.2.0-beta.0 (raw [CHANGELOG](https://github.com/vitejs/vite/blob/v8.2.0-beta.0/packages/vite/CHANGELOG.md)):**
+
+| Area | Feature | PR |
+|---|---|---|
+| **build** | Add `build.input` option (`string \| string[] \| Record<string, string>`) | [#22642](https://github.com/vitejs/vite/issues/22642) |
+| **config** | Warn features incompatible with native loader in `bundle` loader (Vite 9 default-loader migration prep) | [#22850](https://github.com/vitejs/vite/issues/22850) |
+| **css** | Export `PostcssUserConfig` type for type-safe configs | [#22792](https://github.com/vitejs/vite/issues/22792) |
+| **dev** | Label network URLs with their interface name (VPN/Docker/WSL/Wi-Fi labels) | [#22830](https://github.com/vitejs/vite/issues/22830) |
+| **optimizer** | Support aube lockfile | [#22813](https://github.com/vitejs/vite/issues/22813) |
+| **optimizer** | Support nub lockfile | [#22891](https://github.com/vitejs/vite/issues/22891) |
+| **bundler** | Update rolldown-related deps + use client-side HMR in `bundled-dev` | [#22961](https://github.com/vitejs/vite/issues/22961) |
+| **wasm** | Expand test suite + unwrap `WebAssembly.Global` + enable `js-string` builtins | [#22674](https://github.com/vitejs/vite/issues/22674) |
+
+**Bug fixes in 8.2.0-beta.0:**
+
+| Area | Fix | PR |
+|---|---|---|
+| **build** | Map CSS chunks in chunk import maps (matches [#22946](https://github.com/vitejs/vite/issues/22946)) | [#22947](https://github.com/vitejs/vite/issues/22947) |
+| **config** | Exclude virtual modules from native-config compat check | [#22979](https://github.com/vitejs/vite/issues/22979) |
+| **css** | Rewrite URLs in `OnceExit`-injected content | [#22983](https://github.com/vitejs/vite/issues/22983) |
+| **hmr** | Remove hot data after prune | [#23002](https://github.com/vitejs/vite/issues/23002) |
+| **resolve** | Resolve `root` to real path (symlink projects behave consistently) | [#22832](https://github.com/vitejs/vite/issues/22832) |
+| **deps** | Update all non-major dependencies + `magic-string` to v1 | [#22985](https://github.com/vitejs/vite/issues/22985), [#22998](https://github.com/vitejs/vite/issues/22998) |
+
+**Performance in 8.2.0-beta.0:**
+
+| Area | Improvement | PR |
+|---|---|---|
+| **config** | Skip native-config compat check when warning is ignored | [#23000](https://github.com/vitejs/vite/issues/23000) |
+| **optimizer** | Check popular package-manager lockfiles first (avoids scanning every lockfile in monorepos) | [#22909](https://github.com/vitejs/vite/issues/22909) |
+
+**Notable new features explained:**
+
+- **`build.input`** (the headline): single config key for multi-entrypoint apps + Environment-API per-environment entrypoints + full-bundle mode where Rolldown knows the entrypoint up front + class of HMR-bug fixes ([#17806](https://github.com/vitejs/vite/issues/17806), [#16664](https://github.com/vitejs/vite/issues/16664)). **Migration:** `rg -l 'rollupOptions\.input' vite.config.*` finds projects that can now use `build.input` directly (the manual-rollup workaround is no longer needed). Full examples (single page, multi-page, Environment API per-environment) are in the prior skill cycle's section below — these examples are unchanged.
+
+- **`native`-loader compatibility warnings** ([#22850](https://github.com/vitejs/vite/issues/22850)): Vite 9 will switch the default config loader from `bundle` (current) to `native` (Node's native ESM loader). Vite 8.2 emits warnings under `bundle` for features unsupported in `native`: `__dirname` / `__filename` in ESM, extension-less imports, directory-index imports, JSON imports without attributes, ESM syntax in files Node loads as CJS. Suppress with `VITE_CONFIG_NATIVE_IGNORE_WARNING=true`. **Action:** run Vite 8.2.0-beta.0 in CI on your project; fix any warnings it emits so the Vite 9 bump is a no-op.
+
+- **Network URL interface labels** ([#22830](https://github.com/vitejs/vite/issues/22830)): when running with `--host` and you have multiple network interfaces (VPN, Docker, WSL, Wi-Fi), the Network URL list now shows the interface name (`xray_tun`, `Wi-Fi`, `vEthernet (WSL)`) next to each IP, capped at 20 chars. Pure dev-UX win.
+
+- **Lockfile detection** ([#22813](https://github.com/vitejs/vite/issues/22813) + [#22891](https://github.com/vitejs/vite/issues/22891)): Vite's optimizer now detects `aube` and `nub` lockfiles in addition to npm/yarn/pnpm/bun. If you use either of these experimental package managers, the optimizer's "are these deps already on disk?" check now works correctly.
+
+**Who should upgrade to 8.2.0-beta.0:**
+
+- **Beta-curious projects that want to test `build.input`** before 8.2.0 ships stable. Pin with `"vite": "8.2.0-beta.0"` and verify your multi-page or Environment-API setup.
+- **Projects that want to validate they have no `native`-incompatible config** ahead of the Vite 9 default-loader switch. Run `vite build` on 8.2.0-beta.0; any warnings logged are real issues that will break under Vite 9.
+- **Anyone on Vite 8.1.5** — wait for 8.2.0 stable (the 8.2.0-beta.0 changes are additive; 8.1.5 is still the recommended stable).
+
+**Recommended Vite version for new projects (July 22, 2026):** **Vite 8.1.5 stable** is still the recommended stable. **Vite 8.2.0-beta.0** is the first beta of the 8.2 line — install only if you specifically want to test the new features above.
+
+**Sources:**
+
+- [Vite 8.2.0-beta.0 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.2.0-beta.0)
+- [Vite 8.2.0-beta.0 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.2.0-beta.0/packages/vite/CHANGELOG.md)
+- [Compare `v8.1.5...v8.2.0-beta.0`](https://github.com/vitejs/vite/compare/v8.1.5...v8.2.0-beta.0)
+
 ### Vite `build.input` Option (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22642](https://github.com/vitejs/vite/pull/22642) by sapphi-red, merged 2026-07-17T07:50:31Z)
 
 **The most material new Vite feature since 8.1.5** — adds a new top-level **`build.input`** option typed as `string | string[] | Record<string, string>` that replaces manual `rollupOptions.input` declarations. Currently on Vite `main` ahead of the Vite 8.1.5 tag — will ship in either a Vite 8.1.6 patch or Vite 8.2.0 minor (no stable tag cut yet; verify with `npm view vite dist-tags`).
