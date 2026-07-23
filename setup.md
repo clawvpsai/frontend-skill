@@ -2375,3 +2375,37 @@ The 5th PR (#93978 — DevTools request panel) **shipped on the canary branch 20
 - [PR #93978 — `request insights: add DevTools request panel (5/5)` (SHIPPED in canary.86 on 2026-07-14T23:31:39Z; PR merged on canary branch 2026-07-14T11:26:19Z)](https://github.com/vercel/next.js/pull/93978)
 - [compare v16.3.0-canary.84...v16.3.0-canary.85](https://github.com/vercel/next.js/compare/v16.3.0-canary.84...v16.3.0-canary.85)
 - [`next-devtools-mcp` at v16.3.0-canary.85](https://github.com/vercel/next.js/tree/v16.3.0-canary.85/packages/next-devtools-mcp) — new `get_request_insights` MCP tool (the `subscribe_to_request_insights` tool from the PR description was deferred)
+
+### `@vitejs/plugin-legacy@8.2.2` (July 23, 2026) — Sub-package Patch (Small but Material for IE/legacy Targets)
+
+`@vitejs/plugin-legacy@8.2.2` ([npm release 2026-07-23T04:45:07Z](https://github.com/vitejs/vite/releases/tag/plugin-legacy@8.2.2), bumped npm `latest` dist-tag from `8.2.1` to `8.2.2`, [compare `plugin-legacy@8.2.1...plugin-legacy@8.2.2`](https://github.com/vitejs/vite/compare/plugin-legacy@8.2.1...plugin-legacy@8.2.2)) is the **next patch on the 8.2 line of the legacy plugin** — the Vite plugin that ships polyfills + Babel transforms for legacy-browser targets (IE 11, legacy Edge, older Safari). The plugin is shipped from the same monorepo as Vite core but on a separate semver line: `vite@8.2` paired with `@vitejs/plugin-legacy@8.2.2`. **No breaking changes from 8.2.1** — all entries are additive.
+
+**When to upgrade:** anyone maintaining a Vite app that ships to legacy browsers (the `browserslist` config includes `ie 11`, `edge < 79`, `safari < 14`, or any target where `not` is not sufficient) and pinning `@vitejs/plugin-legacy@^8.2.1` should upgrade to `^8.2.2` for the bundler bug fix below.
+
+**Changes in 8.2.2 (raw [CHANGELOG](https://github.com/vitejs/vite/blob/plugin-legacy@8.2.2/packages/plugin-legacy/CHANGELOG.md)):**
+
+| Area | Change | PR |
+|---|---|---|
+| **bundler** | Update rolldown-related dependencies + **use client-side HMR in `bundled-dev`** (mirrors Vite 8.2.0-beta.0 PR #22961 — bundled-dev mode now brokers HMR through the client instead of the server WebSocket, useful for rolldown-bundled dev mode where the server can't easily push updates) | [#22961](https://github.com/vitejs/vite/issues/22961) |
+| **deps** | Bump `magic-string` to v1 (matches Vite 8.2.0-beta.0 — same dep bump that landed in core Vite 8.2.0-beta.0; legacy chunks can now consume the new magic-string major) | [#22998](https://github.com/vitejs/vite/issues/22998) |
+| **legacy** | **Don't use newer syntax when minifying legacy chunks** (`legacy` chunks are the ones shipped to legacy browsers; previously the minifier could emit modern syntax in legacy chunks, breaking the very browsers the polyfills were targeting) | [#23013](https://github.com/vitejs/vite/issues/23013) |
+
+**Why the `legacy: don't use newer syntax when minifying legacy chunks` fix matters (PR #23013):** the minifier that runs over `legacy` chunks (the [legacy polyfill chunks](https://vite.dev/config/build-options.html#build-target) loaded conditionally for legacy browsers) was emitting modern syntax that those legacy browsers couldn't parse — which defeats the whole point of the legacy plugin. The fix constrains the minifier to a syntax level compatible with the project's `browserslist` `targets` so the legacy chunks stay parseable on IE 11 / legacy Edge / older Safari. **If you were seeing `SyntaxError: Unexpected token` or `Unexpected token?` from IE 11 / legacy browsers loading your app and the error pointed at a chunk in the `legacy-` files (or in the dynamically-loaded polyfill bundle), this is the fix.** Audit recipe: open IE 11 / legacy Edge / older Safari on your deployment and check the console for `SyntaxError`; if you see any, upgrade to `@vitejs/plugin-legacy@8.2.2`.
+
+**Audit recipe:**
+
+```bash
+# Find the version you're on
+npm ls @vitejs/plugin-legacy
+
+# Should report 8.2.2 once you upgrade
+npm install --save-dev @vitejs/plugin-legacy@^8.2.2
+```
+
+**Sources:**
+
+- [`@vitejs/plugin-legacy@8.2.2` release on GitHub](https://github.com/vitejs/vite/releases/tag/plugin-legacy@8.2.2)
+- [Compare `plugin-legacy@8.2.1...plugin-legacy@8.2.2`](https://github.com/vitejs/vite/compare/plugin-legacy@8.2.1...plugin-legacy@8.2.2)
+- [PR #23013 — `legacy: don't use newer syntax when minifying legacy chunks`](https://github.com/vitejs/vite/issues/23013)
+- [PR #22961 — `bundler: update rolldown-related deps + client-side HMR in bundled-dev`](https://github.com/vitejs/vite/issues/22961)
+- [PR #22998 — `deps: update dependency magic-string to v1`](https://github.com/vitejs/vite/issues/22998)
