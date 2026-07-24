@@ -887,6 +887,140 @@ Sources:
 - [nextjs.org/docs/app/guides/migrating-to-cache-components](https://nextjs.org/docs/app/guides/migrating-to-cache-components)
 
 
+
+## 16.3.0-canary.95 `generateStaticParams` Validation Hardening (PR #95968 + #95969 — gap-fill)
+
+Two follow-up PRs from the same author (devjiwonchoi / SukkaW, both merged 2026-07-23T21:25:57Z and 2026-07-23T21:25:56Z, stacked on each other, supersedes #95388) harden `generateStaticParams` validation across **all** build modes — not just `cacheComponents: true`. The 1.4.76 cron covered the `empty-generate-static-params` error from canary.71 (which is the *only* error `generateStaticParams` raised previously). canary.95 adds **six new error codes** (1450–1455) to `packages/next/errors.json` that fire earlier in the build pipeline and give operators a stack trace pointing at the offending `return` line.
+
+### PR #95968 — `Throw when generateStaticParams returns invalid values`
+
+The previous validation only checked "is the array empty?" under `cacheComponents: true` — it would *silently* produce a wrong output when the function returned the wrong shape (a non-array, or items that weren't plain objects). The new errors fire on every build mode:
+
+- **Error 1450** — `Invalid value returned from generateStaticParams for "<route>". Expected an array, but received type <type>.`
+- **Error 1451** — `Invalid value at index <i> returned from generateStaticParams for "<route>". Expected an object, but received type <type>.`
+
+Where `<route>` is the dynamic route's path (e.g. `app/blog/[slug]/page.tsx`) and `<type>` is the JS `typeof` result (`"object"`, `"string"`, `"undefined"`, `"null"`, etc.). The errors link to the new troubleshooting page `nextjs.org/docs/messages/generate-static-params`.
+
+The validation **allows `{}`** as a single-item object (so the existing "all paths at runtime" pattern still works). The follow-up PR #95969 adds `output: 'export'`-specific checks that reject `{}` (since static export requires every params object to carry every dynamic segment).
+
+**Mistakes that now throw** (previously silent):
+```ts
+// ❌ Returns an object instead of an array
+export function generateStaticParams() {
+  return { slug: 'first-post' } // throws error 1450
+}
+
+// ❌ Returns an array of strings
+export function generateStaticParams() {
+  return ['first-post', 'second-post'] // throws error 1451 (each index is a string, not an object)
+}
+
+// ❌ Returns an array with a null
+export function generateStaticParams() {
+  return [null, { slug: 'first-post' }] // throws error 1451 at index 0
+}
+
+// ❌ Returns a Promise<Array> that didn't resolve properly
+export async function generateStaticParams() {
+  return undefined // throws error 1450 (the awaited value is not an array)
+}
+
+// ✅ Correct shape (only this passes)
+export async function generateStaticParams() {
+  return [{ slug: 'first-post' }, { slug: 'second-post' }]
+}
+```
+
+The PR also adds 247 lines of new test coverage in `packages/next/src/build/static-paths/app.test.ts` covering arrays-of-primitives, arrays-of-nulls, undefined returns, plain objects, arrays-of-arrays, and Promise<T> unwrapping cases.
+
+### PR #95969 — `Throw for empty or incomplete generateStaticParams results with output: export`
+
+Stacks on #95968. Tightens `output: 'export'` specifically — since static export builds every dynamic route at build time and writes it to disk, an empty or incomplete `generateStaticParams` was producing a silent missing-page state that only surfaced on the deploy target. canary.95 throws four new errors **only when `output: 'export'` is set**:
+
+- **Error 1452** — `Page "<route>" is missing "generateStaticParams()" so it cannot be used with "output: export" config.` (dynamic route with no `generateStaticParams` export)
+- **Error 1453** — `Page "<route>" is missing exported function "generateStaticParams()", which is required with "output: export" config.` (similar; raised by the dev server when the function isn't exported properly)
+- **Error 1454** — `Page "<route>" returned an empty array from "generateStaticParams()". With "output: export", at least one route must be generated.` (the empty-array case for static export specifically — note: under non-export modes, `[]` is the documented "all paths at runtime" pattern and is still valid)
+- **Error 1455** — `Page "<route>" returned incomplete params from "generateStaticParams()". With "output: export", every params object must include all dynamic route parameters. Missing: <names>.` (a params object is missing one or more dynamic segment values — e.g. for `/blog/[year]/[slug]` returning `{ year: '2026' }` without `slug`)
+
+The "composed parent + child params" check is the new one: when multiple route segments each export `generateStaticParams`, Next.js combines them before generating routes; if the combined params omit a dynamic route parameter, error 1455 fires with the missing names. The doc page (modified by PR #95969) explains: *"When multiple route segments export `generateStaticParams`, Next.js combines the params returned by each parent and child function before generating routes. Export `generateStaticParams` from every dynamic route and make sure the combined params include all dynamic route parameters for every generated route. If the paths cannot be known at build time, remove `output: 'export'` from your Next.js configuration."*
+
+**The full error table for `generateStaticParams` after canary.95:**
+
+| Build mode | What throws | Error code |
+|---|---|---|
+| Any | Function returns a non-array | **1450** |
+| Any | Array item is not a plain object | **1451** |
+| `cacheComponents: true` | Function returns `[]` | `empty-generate-static-params` (already documented, 1.4.76) |
+| `output: 'export'` | Dynamic route doesn't export `generateStaticParams` | **1452** / **1453** |
+| `output: 'export'` | Function returns `[]` | **1454** |
+| `output: 'export'` | Composed params omit a dynamic segment | **1455** |
+
+**Audit recipe** — the new errors don't surface until `next build`, so a CI-friendly preflight catches them before you hit the deploy:
+```bash
+# 1. Find every dynamic route in app/
+rg -l '\[.*\]' app/ -g '*.{ts,tsx}' | rg 'page\.(ts|tsx)|route\.(ts|tsx)$'
+
+# 2. For each match, check that the file exports generateStaticParams
+for f in $(rg -l '\[.*\]' app/ -g 'page\.(ts|tsx)|route\.(ts|tsx)$'); do
+  if ! rg -q 'export.*generateStaticParams' "$f"; then
+    echo "⚠️  $f has dynamic segments but no generateStaticParams"
+  fi
+done
+
+# 3. If output: 'export' is set, additionally check that the function isn't empty
+# and that it returns an object with every dynamic segment
+rg 'output.*["']export["']' next.config.*
+```
+
+The error pages are also updated: `errors/generate-static-params.mdx` (the new doc added by #95968, extended by #95969) is now the canonical troubleshooting entry for all six error codes.
+
+Sources:
+- [PR #95968 — `Throw when generateStaticParams returns invalid values`](https://github.com/vercel/next.js/pull/95968) · devjiwonchoi (SukkaW) · merged 2026-07-23T21:25:56Z · **Shipped in `16.3.0-canary.95`** (`cf10c50` on canary-branch HEAD)
+- [PR #95969 — `Throw for empty or incomplete generateStaticParams results with output: export`](https://github.com/vercel/next.js/pull/95969) · devjiwonchoi (SukkaW) · merged 2026-07-23T21:25:57Z · **Shipped in `16.3.0-canary.95`** (stacked on #95968, supersedes #95388)
+- [`packages/next/errors.json` at canary.95 — errors 1450–1455](https://github.com/vercel/next.js/blob/canary/packages/next/errors.json#L1450)
+- [`errors/generate-static-params.mdx` at canary.95 — troubleshooting page](https://github.com/vercel/next.js/blob/canary/errors/generate-static-params.mdx)
+- [nextjs.org/docs/messages/generate-static-params — invalid-values page](https://nextjs.org/docs/messages/generate-static-params)
+- [nextjs.org/docs/app/api-reference/functions/generate-static-params — returns section](https://nextjs.org/docs/app/api-reference/functions/generate-static-params#returns)
+
+## Plain-Text 404 for Non-Document Requests (canary-branch ahead of canary.95, [PR #95930](https://github.com/vercel/next.js/pull/95930) by Tobias Koppers / bgw, merged 2026-07-24T02:59:42Z — will ship in `16.3.0-canary.96` ~2026-07-25T22:30Z)
+
+When the browser requests something Next.js can't resolve as a document — favicons, manifest icons, broken `<img src>`, wrong `<link>`s, `new Worker()` calls — the server previously **still invoked the root layout and rendered the full HTML 404 page** (including any expensive `await cookies()` / `await headers()` reads in `app/layout.tsx`). The new behavior inspects the request's `Sec-Fetch-Dest` header and returns a **plain-text `Not Found` 404** directly from `base-server.ts` / `router-server.ts` without touching any app code.
+
+**The new file [`packages/next/src/server/lib/is-non-html-sec-fetch-dest.ts`](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/lib/is-non-html-sec-fetch-dest.ts)** matches the spec values: `audio`, `audioworklet`, `font`, `image`, `manifest`, `model`, `paint-worklet`, `script`, `serviceworker`, `sharedworker`, `style`, `track`, `video`, `worker`, `xslt`. Any request with a `Sec-Fetch-Dest` matching one of these gets the fast 404 path.
+
+**Why this matters:**
+
+- **Dev server perf** — `next dev` no longer pays the layout cost for a missing favicon or a typo'd `<img>`. The author measured a real case: a manifest icon hit that previously took 2 seconds in app code (per the request log) now returns in milliseconds.
+- **Self-hosted prod** — `next start` with a slow or dynamic `app/layout.tsx` (e.g. one that reads `await headers()` or fetches the current user) no longer wastes a request budget on every broken image/manifest request.
+- **Static self-hosted** — same as before for the static case (HTML 404 from `out/`) — the change only affects dynamic layouts.
+
+**Behavior nuances:**
+
+- **No DevTools log entry.** The request is handled at the router layer (`router-server.ts`) before reaching app code, so you won't see it in `next dev`'s terminal log. This matches `/_next/static/*` 404 behavior and the author notes "maybe a bit weird it doesn't show" — but it would be hard to log without losing the consistency.
+- **`Sec-Fetch-Dest: 'document'`** requests still get the full HTML 404 (these are real page navigations that want the styled 404).
+- **`Sec-Fetch-Dest: 'empty'`** (programmatic fetch with no specific destination) also gets the fast 404 path.
+- **Browsers without `Sec-Fetch-Dest`** (old browsers, custom HTTP clients) get the legacy behavior because the header is absent.
+
+**Test fixtures:**
+- `test/e2e/app-dir/not-found-non-document/` — e2e with full app code
+- `test/e2e/app-dir/not-found-non-document-dynamic/` — e2e with a slow dynamic layout
+- `test/production/app-dir/not-found-non-document-minimal/` — adapter-level test
+
+**Audit recipe:**
+```bash
+# Find places that might be hot-path on non-document requests
+# (broken images, manifest icons, service workers)
+rg -l "navigator.serviceWorker.register" app/
+rg -l 'rel="manifest"' app/
+rg -l 'rel="icon"' app/
+# If you have many of these and a slow layout, canary.96+ will be measurable.
+```
+
+No code change required — the change is in the request routing layer.
+
+Source: [PR #95930 — `Return plain text 404 for non-document requests to unknown paths`](https://github.com/vercel/next.js/pull/95930) · bgw · merged 2026-07-24T02:59:42Z · **Will ship in `16.3.0-canary.96`** (~2026-07-25T22:30Z)
+
+
 ## Common Mistakes — App Router uses `app/api/` with route handlers; don't mix with `pages/api/`
 - **Missing `await` on params** — In Next.js 15, route handler params are Promises
 - **Not returning proper status codes** — 201 for create, 204 for delete, 404 for not found
@@ -901,3 +1035,5 @@ Sources:
 - **Static GET handler data-leakage under `cacheComponents: true`** — GET stays static by default; runtime reads (cookies, headers, `await params`, `await searchParams`, `new Date()`, `Math.random()`, `crypto.randomUUID()`) without `use cache` or `dynamic = 'force-dynamic'` run at build time and the cached shape is served to every visitor. See the new "Static-by-Default GET Handlers" section above for the full pattern + audit recipe.
 - **Manual `{ params: Promise<{ ... }> }` annotations** — use the globally-available `RouteContext<'/path'>` helper for typegen-driven param types. No import needed after `next dev` / `next build` / `next typegen`. See the new "RouteContext Helper" section above.
 - **Empty `generateStaticParams` under `cacheComponents: true`** — raises `empty-generate-static-params` build error. Either return ≥1 placeholder param, drop `cacheComponents`, or set `dynamic = 'force-dynamic'`. See the new "`generateStaticParams` + Route Handlers + Cache Components" section above.
+- **`generateStaticParams` returning the wrong shape (canary.95, PR #95968)** — raises error 1450 if it returns anything that isn't an array, or 1451 if any item in the array isn't a plain object. Common silent mistakes: returning a single object `return { slug: 'x' }` instead of an array, returning a plain array of strings `return ['x', 'y']`, returning `null` or `undefined`. The `{}` empty-object case still passes (the documented "all paths at runtime" pattern). See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.
+- **`output: 'export'` + missing/empty/incomplete `generateStaticParams` (canary.95, PR #95969)** — raises error 1452/1453 (no export on a dynamic route), 1454 (empty array for static export), or 1455 (a params object is missing a dynamic segment value, e.g. for `/blog/[year]/[slug]` returning `{ year: '2026' }` without `slug`). These fire only under `output: 'export'`; the non-export modes still allow `[]` as "all paths at runtime". Fix: export `generateStaticParams` from every dynamic route AND make sure the combined parent + child params cover every dynamic segment. See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.

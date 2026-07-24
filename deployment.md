@@ -968,6 +968,56 @@ The `experimental.*` aliases are kept for one minor version (canary.91 + the can
 - [PR #95521 — `Disable supportsImmutableAssets with config.output` (already documented, canary.87 setup.md)](https://github.com/vercel/next.js/pull/95521)
 - [Next.js canary branch ahead of canary.90 (4 commits)](https://github.com/vercel/next.js/compare/v16.3.0-canary.90...canary)
 
+
+### `output: 'export'` Now Validates `generateStaticParams` Per-Route (16.3.0-canary.95, [PR #95969](https://github.com/vercel/next.js/pull/95969) by devjiwonchoi / SukkaW, merged 2026-07-23T21:25:57Z)
+
+`output: 'export'` is the static-export build mode (`next build` writes everything to `out/` for S3/Cloudflare Pages/Netlify/static hosting). Static export requires every dynamic route to be knowable at build time — and `generateStaticParams` is how you tell Next which dynamic-segment values exist. Before canary.95, an empty or missing `generateStaticParams` would silently build with no pages for that route and only surface as a missing page on the deploy target. **canary.95 makes this loud at build time** with four new error codes (1452–1455):
+
+- **Error 1452** — `Page "<route>" is missing "generateStaticParams()" so it cannot be used with "output: export" config.` (dynamic route file doesn't export the function at all)
+- **Error 1453** — `Page "<route>" is missing exported function "generateStaticParams()", which is required with "output: export" config.` (the dev-server variant — when the function isn't actually exported properly)
+- **Error 1454** — `Page "<route>" returned an empty array from "generateStaticParams()". With "output: export", at least one route must be generated.` (empty `[]` — note: under non-export modes, `[]` is the documented "all paths at runtime" pattern and is still valid; only static export rejects it)
+- **Error 1455** — `Page "<route>" returned incomplete params from "generateStaticParams()". With "output: export", every params object must include all dynamic route parameters. Missing: <names>.` (a params object is missing one or more dynamic segment values)
+
+The "composed parent + child params" check (error 1455) is the new one: when multiple route segments each export `generateStaticParams`, Next.js combines them before generating routes; if the combined params omit a dynamic route parameter, the error fires with the names of the missing segments. For a route like `/blog/[year]/[slug]/page.tsx` with a parent `app/blog/[year]/layout.tsx` that only returns `[{ year: '2026' }]`, the build fails because `slug` is missing from every combined params object.
+
+**Stacked on PR #95968** (same author, merged minutes before) which adds two more errors that fire on **all** build modes (not just `output: 'export'`):
+- **Error 1450** — function returns anything that isn't an array (e.g. `return { slug: 'x' }` instead of `return [{ slug: 'x' }]`)
+- **Error 1451** — an array item isn't a plain object (e.g. `return ['x', 'y']` or `return [null]`)
+
+Together, errors 1450–1455 replace the previous "silent wrong shape" behavior with a stack-traced, source-pointed build error. The new troubleshooting page `nextjs.org/docs/messages/generate-static-params` covers all six codes.
+
+**CI preflight recipe** — catch the errors before the deploy target does:
+```bash
+# 1. Find every dynamic route file in app/
+rg -l '\[.*\]' app/ -g 'page\.(ts|tsx)|route\.(ts|tsx)$'
+
+# 2. For each match, verify generateStaticParams is exported
+for f in $(rg -l '\[.*\]' app/ -g 'page\.(ts|tsx)|route\.(ts|tsx)$'); do
+  if ! rg -q 'export.*generateStaticParams' "$f"; then
+    echo "⚠️  $f has dynamic segments but no generateStaticParams"
+  fi
+done
+
+# 3. If output: 'export' is set, additionally ensure the function isn't returning []
+rg 'output.*["\x27]export["\x27]' next.config.* &&   rg -B2 'export.*generateStaticParams' app/ -A5 | rg 'return \[\]'
+```
+
+**Interaction with `cacheComponents: true`:** under `cacheComponents`, `generateStaticParams` must return ≥1 param (the existing `empty-generate-static-params` error from canary.71). The new errors 1454/1455 from canary.95 are **additive** — `output: 'export'` projects also need ≥1 param AND every params object to cover every dynamic segment. The two error systems are independent: one fires under CC, the other fires under `output: 'export'`. See `api.md` → "16.3.0-canary.95 `generateStaticParams` Validation Hardening" for the full table.
+
+**What to do if the build now fails after upgrading to canary.95+:**
+
+1. If you have a dynamic route without `generateStaticParams` under `output: 'export'` — either add the function (returning the real param values) or remove `output: 'export'` from `next.config.ts` (and switch to `output: 'standalone'` or a Node server).
+2. If your params objects are missing a dynamic segment — the combined params (parent + child) must include every dynamic segment value. For `/blog/[year]/[slug]`, return `[{ year: '2026', slug: 'first-post' }, ...]` from the leaf page, not from a parent layout alone.
+3. If you were relying on the silent "empty `[]` works under non-export" pattern — that still works, just not under `output: 'export'`.
+
+**Sources:**
+- [PR #95969 — `Throw for empty or incomplete generateStaticParams results with output: export`](https://github.com/vercel/next.js/pull/95969) · devjiwonchoi (SukkaW) · merged 2026-07-23T21:25:57Z · **Shipped in `16.3.0-canary.95`**
+- [PR #95968 — `Throw when generateStaticParams returns invalid values`](https://github.com/vercel/next.js/pull/95968) (stacked on #95969, same author) — merged minutes before, adds errors 1450/1451 for all build modes
+- [`packages/next/errors.json` at canary.95 — errors 1450–1455](https://github.com/vercel/next.js/blob/canary/packages/next/errors.json#L1450)
+- [`errors/generate-static-params.mdx` at canary.95 — troubleshooting page (covers all 6 errors)](https://github.com/vercel/next.js/blob/canary/errors/generate-static-params.mdx)
+- [nextjs.org/docs/app/guides/static-exports — `generateStaticParams` section](https://nextjs.org/docs/app/guides/static-exports)
+- [nextjs.org/docs/app/api-reference/file-conventions/dynamic-routes](https://nextjs.org/docs/app/api-reference/file-conventions/dynamic-routes)
+
 ### Turbopack Production Builds
 Next.js 16 uses Turbopack for production builds by default:
 ```bash
