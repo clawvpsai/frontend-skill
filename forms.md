@@ -660,6 +660,232 @@ const looseSchema = z.object({
 - `z.union()` is deprecated in favor of `z.discriminatedUnion()` for unions with a common key
 - Some internal type inference behavior changed — run `npx tsc --noEmit` after upgrading
 
+
+### Zod 4.4 (April 29, 2026) — Correctness & Soundness Tightening
+
+Zod 4.4.0 was released on **April 29, 2026** (followed by patches 4.4.1 → 4.4.2 → 4.4.3 on May 4, 2026). The `zod@latest` dist-tag is **`4.4.3`** as of 2026-07-24. This is a "minor-but-sharp" release — most fixes are correctness-driven, and several are **intentionally stricter** than Zod 4.0–4.3. Code that depended on previously accepted invalid or ambiguous inputs may fail differently after the bump. **Audit + `npx tsc --noEmit` are mandatory before merging.**
+
+```bash
+# Recommended
+npm install zod@^4.4.3
+```
+
+#### 1. Potentially Breaking Bug Fixes (Read These First)
+
+**Tuple defaults now materialize output values correctly** (PR [#5661](https://github.com/colinhacks/zod/pull/5661))
+
+Before 4.4, a tuple like `z.tuple([z.string(), z.string().default("fallback")])` parsed `["a"]` as `["a"]` (the default was silently dropped from the output). 4.4 makes the default materialize into the parsed output:
+
+```ts
+const schema = z.tuple([
+  z.string(),
+  z.string().default("fallback"),
+])
+
+// 4.3 and earlier: ["a"]           (default dropped)
+// 4.4+: ["a", "fallback"]          (default in output)
+schema.parse(["a"])
+
+// Trailing optional elements stay absent (not filled with undefined):
+const optionalTail = z.tuple([z.string(), z.string().optional()])
+optionalTail.parse(["a"])                    // ["a"]
+optionalTail.parse(["a", undefined])         // ["a", undefined] (explicit undefined preserved)
+
+// Optional BEFORE default → dense tuple (undefined fills the slot):
+const dense = z.tuple([z.string(), z.string().optional(), z.string().default("fb")])
+dense.parse(["a"]) // ["a", undefined, "fb"]
+```
+
+**Why this matters for forms:** `z.tuple([…])` schemas where the last element has a `.default()` will now return that default in the parsed value. If you snapshot the parsed object into a Store (Zustand) or React state, the default appears in the UI. Side effects and equality checks that assumed the default was silently dropped will need to be updated.
+
+**Required object properties with `z.undefined()`** (PR [#5661](https://github.com/colinhacks/zod/pull/5661), follow-up [`57d80a82`](https://github.com/colinhacks/zod/commit/57d80a82bde8877f3eb79e5dad9786096c37490f))
+
+Before 4.4, an object property typed as `z.undefined()` was treated as optional. 4.4 makes it required — the key must be present, but its value may be `undefined`:
+
+```ts
+const schema = z.object({ value: z.undefined() })
+
+schema.safeParse({}).success                    // false (key MUST be present)
+schema.safeParse({ value: undefined }).success  // true
+
+// Use .optional() when the key itself may be absent:
+const schema2 = z.object({ value: z.undefined().optional() })
+schema2.safeParse({}).success  // true
+```
+
+**Why this matters for forms:** If you used `z.undefined()` as a "send-only marker" (e.g., a hidden CSRF field that must be present in the payload), your Zod 4.0–4.3 schema was silently accepting payloads missing it. 4.4 correctly rejects those. Audit:
+
+```bash
+rg "z\.undefined\(\)" --type ts --type tsx src/
+```
+
+**`.merge()` throws on receiver with refinements; second schema's refinements are preserved** (PR [#5856](https://github.com/colinhacks/zod/pull/5856))
+
+Before 4.4, `A.merge(B)` would silently lose refinements on `A` in some cases. 4.4 makes `.merge()` throw noisily when the receiver has refinements (to force you to think about whether they should apply) and guarantees the second schema's refinements are preserved.
+
+```ts
+const A = z.object({ x: z.string() }).refine(o => o.x.length > 0, 'positive')
+const B = z.object({ y: z.number() })
+
+// 4.4+: throws on A.merge(B) — A has refinements, decide intent first
+// Workaround: apply refinements AFTER the merge:
+const merged = A.merge(B).refine(o => o.x.length > 0, 'positive')
+```
+
+**Map and Set defaults are now cloned** (PR [#5855](https://github.com/colinhacks/zod/pull/5855))
+
+Before 4.4, `z.map(...).default(new Map())` and `z.set(...).default(new Set())` returned the same reference on every `.parse(undefined)`. 4.4 clones the default to prevent shared-mutable-state across parses:
+
+```ts
+const schema = z.map(z.string(), z.number()).default(new Map())
+const a = schema.parse(undefined)
+const b = schema.parse(undefined)
+a === b // false in 4.4+ (true in earlier versions — shared state bug)
+```
+
+**Why this matters for forms:** If you mutate a parsed Map/Set (e.g., to add a freshly-selected option), every other form instance sharing the same default would see the mutation. 4.4 closes that footgun.
+
+**Discriminated union error now includes `options` and `discriminator`** (PR [#5723](https://github.com/colinhacks/zod/pull/5723))
+
+Discriminator failures now include the list of valid options and the field name, which makes user-facing error messages much clearer:
+
+```ts
+const schema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('email'), email: z.string() }),
+  z.object({ type: z.literal('sms'), phone: z.string() }),
+])
+
+// 4.4+ error JSON for { type: 'fax' }:
+// { code: 'invalid_union_discriminator', options: ['email', 'sms'], discriminator: 'type', … }
+```
+
+**Why this matters for forms:** When you build a discriminated-union form (e.g., `NotificationStep { type: 'email' | 'sms' | 'push' }`), the error now tells you which options exist. Use it to drive a "choose one of: …" hint instead of a generic "invalid value" message.
+
+#### 2. New Features
+
+**`.superRefine()` now accepts a `when` function** (PR [#5741](https://github.com/colinhacks/zod/pull/5741))
+
+Run a refinement only when the schema is otherwise valid. Equivalent to a mini-discriminated check inside the refinement:
+
+```ts
+const schema = z.object({
+  email: z.string().email(),
+  marketingOptIn: z.boolean().optional(),
+}).superRefine(
+  (val, ctx) => {
+    if (val.marketingOptIn && !val.email.endsWith('@company.com')) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['marketingOptIn'],
+        message: 'Marketing opt-in requires a company email',
+      })
+    }
+  },
+  // NEW: 'when' only fires if the schema is otherwise valid
+  { when: ({ success }) => success }
+)
+
+// `.refine()` got the same `when` option (PR #5681) — respects `abort: true` semantics.
+```
+
+**Transform context: `ctx.addIssue()` now works inside `.transform()`** (PR [#5699](https://github.com/colinhacks/zod/pull/5699))
+
+Before 4.4, you couldn't add a Zod issue from inside a transform callback. 4.4 makes `ctx.addIssue()` available on the transform context:
+
+```ts
+const toDate = z.string().transform((val, ctx) => {
+  const d = new Date(val)
+  if (Number.isNaN(d.getTime())) {
+    ctx.addIssue({ code: 'custom', message: 'Not a valid date string' })
+    return z.NEVER
+  }
+  return d
+})
+```
+
+**Codec inversion: `z.invertCodec()`** (PR [#5770](https://github.com/colinhacks/zod/pull/5770))
+
+For bidirectional codec schemas (e.g., `stringToNumber = z.codec(z.string(), z.number(), { decode: parseFloat, encode: String })`), 4.4 adds a `z.invertCodec(codec)` helper that swaps the decode/encode directions. Useful for form schemas that need to round-trip a value to the wire format and back:
+
+```ts
+const stringToNumber = z.codec(z.string(), z.number(), {
+  decode: parseFloat,
+  encode: String,
+})
+
+const numberToString = z.invertCodec(stringToNumber)
+// { decode: String, encode: parseFloat }  — the reverse
+
+// Also: discriminatedUnion().encode() now works with codec discriminators (PR #5769)
+```
+
+**Tightening of `z.preprocess` optionality** (4.4.2, PR [#5929](https://github.com/colinhacks/zod/pull/5929))
+
+`z.preprocess` now defers optionality to the inner schema. Previously a preprocessor could mark the outer result as optional, hiding inner-schema errors. 4.4.2 makes the inner schema the source of truth.
+
+#### 3. Performance Improvements
+
+**Lazy-bound builder methods** (PR [#5897](https://github.com/colinhacks/zod/pull/5897))
+
+Classic builder methods (`.parse`, `.safeParse`, `.optional`, `.nullable`, etc.) are now lazy-bound through a shared internal prototype instead of being eagerly attached per schema instance. ~10–30% reduced memory for apps with thousands of schemas (typical for large form schemas with many sub-schemas). No code change required.
+
+**Pure annotations for tree-shaking**
+
+Top-level factory calls (`z.object`, `z.string`, `z.tuple`, etc.) are now annotated `/*@__PURE__*/` so bundlers (Rolldown, esbuild, Turbopack) tree-shake unused schemas from the final bundle. Particularly impactful for shared Zod schema files with hundreds of named schemas.
+
+**Other small perf wins:**
+- Avoid `delete` in `finalizeIssue` (PR #5718) — keeps V8 in fast mode
+- `globalConfig` shared via `globalThis` (PR #5889) — improves behavior across mixed CJS/ESM module instances
+- `jitless` config honored in `allowsEval` probe (PR #5864) — and avoids probing when set before first access
+
+#### 4. Prototype Pollution Hardening
+
+**Object catchall paths now skip `__proto__` keys** (PR [#5898](https://github.com/colinhacks/zod/pull/5898))
+
+Schema features that accept extra keys (`z.object({...}).catchall(z.unknown())` or `.passthrough()`) now skip the `__proto__` key. A small but important prototype-pollution guard if you ever parse untrusted user input into a passthrough schema:
+
+```ts
+const schema = z.object({ name: z.string() }).catchall(z.unknown())
+schema.parse({ name: 'a', __proto__: { polluted: true } })
+// 4.4+: { name: 'a' }   (no __proto__ in output)
+// 4.3 and earlier: would have included __proto__ in the parsed object
+```
+
+#### 5. Patch-train Summary (4.4.1 → 4.4.3)
+
+| Version | Date | Headline |
+|---|---|---|
+| 4.4.0 | 2026-04-29 | Major release — tuple defaults, z.undefined() required, codec inversion, superRefine when, transform ctx.addIssue(), lazy-bound methods, prototype pollution hardening |
+| 4.4.1 | 2026-04-29 | Same-day patch — reject tuple holes before required defaults (PR #5900) |
+| 4.4.2 | 2026-05-01 | Tighten discriminated union option typing + z.preprocess defers optionality to inner schema (PR #5929) |
+| 4.4.3 | 2026-05-04 | Restore catch handling for absent object keys (PR #5939) + generalize optin/fallback to transform + restore preprocess on absent keys (PR #5941) |
+
+**Recommended Zod version after 4.4.3: `^4.4.3`** (supersedes any earlier 4.x).
+
+#### 6. Migration Checklist (any 4.x → 4.4.3)
+
+- [ ] Run `npm install zod@^4.4.3`
+- [ ] Run `npx tsc --noEmit` — the tightening will surface any code that relied on the looser 4.3 semantics
+- [ ] Audit tuple defaults: if you depended on `.default()` inside tuples being silently dropped, update consumer code to expect the default in output
+- [ ] Audit `z.undefined()` usages: any place that relied on `z.undefined()` being optional now requires the key to be present
+- [ ] Audit `.merge()` calls: receiver with refinements now throws — apply refinements after the merge
+- [ ] Audit Map/Set defaults: cloned per-parse now; if you relied on shared mutable state across parses, capture the default *outside* the schema
+- [ ] Test discriminated-union error rendering if you customize `ZodError` messages — the new `options` field is gold for user-facing hints
+- [ ] **No action required** for the new features (codec inversion, superRefine `when`, transform `ctx.addIssue`) — opt-in only
+
+**Sources:**
+- [Zod 4.4.0 release notes](https://github.com/colinhacks/zod/releases/tag/v4.4.0) — the headline release
+- [Zod 4.4.1 release notes](https://github.com/colinhacks/zod/releases/tag/v4.4.1)
+- [Zod 4.4.2 release notes](https://github.com/colinhacks/zod/releases/tag/v4.4.2)
+- [Zod 4.4.3 release notes](https://github.com/colinhacks/zod/releases/tag/v4.4.3)
+- [PR #5661 — tuple/object optionality alignment](https://github.com/colinhacks/zod/pull/5661)
+- [PR #5770 — codec inversion](https://github.com/colinhacks/zod/pull/5770)
+- [PR #5741 — superRefine `when` option](https://github.com/colinhacks/zod/pull/5741)
+- [PR #5699 — transform context `addIssue`](https://github.com/colinhacks/zod/pull/5699)
+- [PR #5897 — lazy-bound builder methods](https://github.com/colinhacks/zod/pull/5897)
+- [PR #5898 — `__proto__` skip in catchall](https://github.com/colinhacks/zod/pull/5898)
+
+
 ### String Validation
 
 ```ts
@@ -984,5 +1210,12 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **Using `onSubmit` with Server Actions** — prefer native `action={serverAction}` for progressive enhancement
 - **Zod 4: using `z.instanceof(File)`** — migrate to `z.file()` which has better types and size validation
 - **Zod 4: not running type check after upgrade** — `npx tsc --noEmit` to catch type inference changes
+- **Zod 4.4: assuming tuple defaults are silently dropped** — defaults materialize in output now; snapshot equality + Zustand store updates will see the new value
+- **Zod 4.4: treating `z.undefined()` as optional** — it's required now; key must be present (use `.optional()` for absent-key semantics)
+- **Zod 4.4: `.merge()`-ing schemas where the receiver has refinements** — throws now; apply refinements after `.merge()`
+- **Zod 4.4: depending on shared mutable Map/Set defaults across parses** — defaults are cloned per-parse now; capture the default outside the schema if you relied on shared state
+- **Zod 4.4: skipping `npx tsc --noEmit` after the bump** — the tightening will surface any code that relied on the looser 4.3 semantics; the fix is rarely a one-line type cast
+- **Zod 4.4: regenerating OpenAPI / JSON Schema output without re-checking consumer code** — the `$defs` redundant-id strip (PR #5759) and the `min/max` intersection fix (PR #5700) may change the generated schema shape; consumers that pinned to the exact previous output will need a re-coordination
+- **Zod 4.4: missing `npx tsc --noEmit` AND `npx vitest run`** — both fixes and new features (codec inversion, superRefine `when`, transform `ctx.addIssue()`) are TS-shape changes; run *both* type and runtime checks
 
 - **RHF 8: test breaking changes before upgrading** — v8 beta is not production-stable; the `useForm` API has breaking changes including `id`→`key` rename, `keyName` removal, `names`→`name` in Watch, `watch` callback→`subscribe`, and `setValue` no longer updating field arrays

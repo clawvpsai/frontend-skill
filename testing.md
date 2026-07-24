@@ -501,6 +501,105 @@ Eight days after 1.61.0, the team shipped 1.61.1 with **five fixes for regressio
 4. **Sync loader crash on Node 22.15** — ESM loader threw `context.conditions?.includes is not a function` on Node 22.15. Fixed.
 5. **pnpm workspace symlink resolution** — Extensionless `.ts` subpath imports across pnpm workspace symlinks failed in the sync ESM loader. Fixed.
 
+
+## DOM Environment Updates — happy-dom 20.11.x + jsdom 29.1.1 (July 2026)
+
+The two most-used DOM environments for Vitest got **meaningful updates in July 2026** that affect every test suite still on older versions. Both pin to their respective `@latest` dist-tags as of 2026-07-24.
+
+### happy-dom 20.11.0 (July 18, 2026) — CookieStore API + Element.checkVisibility()
+
+Released **one day after the original 20.10.6** — the most material feature batch in the happy-dom 20.x line:
+
+1. **CookieStore API** (`window.cookieStore`) — first-class support for the async, [Storage Access API](https://developer.mozilla.org/en-US/docs/Web/API/Cookie_Store_API)-compatible cookie API. `await cookieStore.get(name)`, `await cookieStore.set(name, value)`, `change` event subscription, and the `subscribe(changes)` async iterator all work.
+
+   ```ts
+   // In a test (or any component code under Vitest + happy-dom):
+   const cookie = await cookieStore.get('session')
+   expect(cookie?.value).toBe('abc123')
+
+   // Subscribe to cookie changes:
+   cookieStore.addEventListener('change', (e) => {
+     console.log('cookie changed:', e.changed)
+   })
+   ```
+
+   **Why this matters:** code that uses the modern `window.cookieStore` API (often behind a feature flag with `document.cookie` fallback) now actually works in tests. Previously happy-dom would throw `cookieStore is not defined` and the test would only pass in real browsers.
+
+2. **`Element.checkVisibility()`** — returns whether the element is rendered (not `display: none`, not `visibility: hidden`, not affected by `content-visibility: hidden`, etc.). The full [`Element.checkVisibility()` spec](https://developer.mozilla.org/en-US/docs/Web/API/Element/checkVisibility) is implemented, including the `{ contentVisibilityAuto, opacityProperty, visibilityProperty, checkOpacity, checkVisibilityCSS }` options.
+
+   ```ts
+   const hidden = document.querySelector('.modal').checkVisibility()
+   // false if display: none, visibility: hidden, opacity: 0, or content-visibility: hidden
+   ```
+
+   **Why this matters:** libraries that check visibility before mounting (e.g., intersection observer polyfills, animation libraries) now work correctly. Previously the method was missing and tests fell back to `getComputedStyle` checks.
+
+3. **Patch fixes bundled in 20.11.x:**
+   - **20.11.1 (July 22, 2026)** — performance pass on query selectors by avoiding unnecessary `DOMException` construction (cyfung1031, task #2228). Most noticeable in tests that run thousands of `querySelector`/`querySelectorAll` calls in a single run.
+
+**Recommended version:** `happy-dom@^20.11.1` (supersedes 20.10.6).
+
+**Audit:**
+
+```bash
+# Who uses window.cookieStore in their component code or tests?
+rg "cookieStore" --type ts --type tsx src/ tests/
+
+# Who uses element.checkVisibility()?
+rg "checkVisibility" --type ts --type tsx src/ tests/
+```
+
+### jsdom 29.1.1 (April 30, 2026) — stability + 29.1.x patch train
+
+The **jsdom 29.x line** shipped 5 releases between February and April 2026 (`29.0.0` → `29.0.1` → `29.0.2` → `29.1.0` → `29.1.1`). The headline changes:
+
+- **29.0.0 (March 15, 2026)** — Node 22+ minimum (drops Node 18 / 20 support), tightens WHATWG DOM conformance, updated CSS parser; lots of internal API changes for libraries that touched jsdom internals
+- **29.1.0 (April 27, 2026)** — feature additions including `Element.checkVisibility()` parity with happy-dom's 20.11.0 (the two projects shipped within ~9 days of each other), better `getBoundingClientRect` accuracy for transformed elements
+- **29.1.1 (April 30, 2026)** — bug fix for `AbortController` timing edge cases
+
+**Recommended version:** `jsdom@^29.1.1` (supersedes 28.x and 29.0.x).
+
+**Pin choice for new projects:**
+
+| Scenario | Recommended environment |
+|---|---|
+| Most React / Next.js apps (server actions, server components, simple DOM) | `happy-dom` (faster, ~10× quicker than jsdom on cold-start) |
+| Apps that need `getBoundingClientRect` precision + a fuller Web Platform implementation | `jsdom` (slower but more spec-accurate) |
+| Tests that need real browser APIs (clipboard, layout, IntersectionObserver, Web Animations API) | **Vitest Browser Mode** (not a DOM environment at all — see Vitest 4 Browser Mode section above) |
+
+**Audit:**
+
+```bash
+# Who still pins an old jsdom?
+rg "\"jsdom\":" package.json package-lock.json pnpm-lock.yaml yarn.lock
+
+# Who still pins an old happy-dom?
+rg "\"happy-dom\":" package.json package-lock.json pnpm-lock.yaml yarn.lock
+```
+
+### Combined Audit Recipe (One-Shot)
+
+```bash
+# Run this in your repo to verify both deps are on the recommended versions
+node -e "
+  const p = require('./package.json')
+  const dev = { ...p.devDependencies, ...p.dependencies }
+  const happy = dev['happy-dom'] || 'n/a'
+  const jsdom = dev['jsdom'] || 'n/a'
+  console.log('happy-dom:', happy, happy.includes('20.11') ? '✅' : '⚠️ < 20.11')
+  console.log('jsdom:    ', jsdom, jsdom.includes('29.1') ? '✅' : '⚠️ < 29.1.1')
+"
+```
+
+**Sources:**
+- [happy-dom 20.11.0 release notes](https://github.com/capricorn86/happy-dom/releases/tag/v20.11.0) — CookieStore API + Element.checkVisibility()
+- [happy-dom 20.11.1 release notes](https://github.com/capricorn86/happy-dom/releases/tag/v20.11.1) — query selector perf
+- [Element.checkVisibility() spec](https://developer.mozilla.org/en-US/docs/Web/API/Element/checkVisibility)
+- [Cookie Store API spec](https://developer.mozilla.org/en-US/docs/Web/API/Cookie_Store_API)
+- [jsdom 29.1.0 release notes](https://github.com/jsdom/jsdom/releases/tag/29.1.0)
+- [jsdom 29.1.1 release notes](https://github.com/jsdom/jsdom/releases/tag/29.1.1)
+
+
 ## React Testing Library Patterns
 
 ```tsx
