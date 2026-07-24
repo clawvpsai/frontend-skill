@@ -853,7 +853,7 @@ it('handles server action errors gracefully', async () => {
 
 ## Vitest 4 — `fsModuleCache` Promoted From `experimental.*` to Top-Level Option (July 20, 2026, PR [#10734](https://github.com/vitest-dev/vitest/pull/10734) by sheremet-va, merged 2026-07-20T08:04:04Z, fixes [#10701](https://github.com/vitest-dev/vitest/issues/10701))
 
-**`experimental.fsModuleCache`** and **`experimental.fsModuleCachePath`** are MOVED to top-level **`test.fsModuleCache`** and **`test.fsModuleCachePath`**. The cache directory defaults to `<workspaceRoot>/node_modules/.vitest-cache` (a single workspace-root directory shared by every project in a workspace), `fsModuleCache` defaults to `false` (off by default — opt-in for now), and the old `experimental.*` options are migrated with a deprecation warning. This unblocks **Vitest 5** stabilization — issue #10701 confirmed "We haven't received any issues regarding this feature, and we have also been running tests with this flag enabled for a while now" so the core team is comfortable promoting it. **No Vitest 4 patch has shipped yet** — the promotion is on Vitest 4 `main` and will land in the next Vitest 4 patch (probably 4.1.11 in the coming days). Vitest 5.0 stable is still `beta.6` (last released 2026-07-06) and no `beta.7` has shipped yet.
+**`experimental.fsModuleCache`** and **`experimental.fsModuleCachePath`** are MOVED to top-level **`test.fsModuleCache`** and **`test.fsModuleCachePath`**. The cache directory defaults to `<workspaceRoot>/node_modules/.vitest-cache` (a single workspace-root directory shared by every project in a workspace), `fsModuleCache` defaults to `false` (off by default — opt-in for now), and the old `experimental.*` options are migrated with a deprecation warning. This unblocks **Vitest 5** stabilization — issue #10701 confirmed "We haven't received any issues regarding this feature, and we have also been running tests with this flag enabled for a while now" so the core team is comfortable promoting it. **Vitest 5.0.0-beta.7 SHIPPED 2026-07-24T11:40:54Z** and the `fsModuleCache` promotion is now in beta.7 (see Upcoming beta.7 section below). **No Vitest 4 patch has shipped yet** — the promotion is on Vitest 5 `main`; the next Vitest 4 patch (probably 4.1.11) will backport the relevant fixes.
 
 ### What is `fsModuleCache`?
 
@@ -1153,9 +1153,9 @@ Most projects upgrade with **zero code changes** — the public API is the same.
 npx vitest migrate
 ```
 
-### Upcoming (Vitest 5.0-beta.6, July 6, 2026)
+### Upcoming (Vitest 5.0-beta.6, July 6, 2026 — superseded by beta.7 below)
 
-Vitest 5.0 is on beta.6 (published 2026-07-06T06:52:52Z). Four beta releases have shipped between May 19 and July 6, 2026 (beta.3 on May 19, beta.4 on June 1, beta.5 on June 15, **beta.6 on July 6**) and the breaking-change list has grown materially. **The list below supersedes anything earlier.** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
+Vitest 5.0 is on beta.7 (published 2026-07-24T11:40:54Z). Five beta releases have shipped between May 19 and July 24, 2026 (beta.3 on May 19, beta.4 on June 1, beta.5 on June 15, beta.6 on July 6, **beta.7 on July 24**). The list below is the beta.6 breaking-change set; the beta.7 section immediately following this one supersedes it. and the breaking-change list has grown materially. **The list below supersedes anything earlier.** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
 
 #### New breaking changes in beta.6 (July 6, 2026) — **MUST READ before bumping**
 
@@ -1241,6 +1241,104 @@ A new `vi.when()` helper for conditional mocking based on test environment / arg
 - [Vitest 5.0.0-beta.6 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6)
 - [Vitest 5 migration guide (beta)](https://main.vitest.dev/guide/migration)
 
+### Upcoming (Vitest 5.0-beta.7, July 24, 2026)
+
+[Vitest 5.0.0-beta.7](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7) shipped **2026-07-24T11:40:54Z** — five beta releases between May 19 and July 24 (beta.3 May 19, beta.4 June 1, beta.5 June 15, beta.6 July 6, **beta.7 July 24**). The breaking-change list is now stable enough that the next release is plausibly rc.1. **The list below supersedes the beta.6 list above (8 → 9 items, including 1 NEW breaking change + 4 NEW features + 11+ bug fixes + a major performance bundle).** If you pin to a specific beta, check the inline `[#PR]` links to verify the change is still in your range. The migration guide is the canonical reference: https://main.vitest.dev/guide/migration
+
+#### New breaking change in beta.7 (July 24, 2026) — **MUST READ before bumping**
+
+**1. Config resolution separated from server creation — [#10554](https://github.com/vitest-dev/vitest/issues/10554)** by @sheremet-va
+
+The Vitest config-resolution lifecycle is now decoupled from the Vite server creation. In practice this means: (a) any side effect that relied on `defineConfig()` synchronously triggering the Vite server (e.g. spinning up a global `mockServer` in your config that mutates server state) will now run before the server is ready and will throw "server not initialized" on first request; (b) plugin hooks that read server state during their `config` hook will now see `null` instead of the in-progress server (the fix is at [#10731](https://github.com/vitest-dev/vitest/issues/10731) — disable server HMR before plugins read it in their config hook). For most projects this is a no-op — the change is observable only if you have **custom `defineConfig()` callbacks** that touch Vite server internals or that register globals tied to the Vite server's lifecycle.
+
+```ts
+// vitest.config.ts
+
+// ❌ No longer works (beta.7+) — reads server before it's created:
+// export default defineConfig(() => {
+//   const server = createServer(/* ... */)   // throws "server not initialized"
+//   server.middlewares.use(/* ... */)
+//   return { /* ... */ }
+// }).tap(/* ... */)
+
+// ✅ Defer server-side state to globalSetup or a setup file:
+export default defineConfig({
+  test: {
+    globalSetup: ['./test/global-setup.ts'],
+    setupFiles: ['./test/setup.ts'],
+  },
+})
+```
+
+#### New features in beta.7 (July 24, 2026)
+
+**1. `injectCjsGlobals` option (toggle-able) — [#10709](https://github.com/vitest-dev/vitest/issues/10709)** by @sheremet-va
+
+CJS globals (`require`, `module`, `exports`, `__dirname`, `__filename`) are now opt-in via the `injectCjsGlobals` config option. Default is `true` for backward compat, but flipping to `false` saves ~5–15 ms of cold-start per test file and pairs with the ESM-only migration story. Turn it off if your codebase is 100% ESM and you don't have legacy require-shim libraries.
+
+```ts
+// vitest.config.ts — for ESM-only projects
+export default defineConfig({
+  test: {
+    injectCjsGlobals: false,  // skip CJS global injection
+  },
+})
+```
+
+**2. `fsModuleCache` promoted to top-level option — [#10734](https://github.com/vitest-dev/vitest/issues/10734)** by @sheremet-va
+
+The `experimental.fsModuleCache` promotion that was documented in the 1.4.75 cycle (ahead of beta.6) is now in beta.7. Top-level `test.fsModuleCache` and `test.fsModuleCachePath` are the new canonical names; defaults are `false` (off, opt-in) and `<workspaceRoot>/node_modules/.vitest-cache` respectively. Action: rename `experimental.fsModuleCache` → `test.fsModuleCache` in your Vitest 5 configs; no behavior change.
+
+**3. Non-ASCII characters in `for`/`each` title placeholders — [#10773](https://github.com/vitest-dev/vitest/issues/10773)** by @k-yle
+
+`test.each` and `describe.each` now accept non-ASCII placeholders in title templates. Useful for i18n projects and golden-file tests with localized fixtures.
+
+```ts
+// Before (beta.6 and earlier) — non-ASCII chars were stripped or replaced:
+test.each([
+  ['café', 'biströt'],
+  ['日本', '中国'],
+])('renders %s → %s', (a, b) => { /* ... */ })
+// Output (beta.6): "renders caf → biströt" / "renders   →  "
+
+// After (beta.7+) — full UTF-8 preserved:
+// "renders café → biströt" / "renders 日本 → 中国"
+```
+
+**4. Pluggable benchmark provider API — [#10799](https://github.com/vitest-dev/vitest/issues/10799)** by @GuillaumeLagrange + @sheremet-va
+
+The `bench` runner now supports a pluggable provider API. You can write a custom benchmark provider (e.g., to integrate with `tinybench` forks, `hyperfine`-style external runners, or in-house perf systems). Default provider is unchanged.
+
+#### Performance bundle (5 PRs, beta.7)
+
+This is the largest perf bundle of the beta.7 cycle — collectively ~30–60% cold-start reduction on typical projects, larger on multi-VM-pool setups:
+
+- **Warm modules to workers in one round-trip + Node compile cache — [#10708](https://github.com/vitest-dev/vitest/issues/10708)** by @sheremet-va — `compileCache` is now opt-in (set `test.compileCache: true`); persistent across runs
+- **Bundle vitest's own dependencies — [#10685](https://github.com/vitest-dev/vitest/issues/10685)** — removes the per-test-file dep-optimization round-trip for vitest internal modules
+- **Reuse compiled code across vm pool contexts + prewarm the module graph — [#10744](https://github.com/vitest-dev/vitest/issues/10744)** — biggest win for `vmThreads`/`vmForks` pool users
+- **v8 coverage: bounded-memory merge + precompiled globs — [#10506](https://github.com/vitest-dev/vitest/issues/10506)** — ~40% less memory on `--coverage` runs over 1000+ files
+- **Browser mode: open adaptively + cut per-file round trips + prewarm + pre-bundle runtime — [#10726](https://github.com/vitest-dev/vitest/issues/10726) + [#10730](https://github.com/vitest-dev/vitest/issues/10730) + [#10727](https://github.com/vitest-dev/vitest/issues/10727) + [#10713](https://github.com/vitest-dev/vitest/issues/10713)** — significantly faster browser-mode startup
+
+**Action:** bump `vitest` and `@vitest/browser` to `5.0.0-beta.7` for the perf wins on any project running >200 test files. No code changes required.
+
+#### Headline bug fixes in beta.7 (July 24, 2026)
+
+- **Vm pools respect cgroupsv2 memory limit — [#10721](https://github.com/vitest-dev/vitest/issues/10721)** — meaningful for CI runners using cgroupsv2 (most Kubernetes, modern systemd); previously the pool could OOM-kill the test process even when the cgroup had memory headroom
+- **Set non-zero exit code when teardown throws during close — [#10794](https://github.com/vitest-dev/vitest/issues/10794)** — CI pipelines that rely on `vitest` exit code to fail the build now correctly fail on teardown errors
+- **Disable server HMR before plugins read it in their config hook — [#10731](https://github.com/vitest-dev/vitest/issues/10731)** — paired with the breaking change above; prevents race conditions
+- **Close the pool before the Vite servers — [#10725](https://github.com/vitest-dev/vitest/issues/10725)** — fixes a class of "port already in use" errors on `globalSetup`-based dev servers
+- **Browser: preserve pre-transform request defaults — [#10748](https://github.com/vitest-dev/vitest/issues/10748)** — fixes the regression from beta.6 where some pre-transform middleware was skipped
+- **Browser: fix error stacktrace location off-by-one — [#10724](https://github.com/vitest-dev/vitest/issues/10724)** — debug stack traces now point to the actual line, not the line below
+- **Browser: mock `window.print` to avoid hanging — [#10798](https://github.com/vitest-dev/vitest/issues/10798)** — closes the long-standing issue #7375; tests that accidentally trigger `window.print()` no longer hang the runner
+- **Pool: per-file isolation preserved when `maxWorkers: 1` — [#10743](https://github.com/vitest-dev/vitest/issues/10743)** — fixes a regression from beta.6 where vm pools could share state when forced to single-worker mode
+- **Typecheck worker: remove listeners in `off` — [#10741](https://github.com/vitest-dev/vitest/issues/10741)** — fixes a listener-leak that accumulated across typecheck-only runs
+- **Don't race the typechecker spawn grace period on Windows — [#10814](https://github.com/vitest-dev/vitest/issues/10814)** — fixes sporadic CI failures on Windows runners
+- **Prevent node builtins double prefix — [#10630](https://github.com/vitest-dev/vitest/issues/10630) + [#10767](https://github.com/vitest-dev/vitest/issues/10767)** — fixes `import node:node:fs` edge cases from custom resolvers
+
+**Sources for beta.7:**
+- [Vitest 5.0.0-beta.7 release notes — July 24, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7)
+- [Vitest 5 migration guide (beta)](https://main.vitest.dev/guide/migration)
+
 #### Cross-version bug fixes in 4.1.10 + 3.2.7 (July 6, 2026)
 
 Two security / correctness fixes backported from beta.6 to the stable v4 + v3 lines:
@@ -1263,8 +1361,8 @@ Two security / correctness fixes backported from beta.6 to the stable v4 + v3 li
     "@vitest/coverage-v8": "4.1.10",
 
     // For early-adopter projects (beta; track breaking changes):
-    // "vitest": "5.0.0-beta.6",
-    // "@vitest/browser": "5.0.0-beta.6",
+    // "vitest": "5.0.0-beta.7",
+    // "@vitest/browser": "5.0.0-beta.7",
 
     // For legacy Next.js 14 / Vite 5 projects:
     // "vitest": "3.2.7"
@@ -1502,9 +1600,10 @@ test('product title is available immediately after navigation', async ({ page })
 - [Testing React 19 components](https://react.dev/learn/testing-react-components)
 - [Vitest browser.api config — allowWrite / allowExec (4.1.0+)](https://main.vitest.dev/config/browser/api)
 - [GHSA-g8mr-85jm-7xhm — Vitest Browser Mode CDP RCE (CVSS 9.8)](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)
+- [Vitest 5.0.0-beta.7 release notes — July 24, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7)
+- [Vitest 5.0.0-beta.6 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6)
 - [Vitest 5.0.0-beta.5 release notes — June 15, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.5)
 - [Vitest 5.0.0-beta.4 release notes — June 1, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4)
 - [Vitest 5.0.0-beta.3 release notes — May 19, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.3)
-- [Vitest 5.0.0-beta.6 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6)
 - [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10)
 - [Vitest 3.2.7 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v3.2.7)
