@@ -2083,6 +2083,97 @@ Adds a new `routeType` discriminator to the build-time prerender metadata so dow
 - [PR #96080 — `Include additional prerender metadata about build-time routes`](https://github.com/vercel/next.js/pull/96080) · **Shipped in `16.3.0-canary.96`**
 - [Next.js 16.3.0-canary.95 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.95) (2026-07-23T23:58:08Z)
 - [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z)
+
+## 16.3 canary.97-ahead Dev & Build Hot-Path Micro-Optimizations (July 25, 2026)
+
+The canary-branch ahead of `16.3.0-canary.96` (cut 2026-07-25T00:00:34Z) gained **9 new material commits** in the 6h window before this cron (2026-07-25T06:03Z). Three are user-facing perf wins large enough to deserve full sections; the other six are Cache Components dev-validation plumbing for the new worker-thread stack (documented in full in `server-components.md` §"9. `experimental.devValidationWorker`").
+
+### Avoid Quadratic HMR Queue Shifts (PR [#96137](https://github.com/vercel/next.js/pull/96137), merged 2026-07-25T00:34:59Z, canary-branch ahead of canary.96)
+
+Turbopack's HMR `getAffectedModuleEffects` walks the affected-module graph breadth-first, enqueuing each parent as it goes. Previously the queue consumed via repeated `Array.shift()` — which physically moves the remaining items down on every iteration. On a shared dependency imported by many root modules (a common monorepo shape: a single `@acme/ui` package used by hundreds of routes), the queue-shift cost grew **quadratically** with the number of affected parents.
+
+The fix replaces `Array.shift()` with a **monotonic queue index**:
+
+```ts
+// Before — O(n) shift per dequeue, O(n²) total traversal
+while (queue.length > 0) {
+  const item = queue.shift();
+  // ...
+}
+
+// After — O(1) dequeue via head pointer
+let head = 0;
+while (head < queue.length) {
+  const item = queue[head++];
+  // ...
+}
+```
+
+The companion change clears each consumed slot immediately, so deep-traversal `dependencyChain` allocations can be collected during the walk (no retention until traversal returns).
+
+**Benchmark** (Node 24.14.1, balanced `A1/B1/B2/A2` scenario, one changed shared dependency imported by N root modules, three warm-ups + nine samples, three independent 8-vCPU/16-GiB Vercel Sandbox workers):
+
+| Affected parents | `shift()` median | Indexed median | Improvement | Speedup |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 0.160 ms | 0.089 ms | 45.81% | 1.85× |
+| 20,000 | 27.895 ms | 2.929 ms | 89.43% | 9.46× |
+| 50,000 | 164.960 ms | 7.342 ms | **95.52%** | **22.33×** |
+| 100,000 | 665.564 ms | 15.840 ms | **97.62%** | **42.02×** |
+
+The small-graph effect is intentionally modest; this targets very broad HMR invalidations in large applications (the kind of `pnpm install`-triggered invalidations discussed in the 1.4.89 canary.95–96 §"Turbopack Watcher Event Batching" entry above).
+
+**Practical impact:**
+
+- Monorepos with hundreds of routes importing a shared `@workspace/ui` package now see **22× faster HMR invalidation** on the typical 50k-affected-parent case.
+- Worst-case 100k-parent invalidations go from ~666 ms to ~16 ms — a **42× speedup**.
+- No code or config change required; ships behind no flag. Expected in `16.3.0-canary.97` (~2026-07-26T22:30Z).
+
+### Optimize Implicit Cache Tag Derivation (PR [#96120](https://github.com/vercel/next.js/pull/96120), merged 2026-07-25T00:45:44Z, canary-branch ahead of canary.96)
+
+Implicit cache tags are derived from the pathname (every prefix becomes a tag). The previous helper rebuilt each prefix with `split('/').slice(0, i).join('/')` — three array allocations per prefix.
+
+The new loop scans pathname slash boundaries **incrementally**, emitting the same derived-tag array (including the full-path prefix) without the intermediate arrays.
+
+**Correctness verification** — element-by-element comparison against the original implementation over **1,713,653 paths** on Node 20.9.0, Node 22.23.1, and Node 24.14.1: **0 mismatches**. Coverage includes:
+
+- 349,525 exhaustive strings of length 0–9 over a slash/ASCII alphabet
+- Every UTF-16 code unit (65,536 cases)
+- Every valid surrogate pair (1,048,576 cases)
+- 250,000 deterministic randomized paths with Unicode, malformed surrogates, controls, reserved characters, suffix-like content, and arbitrary slash placement
+- 16 targeted cases including a one-million-character segment and a 1,024-segment path
+
+**Practical impact:** no observable behavior change; faster implicit-tag construction on every cache lookup. Pinned CPU 4 on a 16-vCPU / 32-GiB Vercel DevBox, 35 scenarios, 31 interleaved rounds — wins scale with path depth. For typical apps the gain is microseconds per request; on deeply-nested route trees with frequent cache lookups it's measurable. No config change required.
+
+### Cache Components Dev Validation on a Worker Thread (PR [#96153](https://github.com/vercel/next.js/pull/96153) + flag [#96150](https://github.com/vercel/next.js/pull/96150), canary-branch ahead of canary.96)
+
+With `cacheComponents: true`, dev-mode validation previously ran on the dev server's main event loop. Rapid back-to-back navigation on deep route trees could monopolize that loop, stalling subsequent navigation handlers. The synthetic `pnpm bench:dev-validation` measured worst-case `client` TTFB of **7,762 ms** before the fix; the worker thread implementation drops it to **27 ms** — a **~287× reduction** on the worst case, with p50/p95 also halved or better.
+
+Full benchmark table and per-PR breakdown of the 6-PR worker stack (#96148, #96149, #96150, #96151, #96152, #96153) is documented in `server-components.md` §"9. `experimental.devValidationWorker`". The headline:
+
+| Route family | Worker (p50 / p95 / max) | In-process (p50 / p95 / max) |
+| --- | --- | --- |
+| `client` | **19 / 24 / 27 ms** | 40 / 66 / **7,762 ms** |
+| `server` | **42 / 45 / 46 ms** | 122 / 158 / 252 ms |
+
+**Practical impact:**
+
+- **Massive dev-time wins on `cacheComponents: true` projects with deep routes and rapid navigation.** Stalls that appeared as long TTFBs in dev should disappear once canary.97 ships.
+- **No code change required** — `experimental.devValidationWorker` defaults to `true`.
+- **Build-mode validation is unaffected** — only `next dev` moves to the worker; `next build` still validates in-process.
+
+**Sources for this section:**
+
+- [PR #96137 — Avoid quadratic HMR queue shifts](https://github.com/vercel/next.js/pull/96137) · merged 2026-07-25T00:34:59Z · **canary-branch ahead of canary.96**
+- [PR #96120 — Optimize implicit cache tag derivation](https://github.com/vercel/next.js/pull/96120) · merged 2026-07-25T00:45:44Z · **canary-branch ahead of canary.96**
+- [PR #96148 — Forward dev invalid dynamic usage errors from the render](https://github.com/vercel/next.js/pull/96148) · merged 2026-07-25T05:21:01Z · **canary-branch ahead of canary.96**
+- [PR #96149 — Model dev validation render outputs as a discriminated union](https://github.com/vercel/next.js/pull/96149) · merged 2026-07-25T05:21:01Z · **canary-branch ahead of canary.96** (refactor)
+- [PR #96150 — Add the `experimental.devValidationWorker` config flag](https://github.com/vercel/next.js/pull/96150) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96**
+- [PR #96151 — Prepare dev validation for running on a worker thread](https://github.com/vercel/next.js/pull/96151) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96** (behavior-preserving refactor)
+- [PR #96152 — Add a benchmark for dev Cache Components validation on a worker thread](https://github.com/vercel/next.js/pull/96152) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
+- [PR #96153 — Run Cache Components dev validation on a worker thread](https://github.com/vercel/next.js/pull/96153) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
+- [PR #96175 — Unflake the `enabled-features-trace` test suite](https://github.com/vercel/next.js/pull/96175) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96** (test-only)
+- [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z — the tag these commits sit ahead of)
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |

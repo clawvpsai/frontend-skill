@@ -495,6 +495,74 @@ No code change required — `formState.dirtyFields` reads faster automatically. 
 - [PR #13596 — `<FieldArray>` re-export fix](https://github.com/react-hook-form/react-hook-form/pull/13596)
 
 
+## React Hook Form 7.83.0 (July 25, 2026) — Type Perf Hard Cap + File Inputs + `dirtyFields` Ref Stability
+
+Released 2026-07-25T00:28:13Z (npm publish at 00:29:34Z) — the day-after follow-up to 7.82.0. Headlined by a **TypeScript recursion-depth hard cap** that materially shrinks `tsc` time on deeply-typed forms, plus two `dirtyFields` reference-stability fixes that matter for any Zustand-backed or React-Query-cached form snapshot.
+
+### 1. `getEventValue` Now Handles `<input type="file">` (PR [#13289](https://github.com/react-hook-form/react-hook-form/pull/13289))
+
+`getEventValue` — the internal helper that extracts `e.target.value` from a `register`-bound field — now treats file inputs as **arrays of `File` objects** (`Array<File>`) instead of returning the raw `string` path that the browser sometimes gives. Concretely:
+
+- A `<input type="file" multiple />` registered via `register('attachments')` now yields `attachments: FileList`-shaped data in your submit handler instead of a stale `string`.
+- For single-file inputs you now reliably get a single-element array (or `[]` when nothing is selected) — previously you had to read `e.target.files?.[0]` manually.
+- The `valueAs*` flags still apply — `valueAsNumber`, `valueAsDate`, etc. continue to work unchanged for non-file inputs.
+
+**Practical impact:** if you previously had a "guard" wrapping `setValue('attachments', e.target.files)` that massaged the `FileList` into an array, you can drop the guard and trust the registered value.
+
+### 2. TypeScript Recursion Hard-Capped at 10 Levels (PR [#13529](https://github.com/react-hook-form/react-hook-form/pull/13529)) — Major `tsc` Win
+
+The path-based type machinery inside `react-hook-form`'s `Path<TFieldValues>`, `FieldPath<TFieldValues>`, and `FieldPathValues<TFieldValues>` previously recursed to the full structural depth of the form schema. On forms with **deeply nested objects** (5+ levels) and **wide discriminated unions** this blew up TypeScript's instantiation depth, ballooning `tsc` times by 10–60s and causing "Type instantiation is excessively deep and possibly infinite" errors.
+
+7.83.0 caps the recursion at **10 levels**. The bounded type is a **strict subset** of the original for any reasonable depth; schemas nested deeper than 10 levels will only get top-level keys at the 11th-and-below depth (rare in practice — web forms rarely nest that deep).
+
+**Practical impact (the headline number for this release):**
+
+- **5–15% faster `tsc` on most projects** that use RHF; up to **40–60% faster on deeply-typed schemas** (≥5 levels of nesting, discriminated unions with 20+ variants).
+- No `tsc --noEmit` errors are introduced.
+- `tsserver` (IDE type-checking) gets the same speedup; expect noticeably snappier inline errors in VS Code on large forms.
+
+**Action:** `npm install react-hook-form@^7.83.0` and re-run `npx tsc --noEmit`. If you somehow depended on type-inference beyond 10 levels (essentially never — you'd know if you did because `tsc` was already failing), you can revert by pinning to `7.82.0` while you refactor.
+
+### 3. Other Improvements in 7.83.0
+
+- **Type perf pass (PR [#13528](https://github.com/react-hook-form/react-hook-form/pull/13528))** — general type-tree pruning that complements the hard cap; smaller gains than #13529 but stacks with it. Combined, expect **5–20% `tsc` wall-clock reduction** on RHF-heavy codebases.
+
+### 4. Bug Fixes in 7.83.0
+
+- **`clearErrors()` with no arguments now clears the internal errors state** (PR [#13613](https://github.com/react-hook-form/react-hook-form/pull/13613)) — previously `clearErrors()` (no path) cleared the public `formState.errors` but left internal error bookkeeping in place, which could cause a stale re-render cycle in rare nested-`<FormProvider>` setups. Now the public state and the internal cache are atomically reset. The behavior change is invisible to documented usage; only matters if you were calling `clearErrors()` immediately followed by a manual `setError()` and relying on the brief inconsistency window.
+- **`dirtyFields` reference stability preserved** (PR [#13612](https://github.com/react-hook-form/react-hook-form/pull/13612)) — `formState.dirtyFields` previously returned a **new object reference on every form interaction**, which broke `useEffect`-and-`React.memo` consumers that depend on `dirtyFields` for diffing (Zustand selectors, React Query cache keys, etc.). 7.83.0 stabilizes the reference; the object only changes when the set of dirty fields actually changes. **If you wrapped `dirtyFields` in a `JSON.stringify` comparison as a workaround, you can drop it now.**
+- **Old checkbox/radio elements no longer pollute internal field state** (PR [#13080](https://github.com/react-hook-form/react-hook-form/pull/13080)) — when an unmounted `<input type="checkbox">` or `<input type="radio">` retained its `name` and was re-mounted, RHF would sometimes inherit stale value/onChange from the previous instance. Now each mount gets a fresh state. Matters for dynamic forms with conditional checkbox groups (legal docs, settings panels).
+- **`useController` re-subscribes `onChange`/`onBlur` when `control` changes** (PR [#13603](https://github.com/react-hook-form/react-hook-form/pull/13603)) — previously the subscriptions were bound to the first `control` instance; swapping the control prop (e.g. when an HOC rebuilds the form) left the new `control`'s callbacks unregistered. Now the subscriptions follow the current `control`. **Matters for any code that recreates the `control` object** (some HOC patterns, testing-library `rerender` with a fresh wrapper).
+- **Validation message types now allow `undefined` values** (PR [#13287](https://github.com/react-hook-form/react-hook-form/pull/13287)) — `register('name', { required: 'Name is required' })` previously rejected type assignments where the field value was `undefined` (initial render, optional fields with no default). Now `'name' | undefined` is allowed; the validation message type matches the new optionality contract.
+
+### 5. Recommended Migration & Version Pin
+
+```bash
+npm install react-hook-form@^7.83.0
+```
+
+**Migration checklist (7.82 → 7.83):**
+
+- [ ] Run `npm install react-hook-form@^7.83.0` — no peer-dep changes
+- [ ] Re-run `npx tsc --noEmit` and expect a measurable speedup on the RHF-heavy files
+- [ ] If you wrapped `formState.dirtyFields` in a `JSON.stringify` to compensate for reference instability, drop the wrapper — `===` comparisons are now reliable
+- [ ] If you used `getEventValue` manually on file inputs (e.g. inside a custom `setValue` wrapper), audit for now-redundant massaging
+- [ ] If you depend on `useController` accepting a swapped `control` prop (testing-library `rerender`, HOC patterns), the fix means your assertions now hold; previously they were accidentally passing because the bug masked the issue
+- [ ] **No migration required** if you only used the documented public APIs
+
+**Recommended RHF version after 7.83.0: `^7.83.0`** (supersedes 7.82.0). The 7.79 → 7.80 → 7.81 → 7.82 → 7.83 progression is a pure additive patch train with no breaking changes — bump freely on every release.
+
+**Sources:**
+- [React Hook Form 7.83.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.83.0)
+- [`useForm` `delayError` prop docs](https://react-hook-form.com/docs/useform#delayError)
+- [PR #13289 — `getEventValue` for file inputs](https://github.com/react-hook-form/react-hook-form/pull/13289)
+- [PR #13529 — TypeScript recursion hard cap (10 levels)](https://github.com/react-hook-form/react-hook-form/pull/13529)
+- [PR #13528 — General type perf pass](https://github.com/react-hook-form/react-hook-form/pull/13528)
+- [PR #13613 — `clearErrors()` clears internal errors state](https://github.com/react-hook-form/react-hook-form/pull/13613)
+- [PR #13612 — `dirtyFields` reference stability](https://github.com/react-hook-form/react-hook-form/pull/13612)
+- [PR #13080 — Old checkbox/radio pollution fix](https://github.com/react-hook-form/react-hook-form/pull/13080)
+- [PR #13603 — `useController` re-subscribes on `control` change](https://github.com/react-hook-form/react-hook-form/pull/13603)
+- [PR #13287 — Validation message types allow `undefined` values](https://github.com/react-hook-form/react-hook-form/pull/13287)
 ## Basic Setup
 
 ```bash
@@ -1219,3 +1287,8 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **Zod 4.4: missing `npx tsc --noEmit` AND `npx vitest run`** — both fixes and new features (codec inversion, superRefine `when`, transform `ctx.addIssue()`) are TS-shape changes; run *both* type and runtime checks
 
 - **RHF 8: test breaking changes before upgrading** — v8 beta is not production-stable; the `useForm` API has breaking changes including `id`→`key` rename, `keyName` removal, `names`→`name` in Watch, `watch` callback→`subscribe`, and `setValue` no longer updating field arrays
+
+- **RHF 7.83: keeping a `JSON.stringify` workaround on `formState.dirtyFields`** — the reference is now stable across interactions; you can compare with `===` instead of serializing, and Zustand/React Query keys built from `dirtyFields` will stop invalidating on every keystroke
+- **RHF 7.83: not re-running `npx tsc --noEmit` after bumping to 7.83.0** — the 10-level recursion hard cap (PR #13529) is a measurable `tsc` win on deeply-typed forms; verify it landed by timing the type-check before/after
+- **RHF 7.83: massaging `e.target.files` manually on `<input type="file">` registered via `register()`** — `getEventValue` (PR #13289) now yields an `Array<File>`; the manual `FileList → Array` conversion can be dropped
+- **RHF 7.83: recreating the `control` object in tests / HOCs without re-subscribing the `useController`** — PR #13603 fixed `useController` to follow the current `control`, so old test code that "worked by accident" may now expose previously-masked bugs; audit the test expectations

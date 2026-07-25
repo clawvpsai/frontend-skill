@@ -1139,6 +1139,53 @@ A new `experimental.serverComponentsHmrCancellation?: boolean` flag was added in
 
 **Practical impact:** none yet — opt in only if you want to test the upcoming cancellation behavior in dev. Source: [PR #95462](https://github.com/vercel/next.js/pull/95462) by unstubbable, merged 2026-07-04T12:23:35Z.
 
+
+### 9. `experimental.devValidationWorker` — Dev Validation on a Worker Thread (canary.97 ahead — PR [#96150](https://github.com/vercel/next.js/pull/96150) + #96153, July 25, 2026)
+
+A new `experimental.devValidationWorker?: boolean` flag landed on the canary branch immediately after the canary.96 tag (PR #96150, merged 2026-07-25T05:21:02Z, by the Next.js team). It defaults to **`true`** — meaning dev-mode Cache Components validation now runs on a worker thread instead of the dev server's main thread. Set it to `false` only as an escape hatch if the worker misbehaves.
+
+**The problem:** with `cacheComponents: true`, the dev server validates every Cache Components render and ships any errors to the browser overlay. On rapid back-to-back navigation (e.g. clicking links quickly across deeply-nested route trees), the validation render previously **monopolized the dev server's main event loop**, causing the next navigation to wait for the prior validation to complete before its request handler could even start. The synthetic `pnpm bench:dev-validation` benchmark measured worst-case TTFB inflation up to ~7.7 seconds on a single client-rendered route.
+
+**What changed:** PR #96153 moves the entire Cache Components dev validation render (the client prerender + Flight re-encode + validation lifecycle) off the main thread onto a dedicated worker (`dev-validation-worker.ts` + a single-worker pool). The worker loads the app-page bundle exactly once via `ComponentMod.routeModule.runValidationInDev`, rebuilds the render context / work store / request store from a serializable snapshot, runs the whole validation there, and forwards the resulting errors back to the main thread as Flight bytes — the main thread only delivers them to the overlay via `sendErrorsToBrowser`. A one-slot `SharedArrayBuffer` propagates a "supersede" abort into the worker so a newer navigation cancels an in-flight validation. The worker is installed at server boot when `experimental.devValidationWorker !== false`, and `runDevValidationInBackground` uses it when present, falling back to the in-process path otherwise.
+
+**Benchmark results** (synthetic `pnpm bench:dev-validation`, back-to-back clicks — worst-case scenario for main-thread contention, browser-observed navigation TTFB):
+
+| Route family | Worker (p50 / p95 / max) | In-process (p50 / p95 / max) |
+| --- | --- | --- |
+| `client` (client-component-heavy) | **19 / 24 / 27 ms** | 40 / 66 / **7,762 ms** |
+| `server` (server-component-heavy) | **42 / 45 / 46 ms** | 122 / 158 / 252 ms |
+
+The `client` route's `max` is the headline — the worker removes a ~7.7-second main-thread stall that appeared as the worst-case tail on deep app pages during fast navigation.
+
+**The companion refactor stack (PRs #96148 / #96149 / #96151 / #96152 / #96175)** prepared the worker landing without behavior changes:
+
+- **#96148 — Forward dev invalid dynamic usage errors from the render, not validation**: moves the error forwarding (and the `cacheReady()` wait that finalizes the verdict) out of `runDevValidationInBackground` into the render's completion handler. Validation becomes a pure consumer of the settled render — it no longer reads or forwards the error, takes the settled render result rather than its promise, and is simply not scheduled when the render recorded such an error (nothing to validate). Consolidates two duplicate forwarding paths into one place at the render level.
+- **#96149 — Model dev validation render outputs as a discriminated union**: splits `DevValidationInputs` into `ResolvedValidationInputs | SyncInterruptedStagedDevRender`, discriminated by the presence of `syncInterruptReason`. A render's settled output becomes `StagedDevRenderResult` whose `outcome` is the same union, with `hadCacheMiss` lifted onto the result (orthogonal to how the render ended). Pure refactor — behavior-preserving.
+- **#96151 — Prepare dev validation for running on a worker thread**: narrows the context `runValidationInDev` and its helpers require to a `ValidationRenderContext` (a `Pick` of `AppRenderContext` plus the two `renderOpts` fields and the debug-channel flag). Splits "compute errors" from "deliver errors" so the worker can compute and the main thread can deliver (delivery needs the response object).
+- **#96152 — Add a benchmark for dev Cache Components validation on a worker thread**: new `bench/dev-validation/`, wired as `pnpm bench:dev-validation`, A/B-tests the flag against the in-process path using browser-observed TTFB from Playwright. Prints absolute p50/p95/max side-by-side (no ratio) because the worker's win is bounded by the validation render's CPU — not by total request time.
+- **#96175 — [test] Unflake the `enabled-features-trace` test suite**: test-only fix; the suite was flaky on the validation lifecycle markers.
+
+**Practical impact (for agents building apps):**
+
+- **Massive dev-time wins on `cacheComponents: true` projects with deep routes and rapid navigation.** If you previously saw "validation stalls" or unexplainable long TTFBs in dev when clicking `<Link>`s quickly, they should disappear once canary.97 ships.
+- **No code change required** — flag defaults to `true` on the canary branch. Just upgrade and the win lands.
+- **Escape hatch:** `experimental.devValidationWorker: false` falls back to the in-process path. Use only if you observe worker misbehavior (errors mentioning `dev-validation-worker`); not a perf tuning knob.
+- **Benchmarking your own app:** once canary.97 ships, run `pnpm bench:dev-validation` against your real app routes (or adapt the fixture) to quantify the win on your specific shapes.
+- **Build-mode validation is unaffected.** The worker only handles `next dev` validation. `next build` validation (which catches the same `cacheComponents` violations earlier in the pipeline) still runs in-process.
+
+**Will land in `16.3.0-canary.97` — expected ~2026-07-26T22:30Z** (24h after the canary.96 tag was cut at 2026-07-25T00:00:34Z). Until then, install with `npm install next@canary` to pick up the canary-branch ahead of canary.96.
+
+**Sources:**
+- [PR #96148 — Forward dev invalid dynamic usage errors from the render, not validation](https://github.com/vercel/next.js/pull/96148) · merged 2026-07-25T05:21:01Z · **canary-branch ahead of canary.96**
+- [PR #96149 — Model dev validation render outputs as a discriminated union](https://github.com/vercel/next.js/pull/96149) · merged 2026-07-25T05:21:01Z · **canary-branch ahead of canary.96** (refactor, no behavioral change)
+- [PR #96150 — Add the `experimental.devValidationWorker` config flag](https://github.com/vercel/next.js/pull/96150) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96**
+- [PR #96151 — Prepare dev validation for running on a worker thread](https://github.com/vercel/next.js/pull/96151) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96** (behavior-preserving refactor)
+- [PR #96152 — Add a benchmark for dev Cache Components validation on a worker thread](https://github.com/vercel/next.js/pull/96152) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
+- [PR #96153 — Run Cache Components dev validation on a worker thread](https://github.com/vercel/next.js/pull/96153) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
+- [PR #96175 — [test] Unflake the enabled-features-trace test suite](https://github.com/vercel/next.js/pull/96175) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96** (test-only)
+- [Next.js `cacheComponents` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents)
+- [Next.js Migration to Cache Components guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components)
+
 **Sources:**
 - [Next.js `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
@@ -1155,3 +1202,10 @@ A new `experimental.serverComponentsHmrCancellation?: boolean` flag was added in
 - [Next.js PR #95373 — false-positive nested-cache error fix](https://github.com/vercel/next.js/pull/95373)
 - [Next.js PR #95428 — ResolvedCacheLifeProfiles typing](https://github.com/vercel/next.js/pull/95428)
 - [Next.js PR #95462 — serverComponentsHmrCancellation flag](https://github.com/vercel/next.js/pull/95462)
+- [Next.js PR #96148 — Forward dev invalid dynamic usage errors from the render](https://github.com/vercel/next.js/pull/96148) · **canary-branch ahead of canary.96**
+- [Next.js PR #96149 — Model dev validation render outputs as a discriminated union](https://github.com/vercel/next.js/pull/96149) · **canary-branch ahead of canary.96** (refactor)
+- [Next.js PR #96150 — Add the `experimental.devValidationWorker` config flag](https://github.com/vercel/next.js/pull/96150) · **canary-branch ahead of canary.96**
+- [Next.js PR #96151 — Prepare dev validation for running on a worker thread](https://github.com/vercel/next.js/pull/96151) · **canary-branch ahead of canary.96** (behavior-preserving refactor)
+- [Next.js PR #96152 — Add a benchmark for dev Cache Components validation on a worker thread](https://github.com/vercel/next.js/pull/96152) · **canary-branch ahead of canary.96**
+- [Next.js PR #96153 — Run Cache Components dev validation on a worker thread](https://github.com/vercel/next.js/pull/96153) · **canary-branch ahead of canary.96**
+- [Next.js PR #96175 — Unflake the `enabled-features-trace` test suite](https://github.com/vercel/next.js/pull/96175) · **canary-branch ahead of canary.96** (test-only)
