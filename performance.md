@@ -2088,7 +2088,7 @@ Adds a new `routeType` discriminator to the build-time prerender metadata so dow
 
 ## 16.3 canary.97-ahead Dev & Build Hot-Path Micro-Optimizations (July 25, 2026)
 
-The canary-branch ahead of `16.3.0-canary.96` (cut 2026-07-25T00:00:34Z) gained **11 new material commits** as of 2026-07-25T12:04Z. Three are user-facing perf wins large enough to deserve full sections; the other eight are Cache Components dev-validation plumbing for the new worker-thread stack (documented in full in `server-components.md` §"9. `experimental.devValidationWorker`").
+The canary-branch ahead of `16.3.0-canary.96` (cut 2026-07-25T00:00:34Z) gained **16 new material commits** as of 2026-07-25T18:03Z. Three are user-facing perf wins large enough to deserve full sections; the other 13 are Cache Components dev-validation plumbing for the new worker-thread stack — eight from the original launch + four follow-up fixes (documented in `server-components.md` §9 + §9a) + one general dev-overlay fix. A full PR-by-PR breakdown is in the sources list below.
 
 ### Avoid Quadratic HMR Queue Shifts (PR [#96137](https://github.com/vercel/next.js/pull/96137), merged 2026-07-25T00:34:59Z, canary-branch ahead of canary.96)
 
@@ -2199,6 +2199,21 @@ On a real dev route with a 50-deep stack in a chunk with a 19MB map: **~400ms �
 - **No code or config change required** — ships behind no flag.
 - **Expected in `16.3.0-canary.97`** (~2026-07-26T22:30Z).
 
+### Dev Overlay Symbolication for Percent-Encoded Project Paths (PR [#96221](https://github.com/vercel/next.js/pull/96221), merged 2026-07-25T17:36:46Z, canary-branch ahead of canary.96)
+
+Turbopack's `trace_source` percent-decoded the source map's original file URL before comparing it against the still-encoded project root URI, so the containment check failed ("Original file ... outside project") for any project whose absolute path contained characters that percent-encode in URLs — most commonly a space. The overlay would show no code frame and raw `file://` URLs instead of source locations for server frames.
+
+Two encoding mismatches caused this:
+
+- Turbopack's containment check now stays in the encoded domain and only decodes outputs back into filesystem paths, so the comparison never fails on encoded characters.
+- React synthesises stack frame `file:` URLs by prepending the scheme to a filesystem path, producing e.g. `file:///path/with spaces`. These raw paths aren't well-formed URL strings, and they don't match the `pathToFileURL` form Node.js keys its source map cache by. The overlay middleware now re-encodes them through WHATWG URL parsing, which tolerates such input.
+
+A known limitation remains: React's fake frame URLs are not yet fully reversible, so some edge cases still emit raw `about://React/...` URLs instead of source locations. A React-side fix ([PR #37105](https://github.com/facebook/react/pull/37105)) is in progress and will close that gap.
+
+- **No config change required.**
+- **No opt-in flag required.**
+- **Expected in `16.3.0-canary.97`** (~2026-07-26T22:30Z).
+
 **Sources for this section:**
 
 - [PR #96137 — Avoid quadratic HMR queue shifts](https://github.com/vercel/next.js/pull/96137) · merged 2026-07-25T00:34:59Z · **canary-branch ahead of canary.96**
@@ -2210,6 +2225,11 @@ On a real dev route with a 50-deep stack in a chunk with a 19MB map: **~400ms �
 - [PR #96152 — Add a benchmark for dev Cache Components validation on a worker thread](https://github.com/vercel/next.js/pull/96152) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
 - [PR #96153 — Run Cache Components dev validation on a worker thread](https://github.com/vercel/next.js/pull/96153) · merged 2026-07-25T05:21:03Z · **canary-branch ahead of canary.96**
 - [PR #96175 — Unflake the `enabled-features-trace` test suite](https://github.com/vercel/next.js/pull/96175) · merged 2026-07-25T05:21:02Z · **canary-branch ahead of canary.96** (test-only)
+- [PR #96221 — Fix dev overlay symbolication for project paths needing percent-encoding](https://github.com/vercel/next.js/pull/96221) · merged 2026-07-25T17:36:46Z · **canary-branch ahead of canary.96**
+- [PR #96218 — Read chunk source maps from disk in the dev validation worker](https://github.com/vercel/next.js/pull/96218) · merged 2026-07-25T14:30:40Z · **canary-branch ahead of canary.96**
+- [PR #96219 — Run dev validation in process when using Webpack](https://github.com/vercel/next.js/pull/96219) · merged 2026-07-25T14:30:41Z · **canary-branch ahead of canary.96**
+- [PR #96215 — Retry the source map lookup with a plain path](https://github.com/vercel/next.js/pull/96215) · merged 2026-07-25T13:15:50Z · **canary-branch ahead of canary.96**
+- [PR #96210 — Pass fallback params to the dev validation worker as maps](https://github.com/vercel/next.js/pull/96210) · merged 2026-07-25T13:15:35Z · **canary-branch ahead of canary.96** (internal cleanup)
 - [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z — the tag these commits sit ahead of)
 
 ## Web Vitals
