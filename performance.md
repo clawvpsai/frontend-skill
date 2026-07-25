@@ -2082,11 +2082,13 @@ Adds a new `routeType` discriminator to the build-time prerender metadata so dow
 - [PR #96030 — `Turbopack: Split up turbo-tasks-fs/src/lib.rs into smaller modules`](https://github.com/vercel/next.js/pull/96030) · **Shipped in `16.3.0-canary.95`** (refactor, no behavioral change)
 - [PR #96080 — `Include additional prerender metadata about build-time routes`](https://github.com/vercel/next.js/pull/96080) · **Shipped in `16.3.0-canary.96`**
 - [Next.js 16.3.0-canary.95 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.95) (2026-07-23T23:58:08Z)
+- [PR #96173 — fix: release compression stream when client disconnects mid-response](https://github.com/vercel/next.js/pull/96173) · merged 2026-07-25T06:21:36Z · **canary-branch ahead of canary.96** (memory leak fix)
+- [PR #96198 — sourcemaps: reuse source map payloads and consumers across stack frames](https://github.com/vercel/next.js/pull/96198) · merged 2026-07-25T08:16:20Z · **canary-branch ahead of canary.96** (dev perf ~3,400×)
 - [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z)
 
 ## 16.3 canary.97-ahead Dev & Build Hot-Path Micro-Optimizations (July 25, 2026)
 
-The canary-branch ahead of `16.3.0-canary.96` (cut 2026-07-25T00:00:34Z) gained **9 new material commits** in the 6h window before this cron (2026-07-25T06:03Z). Three are user-facing perf wins large enough to deserve full sections; the other six are Cache Components dev-validation plumbing for the new worker-thread stack (documented in full in `server-components.md` §"9. `experimental.devValidationWorker`").
+The canary-branch ahead of `16.3.0-canary.96` (cut 2026-07-25T00:00:34Z) gained **11 new material commits** as of 2026-07-25T12:04Z. Three are user-facing perf wins large enough to deserve full sections; the other eight are Cache Components dev-validation plumbing for the new worker-thread stack (documented in full in `server-components.md` §"9. `experimental.devValidationWorker`").
 
 ### Avoid Quadratic HMR Queue Shifts (PR [#96137](https://github.com/vercel/next.js/pull/96137), merged 2026-07-25T00:34:59Z, canary-branch ahead of canary.96)
 
@@ -2160,6 +2162,42 @@ Full benchmark table and per-PR breakdown of the 6-PR worker stack (#96148, #961
 - **Massive dev-time wins on `cacheComponents: true` projects with deep routes and rapid navigation.** Stalls that appeared as long TTFBs in dev should disappear once canary.97 ships.
 - **No code change required** — `experimental.devValidationWorker` defaults to `true`.
 - **Build-mode validation is unaffected** — only `next dev` moves to the worker; `next build` still validates in-process.
+
+### Release Compression Stream on Client Disconnect (PR [#96173](https://github.com/vercel/next.js/pull/96173), merged 2026-07-25T06:21:36Z, canary-branch ahead of canary.96)
+
+`router-server.ts` applies the vendored `compression` middleware, which ends its zlib stream *only* from inside its own `res.end()` wrapper. On a client disconnect (bots, CDNs, users navigating away mid-stream) Next destroys the response instead, so that wrapper never runs and the stream stays open. An open zlib stream is pinned by its native handle, surviving GC entirely — this is why the symptom looks unlike a normal JS leak: the JS heap stays nearly flat while RSS grows without bound.
+
+This is a **critical memory leak affecting `next start`, `next dev`, and custom servers** — anything going through the router server with `compress: true` (the default). Deployments that let a proxy handle compression never see it.
+
+Note that calling `end()` is not sufficient: the `data` handler writes to the already-destroyed response, `res.write()` returns `false`, the middleware pauses the stream, and it never reaches `end`. It has to be explicitly destroyed via `releaseCompressionStream`. The added test asserts this assumption and will fail if a future vendored version of `compression` handles this itself.
+
+Benchmark (1.25 MB dynamic App Router page, 8 rounds × 300 requests cancelled after the first chunk, heap/RSS sampled after forced GC each round):
+
+| | without cleanup | with cleanup |
+|---|---:|---:|
+| zlib contexts released | 0 / 2400 (0%) | **2600 / 2600 (100%)** |
+| RSS growth | 98.2 → 1069.6 MiB, linear | 100 → 401.5 MiB, plateaus |
+| `external` native memory | 3.6 → 76.5 MiB | 3.6 → 4.5 MiB |
+| `heapUsed` | 21.2 → 79.1 MiB | 21.2 → 27.4 MiB |
+
+Without the fix, RSS grows by a steady ~93 MiB per 300 aborted requests (≈310 KiB per request, consistent with zlib's default deflate state + buffers). With the fix, all contexts are closed and RSS plateaus.
+
+- **Severity: High** (unbounded memory growth → OOM kills in production)
+- **Workaround:** Set `compress: false` in `next.config.ts` and offload compression to a proxy layer (nginx, Cloudflare) until canary.97 ships.
+- **Expected in `16.3.0-canary.97`** (~2026-07-26T22:30Z).
+
+### Source Map Payload & Consumer Caching (PR [#96198](https://github.com/vercel/next.js/pull/96198), merged 2026-07-25T08:16:20Z, canary-branch ahead of canary.96)
+
+Every fake stack frame in dev is `eval()`'d as its own script, so error formatting was resolving a source map once per frame. Two compounding problems: `SourceMap#payload` returns a deep clone of the payload *on every access*, and constructing a `SyncSourceMapConsumer` indexes the whole payload. An error with 50 fake frames pointing into one chunk cloned that chunk's map 50 times and indexed it 50 times.
+
+This change caches both steps per map instead of per script. `findSourceMapPayload` wraps `module.findSourceMap` and reads the payload only once per `SourceMap` instance (Node.js keeps one instance per script, so instance identity is a reliable cache key). Consumers are cached in a WeakMap keyed by `(payload, base URL)` pairs since that's what varies between consumers.
+
+Microbench (20 errors × 20 fake frames, 5.6MB map, native path): **688.2 ms/error → 0.2 ms/error** (~3,400× improvement).
+
+On a real dev route with a 50-deep stack in a chunk with a 19MB map: **~400ms → ~70ms** route serve time.
+
+- **No code or config change required** — ships behind no flag.
+- **Expected in `16.3.0-canary.97`** (~2026-07-26T22:30Z).
 
 **Sources for this section:**
 
