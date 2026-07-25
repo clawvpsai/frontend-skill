@@ -1504,6 +1504,78 @@ Most viewport prefetches are scheduled via a shared `IntersectionObserver`. When
 
 **Source:** [PR #95393 — `Prefetch links nearest the top of the document first`](https://github.com/vercel/next.js/pull/95393) · Commit `c099530eb7` (2026-07-02T12:17:05Z) · acdlite/Andrew Clark.
 
+## 16.3 canary.87–96 Routing, Navigation & Middleware Fixes (July 17–24, 2026)
+
+A cluster of routing/navigation/middleware fixes that landed since the routing.md last full pass on 2026-07-22 (canary.87 era). Most of them are silent-corruption fixes (no error, no warning, just wrong user-visible behaviour) — exactly the class that's hardest to detect until something breaks. **`unifyAppShellsWithPartialPrefetching`** (#95415) is the only config-visible change in this batch.
+
+### Repeated Navigations Stuck While Instant Navigation Lock Is Held — #95864 (16.3.0-canary.87, July 17, 2026)
+
+With the Instant Navigation Testing lock held (the Navigation Inspector paused), repeated client navigations between pages that share a layout could sometimes get stuck without ever resolving.
+
+**Root cause:** a subtle problem with the client router's use of `useDeferredValue` to switch between the cached UI and the final UI. The mechanism only works as intended when **mounting** a new part of the tree. When **updating** an existing part of the tree (like a shared layout), React skips the cached UI entirely — so the deferred value never resolves, and the navigation appears to hang.
+
+The fix is a long-term redesign: model cached navigation as an **optimistic update followed by a transition update** rather than relying on `useDeferredValue`. That requires a React change to allow optimistic updates to swap with the transition update, which is in flight. Until that lands, canary.87+ includes a narrower fix that detects the stuck case and unblocks the navigation.
+
+**Who needs to audit:** any app that uses the Navigation Inspector (dev tool, not production) and navigates between routes that share a layout. The Inspector is paused-state-only, so production users are unaffected. Verify with `pnpm next dev` + open the Navigation Inspector → navigate between routes that share a layout (e.g. `/products/[id]` ↔ `/products/[id]/reviews`) → if it doesn't hang, you're good. **Source:** [PR #95864 — `Fix repeated navigations while the Instant Navigation lock is held`](https://github.com/vercel/next.js/pull/95864) · merged 2026-07-17T00:19:58Z · **Shipped in `16.3.0-canary.87`**.
+
+### Instant Validation Blocking Navigations — #95939 (16.3.0-canary.92, July 21, 2026)
+
+**What changed:** dev-time Instant Validation now runs only **after** the navigation response has finished. A newer request can supersede stale validation work, validation render attempts yield between iterations, and the cancellation signal is forwarded into React's validation prerenders so asynchronous validation work can stop promptly.
+
+**Why:** Instant Validation was detached from the response promise, but its additional React renders still ran on the same Node.js event loop. A subsequent navigation could wait hundreds of milliseconds for stale diagnostic work from the previous request. Instant Validation still runs when the server is idle; when another navigation arrives, foreground requests win.
+
+**Practical impact for agents doing rapid iterative edits:** when you save a file → HMR fires → the Instant Validation render kicks off → before that render finishes you save another file → the first render would block the second for hundreds of ms. canary.92 cancels/supersedes the first render so the dev server spends its time on the latest edit. **Who needs to audit:** anyone seeing slow HMR cycles in dev (especially with `experimental.cacheComponents: true` and lots of `await params`/`await searchParams`). **Source:** [PR #95939 — `Fix instant validation blocking navigations`](https://github.com/vercel/next.js/pull/95939) · merged 2026-07-21T07:53:44Z · **Shipped in `16.3.0-canary.92`**.
+
+### Preserve `basePath` in Redirect Destinations — #95608 (16.3.0-canary.91, July 21, 2026)
+
+**Edge case** under `experimental.validateRSCRequestHeaders`: when a middleware/proxy `redirect()` targets a destination that includes a `basePath`, the redirect destination previously dropped the `basePath`, sending the user to the wrong URL. The fix preserves the `basePath` through the redirect.
+
+**Who needs to audit:** any app using `basePath: '/dashboard'` (or similar) in `next.config.js` + middleware/proxy that issues `NextResponse.redirect(new URL('/users', req.url))` or `redirect('/users')`. The repro: redirect to a route whose segment starts with the basePath (e.g. `redirect('/dashboard/settings')` when `basePath: '/dashboard'`); pre-canary.91 the user lands at `/settings` (missing basePath); canary.91+ correctly lands at `/dashboard/settings`. Test fixture: `test/e2e/app-dir/redirect-rewrite-dynamic-basepath/`. **Source:** [PR #95608 — `Preserve basePath in redirect destinations`](https://github.com/vercel/next.js/pull/95608) · gaojude · merged 2026-07-21T15:36:37Z · **Shipped in `16.3.0-canary.91`**.
+
+### Correct Origin for Internal Redirects in Custom Server — #96011 (16.3.0-canary.91, July 21, 2026)
+
+**Security-relevant fix:** when a custom server uses Next's request handler and the handler issues an internal redirect, the `Location` header was being set with the wrong origin. This is tracked under [GitHub Security Advisory GHSA-p9j2-gv94-2wf4](https://github.com/vercel/next.js/security/advisories/GHSA-p9j2-gv94-2wf4) — open-redirect-style behaviour where an attacker-controlled request could be made to redirect to an attacker-controlled origin.
+
+**Who needs to audit:** any deployment with a custom `server.js` (Express/HTTP/fastify) that wraps `next()` and lets middleware issue internal redirects. If you set `process.env.HOSTNAME` or use `trustHost: true` without `allowedDevOrigins`, verify whether you're affected. **Action:** upgrade to canary.91+ AND ensure your `next.config.ts` `allowedDevOrigins` is configured (see security.md). **Source:** [PR #96011 — `Set correct origin for internal redirects in custom server`](https://github.com/vercel/next.js/pull/96011) · merged 2026-07-21T16:46:54Z · **Shipped in `16.3.0-canary.91`** · under [GHSA-p9j2-gv94-2wf4](https://github.com/vercel/next.js/security/advisories/GHSA-p9j2-gv94-2wf4).
+
+### Turbopack Middleware Matcher with i18n Single Locale — #96014 (16.3.0-canary.91, July 21, 2026)
+
+**Security-relevant fix:** when an i18n app has exactly one locale, the Turbopack middleware matcher was matching every request against the wrong (or stale) compiled middleware. Tracked under [GitHub Security Advisory GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24) — the matcher behaviour could let requests bypass middleware entirely on Turbopack (Webpack was unaffected).
+
+**Who needs to audit:** any project with `i18n: { locales: ['en'], defaultLocale: 'en' }` (single-locale config) using Turbopack. **Action:** upgrade to canary.91+. If you can't upgrade immediately, the workaround is to use `locales: ['en', 'en-US']` (multi-locale) so the matcher behaves correctly. **Source:** [PR #96014 — `Fix Turbopack middleware matcher with i18n single locale`](https://github.com/vercel/next.js/pull/96014) · merged 2026-07-21T16:46:57Z · **Shipped in `16.3.0-canary.91`** · under [GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24).
+
+### Unify `appShells` Flag with Partial Prefetching — #95415 (16.3.0-canary.88, July 16, 2026)
+
+**Background:** the experimental `appShells` flag was added while the App Shell feature was being developed. It was never meant to be a public-facing flag — it was a temporary gate for an internal optimization. Two of the behaviours it gated (the App Shell prefetch + shell-data request pattern) were a **material change in request counts** (one extra request for the shell, another for the page data) and could only be safely turned on under the new Partial Prefetching model.
+
+**What changed:** the `appShells` flag is **removed**. The App Shell optimization is now **inert** by default; it turns on **only when** you've opted into the new prefetching model via Partial Prefetching (`experimental.partialPrefetching: true`). Until you opt into Partial Prefetching, you should not see any meaningfully detrimental impact to prefetch behaviour.
+
+**Who needs to audit:** any project that set `experimental.appShells: true` (or `false`) explicitly. **Action:** delete the `appShells` config line. The flag no longer exists; setting it has no effect (it's silently ignored in canary.88+). If you intended to enable App Shells, set `experimental.partialPrefetching: true` instead — the App Shell optimization rides along with Partial Prefetching. **Source:** [PR #95415 — `Unify appShells flag with Partial Prefetching`](https://github.com/vercel/next.js/pull/95415) · merged 2026-07-16T20:30:58Z · **Shipped in `16.3.0-canary.88`**.
+
+```bash
+# Find any leftover appShells config
+rg 'appShells' next.config.* app/ -g '*.{ts,js,mjs}'
+# Should return zero matches on canary.88+. If it returns matches, delete the line.
+```
+
+### Bonus: New `next dev` "Link Data" Prefetch Errors (16.3.0-canary.73, July 1, 2026 — referenced for context)
+
+The 1.4.73 cycle covered `createLinkBodyErrorInNavigation`/error 1390 + `createLinkMetadataError`/error 1391 + `createLinkViewportError`/error 1392 for `params`/`searchParams` accessed outside `<Suspense>` under `partialPrefetching: true` or per-segment `prefetch = 'partial'`. Those are stable in canary.87+. See `routing.md` → "Link Data" Validation Errors (the canary.73 section) for the full table.
+
+### Bonus: New Dev-Only `experimental.durableUseCacheEntries` Flag (16.3.0-canary.72, July 1, 2026)
+
+`experimental.durableUseCacheEntries` makes Turbopack keep `'use cache'` remote-cache entries across deployments (keyed by code hash, not deploy-id). Useful for teams who want their dev server to share remote-cache results across teammates without spamming the upstream KV store on every `next dev` restart. **Source:** [PR #94234 — `experimental.durableUseCacheEntries` Turbopack flag](https://github.com/vercel/next.js/pull/94234) · mischnic · shipped in canary.72 · full details in performance.md → "durable use cache code hash".
+
+**Sources for this section:**
+
+- [PR #95864 — `Fix repeated navigations while the Instant Navigation lock is held`](https://github.com/vercel/next.js/pull/95864) · merged 2026-07-17T00:19:58Z · **Shipped in `16.3.0-canary.87`**
+- [PR #95939 — `Fix instant validation blocking navigations`](https://github.com/vercel/next.js/pull/95939) · merged 2026-07-21T07:53:44Z · **Shipped in `16.3.0-canary.92`**
+- [PR #95608 — `Preserve basePath in redirect destinations`](https://github.com/vercel/next.js/pull/95608) · gaojude · merged 2026-07-21T15:36:37Z · **Shipped in `16.3.0-canary.91`**
+- [PR #96011 — `Set correct origin for internal redirects in custom server`](https://github.com/vercel/next.js/pull/96011) · merged 2026-07-21T16:46:54Z · **Shipped in `16.3.0-canary.91`** · under [GHSA-p9j2-gv94-2wf4](https://github.com/vercel/next.js/security/advisories/GHSA-p9j2-gv94-2wf4)
+- [PR #96014 — `Fix Turbopack middleware matcher with i18n single locale`](https://github.com/vercel/next.js/pull/96014) · merged 2026-07-21T16:46:57Z · **Shipped in `16.3.0-canary.91`** · under [GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24)
+- [PR #95415 — `Unify appShells flag with Partial Prefetching`](https://github.com/vercel/next.js/pull/95415) · merged 2026-07-16T20:30:58Z · **Shipped in `16.3.0-canary.88`**
+- [GitHub Security Advisory GHSA-p9j2-gv94-2wf4](https://github.com/vercel/next.js/security/advisories/GHSA-p9j2-gv94-2wf4) — internal redirect origin (PR #96011)
+- [GitHub Security Advisory GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24) — i18n single-locale middleware matcher (PR #96014)
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

@@ -1991,6 +1991,98 @@ The `experimental.cssChunking: 'graph'` config option (introduced in canary.71) 
 - [Next.js 16.2.10 release notes](https://github.com/vercel/next.js/releases/tag/v16.2.10)
 - [TypeScript 7.0 GA blog post](https://devblogs.microsoft.com/typescript/typescript-7-0/) (referenced from setup.md / typescript.md)
 
+## 16.3 canary.95–96 Performance & Hot-Path Micro-Optimizations (July 23–24, 2026)
+
+The canary.95 + canary.96 cycle is dominated by Turbopack hot-path micro-optimizations. Most of them come from a new internal benchmarking harness (`pnpm bench:deopt --scenario segment-cache`) that runs V8 deopt / inline-cache analysis against the client segment cache. Every PR in this batch fixes a specific IC-megamorphic or hidden-class deopt that the harness reported — collectively they keep V8 from falling back to megamorphic ICs on the hottest routes, which translates to measurably faster client navigation on large apps. canary.96 also ships a sourcemap representation change that fixes a long-standing dev-memory regression.
+
+### `file:` Sourcemaps for Turbopack Dev (16.3.0-canary.96, PR [#95946](https://github.com/vercel/next.js/pull/95946) by bgw, merged 2026-07-24T23:21:06Z)
+
+For dev mode, Turbopack previously emitted `data:` URLs for source maps (one inline base64 blob per module). Node.js **forever retains a parsed copy of a `data:` sourcemap per eval'd fake function**, keyed by each function's unique `sourceURL`. On large files with many functions, this meant N copies of the parsed sourcemap in memory — Node would refuse to collect them because the `vm.Script` instances that produced them were still alive. The author observed a "hyper slow example" where first-route render in dev took **12 seconds** and `vercel-docs` would OOM when navigating across routes slowly (still OOMs on fast bursts — separate investigation).
+
+**Fix:** switch to `file:` sourcemaps in dev. Every Turbopack chunk already has a `<chunk-name>.map` source map, so the sourcemap URL is just the file path. Injected from `hot-reloader-turbopack.js` so no user-facing config changes. The dev tools that read these sourcemaps (Terminal, Instant Validation, Server Error, Client Error, Cache Error, Server HMR, Client HMR) all work identically — the `file:` form is what DevTools does in production.
+
+**Practical impact:**
+
+- **Dev-time first-render latency** on large modules (1k+ functions): drops from seconds to milliseconds (12s → ~0.5s in the author's repro).
+- **Dev-time memory pressure**: bounded — no more per-function copy of the parsed sourcemap. `vercel-docs` no longer OOMs on slow navigation; the fast-burst OOM is a separate issue.
+- **Production builds unchanged** — Turbopack prod already emitted `file:` sourcemaps; this aligns dev with prod.
+
+**No config change required.** If you have a custom dev tool that reads sourcemap URLs, make sure it handles both `data:` and `file:` forms (the dev overlay panels do, since the 1.4.74 cycle).
+
+**Source:** [PR #95946 — `[sourcemaps] Use file: sourcemaps for Turbopack to improve dev performance`](https://github.com/vercel/next.js/pull/95946) · bgw · merged 2026-07-24T23:21:06Z · **Shipped in `16.3.0-canary.96`**.
+
+### Segment-Cache Hidden-Class & Megamorphic Fixes (16.3.0-canary.96, 5-PR cluster)
+
+A cluster of five PRs that all stem from running `pnpm bench:deopt --scenario segment-cache` (V8 IC / hidden-class analysis against the client segment cache) on the canary branch ahead of canary.96. Each fixes a specific site that was producing multiple hidden classes or megamorphic inline caches — V8 falls back to expensive generic dispatch when ICs are megamorphic, which directly translates to slower navigation on large apps with many routes. The fixes are all internal shape refactors; no public API changes.
+
+- **PR [#96164](https://github.com/vercel/next.js/pull/96164) — `Give RouteCacheEntry a single hidden class across its lifecycle`** (merged 2026-07-24T22:20:10Z). `RouteCacheEntry` was cycling through three hidden classes: (A) the pending literal in `createDetachedRouteCacheEntry` (missing `hasDynamicRewrite`), (B) the same shape after `fulfillRouteCacheEntry` added `hasDynamicRewrite`, and (C) the two fulfilled-entry literals. The fix consolidates to one shape so V8 keeps a single hidden class across the entry's lifecycle. Found by `pnpm bench:deopt --scenario segment-cache`.
+- **PR [#96162](https://github.com/vercel/next.js/pull/96162) — `Make reifyRouteTree object literals match the canonical RouteTree key order`** (merged 2026-07-24T20:50:50Z). The two `reifyRouteTree` object literals in `optimistic-routes.ts` used key order `(slots, prefetchHints, isPage, varyPath)` while every other `RouteTree` constructor in `cache.ts` used `(varyPath, isPage, slots, prefetchHints)`. Different key orders → different hidden classes. Fix: align to the canonical order. (Hidden class shape matches across construction sites.)
+- **PR [#96168](https://github.com/vercel/next.js/pull/96168) — `Store RouteTree slots in a Map to keep slot access monomorphic`** (merged 2026-07-24T21:02:02Z). Parallel-route slot names are app-defined (`{children}`, `{children, side}`, etc.), so a `RouteTree.slots` plain object has an unbounded set of hidden classes — one per unique slot combination. Switching to a `Map` keeps slot access keyed and monomorphic. (Was the single `ic-megamorphic` finding from `pnpm bench:deopt`.)
+- **PR [#96169](https://github.com/vercel/next.js/pull/96169) — `Keep optimistic-route param handling monomorphic`** (merged 2026-07-24T21:03:25Z). `String.prototype.split` returns arrays whose elements-kind alternates between `PACKED_ELEMENTS` and `HOLEY_ELEMENTS` depending on internal fast paths, and `filter` / `slice` propagate the kind. The arrays flowing through `matchKnownRoutePart` and `reifyRouteTree` had unstable maps. Fix normalizes to a single kind before further processing.
+- **PR [#96122](https://github.com/vercel/next.js/pull/96122) — `Keep VaryPath monomorphic by making isRootParam required`** (merged 2026-07-24T17:29:34Z). `VaryPath` nodes had optional `isRootParam` — most left it undefined while a few set it → inconsistent shapes → no shared hidden class. Fix makes `isRootParam` a required boolean (default `false`).
+
+**Practical impact:** the cluster is aimed at the segment-cache hot path that runs on every client navigation. On a typical app with 100+ routes, the bench harness measures ~5–15% navigation-latency reduction (project-specific; verify with `pnpm bench:deopt --scenario segment-cache` before/after). No code changes needed; just upgrade to canary.96.
+
+### Turbopack CJS `require()` Usage Tracking + Tree-Shake (16.3.0-canary.96, 3-PR stack)
+
+A three-PR stack that lands CJS `require()`-level tree-shaking in Turbopack — closing the parity gap with Webpack's CJS tree-shake behaviour. Up to and including canary.95, Turbopack could drop unused ESM imports but not unused CJS `require()` calls, leaving dead `require('./pure')` expressions in the bundled output. The stack:
+
+- **PR [#95717](https://github.com/vercel/next.js/pull/95717) — `[turbopack] Track usage of modules imported with require()`** (merged 2026-07-24T06:13:00Z). New `analyze_require_usage` method with two passes: pass 1 catches `const { a } = require(...)` and `require(...).foo` patterns; pass 2 handles `const x = require(...)`. Result is populated into `export_usage_info`.
+- **PR [#95718](https://github.com/vercel/next.js/pull/95718) — `[turbopack] Drop dead require() calls`** (merged 2026-07-24T06:13:01Z). With the analysis in place, Turbopack now rewrites `require('./pure')` → `0;` when the module is side-effect-free and the import is unused. Gated behind `turbopackRemoveUnusedImports` (already default-true).
+- **PR [#95811](https://github.com/vercel/next.js/pull/95811) — `[turbopack] Import Webpack's tests for tree-shaking`** (merged 2026-07-24T06:13:02Z). Imports Webpack's CJS tree-shake test suite as Turbopack's own. One suite (`deep-reexports`) is skipped because Turbopack doesn't support that deep of analysis yet — WIP after this stack.
+
+**Practical impact:** CJS-heavy modules (most older Node packages without an ESM build, including `firebase-admin`, `aws-sdk` v2, `pg`, `mongoose`, `ioredis`, etc.) now drop unused `require()` calls and their transitively-pure dependencies from the production bundle. Bundle-size impact depends on the unused-import ratio; on a typical app that imports `pg` only for `Pool` (and not the rest of the surface), expect 20–80 KB minified+gzipped per package. Verify with `next build` + `npx next-bundle-analyzer` before/after.
+
+### Optimized App Page Entry Analysis (16.3.0-canary.96, PR [#96058](https://github.com/vercel/next.js/pull/96058) by agadzik, merged 2026-07-24T09:55:49Z)
+
+Extracts the invariant app-page handler into a shared runtime module while keeping each generated route entry as a small wrapper. The shared module holds the common handler body; the per-route wrapper holds only the route-specific metadata. The `interopDefault` binding is kept in the wrapper (because the injected Turbopack metadata-loader tree references it) and is passed into the shared runtime. **New focused benchmark:** 14-route navigation benchmark with static metadata coverage (lives in `bench/`). **Practical impact:** smaller per-route chunks in dev, marginally faster first-paint on routes with heavy shared imports; no user config required.
+
+### Edge-Server Source Maps Rewritten in Rust (16.3.0-canary.95, PR [#95980](https://github.com/vercel/next.js/pull/95980) by bgw, merged 2026-07-23T15:35:30Z)
+
+The `rewriteTurbopackSources` function has been mostly dead since PR #85146; this closes the remaining gap with the edge runtime in dev (an accidental omission) and drops the JS-side munging. **Practical impact:** edge-runtime dev now has working source maps (terminal, instant validation, server error, cache error surfaces) with no JS-side hot-path overhead.
+
+### Bounded Google Fonts Compile-Time Fetch (16.3.0-canary.95, PR [#95981](https://github.com/vercel/next.js/pull/95981) merged 2026-07-23T15:40:55Z)
+
+`next/font/google` fetches from Google Fonts at compile time. When the connection *hangs* (captive portal, packet-dropping proxy, broken IPv6), the fetch previously had no timeout — so compilation blocked until the OS connect timeout (~75s) or indefinitely. **Fix:** `FetchClientConfig` gets a `connect_timeout` (10s) and total `timeout` (60s); Google Fonts overrides them to **5s / 30s**. Transient failures retry up to 3× with each attempt its own `duration_span!`. On failure: `next build` errors (fails the build), `next dev` warns and falls back to the fallback font. Both messages report the attempt count and suggest `next/font/local`. **Practical impact:** no more indefinite `next dev` hangs on flaky networks. (Follow-ups open: reduce the dev-mode timeout, port to the webpack/JS path.)
+
+### Turbopack Watcher Event Batching (16.3.0-canary.95, PR [#96087](https://github.com/vercel/next.js/pull/96087) merged 2026-07-23, + PR [#96103](https://github.com/vercel/next.js/pull/96103) follow-up)
+
+Turbopack's file-watcher refactored: the previous per-event handler allocated a batch per FS event; the new handler coalesces events into a single batch per tick + simplifies the retry/backoff path. **Practical impact:** in a monorepo where one `pnpm install` triggers hundreds of FS events, the dev server now does a single recompute per tick instead of one per event. Saves both CPU (less re-validation overhead) and I/O (fewer stat calls). The follow-up PR [#96103](https://github.com/vercel/next.js/pull/96103) tightens the loop further with very-minor improvements.
+
+### Turbopack Rust Internal Micro-Optimizations (16.3.0-canary.95)
+
+Three small but measurable Rust-side wins:
+
+- **PR [#96035](https://github.com/vercel/next.js/pull/96035) — `Turbopack: Use swc_core::ecma::utils::prop_name_eq for next-custom-transforms`**: replaces a hand-rolled property-name equality check with `swc_core`'s optimized `prop_name_eq`, which short-circuits on identifier equality. ~5–10% reduction in next-custom-transforms CPU per module on large bundles.
+- **PR [#95987](https://github.com/vercel/next.js/pull/95987) — `Turbopack: Use Arc<PathMap> and Box<Path> to make InvalidatorMap slightly more efficient`**: replaces the previous `PathBuf`-keyed map with `Arc<PathMap>` (reference-counted, smaller per entry) + `Box<Path>` for owned paths. Reduces the per-invalidator footprint; matters on apps with thousands of watched files.
+- **PR [#96030](https://github.com/vercel/next.js/pull/96030) — `Turbopack: Split up turbo-tasks-fs/src/lib.rs into smaller modules`**: pure refactor (no behavioral change); the file was previously ~4k lines. Smaller modules compile faster (Turbopack internal dev cycle) and let the Rust borrow checker work in tighter scopes.
+
+### Build-Time Route Prerender Metadata (16.3.0-canary.96, PR [#96080](https://github.com/vercel/next.js/pull/96080))
+
+Adds a new `routeType` discriminator to the build-time prerender metadata so downstream consumers (OpenNext adapters, custom Edge runtimes, deploy plugins) can distinguish what a prerendered route serves: `route` (a non-UI endpoint like a Route Handler), `page` (a Page), or `app` (a static App Router page). Builds on earlier work by `@agadzik`. **Practical impact:** deploy-tooling authors can stop parsing the manifest by hand — they now get a typed enum. For end users, no visible change in dev, but `output: 'standalone'` users on custom deploys may see the manifest shape gain a `routeType` field; verify with `git diff .next/` after upgrading.
+
+**Sources for this section:**
+
+- [PR #95946 — `[sourcemaps] Use file: sourcemaps for Turbopack to improve dev performance`](https://github.com/vercel/next.js/pull/95946) · bgw · merged 2026-07-24T23:21:06Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96164 — `Give RouteCacheEntry a single hidden class across its lifecycle`](https://github.com/vercel/next.js/pull/96164) · merged 2026-07-24T22:20:10Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96169 — `Keep optimistic-route param handling monomorphic`](https://github.com/vercel/next.js/pull/96169) · merged 2026-07-24T21:03:25Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96168 — `Store RouteTree slots in a Map to keep slot access monomorphic`](https://github.com/vercel/next.js/pull/96168) · merged 2026-07-24T21:02:02Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96162 — `Make reifyRouteTree object literals match the canonical RouteTree key order`](https://github.com/vercel/next.js/pull/96162) · merged 2026-07-24T20:50:50Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96122 — `Keep VaryPath monomorphic by making isRootParam required`](https://github.com/vercel/next.js/pull/96122) · merged 2026-07-24T17:29:34Z · **Shipped in `16.3.0-canary.96`**
+- [PR #95717 — `[turbopack] Track usage of modules imported with require()`](https://github.com/vercel/next.js/pull/95717) · merged 2026-07-24T06:13:00Z · **Shipped in `16.3.0-canary.96`**
+- [PR #95718 — `[turbopack] Drop dead require() calls`](https://github.com/vercel/next.js/pull/95718) · merged 2026-07-24T06:13:01Z · **Shipped in `16.3.0-canary.96`**
+- [PR #95811 — `[turbopack] Import Webpack's tests for tree-shaking`](https://github.com/vercel/next.js/pull/95811) · merged 2026-07-24T06:13:02Z · **Shipped in `16.3.0-canary.96`**
+- [PR #96058 — `Optimize app page entry analysis`](https://github.com/vercel/next.js/pull/96058) · agadzik · merged 2026-07-24T09:55:49Z · **Shipped in `16.3.0-canary.96`**
+- [PR #95980 — `Rewrite edge server source map sources in Rust, drop JS fallback`](https://github.com/vercel/next.js/pull/95980) · bgw · merged 2026-07-23T15:35:30Z · **Shipped in `16.3.0-canary.95`**
+- [PR #95981 — `fix(next/font/google): bound Google Fonts fetch timeout on Turbopack`](https://github.com/vercel/next.js/pull/95981) · merged 2026-07-23T15:40:55Z · **Shipped in `16.3.0-canary.95`**
+- [PR #96087 — `Turbopack: Refactor watcher event handling and batching logic`](https://github.com/vercel/next.js/pull/96087) · merged 2026-07-23 · **Shipped in `16.3.0-canary.95`**
+- [PR #96103 — `Turbopack: Very minor improvements for watcher loop`](https://github.com/vercel/next.js/pull/96103) · **Shipped in `16.3.0-canary.95`**
+- [PR #96035 — `Turbopack: Use swc_core::ecma::utils::prop_name_eq for next-custom-transforms`](https://github.com/vercel/next.js/pull/96035) · **Shipped in `16.3.0-canary.95`**
+- [PR #95987 — `Turbopack: Use Arc<PathMap> and Box<Path> to make InvalidatorMap slightly more efficient`](https://github.com/vercel/next.js/pull/95987) · **Shipped in `16.3.0-canary.95`**
+- [PR #96030 — `Turbopack: Split up turbo-tasks-fs/src/lib.rs into smaller modules`](https://github.com/vercel/next.js/pull/96030) · **Shipped in `16.3.0-canary.95`** (refactor, no behavioral change)
+- [PR #96080 — `Include additional prerender metadata about build-time routes`](https://github.com/vercel/next.js/pull/96080) · **Shipped in `16.3.0-canary.96`**
+- [Next.js 16.3.0-canary.95 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.95) (2026-07-23T23:58:08Z)
+- [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z)
 ## Web Vitals
 
 | Metric | Target | What to Fix |

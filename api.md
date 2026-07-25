@@ -982,7 +982,7 @@ Sources:
 - [nextjs.org/docs/messages/generate-static-params — invalid-values page](https://nextjs.org/docs/messages/generate-static-params)
 - [nextjs.org/docs/app/api-reference/functions/generate-static-params — returns section](https://nextjs.org/docs/app/api-reference/functions/generate-static-params#returns)
 
-## Plain-Text 404 for Non-Document Requests (canary-branch ahead of canary.95, [PR #95930](https://github.com/vercel/next.js/pull/95930) by Tobias Koppers / bgw, merged 2026-07-24T02:59:42Z — will ship in `16.3.0-canary.96` ~2026-07-25T22:30Z)
+## Plain-Text 404 for Non-Document Requests (16.3.0-canary.96, [PR #95930](https://github.com/vercel/next.js/pull/95930) by Tobias Koppers / bgw, merged 2026-07-24T02:59:42Z — **SHIPPED in `16.3.0-canary.96` at 2026-07-25T00:00:34Z**)
 
 When the browser requests something Next.js can't resolve as a document — favicons, manifest icons, broken `<img src>`, wrong `<link>`s, `new Worker()` calls — the server previously **still invoked the root layout and rendered the full HTML 404 page** (including any expensive `await cookies()` / `await headers()` reads in `app/layout.tsx`). The new behavior inspects the request's `Sec-Fetch-Dest` header and returns a **plain-text `Not Found` 404** directly from `base-server.ts` / `router-server.ts` without touching any app code.
 
@@ -1018,8 +1018,29 @@ rg -l 'rel="icon"' app/
 
 No code change required — the change is in the request routing layer.
 
-Source: [PR #95930 — `Return plain text 404 for non-document requests to unknown paths`](https://github.com/vercel/next.js/pull/95930) · bgw · merged 2026-07-24T02:59:42Z · **Will ship in `16.3.0-canary.96`** (~2026-07-25T22:30Z)
+Source: [PR #95930 — `Return plain text 404 for non-document requests to unknown paths`](https://github.com/vercel/next.js/pull/95930) · bgw · merged 2026-07-24T02:59:42Z · **Shipped in `16.3.0-canary.96`** (2026-07-25T00:00:34Z, ahead of the predicted 22:30Z window by ~22h).
 
+
+## RSC HMR Flurry of Refetches Fixed — #96102 (16.3.0-canary.96, July 24, 2026 — was canary-branch ahead of canary.95)
+
+A silent HMR regression that fired when a Server Component was imported from many routes simultaneously. To reproduce: a server component `Foo` imported from `/a`, `/b`, `/c`, ... — then edit `Foo`. **Expected:** one HMR request per open tab. **Actual:** a flurry of HMR requests, one per already-compiled route per tab. The PR author observed "a flurry of requests" in their terminal on every save.
+
+**Two root causes** (both fixed in #96102):
+
+1. The "server component updated" message was emitted **once per already-compiled route**, so a single tab received N messages in quick succession and processed them all.
+2. The `debounce` for these messages was broken — it always fired immediately due to a wrong condition, instead of delaying to coalesce.
+
+**Fix:** switch to expressing Server Component changes as a **final message** that gets sent at the end of the update via a dirty flag. With the dirty flag, the number of messages is decoupled from the number of compiled routes — one final message per update, one HMR fetch per tab. The broken `debounce` was deliberately left unfixed (the fix is more risky because existing callers may rely on the bug; `git blame` would show who).
+
+**Who needs to audit:** any dev workflow that edits Server Components imported from many routes — common in monorepos or shared `components/` directories. **Verify the fix:** in a project where a single SC is imported from 10+ routes, open 3 tabs, edit the SC, and count the HMR requests in the dev terminal. Pre-fix: tens of requests; canary.96+: 3 (one per tab). **Source:** [PR #96102 — `[RSC HMR] Fix a flurry of refetches when a editing component imported from many routes`](https://github.com/vercel/next.js/pull/96102) · gaearon · merged 2026-07-24T02:59:27Z · **Shipped in `16.3.0-canary.96`**.
+
+## Turbopack Re-Export Tree-Shake — #95989 (16.3.0-canary.96, July 24, 2026 — was canary-branch ahead of canary.95)
+
+Tree-shake fix for async imports of re-export modules. **Root cause:** code like `export { foo } from 'bar'` contributed to the module's `exports` set but did **not** contribute to Turbopack's tracking of imports from `'bar'`. Turbopack therefore fell back to the default `ImportUsage::TopLevel`, which keeps every export of `'bar'` alive in the bundle. For **sync** imports/exports, Turbopack follows re-exports and the bug is invisible; for **async** imports, the path isn't followed and the bug fires.
+
+**Real-world impact:** [viem](https://viem.sh/) chain definitions are async-imported; importing a single chain from `viem/chains` previously pulled the full chains namespace into the bundle because Turbopack couldn't prove the re-export was only referencing one name. Fixes [issue #95698](https://github.com/vercel/next.js/issues/95698). Same shape bug bites any other "barrel file + async import" pattern (Material UI v5+ via `@mui/material`, Lodash via `lodash-es`, most monorepo internal barrel exports).
+
+**Fix:** `import_usage` now includes re-exports when computing which imports a module actually reads. The downstream module's unused exports are then dropped as normal. **Who needs to audit:** any project that does `await import('some-barrel-file')` and only references a single name from the barrel. **Verify:** `pnpm next build` + `npx next-bundle-analyzer` before/after; expect the barrel's unused exports to drop from the bundle. **Source:** [PR #95989 — `[turbopack] Track re-exports in import_usage inside of compute_import_usage`](https://github.com/vercel/next.js/pull/95989) · bgw · merged 2026-07-24T00:34:54Z · **Shipped in `16.3.0-canary.96`** · fixes [issue #95698](https://github.com/vercel/next.js/issues/95698).
 
 ## Common Mistakes — App Router uses `app/api/` with route handlers; don't mix with `pages/api/`
 - **Missing `await` on params** — In Next.js 15, route handler params are Promises
