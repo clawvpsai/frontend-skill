@@ -1629,3 +1629,105 @@ npm install -D shadcn@^4.14.1
 - [PR #11266 — `Add Base UI Toast support`](https://github.com/shadcn-ui/ui/pull/11266)
 - [Compare `shadcn@4.14.0...shadcn@4.14.1`](https://github.com/shadcn-ui/ui/compare/shadcn@4.14.0...shadcn@4.14.1)
 - [Base UI Toast docs](https://base-ui.com/react/components/toast) (the new default primitive)
+
+## shadcn 4.15.0 — Public `addRegistryItems` API for Programmatic Registry Install (July 25, 2026)
+
+Released 2 days after 4.14.1 (July 23 → July 25, 2026T18:05:56Z), `shadcn@4.15.0` is a **minor** release that exposes a single new public API: [`addRegistryItems`](https://github.com/shadcn-ui/ui/pull/11276) by [@cmpadden](https://github.com/cmpadden), commit [`7d90dfc0a5ec70cdc3bd08b741a42440041907ac`](https://github.com/shadcn-ui/ui/commit/7d90dfc0a5ec70cdc3bd08b741a42440041907ac). It lets you install registry items (shadcn components, blocks, themes, hooks, etc.) from JavaScript/TypeScript code **without invoking the `shadcn` CLI**. No CLI flag changes, no `components.json` schema changes, no breaking changes to `init` / `add` / `eject` / `migrate`.
+
+### 1. What `addRegistryItems` Does
+
+The function is the programmatic counterpart to `npx shadcn@latest add <item>`. It accepts an array of registry items (URLs, local paths, or inline registry JSON) and resolves them against the project's `components.json`, writes the generated files into the right paths, updates `package.json` dependencies, and returns a structured result describing what got installed. The CLI's `add` command is now a thin wrapper around this same function — calling the function directly is the right approach when:
+
+- A build step or generator needs to install shadcn items as part of its output (codegen pipelines, design-system compilers, internal scaffolding tools)
+- A long-running dev server wants to hot-add a registry item without spawning a subprocess
+- An MCP / agent workflow wants to add registry items without shell access
+- A monorepo package-manager abstraction layer wants shadcn installs to go through the same code path as every other install
+
+### 2. Basic Usage (TypeScript)
+
+```ts
+// scripts/install-shadcn-blocks.ts
+import { addRegistryItems } from "shadcn"
+
+const result = await addRegistryItems({
+  // Resolve the registry item from a URL, local path, or inline JSON
+  items: [
+    "https://ui.shadcn.com/r/styles/new-york/dashboard.json",
+    "./blocks/data-table.json",
+  ],
+  // Optional: override the components.json cwd
+  cwd: process.cwd(),
+  // Optional: surface warnings (defaults to true in CI, false in TTY)
+  silent: false,
+  // Optional: overwrite existing files without prompting
+  overwrite: true,
+  // Optional: install the items' declared dependencies (defaults to true)
+  installDependencies: true,
+})
+
+// result.shape — structured report of what got installed
+console.log(result.filesInstalled)   // ["components/dashboard/page.tsx", ...]
+console.log(result.dependenciesAdded) // ["@tanstack/react-table", ...]
+console.log(result.warnings)         // [...]
+```
+
+### 3. Inline Registry Items (For Codegen Pipelines)
+
+```ts
+import { addRegistryItems } from "shadcn"
+
+const inlineButton = {
+  name: "button",
+  type: "components:ui",
+  files: [
+    {
+      path: "components/ui/button.tsx",
+      content: `import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
+// ... generated content ...
+`,
+    },
+  ],
+  dependencies: {
+    "@radix-ui/react-slot": "^1.1.0",
+    "class-variance-authority": "^0.7.1",
+  },
+} as const
+
+const result = await addRegistryItems({
+  items: [inlineButton],
+  cwd: process.cwd(),
+})
+```
+
+### 4. What Stays CLI-Only
+
+The CLI command surface is unchanged — `init`, `add`, `diff`, `info`, `migrate`, `eject` all still work exactly as before. `addRegistryItems` is the **internal API that backs `add`** now exposed publicly. Any feature that the CLI exposes but `addRegistryItems` doesn't (interactive registry search, `--dry-run` rendering, etc.) is intentionally CLI-only and can still be reached via `npx shadcn@latest add ...`.
+
+### 5. Recommended Version Pin
+
+```bash
+npm install --save-dev shadcn@^4.15.0   # or use npx shadcn@latest ...
+```
+
+**Migration checklist (4.14.x → 4.15.0):**
+- [ ] `npx shadcn@latest` (which now resolves to 4.15.0+) — no peer-dep changes
+- [ ] No `components.json` migration required
+- [ ] Existing CLI workflows (`init`, `add`, `diff`, `eject`, `migrate`) work unchanged
+- [ ] If you wrote a custom CLI wrapper that shells out to `npx shadcn add ...` from a build step, you can now replace it with an in-process `addRegistryItems` call (faster, no subprocess overhead, structured return value)
+- [ ] **No migration required** if you only used the CLI
+
+### 6. Practical Wins for Codegen / Agent Pipelines
+
+- **No subprocess overhead** — call directly from a long-running process instead of spawning `npx shadcn add` per item
+- **Structured return value** — `result.filesInstalled`, `result.dependenciesAdded`, `result.warnings` replace the CLI's stdout parsing
+- **Atomic batch installs** — pass an array of items and they're resolved/written as a single transaction (so a partial failure doesn't leave the project in a half-installed state)
+- **Testable** — mock `addRegistryItems` in vitest instead of mocking the CLI subprocess
+- **Type-safe items** — the function accepts the same `registryItemSchema` that `components.json` validates against, so TypeScript catches malformed registry payloads before they reach the filesystem
+
+**Sources:**
+- [shadcn 4.15.0 release notes](https://github.com/shadcn-ui/ui/releases/tag/shadcn@4.15.0)
+- [PR #11276 — Add a public `addRegistryItems` API](https://github.com/shadcn-ui/ui/pull/11276)
+- [Compare `shadcn@4.14.1...shadcn@4.15.0`](https://github.com/shadcn-ui/ui/compare/shadcn@4.14.1...shadcn@4.15.0)
+- [shadcn registry schema docs](https://ui.shadcn.com/docs/registry)

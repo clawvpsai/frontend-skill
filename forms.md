@@ -563,6 +563,57 @@ npm install react-hook-form@^7.83.0
 - [PR #13080 — Old checkbox/radio pollution fix](https://github.com/react-hook-form/react-hook-form/pull/13080)
 - [PR #13603 — `useController` re-subscribes on `control` change](https://github.com/react-hook-form/react-hook-form/pull/13603)
 - [PR #13287 — Validation message types allow `undefined` values](https://github.com/react-hook-form/react-hook-form/pull/13287)
+## @hookform/resolvers 5.5.0–5.5.3 (July 25–26, 2026) — TypeScript 6 Support + Zod v4 Resolver Fixes
+
+Four releases shipped in ~30 hours (5.5.0 on 2026-07-25T22:39:57Z, 5.5.1 on 2026-07-25T23:06:16Z, 5.5.2 on 2026-07-26T01:51:45Z, 5.5.3 on 2026-07-26T02:15:05Z) — the `@hookform/resolvers` package catching up to recent RHF 7.83 + Zod v4 changes. All four are bug-fix / dev-deps-only — **no breaking changes, no new exports, safe to bump on every release**.
+
+### 1. `5.5.0` — TypeScript 6 + Lib Dev-Deps Upgrade (PR [#856](https://github.com/react-hook-form/resolvers/issues/856), commit [`9968959`](https://github.com/react-hook-form/resolvers/commit/996895933ff31bd3c3fca0d3a6f66138f0852c0f))
+
+Library dev dependencies bumped to the TypeScript 6 toolchain so resolver type tests can exercise the new compiler. Resolves cleanly on consumer projects still on TypeScript 5.8.x or 6.x — the package's `peerDependencies` were not widened, so existing consumers see no `ERESOLVE` churn. The bump is purely internal; no resolver behaviour changes.
+
+### 2. `5.5.1` — Zod v4 Resolver: Nested Discriminated Unions No Longer Throw (PR [#858](https://github.com/react-hook-form/resolvers/issues/858), commit [`4d01d01`](https://github.com/react-hook-form/resolvers/commit/4d01d0167d0fedda3d38cd618acab008e13fa24f))
+
+Zod v4's discriminated-union narrowing produces a deeply-nested error tree that the Zod resolver was treating as a single leaf error — calling `form.formState.errors.fieldName.message` would throw `Cannot read properties of undefined (reading 'message')` because the actual message lived at `errors.fieldName.discriminatorTag.message`. The fix flattens the error path back to a single message string at the field-name level.
+
+**Practical impact:** any Zod v4 form using `z.discriminatedUnion(...)` at 2+ levels of nesting (`z.object({ kind: z.discriminatedUnion(...) })` inside an array, inside a parent object, etc.) now gets a usable `.message` without a custom resolver wrapper.
+
+**Audit:** `rg "z\.discriminatedUnion|z\.union" -A2 src/` — if your project has discriminated unions inside array or deeply-nested shapes and you wrote a workaround like `errors.foo?.bar?.baz?.message ?? 'Invalid value'`, the workaround can be simplified back to `errors.foo.message` after bumping to 5.5.1+.
+
+### 3. `5.5.2` — Zod v4 Resolver: Locale + Global Error Customization Now Picked Up (PR [#860](https://github.com/react-hook-form/resolvers/issues/860), commit [`2126efc`](https://github.com/react-hook-form/resolvers/commit/2126efc6e8d9325c18413534a651f7fee22ce8c8))
+
+If you configured a custom Zod v4 error map (`z.setErrorMap(myErrorMap)`) or a locale-aware map (`z.config({ customError: ... })`), the `@hookform/resolvers/zod` adapter was discarding it and falling back to Zod's default English messages. 5.5.2 wires the active error map through the resolver so locale-specific messages and globally customised error strings land in `form.formState.errors` correctly.
+
+**Practical impact:** multi-language apps using `z.setErrorMap` with i18n message catalogs, and projects that override the default required-message string globally, now see their custom messages in form errors without a parallel custom resolver.
+
+### 4. `5.5.3` — Conditional/Dynamic Schema Resolution Restored (PR [#861](https://github.com/react-hook-form/resolvers/issues/861), commit [`f8d6533`](https://github.com/react-hook-form/resolvers/commit/f8d653319cedece2063140378b6d61e77bcf57b0))
+
+A regression introduced in 5.5.0 broke the common pattern of swapping the resolver schema at runtime based on form state (e.g. `useForm({ resolver: zodResolver(step === 1 ? schemaA : schemaB) })`). The 5.5.0 lib-deps refactor inadvertently memoised the schema at first render, so subsequent swaps were ignored and stale validation results surfaced. 5.5.3 restores dynamic re-resolution without re-introducing the previous re-render storm.
+
+**Practical impact:** multi-step wizards that switch schemas per step, conditional forms whose schema depends on a previously-submitted field, and any `useForm({ resolver })` call where the schema is computed inside the component (rather than hoisted to module scope) now works correctly on 5.5.3.
+
+### 5. Recommended Version Pin
+
+```bash
+npm install @hookform/resolvers@^5.5.3
+```
+
+**Migration checklist (any prior 5.x → 5.5.3):**
+- [ ] `npm install @hookform/resolvers@^5.5.3` — no peer-dep changes
+- [ ] If you wrote a workaround for nested discriminated-union error paths (e.g. `errors.foo?.bar?.baz?.message ?? 'Invalid'`), simplify back to `errors.foo.message`
+- [ ] If you wrote a custom resolver wrapper to force `z.setErrorMap()` to be honoured, drop the wrapper
+- [ ] If you avoided dynamic schema swaps because of the 5.5.0 regression, revert to the documented pattern
+- [ ] **No migration required** if you only used the documented public APIs
+
+**Sources:**
+- [@hookform/resolvers v5.5.0 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.0)
+- [@hookform/resolvers v5.5.1 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.1)
+- [@hookform/resolvers v5.5.2 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.2)
+- [@hookform/resolvers v5.5.3 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.3)
+- [PR #856 — TypeScript 6 + lib dev-deps upgrade](https://github.com/react-hook-form/resolvers/issues/856)
+- [PR #858 — Zod v4 nested discriminated unions fix](https://github.com/react-hook-form/resolvers/issues/858)
+- [PR #860 — Zod v4 locale/global error customization](https://github.com/react-hook-form/resolvers/issues/860)
+- [PR #861 — Conditional/dynamic schema resolution](https://github.com/react-hook-form/resolvers/issues/861)
+
 ## Basic Setup
 
 ```bash
