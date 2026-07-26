@@ -1490,6 +1490,102 @@ Microsoft's stated roadmap (per the [TypeScript 7.0 GA post](https://devblogs.mi
 
 Until then, the split toolchain is the practical answer. The full TS 6 baseline still ships to npm; the `@typescript/typescript6` compat package is stable; and the upgrade is reversible by deleting the `tsgo` script + uninstalling `typescript@^7`.
 
+### Next.js 16.2.12 / 15.5.22 - TypeScript 7 Compatibility Matrix (July 25, 2026)
+
+The July 25, 2026 backport batch is the first time Next.js has shipped **explicit, actionable TypeScript 7 handling** on a stable line. Two releases, opposite strategies:
+
+| Next.js line | Version shipped | What it does with `typescript@>=7` |
+|---|---|---|
+| **`next@latest` (16.2.x)** | **`16.2.12`** (2026-07-25T20:45:53Z) | **Supports TS 7** via the opt-in `experimental.useTypeScriptCli` flag - the 16.3 canary `experimental.useTypeScriptCli` backend ([PR #95639](https://github.com/vercel/next.js/pull/95639), wbinnssmith) is backported. Without the flag, `next build`/`next dev` keeps using the legacy TS Compiler API backend and falls back to the friendly guidance path. |
+| **`next@backport` (15.5.x)** | **`15.5.22`** (2026-07-25T20:45:27Z) | **Hard-rejects TS 7** with an actionable `CompileError` - minimal mitigation backport of the [16.2 mitigation #95837](https://github.com/vercel/next.js/pull/95837). Applies to both `next dev` and `next build`. |
+| **`next@canary` (16.3.x)** | `16.3.0-canary.97` (2026-07-25T23:56:51Z) | Same as 16.2.12 - `experimental.useTypeScriptCli` is the path forward. |
+
+#### `experimental.useTypeScriptCli` on 16.2.12 (PR [#95831](https://github.com/vercel/next.js/pull/95831))
+
+The opt-in flag now ships on the **stable** 16.2 line (previously only on 16.3 canary). With it enabled:
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: true, // use the project-local tsc (Go-native on TS 7) for next build / typegen
+  },
+}
+export default nextConfig
+```
+
+When this flag is enabled AND the installed `typescript` is `>=7.0.0` (including `7.0.0-dev.*` / `7.0.0-beta` / `7.0.0-rc`), Next.js shells out to the project-local `tsc` binary for type generation and `next build`'s type-check path. This is the only configuration that gets you real TS 7 support on 16.2.x - without the flag, Next.js still uses the legacy TS Compiler API backend, which can no longer find `typescript/lib/typescript.js` under TS 7 and degrades to the friendly guidance path with an actionable warning.
+
+**Recommended setup on 16.2.12:**
+
+```jsonc
+// package.json
+{
+  "devDependencies": {
+    "typescript": "^7.0.2",  // GA; tsgo is the Go-native binary
+    "@typescript/typescript6": "^6.0.4", // compat fallback for tooling
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",   // fast native type-check
+    "build":     "next build"        // uses experimental.useTypeScriptCli
+  }
+}
+```
+
+```ts
+// next.config.ts - opt into the TS 7 CLI backend
+const nextConfig: NextConfig = {
+  experimental: { useTypeScriptCli: true },
+}
+```
+
+**Cherry-picked PRs in the 16.2.12 backport** (in order, per the [PR body](https://github.com/vercel/next.js/pull/95831)):
+
+- [#92277](https://github.com/vercel/next.js/pull/92277) - Resolve `compilerOptions.paths` in tsconfigs without `compilerOptions.baseUrl` (prerequisite; source change only, not the test reorganization)
+- [#95639](https://github.com/vercel/next.js/pull/95639) - `(TypeScript 7 Support) Add experimental TypeScript CLI backend`
+- [#95692](https://github.com/vercel/next.js/pull/95692) - Fix termination handling
+- [#95753](https://github.com/vercel/next.js/pull/95753) - Better support the CLI spinner when running the TSC CLI
+
+Together: opt-in CLI backend + correct termination + better spinner. The legacy Compiler API backend is preserved as the default with actionable TS 7 migration guidance instead of a crash. **47 files** in the backport (~+1.4k / -300 LOC; primarily new `runTypeScriptCli.ts` + `loadTsConfig.ts` + test coverage).
+
+#### `next@15.5.22` Hard-Rejects TypeScript 7 (PR [#96110](https://github.com/vercel/next.js/pull/96110))
+
+This is a **minimal mitigation**, not a feature. The full TypeScript 7 backend is not backported to 15.5.x (the team judged it overkill for a stable line that pins TS via `getTypeScriptPackageSpec` to `typescript@5.8.2`). What 15.5.22 does is **fail fast with an actionable error** instead of letting the user see the cryptic "missing `typescript.js`" failure mode.
+
+**The boundary, verified by the PR author:**
+
+| Installed `typescript` | Outcome on `next@15.5.22` |
+|---|---|
+| `5.8.2` (the pinned default) | accepted |
+| `6.0.x` (including `6.0.0-beta`) | accepted |
+| `7.0.0-dev.*` | rejected |
+| `7.0.0-beta` | rejected |
+| `7.0.0-rc` | rejected |
+| `7.0.0` | rejected |
+| `7.0.2` (current GA) | rejected |
+
+The check uses the `7.0.0-0` sentinel with `includePrerelease` so prerelease tags are caught too. `hasNecessaryDependencies` now also exposes the resolved `typescript/package.json` path; `verifyTypeScriptSetup` reads that version up front and, if it matches the rejection boundary, throws a `CompileError` with guidance to "install TypeScript 6 or upgrade Next.js", **before** the `require('typescript')` call runs. Applies to both `next dev` and `next build`.
+
+**What 15.5.x users must do today:**
+
+1. **Stay on TypeScript 6.x** (`typescript@^6.0.0` is the safe range). 15.5.x does not and will not support TS 7. Don't `npm install -D typescript@latest` on a Next 15.5.x project - it will hard-fail with the actionable error.
+2. **Or upgrade to `next@16.2.12`** to use TS 7 via `experimental.useTypeScriptCli: true`. This is the supported escape hatch.
+3. **For OSS plugins / monorepo packages** declaring `peerDependencies.typescript`: stay on `">=5.8.2 <7.0.0"` (the 15.5.x install range) or `">=6.0.0"` (the 16.2.x install range). Do not widen to `">=7.0.0"` unless the plugin only ships on `next@16.2.12+` AND uses TS 7-only APIs.
+
+**Why this matters now:** TS 7.0.2 has been GA for 17 days. `npm view typescript dist-tags.latest` returns `7.0.2`. A developer running `npm install -D typescript@latest` on a fresh checkout of a `next@15.5.21` project previously saw a confusing crash inside `verify-typescript-setup`; on `next@15.5.22` they see a single clear error: "TypeScript >= 7.0.0 is not supported on this Next.js line. Install typescript@^6 or upgrade to next@16.2.12+."
+
+Sources:
+
+- [Next.js PR #95831 - Backport TypeScript 7 fixes to next-16-2](https://github.com/vercel/next.js/pull/95831) (merged 2026-07-23T20:42:04Z, 47 files, 16.2.12 stable)
+- [Next.js PR #96110 - [15.5] Reject TypeScript >= 7.0 with an actionable error](https://github.com/vercel/next.js/pull/96110) (merged 2026-07-24T07:10:53Z, lukesandberg, 15.5.22 stable)
+- [Next.js PR #95639 - (TypeScript 7 Support) Add experimental TypeScript CLI backend](https://github.com/vercel/next.js/pull/95639) (wbinnssmith, canary.83 origin - 16.2.12 backport)
+- [Next.js PR #95837 - 16.2 mitigation: reject TypeScript >= 7.0 with an actionable error](https://github.com/vercel/next.js/pull/95837) (the original 16.2-side port that PR #96110 ports to 15.5)
+- [Next.js issue #95801 - `next build` crashes with `SIGSEGV`/`SIGABRT` when `typescript@7` is installed](https://github.com/vercel/next.js/issues/95801) (the user report driving both mitigations)
+- [GitHub: v16.2.12 release tag](https://github.com/vercel/next.js/releases/tag/v16.2.12)
+- [GitHub: v15.5.22 release tag](https://github.com/vercel/next.js/releases/tag/v15.5.22)
+- [Next.js `experimental.useTypeScriptCli` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli)
+
 
 ## Common Mistakes
 

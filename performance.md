@@ -2232,6 +2232,31 @@ A known limitation remains: React's fake frame URLs are not yet fully reversible
 - [PR #96210 — Pass fallback params to the dev validation worker as maps](https://github.com/vercel/next.js/pull/96210) · merged 2026-07-25T13:15:35Z · **canary-branch ahead of canary.96** (internal cleanup)
 - [Next.js 16.3.0-canary.96 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.96) (2026-07-25T00:00:34Z — the tag these commits sit ahead of)
 
+### Edge Sandbox Timeout Leak Fix (PR [#96161](https://github.com/vercel/next.js/pull/96161), petehunt, merged 2026-07-25T18:42:18Z — SHIPPED in `16.3.0-canary.97` 2026-07-25T23:56:51Z)
+
+Fire-and-forget `setTimeout` calls in the Edge runtime sandbox (e.g. from middleware) were tracked forever by Next.js's sandbox `TimeoutsManager`, even after the timeout fired naturally. In a long-lived standalone/self-hosted server this made tracked timeout resources grow monotonically, producing step-like heap growth and eventual OOM.
+
+**Root cause:** `TimeoutsManager.add()` pushes each timeout id into a `resources` array. When a one-shot timeout fires naturally, `webSetTimeoutPolyfill`'s `finally` clears the underlying Node timer (the workaround for [nodejs/node#53335](https://github.com/nodejs/node/issues/53335)) but never removes the id from the manager. The id was only dropped if user code calls `clearTimeout(id)` or the whole module context is torn down (`clearModuleContext`, introduced in [#57235](https://github.com/vercel/next.js/pull/57235)). The natural-completion path — module context stays alive, timeout finishes on its own — was missing, so ids accumulated for the lifetime of the process.
+
+**Fix:**
+
+- `TimeoutsManager.create()` now wraps the callback so the timeout untracks its own id once it has run. The Node-timer workaround and the `this`/args binding in `webSetTimeoutPolyfill` are preserved.
+- Refactored the base `ResourceManager.remove()` into `untrack()` (stop tracking) + `destroy()`, so natural completion can release tracking without a redundant `clearTimeout`.
+- **Intervals are intentionally unchanged** — they fire repeatedly and must remain tracked until `clearInterval` / `removeAll`.
+- Added a unit test covering natural release; asserts no monotonic growth across repeated fire-and-forget cycles.
+
+**When this matters:**
+
+- **Self-hosted / standalone Node servers** (not Vercel, not Lambda) — these keep a long-lived process, so the leak accumulates. This is the deployment shape the original report came from.
+- **Anywhere you call `setTimeout(callback, ms)` from middleware or Edge runtime code** without an explicit `clearTimeout` — most debouncing, retry-with-backoff, and `AbortSignal.timeout` patterns fall into this category.
+- Vercel deployments and serverless platforms recycle the process frequently enough that the leak is unlikely to be observable in production — the bug is "real but masked by short process lifetime".
+
+**Workaround before canary.97:** None easy — keep middleware fire-and-forget timeout usage minimal, or wrap with explicit `clearTimeout` once the callback is observed to have run (defeats the purpose). Upgrade to `next@16.3.0-canary.97` or later, or wait for the next stable 16.3.x that includes this fix.
+
+**Sources:**
+
+- [PR #96161 — fix(sandbox): release one-shot timeout ids after they run](https://github.com/vercel/next.js/pull/96161) · merged 2026-07-25T18:42:18Z · **SHIPPED in `16.3.0-canary.97`** (petehunt)
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |

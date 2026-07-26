@@ -374,6 +374,100 @@ npm install -D tailwindcss @tailwindcss/vite
 - `noUncheckedIndexedAccess` — arrays/objects return `T | undefined` on index access
 - `exactOptionalPropertyTypes` — `?:` vs `!:` semantics are strict
 
+## TypeScript 7 Integration (July 25, 2026 — next@16.2.12 / next@15.5.22 / next@16.3.0-canary.97)
+
+Next.js now ships **explicit TypeScript 7 handling** on every supported line. The behavior differs by branch:
+
+- **`next@16.2.12`** (latest stable, shipped 2026-07-25T20:45:53Z): **Supports TS 7** via the opt-in `experimental.useTypeScriptCli` flag. The same flag exists on 16.3 canary since [PR #95639](https://github.com/vercel/next.js/pull/95639); [PR #95831](https://github.com/vercel/next.js/pull/95831) backported it to the stable line (cherry-picks [#92277](https://github.com/vercel/next.js/pull/92277) + #95639 + [#95692](https://github.com/vercel/next.js/pull/95692) + [#95753](https://github.com/vercel/next.js/pull/95753)).
+- **`next@15.5.22`** (backport, shipped 2026-07-25T20:45:27Z): **Hard-rejects TS 7** with an actionable `CompileError`. [PR #96110](https://github.com/vercel/next.js/pull/96110) by lukesandberg ports the [16.2 mitigation #95837](https://github.com/vercel/next.js/pull/95837) to the 15.5.x line as a minimal fail-fast.
+- **`next@16.3.0-canary.97`** (shipped 2026-07-25T23:56:51Z): Same as 16.2.12 — `experimental.useTypeScriptCli: true` is the path forward.
+
+### Why this matters now
+
+TypeScript 7.0.2 has been GA since **2026-07-08** and is now the `latest` npm dist-tag. A developer running `npm install -D typescript@latest` on a Next 15.5.x project previously saw a cryptic crash inside `verify-typescript-setup`; on `next@15.5.22` they get a single clear error. On 16.2.12+ with the flag, they get real TS 7 support.
+
+### Setup on `next@16.2.12` (the supported TS 7 path)
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: true, // opt into the project-local tsc (Go-native on TS 7)
+  },
+}
+export default nextConfig
+```
+
+```jsonc
+// package.json
+{
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "@typescript/typescript6": "^6.0.4" // compat fallback for tooling
+  },
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "build":     "next build"
+  }
+}
+```
+
+**How `experimental.useTypeScriptCli` works:**
+
+- When the flag is `true` AND installed `typescript` is `>=7.0.0` (including `7.0.0-dev.*` / `7.0.0-beta` / `7.0.0-rc`): Next.js shells out to the project-local `tsc` binary for type generation and `next build`'s type-check path. This is the only configuration that gets real TS 7 support on the 16.2 line.
+- When the flag is `true` but installed `typescript` is `<7.0.0`: Next.js still shells out to the local `tsc` (which is the TS 6 binary), preserving the existing behavior with a fast native path.
+- When the flag is unset/`false` (the default): Next.js keeps using the legacy TS Compiler API backend, which can no longer find `typescript/lib/typescript.js` under TS 7 and degrades to the friendly guidance path with an actionable warning.
+
+### Setup on `next@15.5.22` (the rejected TS 7 path)
+
+```bash
+# On next@15.5.22, this fails fast with an actionable error:
+npm install -D typescript@latest
+# → CompileError: TypeScript >= 7.0.0 is not supported on this Next.js line.
+#   Install typescript@^6 or upgrade to next@16.2.12+.
+```
+
+**What to do:**
+
+1. **Stay on TypeScript 6.x** (`typescript@^6.0.0`). Don't run `npm install -D typescript@latest` on a 15.5.x project — it hard-fails.
+2. **Or upgrade to `next@16.2.12`** to use TS 7 via `experimental.useTypeScriptCli: true`.
+3. **OSS plugins / monorepo packages** declaring `peerDependencies.typescript`: stay on `">=5.8.2 <7.0.0"` (15.5.x install range) or `">=6.0.0"` (16.2.x install range). Do not widen to `">=7.0.0"` unless the plugin only ships on `next@16.2.12+` AND uses TS 7-only APIs.
+
+### Audit recipe
+
+Check the installed TypeScript version against the Next.js line you're on:
+
+```bash
+# 1. What's installed?
+npm ls typescript @typescript/typescript6 2>/dev/null
+node -p "require('./node_modules/typescript/package.json').version"
+
+# 2. What Next.js line are you on?
+npm ls next | head -3
+
+# 3. Decide:
+#    next@15.5.22+ : require typescript@<7.0.0 ; reject >=7.0.0
+#    next@16.2.12+ : opt into experimental.useTypeScriptCli for full TS 7 support
+#    next@16.3.0-canary.97+ : same as 16.2.12
+```
+
+If you see the actionable error on 15.5.22, downgrade TypeScript: `npm install -D typescript@^6`.
+
+### Sources
+
+- [Next.js PR #95831 — Backport TypeScript 7 fixes to next-16-2](https://github.com/vercel/next.js/pull/95831) (47 files; 16.2.12 stable)
+- [Next.js PR #96110 — [15.5] Reject TypeScript >= 7.0 with an actionable error](https://github.com/vercel/next.js/pull/96110) (lukesandberg; 15.5.22 stable)
+- [Next.js PR #95639 — (TypeScript 7 Support) Add experimental TypeScript CLI backend](https://github.com/vercel/next.js/pull/95639) (wbinnssmith; canary.83 origin)
+- [Next.js PR #95837 — 16.2 mitigation: reject TypeScript >= 7.0 with an actionable error](https://github.com/vercel/next.js/pull/95837) (the 16.2-side port that PR #96110 ports to 15.5)
+- [Next.js issue #95801 — `next build` crashes with `SIGSEGV`/`SIGABRT` when `typescript@7` is installed](https://github.com/vercel/next.js/issues/95801)
+- [GitHub: v16.2.12 release tag](https://github.com/vercel/next.js/releases/tag/v16.2.12)
+- [GitHub: v15.5.22 release tag](https://github.com/vercel/next.js/releases/tag/v15.5.22)
+- [GitHub: v16.3.0-canary.97 release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.97)
+- [Next.js `experimental.useTypeScriptCli` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli)
+
+See `typescript.md` → "TypeScript 7.0 Ecosystem Readiness — The Week-One Reality" for the broader ecosystem picture (typescript-eslint blocked on TS 7, ESLint core blocked on typescript-eslint, Volar-based template checkers blocked until Strada API ships in TS 7.1).
+
 ## Vite Configuration
 
 ### `vite.config.ts` (with Tailwind v4)
