@@ -614,6 +614,78 @@ npm install @hookform/resolvers@^5.5.3
 - [PR #860 — Zod v4 locale/global error customization](https://github.com/react-hook-form/resolvers/issues/860)
 - [PR #861 — Conditional/dynamic schema resolution](https://github.com/react-hook-form/resolvers/issues/861)
 
+## @hookform/resolvers 5.5.4–5.5.7 (July 26, 2026) — Cross-Resolver Bug-Fix Batch (AJV + Yup + Zod v3 + Valibot ERESOLVE)
+
+Four bug-fix releases shipped within ~2 hours (5.5.4 on 2026-07-26T07:48:11Z, 5.5.5 on 2026-07-26T08:02:27Z, 5.5.6 on 2026-07-26T09:14:51Z, 5.5.7 on 2026-07-26T09:47:07Z) — the same fast-cadence pattern as the 5.5.0–5.5.3 batch the previous cron covered. **All four are scoped bug fixes for specific resolvers** (AJV, Yup, Zod v3, and the valibot peer-dep matrix), **no breaking changes, no new exports, safe to bump on every release**.
+
+### 1. `5.5.4` — AJV Resolver: `getValues()` No Longer Polluted by AJV Schema Defaults (PR [#862](https://github.com/react-hook-form/resolvers/issues/862), commit [`c4b6aab`](https://github.com/react-hook-form/resolvers/commit/c4b6aab69c64b7a3ea95223552a7996e741aea39))
+
+When the AJV resolver validated a form whose AJV schema declared `default` for any property, the **AJV resolver was merging those schema defaults into `form.getValues()` on every validation pass** — overwriting whatever the user actually typed with the schema's default. For forms that render a confirmation step, show a receipt, or read the final values out of RHF to post to the server, this was silent data corruption: what you read back wasn't what the user submitted.
+
+**Practical impact:** any project using `@hookform/resolvers/ajv` (or `ajvResolver(schema)` directly) with `ajv` JSON Schemas that include `"default"` on string/number/boolean properties. The 5.5.4 fix isolates the defaults into AJV's internal coercion path (so coercion still happens at submit) without leaking them into `form.getValues()`.
+
+**Audit:** `rg '"default":' schemas/*.json` — if you have AJV schemas with `default` properties AND your form reads `getValues()` after submission to drive subsequent steps / API calls, your users were silently seeing the schema defaults instead of their input. After bumping to 5.5.4+, the values match what the user typed.
+
+**Workaround before 5.5.4:** in the form component, mirror the values to a `useRef` on `onChange` and read from the ref instead of `getValues()`. That workaround can be dropped after the bump.
+
+### 2. `5.5.5` — Yup Resolver: Checkbox Inputs No Longer Stomp the `errors.ref` Property (PR [#863](https://github.com/react-hook-form/resolvers/issues/863), commit [`0f70063`](https://github.com/react-hook-form/resolvers/commit/0f70063beb28496ffac0b5345d75826a077934ee))
+
+The Yup resolver was attaching a top-level `ref` property to the `errors` object it returned, populated with Yup's validation metadata (the failing field's schema path). For `<input type="checkbox">` registered with `register('agree')`, the resulting `form.formState.errors.agree.ref` collided with the standard `react-hook-form` `errors.agree.ref` (which Yup **also** populated, but with different metadata). When you read `form.formState.errors`, the Yup version won, masking the RHF ref.
+
+**Practical impact:** any project using `@hookform/resolvers/yup` with at least one checkbox input, AND code that reads `errors.<fieldname>.ref` to detect "is this field the failing one?" or to drive custom error UI. The fix scopes Yup's metadata into a non-`ref` key so the standard RHF `ref` property is what your code actually receives.
+
+**Audit:** `rg "errors\..*\.ref\b" src/` — if any of those reads are on checkbox fields, your UI was getting Yup metadata instead of RHF metadata. After bumping to 5.5.5+, the value matches what RHF expects.
+
+### 3. `5.5.6` — Zod v3 Resolver: `Module not found` When Importing `zodResolver` (PR [#864](https://github.com/react-hook-form/resolvers/issues/864), commit [`8df10b0`](https://github.com/react-hook-form/resolvers/commit/8df10b070bb9995920424448ea824981c511abc3))
+
+The `@hookform/resolvers/zod` adapter was implicitly relying on a Zod v4-shaped export path (because 5.5.0 / 5.5.1 / 5.5.2 / 5.5.3 all targeted Zod v4 resolver fixes). Projects on **Zod v3** (`zod@^3.x`) saw `Module not found: Cannot find module '@hookform/resolvers/zod'` (or runtime `Cannot find package` errors) when they imported `zodResolver` from the package. The 5.5.6 fix re-imports via a Zod-version-agnostic path so the adapter resolves on both v3 and v4.
+
+**Practical impact:** projects on `zod@^3.x` that upgraded `@hookform/resolvers` from `5.4.x → 5.5.x` after July 25, 2026. The 5.5.6 bump makes `zodResolver` resolve cleanly regardless of which Zod major is installed.
+
+**Audit:** `rg '"zod":' package.json | grep -E '"~?3\.'` — if you see Zod 3.x in `package.json` AND `@hookform/resolvers` is `>=5.5.0 <5.5.6`, you hit this. Bump to 5.5.6+ and the import works.
+
+**Migration note for Zod v3 projects staying on the resolver:** the 5.5.6+ adapter is identical at the API surface (still `zodResolver(schema)`); only the internal import path changed. No code change needed.
+
+### 4. `5.5.7` — Install: ERESOLVE Conflict with `valibot` (PR [#865](https://github.com/react-hook-form/resolvers/issues/865), commit [`722ef6e`](https://github.com/react-hook-form/resolvers/commit/722ef6e42eb29718763a66cfea91fe79e9cae081))
+
+`npm install @hookform/resolvers@5.5.4` (or `5.5.5` / `5.5.6`) on a project that **already had `valibot` installed** (typically projects using the valibot resolver or just pulling valibot for `safeParse`-style utility) failed with:
+
+```
+npm error ERESOLVE could not resolve:
+npm error Conflicting peer dependency: @hookform/resolvers@5.4.3
+```
+
+The root cause was a peer-dep range regression: `@hookform/resolvers@5.5.4–5.5.6` declared a peer that valibot's existing install couldn't satisfy without `--legacy-peer-deps`. The 5.5.7 fix relaxes the peer range so a clean `npm install` works alongside `valibot` (and any other peer that ships in the same `peerDependenciesMeta.optional = true` family).
+
+**Practical impact:** anyone adding `@hookform/resolvers@5.5.4–5.5.6` to a project with valibot (even transitively, via another dep) hit `ERESOLVE`. Bumping to 5.5.7+ resolves it without needing `--legacy-peer-deps` or `--force`.
+
+**Audit:** `rg '"valibot":' package.json` — if valibot is present AND your last install of `@hookform/resolvers` failed with ERESOLVE, bump to 5.5.7.
+
+### 5. Recommended Version Pin (Updated)
+
+```bash
+npm install @hookform/resolvers@^5.5.7
+```
+
+> Pin moved up from `^5.5.3` (the previous cron's recommendation) to `^5.5.7` to capture the AJV / Yup / Zod v3 / valibot ERESOLVE fixes in a single bump.
+
+**Migration checklist (5.5.3 → 5.5.7):**
+- [ ] `npm install @hookform/resolvers@^5.5.7` — no peer-dep churn on the project's own deps; the 5.5.7 peer relaxation only affects installs of `@hookform/resolvers` itself
+- [ ] If you mirror `form.getValues()` to a `useRef` because of the AJV default-leak (5.5.4), drop the workaround
+- [ ] If your error UI reads `errors.<field>.ref` on checkbox fields with the Yup resolver (5.5.5), re-test after the bump — you'll start receiving RHF metadata again instead of Yup metadata
+- [ ] If you were stuck on `@hookform/resolvers@5.4.x` because `5.5.0–5.5.6` ERESOLVEd against valibot (5.5.7), the bump unblocks the upgrade
+- [ ] **No migration required** if you only use the Zod resolver on `zod@^4` with no checkboxes and no `getValues()` reads
+
+**Sources:**
+- [@hookform/resolvers v5.5.4 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.4)
+- [@hookform/resolvers v5.5.5 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.5)
+- [@hookform/resolvers v5.5.6 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.6)
+- [@hookform/resolvers v5.5.7 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.7)
+- [PR #862 — AJV: getValues() default-leak fix](https://github.com/react-hook-form/resolvers/issues/862)
+- [PR #863 — Yup: checkbox ref-property fix](https://github.com/react-hook-form/resolvers/issues/863)
+- [PR #864 — Zod v3 module-not-found import fix](https://github.com/react-hook-form/resolvers/issues/864)
+- [PR #865 — valibot ERESOLVE peer-dep fix](https://github.com/react-hook-form/resolvers/issues/865)
+
 ## Basic Setup
 
 ```bash
@@ -1343,3 +1415,7 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **RHF 7.83: not re-running `npx tsc --noEmit` after bumping to 7.83.0** — the 10-level recursion hard cap (PR #13529) is a measurable `tsc` win on deeply-typed forms; verify it landed by timing the type-check before/after
 - **RHF 7.83: massaging `e.target.files` manually on `<input type="file">` registered via `register()`** — `getEventValue` (PR #13289) now yields an `Array<File>`; the manual `FileList → Array` conversion can be dropped
 - **RHF 7.83: recreating the `control` object in tests / HOCs without re-subscribing the `useController`** — PR #13603 fixed `useController` to follow the current `control`, so old test code that "worked by accident" may now expose previously-masked bugs; audit the test expectations
+- **`@hookform/resolvers` 5.5.4: AJV resolver silently overwriting `getValues()` with AJV `default` values** — every validation pass was merging schema defaults into the values object. Forms that read `getValues()` after submit (confirmation step, receipt render, post-submit API call) shipped the schema defaults instead of user input. Bump to `^5.5.7` and drop any `useRef`-mirror workaround you wrote to side-step the leak.
+- **`@hookform/resolvers` 5.5.5: Yup resolver stomp on `errors.ref` for checkbox fields** — Yup's metadata populated a top-level `errors.ref` that masked RHF's `errors.<field>.ref` on `<input type="checkbox">` fields. Custom error UI reading `errors.<field>.ref` on checkboxes was getting Yup schema-path metadata, not RHF metadata. Bump to `^5.5.7` and re-test your checkbox error UI.
+- **`@hookform/resolvers` 5.5.6: `zodResolver` import throws `Module not found` on `zod@^3.x`** — projects still on Zod v3 broke on `5.5.0–5.5.5` because the Zod adapter relied on a v4-shaped export path. Bump to `^5.5.7` and the import resolves on both Zod v3 and v4 (no code change needed).
+- **`@hookform/resolvers` 5.5.7: `npm install` ERESOLVE with `valibot` already installed** — the 5.5.4–5.5.6 peer range was too tight to coexist with `valibot`. Bump to `^5.5.7` (or pin the older `@hookform/resolvers` version with `--legacy-peer-deps` if you can't bump yet).
