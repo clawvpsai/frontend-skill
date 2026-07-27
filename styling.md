@@ -494,6 +494,239 @@ export default config
 - [Vite PR #22792 — `feat(css): export PostCSS config type for type-safe configs`](https://github.com/vitejs/vite/pull/22792)
 - [Vite issue #19109 — Original feature request](https://github.com/vitejs/vite/issues/19109)
 
+## Tailwind v4 + shadcn/ui Migration Reference — Renamed Utilities, Animation Plugin Swap, OKLCH, `shadcn apply` Presets (April–July 2026)
+
+Everything that breaks (or quietly changes) when you migrate a real shadcn/ui project from Tailwind v3 → v4, plus the new April 2026 `shadcn apply` / `shadcn preset` workflow for portable design systems. These are the *migration gotchas the official `@tailwindcss/upgrade` tool does NOT auto-fix*, and the things every Tailwind v4 shadcn project needs to know.
+
+### Renamed Utilities — The Official Tailwind v4 Table
+
+Tailwind v4 renamed the default shadow / radius / blur / ring / outline scales so every utility has a named value. **The bare names still work for backward compatibility but `<utility>-sm` looks different** until you update. From [the Tailwind v4 upgrade guide](https://tailwindcss.com/docs/upgrade-guide):
+
+| v3 utility | v4 utility | Where it hits shadcn |
+|---|---|---|
+| `shadow-sm` | `shadow-xs` | `Card`, `Dialog`, `Popover`, `Sheet` |
+| `shadow` | `shadow-sm` | same as above (cards, dialogs, popovers) |
+| `drop-shadow-sm` | `drop-shadow-xs` | Custom `Card` with image header |
+| `drop-shadow` | `drop-shadow-sm` | Custom `Card` with image header |
+| `blur-sm` | `blur-xs` | `Skeleton`, dialog backdrop blur |
+| `blur` | `blur-sm` | Same |
+| `backdrop-blur-sm` | `backdrop-blur-xs` | `Dialog` overlay, `Sheet` |
+| `backdrop-blur` | `backdrop-blur-sm` | Same |
+| `rounded-sm` | `rounded-xs` | `Button`, `Input`, `Badge`, `Avatar` |
+| `rounded` | `rounded-sm` | Same |
+| `outline-none` | `outline-hidden` | All focus rings on `Button`, `Input`, `Select` |
+| `ring` | `ring-3` | All focus rings on every interactive component |
+
+Two non-obvious defaults also changed:
+
+```css
+/* In v4, the bare `ring` is now 1px wide and currentColor (was 3px blue-500 in v3) */
+/* Most shadcn focus rings look visibly thinner after upgrade. Fix per-use: */
+<input className="ring-3 ring-blue-500" />
+
+/* Or restore the v3 default globally via @theme — supported for compat, NOT idiomatic v4 */
+@theme {
+  --default-ring-width: 3px;
+  --default-ring-color: var(--color-blue-500);
+}
+```
+
+```css
+/* In v4, the `outline` utility sets outline-width: 1px by default (was 0) and
+   all `outline-<number>` utilities default outline-style to solid, so you can drop the standalone `outline` class */
+<button className="outline-2 outline-blue-500" />   /* works as you'd expect, no `outline` class needed */
+```
+
+**Migration audit recipe:**
+
+```bash
+# Grep your shadcn output for v3 utility names that v4 silently downscales
+grep -REn 'shadow-sm|shadow |drop-shadow-sm|drop-shadow |blur-sm|blur |backdrop-blur-sm|backdrop-blur |rounded-sm|rounded |outline-none|ring[^-]' src/
+# Anything matching these will look thinner/smaller after the upgrade tool runs
+```
+
+### `tw-animate-css` — The Replacement for `tailwindcss-animate` (shadcn deprecation, March 2025)
+
+**shadcn deprecated `tailwindcss-animate` in favor of [`tw-animate-css`](https://github.com/Wombosvideo/tw-animate-css)** (the v4-native, pure-CSS replacement). All new shadcn projects install `tw-animate-css` by default. If you upgrade an existing project, popovers/dialogs/sheets **silently lose their open/close animations** until you complete this swap.
+
+**Migration steps** (from [shadcn/ui Tailwind v4 docs](https://ui.shadcn.com/docs/tailwind-v4), March 19, 2025):
+
+```bash
+# 1. Remove the old package
+npm uninstall tailwindcss-animate
+
+# 2. Install the v4 replacement (NOT a Tailwind plugin — it's a CSS file)
+npm install -D tw-animate-css
+
+# 3. Update globals.css — swap the @plugin directive for a plain @import
+```
+
+```diff
+- @plugin 'tailwindcss-animate';
++ @import "tw-animate-css";
+```
+
+**What `tw-animate-css` actually ships:**
+
+- Ready-to-use animations: `animate-accordion-down`, `animate-accordion-up`, `animate-caret-blink`
+- Enter/exit utilities: `animate-in fade-in slide-in-from-top-8 duration-500` (same API surface as `tailwindcss-animate`)
+- Transform utilities: `fade-<io>`, `slide-in-from-{top,right,bottom,left}-<n>`, `zoom-<io>-<n>`, `spin-<io>-<n>`
+- Pure CSS — embraces v4's CSS-first architecture, no JavaScript plugin required
+- Tree-shaken — Tailwind only ships the animation classes you actually use
+
+**Vite gotcha** (real-world pitfall): don't try `@import 'tw-animate-css/dist/tw-animate.css'` — `tw-animate-css` does NOT expose the dist path via the `exports` field and Vite will reject it. Always use `@import "tw-animate-css"` (the bare package specifier).
+
+**Compatibility note from the upstream README:** *Not a 100% drop-in replacement — covers the parts shadcn uses; if you had exotic custom animations defined via the JS plugin's `addPlugin` API you'll need to port them to v4's `@theme` + custom utility syntax.*
+
+**Audit recipe:**
+
+```bash
+# Projects still on the old package after upgrade — Dialog/Sheet/Popover animations are silent no-ops
+grep -E 'tailwindcss-animate|@plugin .tailwindcss-animate.' package.json src/**/*.css
+```
+
+### OKLCH Color Migration — shadcn Themes Now Use OKLCH, Not HSL
+
+shadcn/ui migrated all default themes from HSL → OKLCH in March 2025. If your project still uses HSL variables, the dark mode colors look washed-out (HSL gamut is smaller than OKLCH, especially in saturated reds/greens/blues) and you miss the better contrast shadcn ships.
+
+**What the codemod produces (still uses HSL wrappers):**
+
+```css
+/* After running `npx @tailwindcss/upgrade` */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+  }
+}
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+}
+```
+
+**What you want (v4-native, OKLCH):**
+
+```css
+/* Move :root and .dark out of @layer base, wrap values in the colour fn of choice, switch to @theme inline */
+:root {
+  --background: oklch(1 0 0);              /* oklch(lightness chroma hue) */
+  --foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  /* ...etc — see shadcn Base Colors reference for the full oklch scale per palette */
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  /* ...etc */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  /* ...etc */
+}
+```
+
+Three things to fix manually after the codemod:
+
+1. Move `:root` and `.dark` **out of** `@layer base` (the codemod leaves them inside).
+2. Wrap color values in the color function of your choice (`hsl(...)` or `oklch(...)` or `lab(...)`).
+3. Add `inline` to `@theme` → `@theme inline` so the variables resolve at use-site instead of being inlined into the generated utility.
+
+If you want HSL (e.g. you have a custom palette already authored in HSL), the steps are identical — just use `hsl(...)` instead of `oklch(...)` for the wrapping function.
+
+### `shadcn apply` + `shadcn preset` — Portable Design Systems (April 2026)
+
+shadcn added two new CLI commands in April 2026 that turn an existing project's theme into a **shareable preset code** — and let you apply any preset to an existing project without starting over.
+
+**The workflow** (see [shadcn changelog April 2026](https://ui.shadcn.com/docs/changelog/2026-04-shadcn-apply) + [April 2026 preset commands](https://ui.shadcn.com/docs/changelog/2026-04-preset-commands)):
+
+```bash
+# 1. Resolve your current project's theme into a preset code
+pnpm dlx shadcn@latest preset resolve
+# → Preset  code         b5Kc6P0Vc
+#   version      b
+#   style        luma
+#   baseColor    olive
+#   theme        lime
+#   chartColor   sky
+#   iconLibrary  hugeicons
+#   font         geist
+#   radius       default
+#   url          https://ui.shadcn.com/create?preset=b5Kc6P0Vc
+
+# Monorepo support — point at one app
+pnpm dlx shadcn@latest preset resolve -c apps/web
+
+# Machine-readable
+pnpm dlx shadcn@latest preset resolve --json
+
+# 2. Inspect a preset before applying it
+pnpm dlx shadcn@latest preset decode b5owWMfJ8l
+# → full breakdown: version, style, baseColor, theme, chartColor, iconLibrary, font, fontHeading, radius, menuAccent, menuColor, url
+
+# 3. Share as a link
+pnpm dlx shadcn@latest preset url b5owWMfJ8l
+# → https://ui.shadcn.com/create?preset=b5owWMfJ8l
+
+# Open in the browser-based customizer
+pnpm dlx shadcn@latest preset open b5owWMfJ8l
+
+# 4. Apply a preset to an EXISTING project (without nuking it)
+pnpm dlx shadcn@latest apply --preset b2D0vQ7G4
+# → reinstalls components, updates theme, colors, CSS variables, fonts, icons
+# → keeps the current base + RTL settings from your existing project even if the preset URL had different values
+```
+
+**Why this matters in a skill:**
+
+- **AI-agent friendly** — preset codes are short, shareable, and human-readable. Pass one to a coding agent instead of a 200-line `globals.css` dump.
+- **Cross-tool** — the same preset code works in `shadcn/create`, Claude, v0, Replit, Cursor (via the `add` / `init` / `apply` commands).
+- **Round-trip** — `preset resolve` makes your current setup portable; `preset apply` lets you swap to a different one.
+- **Audit-friendly** — `preset decode` gives you a complete diff of what the preset would change before you run `apply`.
+
+**Use case patterns:**
+
+| Scenario | Command |
+|---|---|
+| Starting a fresh project from a known preset | `pnpm dlx shadcn@latest init --preset b5Kc6P0Vc` |
+| Migrating an existing project to a new design system | `pnpm dlx shadcn@latest apply b5Kc6P0Vc` |
+| Sharing your project's theme with a teammate or coding agent | `pnpm dlx shadcn@latest preset resolve` → share the code |
+| Previewing what a preset would do before applying | `pnpm dlx shadcn@latest preset decode b5owWMfJ8l` |
+| Versioning your design system in CI | `preset resolve --json` → diff against the previous run |
+
+**Migration impact:** non-breaking. The preset codes are an additive layer on top of `components.json` — your existing project continues to work with `npx shadcn@latest add <component>` as before; `preset apply` just adds the apply step.
+
+### Common Mistakes (Tailwind v4 + shadcn migration)
+
+These are the silent-failure patterns that bite projects during the v3 → v4 transition:
+
+- **Forgetting `tw-animate-css`** — Dialog / Sheet / Popover animations silently become no-ops; check `package.json` and `globals.css` for stale `tailwindcss-animate` references after every dep update.
+- **`@import 'tw-animate-css/dist/tw-animate.css'`** — Vite rejects this; the `exports` field doesn't expose `dist/`. Use bare `@import "tw-animate-css"`.
+- **HSL values left in `:root` after codemod** — OKLCH palette gives noticeably better color, especially saturated reds/greens/blues; audit by running `npx shadcn@latest add --all --overwrite` and re-reading the generated theme against the shadcn Base Colors reference.
+- **`@theme` vs `@theme inline`** — without `inline`, the variables are inlined at build time into the generated utilities (HMR breaks for hot color swaps); always use `@theme inline` for shadcn-style CSS-variable themes.
+- **Bare `ring` class looks 1px** — that's the v4 default. Use `ring-3` to match the v3 visual.
+- **Bare `rounded` / `shadow` look smaller** — they were renamed down the scale. Use `rounded-sm` / `shadow-sm` to match the v3 visual.
+- **Running `preset apply` on a project with custom components** — `apply` reinstalls ALL existing components to the preset's style; custom hand-written components are preserved but you may want to review the diff with `preset decode` first.
+- **Vite + shadcn `init` (April 2026)** — the init templates now ship with `vite`-preset-by-default in some `shadcn@latest` builds; if you're on a Vite project and the templates look wrong, run `pnpm dlx shadcn@latest init --preset b5Kc6P0Vc` explicitly with a known preset code rather than relying on the interactive picker.
+
+**Sources:**
+- [Tailwind v4 upgrade guide — Renamed utilities + ring/outline default changes](https://tailwindcss.com/docs/upgrade-guide)
+- [shadcn/ui Tailwind v4 docs — `tailwindcss-animate` → `tw-animate-css` deprecation (March 19, 2025)](https://ui.shadcn.com/docs/tailwind-v4)
+- [`tw-animate-css` GitHub repo](https://github.com/Wombosvideo/tw-animate-css)
+- [`tw-animate-css` on npm](https://www.npmjs.com/package/tw-animate-css)
+- [shadcn/ui changelog — April 2026 `shadcn apply`](https://ui.shadcn.com/docs/changelog/2026-04-shadcn-apply)
+- [shadcn/ui changelog — April 2026 `shadcn preset` commands](https://ui.shadcn.com/docs/changelog/2026-04-preset-commands)
+- [shadcn/ui Tailwind v4 docs — OKLCH migration](https://ui.shadcn.com/docs/tailwind-v4)
+- [Tailwind v4 + shadcn/ui migration gotchas roundup](https://www.buildmvpfast.com/blog/tailwind-v4-shadcn-ui-migration-breaking-changes-guide-2026)
+- [Vite + shadcn + tw-animate-css path-export pitfall](https://devs.keenthemes.com/question/issue-migrating-from-tailwindcss-animate-to-tw-animate-css-in-vitetailwind-project-based-on-reui-changelog)
+- [shadcncraft Create — preset workflow overview](https://shadcncraft.com/blog/create-your-own-design-system-with-shadcncraft-create)
+
 ## shadcn/typeset — Stream-Friendly Typography (July 14, 2026)
 
 If your app renders markdown in multiple surfaces (blog, docs, chat, email, AI assistant output), you'll hit a recurring problem: every surface needs its own typography config, and the styles drift apart over time. **`shadcn/typeset`** is the official answer — released the same week as `shadcn@4.13.0` (July 14, 2026).

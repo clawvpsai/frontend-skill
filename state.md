@@ -736,6 +736,42 @@ Then remove the per-query `// eslint-disable-next-line @tanstack/query/exhaustiv
 - [Discussion #11062 — the original false-positive report](https://github.com/TanStack/query/discussions/11062)
 - [TanStack Query `eslint-plugin-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/eslint-plugin-query/CHANGELOG.md)
 
+## `@tanstack/react-query@5.101.4` + `@tanstack/query-core@5.101.4` — Patch Train Sync (July 21, 2026) + `@tanstack/solid-query@6.0.0-beta.6` Cross-Reference
+
+Same release train (`release-2026-07-21-13-05`) that shipped the `@tanstack/eslint-plugin-query@5.101.4` `exhaustive-deps` fix also republished every adapter package and `@tanstack/query-core` at `5.101.4`. Plus a separate pre-release train (`release-2026-07-22-00-54`) the next day for the Solid Query 6.0.0 beta.
+
+### What 5.101.4 actually contains (the React-track changes)
+
+Looking at the [`@tanstack/react-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md) and [`@tanstack/query-core` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/query-core/CHANGELOG.md) directly:
+
+```text
+@tanstack/react-query 5.101.4   — Patch: Updated dependencies []: @tanstack/query-core@5.101.4
+@tanstack/query-core 5.101.4    — (no entries in CHANGELOG; pure version-bump of 5.101.3)
+```
+
+So the React track on 5.101.4 is a **dependency coordination bump with zero new code** — it exists to align all the adapter packages (`react-query`, `vue-query`, `solid-query`, `svelte-query`, plus all the devtools + persist-client companion packages) on the same version of `@tanstack/query-core`. The headline user-facing change of the day remains the `exhaustive-deps` ESLint fix covered in the section above.
+
+**Audit checklist for projects hitting "why did my lockfile change" questions:**
+
+- The lockfile will show `@tanstack/query-core@5.101.3 → 5.101.4` everywhere (no behavior change).
+- All `@tanstack/*` adapter packages will resolve to `5.101.4` (previously they were at `5.101.3` with `5.101.4` only on the ESLint plugin).
+- If you're on `^5.101.0` or `^5.101.3` in `package.json`, nothing to do — npm/pnpm will pick up `5.101.4` on next install.
+- If you have a tight pin (no caret) on `5.101.3` you can keep it; 5.101.4 has no user-facing changes.
+
+**When does this matter?** Only for projects that publish their own package depending on `@tanstack/react-query` and need their `peerDependencies` to express a floor. The 5.101.4 bump is the new floor; `peerDependencies: { "@tanstack/react-query": ">=5.101.4" }` is now reasonable.
+
+### Solid Query 6.0.0-beta.6 — Awareness (not React-track)
+
+The same week, a separate release train (`release-2026-07-22-00-54`) shipped `@tanstack/solid-query@6.0.0-beta.6` + companion packages (`solid-query-persist-client@6.0.0-beta.6`, `solid-query-devtools@6.0.0-beta.6`). **This is the Solid adapter only**, not React — included here only because the version bump touches the same monorepo and will sometimes show up in cross-repo dependency trees.
+
+**For React projects:** Ignore the v6 beta entirely — it doesn't affect `@tanstack/react-query@5.101.4`. If you see `solid-query` in your dependency tree at all, it's almost certainly a transitive from a misconfigured monorepo; remove it.
+
+### Sources:
+- [`@tanstack/react-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md)
+- [`@tanstack/query-core` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/query-core/CHANGELOG.md)
+- [TanStack Query `release-2026-07-21-13-05` train (latest)](https://github.com/TanStack/query/releases/tag/release-2026-07-21-13-05)
+- [TanStack Query `release-2026-07-22-00-54` train (pre-release, Solid Query v6 beta)](https://github.com/TanStack/query/releases/tag/release-2026-07-22-00-54)
+
 
 ## Zustand Setup
 
