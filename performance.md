@@ -1473,6 +1473,8 @@ const posts = import.meta.glob('./posts/*.mdx', { eager: true })
 
 The implementation also supports: named imports (`import.meta.glob('./posts/*.mdx', { import: 'default' })`), multiple patterns (`['./posts/*.mdx', './drafts/*.mdx']`), negative patterns (`'!./posts/draft-*.mdx'`), custom search path (`{ root: './src' }`), query strings to pick a loader (`'./styles/*.css?raw'`), and TypeScript type generation for the result.
 
+**Options supported (full reference):** `eager`, `import`, `query`, `base`, **`caseSensitive`** (added in [PR #96226](https://github.com/vercel/next.js/pull/96226), canary-branch ahead of canary.97, expected in `16.3.0-canary.98` — see the full section below for behavior, parity with Vite, and implementation details).
+
 **Powered by Turbopack's file watcher** — when a file is added to or removed from the match set, it triggers a recompilation in dev mode, so your site always reflects the latest files.
 
 **`--webpack` not supported.** This is a Turbopack-only feature. Webpack-based builds will throw at compile time.
@@ -2256,6 +2258,51 @@ Fire-and-forget `setTimeout` calls in the Edge runtime sandbox (e.g. from middle
 **Sources:**
 
 - [PR #96161 — fix(sandbox): release one-shot timeout ids after they run](https://github.com/vercel/next.js/pull/96161) · merged 2026-07-25T18:42:18Z · **SHIPPED in `16.3.0-canary.97`** (petehunt)
+
+### Turbopack `import.meta.glob` `caseSensitive` Option (PR [#96226](https://github.com/vercel/next.js/pull/96226), timneutkens, merged 2026-07-26T23:46:17Z — canary-branch ahead of canary.97)
+
+The Vite-compatible `import.meta.glob()` API gained a **`caseSensitive`** option, restoring parity with Vite's `import.meta.glob` semantics. Default is `true` (case-sensitive — same as before). Setting `caseSensitive: false` applies ASCII case-insensitive matching to **directory traversal, filenames, positive patterns, and negative patterns** — meaning `./posts/*.mdx` would match `./Posts/Hello.MDX` on case-insensitive dev hosts (macOS, Windows) when explicitly opted in.
+
+**Why this matters:**
+
+- **Cross-platform parity** — code authored with `caseSensitive: true` (the default) behaves identically on Linux prod / Docker and on macOS / Windows dev hosts, since the underlying regex is constructed via `RegexBuilder::case_insensitive(opts.case_insensitive)`. Without this option, the matching was always case-sensitive at the regex layer regardless of host OS, so patterns behaved correctly on Linux but surprised developers on macOS when a `Post/` directory matched `posts/` only when filenames happened to align.
+- **Sandbox parity with Vite** — Vite's `import.meta.glob` has supported `caseSensitive` since 5.x; projects migrating from Vite to Turbopack no longer lose this option.
+- **No `--webpack` support** — like all `import.meta.glob` features, this is Turbopack-only. Webpack-based builds will throw at compile time.
+
+**Practical usage:**
+
+```ts
+// Default: case-sensitive (same as before — no behavior change for existing code)
+const posts = import.meta.glob('./posts/*.mdx')
+
+// Opt-in to case-insensitive matching — `./posts/*.mdx` will match `./Posts/Hello.MDX`
+const posts = import.meta.glob('./posts/*.mdx', { caseSensitive: false })
+
+// Useful when authoring libraries that ship on case-insensitive dev hosts
+// but should behave identically on case-sensitive Linux prod (default)
+const icons = import.meta.glob('./icons/*.svg', { caseSensitive: true })
+```
+
+**Implementation details (for the curious):**
+
+- New `case_insensitive: bool` field on `GlobOptions` in `turbopack/crates/turbo-tasks-fs/src/glob.rs` (default `false`, which produces case-sensitive matching — matching the pre-PR behavior).
+- New `case_sensitive: bool` field on `ImportMetaGlobOptions` in `turbopack/crates/turbopack-ecmascript/src/references/import_meta_glob.rs` (default `true` — the JS-side default, inverted from the Rust-side default because the public API matches Vite's `caseSensitive: true` default).
+- `Glob::PartialEq` now compares `self.opts == other.opts` (was `self.glob == other.glob` only) — matcher equality considers options, so two globs with different `caseSensitive` are no longer equal.
+- The `new_regex()` helper now takes `opts: GlobOptions` and calls `RegexBuilder::case_insensitive(opts.case_insensitive)` — Rust `regex` crate is ASCII-case-insensitive by default when the `unicode` flag isn't set.
+- TypeScript declarations updated: `packages/next/types/global.d.ts` adds `caseSensitive?: boolean` to `ImportMetaGlobOptions` (JSDoc: "Whether glob matching is case-sensitive. Default: `true`.").
+- `docs/01-app/03-api-reference/08-turbopack.mdx` options-reference table updated to add the row.
+- Diagnostics: a non-boolean `caseSensitive` value emits a `span_warn_with_code` ("import.meta.glob() 'caseSensitive' option must be a constant boolean (true or false), defaulting to true"); an unsupported option string now lists `caseSensitive` in the supported-options list (was `eager, import, query, base`, now `eager, import, query, base, caseSensitive`).
+- 4 new test cases under `turbopack/crates/turbopack-tests/tests/snapshot/import-meta-glob/` + a new fixture under `turbopack/crates/turbopack-tests/tests/snapshot/resolving/import-meta-glob/`.
+- 2 new unit tests in `glob.rs`: `glob_case_insensitive_matching` + `glob_case_insensitive_directory_matching` — both verify that `case-dir/module*.js` doesn't match `Case-Dir/Module.js` with the default but does match with `case_insensitive: true`.
+
+**Expected in `16.3.0-canary.98`** (~2026-07-27T22:30Z–23:00Z based on the previous cycle's prediction cadence, which was off by ~24h for canary.97 — the previous cron's 1.4.95 prediction of ~2026-07-26T23:00Z was correct for the canary-branch advance but canary.98 itself did not cut before the 24h window closed). Until then, install with `npm install next@canary` to pick up the canary-branch ahead of canary.97.
+
+**Workaround before canary.98:** None — if you need case-insensitive matching in `import.meta.glob` and can't use canary, switch to `fs.readdir` + manual filtering or to webpack-based builds (which won't have this option either, but `import.meta.glob` itself isn't supported under webpack anyway).
+
+**Sources:**
+
+- [PR #96226 — Turbopack: support import.meta.glob caseSensitive option](https://github.com/vercel/next.js/pull/96226) · merged 2026-07-26T23:46:17Z · **canary-branch ahead of canary.97** (timneutkens)
+- [Turbopack options reference (`docs/01-app/03-api-reference/08-turbopack.mdx`)](https://nextjs.org/docs/app/api-reference/turbopack#options-reference) — docs PR updated to add the `caseSensitive` row to the options table
 
 ## Web Vitals
 
