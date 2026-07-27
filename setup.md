@@ -1454,6 +1454,38 @@ npx shadcn@latest init
 npx shadcn@latest add button card form input label toast
 ```
 
+### Choosing the Component Base — `--base` Flag (shadcn 4.13.0+; React Aria added Jul 17, 2026)
+
+`npx shadcn@latest init` accepts a `--base` flag (added in `shadcn@4.13.0`, July 3, 2026) that selects the headless component base the project will use. The flag is **non-interactive** (works in CI / agents) and the value is one of three:
+
+```bash
+# Interactive (prompts: "Which headless library would you like to use?")
+npx shadcn@latest init
+
+# Non-interactive: Base UI (the default since shadcn@4.13.0)
+npx shadcn@latest init --base base
+
+# Non-interactive: Radix UI (the original shadcn base, since Jan 2023)
+npx shadcn@latest init --base radix
+
+# Non-interactive: React Aria (added Jul 17, 2026 — third first-class base)
+npx shadcn@latest init --base aria
+```
+
+| Flag value | Installs | Best for |
+|---|---|---|
+| `--base base` *(default since `shadcn@4.13.0`)* | `@base-ui/react` | Most new projects. Modern API, post-React-Compiler era, smaller bundle. |
+| `--base radix` | `@radix-ui/react-*` | Existing Radix projects; mature ecosystem; widest community mindshare. |
+| `--base aria` | `react-aria-components` (+ `@react-aria/i18n` if you add date/number/i18n components) | Accessibility-heavy / i18n-heavy / mobile-touch apps; Adobe Spectrum-style designs. |
+
+**Why the flag matters for CI / agents:** before `shadcn@4.13.0`, the headless base was a TTY-only interactive prompt — non-interactive `init` (e.g. `pnpm dlx shadcn@latest init --yes` in a Dockerfile or codegen pipeline) silently defaulted to "no headless lib", and downstream `shadcn add` calls then had no native primitive to wire up. With `--base`, non-interactive init is explicit and reproducible. **Pin the flag in any automation** so a future default change (e.g. if shadcn adds a fourth base next year) doesn't silently flip your project's base.
+
+**Equivalent in `shadcn/create`** (the web UI at `ui.shadcn.com/create`): the URL query param drives the same choice — `?base=base`, `?base=radix`, or `?base=aria` (the React Aria preset URL). The default landing page is `?base=base` since `shadcn@4.13.0`.
+
+**Existing projects aren't migrated by `--base`** — `init` is idempotent on files (it only writes files that don't exist) and the `--base` flag is **init-time only**. There is no `shadcn migrate --to=aria` command; to swap bases mid-project, you re-add each component with `--force` (see `components.md` → "shadcn React Aria Support" for the full migration matrix). The CLI uses the installed dep as the source of truth for the current base — `@base-ui/react` vs `@radix-ui/react-*` vs `react-aria-components` in `package.json` is how subsequent `shadcn add` calls know which registry scope to pull from.
+
+**For Tailwind v4 + shadcn** specifically: all three bases share the same Tailwind v4 stylesheet layout (one `@theme inline { ... }` block in `globals.css`); the differences are only in the React-side primitive imports + state-selector CSS variants. Migrating from one base to another is a code-side rewrite, not a CSS-side one.
+
 ### `globals.css` (Tailwind v4 + shadcn/ui)
 
 ```css

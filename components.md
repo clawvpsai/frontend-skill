@@ -1731,3 +1731,163 @@ npm install --save-dev shadcn@^4.15.0   # or use npx shadcn@latest ...
 - [PR #11276 — Add a public `addRegistryItems` API](https://github.com/shadcn-ui/ui/pull/11276)
 - [Compare `shadcn@4.14.1...shadcn@4.15.0`](https://github.com/shadcn-ui/ui/compare/shadcn@4.14.1...shadcn@4.15.0)
 - [shadcn registry schema docs](https://ui.shadcn.com/docs/registry)
+
+## shadcn React Aria Support (July 17, 2026) — Third First-Class Component Base
+
+Announced on **July 17, 2026** via the official changelog post ["July 2026 — React Aria"](https://ui.shadcn.com/docs/changelog/2026-07-react-aria) (shadcn twitter: ["React Aria is now available in shadcn/ui. Use \`--base aria\` or choose React Aria in shadcn/create. All components, docs, CLI, styles and skills have been updated for React Aria Components."](https://x.com/shadcn/status/2078142090177806773)), **React Aria is now the third first-class component base in shadcn/ui**, joining **Base UI** (default since `shadcn@4.13.0`, July 3, 2026) and **Radix UI** (the original shadcn base since 2023). The skill previously documented only Base UI and Radix — this section closes the React Aria gap so agents can correctly recommend and use the third base.
+
+### What this is
+
+[React Aria Components](https://react-spectrum.adobe.com/react-aria/components.html) is Adobe's accessible component primitives library — the same building blocks that power Adobe's design tools (Spectrum, Photoshop web, Adobe Express, Acrobat). React Aria has existed since 2022 but wasn't a shadcn base until now. With this addition, the three bases are:
+
+| Base | Package | Default since | Strongest at |
+|---|---|---|---|
+| **Base UI** | `@base-ui/react` | `shadcn@4.13.0` (Jul 3, 2026) | Modern API, post-React-Compiler era, smaller bundle, designed around `use()` + Suspense |
+| **Radix UI** | `@radix-ui/react-*` | Original (Jan 2023) → `shadcn@4.13.0` | Mature, widest ecosystem, largest community mindshare, battle-tested in millions of apps |
+| **React Aria** | `react-aria-components` | `shadcn@4.13.x` (Jul 17, 2026) | Accessibility maturity, keyboard/AT coverage, i18n, mobile/touch, the Adobe ecosystem |
+
+**Base UI remains the default** — React Aria is opt-in via `--base aria` (or via the Base UI picker in the init prompt). Existing projects are NOT migrated to React Aria by any CLI command.
+
+### What's actually new (shadcn side)
+
+From the official changelog and shadcn's announcement tweet:
+
+1. **A first-class React Aria base** — React Aria is selectable anywhere a base is selectable: `npx shadcn@latest init --base aria`, the interactive init prompt, `shadcn/create?base=aria`, and any registry-based preset.
+2. **Full component documentation** — every component page at [ui.shadcn.com/docs/components](https://ui.shadcn.com/docs/components) now has parallel React Aria install/usage/composition/examples/API-reference tabs alongside the existing Base UI and Radix tabs.
+3. **All eight styles supported** — React Aria components are available with every style: **Vega, Nova, Maia, Lyra, Mira, Luma, Rhea, Sera**. Each style gets its own React Aria implementation (`aria-vega`, `aria-nova`, `aria-maia`, etc.) analogous to the existing `base-*` and `radix-*` flavors.
+4. **Base-specific output** — React Aria state selectors (`data-focused`, `data-disabled`, `data-focus-visible`, etc.) and dependencies (`react-aria-components`, `@react-aria/i18n`, `@react-aria/live-announcer` as appropriate) are scoped to a separate "aria" registry. Existing Base UI and Radix components in a project are unchanged — adding an `aria-vega-button` to a project on the Base UI base does NOT add React Aria as the base, it just installs that one component's React Aria implementation.
+5. **`shadcn/create` shows all three bases** — at [ui.shadcn.com/create?base=aria](https://ui.shadcn.com/create?base=aria) (and the corresponding `?base=base` / `?base=radix` URLs), the create flow now lists Base UI (default), Radix UI, and React Aria as equal choices.
+
+### How to start with React Aria
+
+```bash
+# Non-interactive init with React Aria
+pnpm dlx shadcn@latest init --base aria
+
+# Interactive init (prompts for "Which headless library would you like to use?")
+pnpm dlx shadcn@latest init
+# → Select: React Aria
+
+# Add React Aria implementations of specific components
+pnpm dlx shadcn@latest add button dialog dropdown-menu tooltip
+# (After --base aria init, `add` picks the aria-* registry item by default)
+
+# Switch to a different base mid-project (advanced — see "Migration" below)
+# The CLI doesn't have a one-shot migrate; you re-add each component with --force
+```
+
+After `init --base aria`, the project's `components.json` records React Aria as the base, the install step pulls `react-aria-components` (and `@react-aria/i18n` for components that need it), and `globals.css` gets the React Aria data-attribute CSS variables (`--color-focus-ring`, `--color-pressed`, etc.) that React Aria primitives read.
+
+### When to pick React Aria over Base UI / Radix
+
+| Situation | Pick | Why |
+|---|---|---|
+| New project, no strong preference | **Base UI** | The default since 4.13.0; modern API; built by the same team that built Radix; best React 19 fit |
+| Existing project on Radix, no reason to leave | **Radix** | Mature, no migration cost, still fully supported |
+| **App needs Adobe-grade accessibility / i18n** (e.g. enterprise B2B, government, healthcare) | **React Aria** | Adobe's Spectrum/Photoshop web/Acrobat stack relies on it; mature keyboard, screen-reader, RTL, and reduced-motion handling |
+| **App has heavy touch / mobile / keyboard requirements** | **React Aria** | Most thorough touch event handling, gesture conflicts, virtual keyboard handling |
+| **You ship to markets with non-Latin scripts** | **React Aria** | First-class `Intl.*` integration, bidirectional text, locale-aware date/number formatting |
+| **You want the smallest React bundle** | **Base UI** | Base UI was built for the post-React-Compiler era and trims dependency tree more aggressively |
+| **You want the widest community mindshare / Stack Overflow coverage** | **Radix** | Most-shared, most-blogged-about; works with the largest set of community examples |
+| **You're integrating with an Adobe product / Spectrum design language** | **React Aria** | Shared primitives; styles compose with Spectrum |
+
+For most new SaaS / consumer apps, **Base UI (default)** remains the right pick. React Aria is the right pick when accessibility/i18n/mobile requirements dominate the requirements doc.
+
+### How React Aria components differ from Base UI / Radix (API surface)
+
+The skill's `components.md` already documents Base UI vs Radix differences in the **Source-level changes worth knowing** section of the shadcn 4.13.0 entry (Dialog `Content` → `Popup`, DropdownMenu → `Menu`+`Popup`, Accordion `Content` → `Panel`). React Aria adds its own naming / state-prop patterns; the most common differences from Base UI:
+
+- **Single `<Dialog>` vs split `<Dialog.Root>` + `<Dialog.Trigger>` + `<Dialog.Content>`** — React Aria's primitives are a single component with render props or slot children, not Radix/Base-UI-style compound components. Composition is via the `<DialogTrigger>` wrapper component, not nested children:
+  ```tsx
+  // Base UI / Radix style
+  <Dialog.Root>
+    <Dialog.Trigger>Open</Dialog.Trigger>
+    <Dialog.Content>...</Dialog.Content>
+  </Dialog.Root>
+
+  // React Aria style
+  <DialogTrigger>
+    <Button>Open</Button>
+    <Modal>...</Modal>
+  </DialogTrigger>
+  ```
+
+- **Render props vs `asChild`** — React Aria leans on **render props** (`<Button>{props => <a {...props}>...</a>}</Button>`) or **`href`** / **`to`** props on its built-in `<Button>` (which renders as `<a>` when given a URL) instead of Radix's `asChild` / Base UI's `render` prop. shadcn's React Aria adapter wraps this into a familiar `asChild` API where it can, but pure React Aria code reads render-prop-first.
+
+- **Data-attribute selectors** — React Aria primitives emit a richer set of `data-*` attrs than Base UI/Radix: `data-focused`, `data-focus-visible`, `data-pressed`, `data-hovered`, `data-disabled`, `data-invalid`, `data-required`, `data-readonly`, `data-selected`, `data-empty`, `data-loading`. shadcn's React Aria registry ships pre-written Tailwind variants for the common ones (`data-[focus-visible]:ring-2`, `data-[disabled]:opacity-50`, etc.) so the experience matches the existing `data-open:` / `data-closed:` pattern documented for Base UI.
+
+- **i18n context provider** — apps using React Aria's date pickers / number inputs / comboboxes need to wrap the app in `<I18nProvider>` from `@react-aria/i18n`. shadcn's React Aria adapter auto-installs this provider into a fresh project's root layout when you `init --base aria`; if you `add` React Aria components into an existing Base UI or Radix project, you need to add the provider yourself.
+
+- **`onAction` vs `onClick`** — React Aria lists/menus use **`onAction`** (semantic: "user performed the action") instead of **`onClick`** (DOM event). This is a meaningful API divergence that the Base UI / Radix equivalents don't have.
+
+### `components.json` After `init --base aria`
+
+The Base UI vs React Aria difference shows up in `components.json` and `package.json`. After `init --base aria`:
+
+```json
+// components.json — base is recorded implicitly via the deps installed
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "app/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+```json
+// package.json — pulled by `init --base aria`
+{
+  "dependencies": {
+    "react-aria-components": "^1.x",
+    "@react-aria/i18n": "^3.x"      // only if you add date/number/i18n components
+  }
+}
+```
+
+The CLI uses the installed dep (`react-aria-components` vs `@base-ui/react` vs `@radix-ui/react-*`) as the source of truth for the base — there's no formal `headless: "aria" | "base" | "radix"` flag in `components.json` yet (the `--base` flag is init-only and only persists indirectly through which dep the CLI sees installed).
+
+### Migration to React Aria from Base UI / Radix
+
+The CLI doesn't ship a `npx shadcn@latest migrate --to=aria` command. Three paths, in increasing order of effort:
+
+**Path A — Fresh project with React Aria:** spin up a new project with `init --base aria`, copy your custom components and pages into it. Fastest if your project is small or the Base UI / Radix base was the only thing blocking a rebuild.
+
+**Path B — Mixed (acceptable for large codebases mid-migration):** keep your Base UI or Radix base, and add individual React Aria components when you need the extra accessibility / i18n / touch coverage they offer. shadcn supports adding `aria-*` items to any project — the registry scope is per-component, not per-project. The `react-aria-components` package gets added to `package.json` as a side effect; the existing Base UI or Radix packages stay. Bundle size cost: `react-aria-components` is ~30KB minzipped; only worth paying for if you're using it.
+
+**Path C — Full base swap:** re-`init --base aria` over an existing project (the CLI doesn't overwrite your files, but it DOES overwrite `components.json` / `globals.css` / `lib/utils.ts` / etc — back those up first), then re-add each Base UI or Radix component as its React Aria equivalent with `--force`. Expect a half-day of API translation per ~20 components: Dialog (`Content` → `Modal`/`Popover`), DropdownMenu → `Menu`, Accordion `Content` → `Panel`, Tooltip `Provider` → `TooltipTrigger`, Select → `Select`+`Popover`, plus render-prop rewrites for any custom wrappers you have.
+
+### Common Mistakes — React Aria in shadcn
+
+- **Mixing three bases in one project to "diversify"** — each base pulls its own primitive infrastructure; mixing all three costs ~80-100KB minzipped for the redundancy and gains nothing. Pick one per project.
+- **Forgetting `<I18nProvider>`** — React Aria date pickers, comboboxes, number inputs, and calendars all require the provider for locale-aware behavior. shadcn's `init --base aria` adds it to the root layout automatically, but if you `add aria-*` components to an existing project, you must add `<I18nProvider>` to `app/layout.tsx` yourself.
+- **Using `onClick` on a React Aria `<MenuItem>` / `<ListBoxItem>`** — React Aria lists/menus use **`onAction`**, not `onClick`. `onClick` fires on the underlying DOM element but doesn't go through React Aria's action semantics (keyboard activation, touch long-press, screen-reader announcement). Use `onAction` for the semantic intent; reserve `onClick` for DOM-level events only.
+- **Using `asChild` on React Aria components** — shadcn's React Aria adapter wraps the common `asChild` pattern where it can, but the underlying React Aria primitives don't support `asChild` natively. If you hit an `asChild`-related lint warning on a component you can't wrap, fall back to a render prop: `<Button>{props => <a {...props}>...</a>}</Button>`.
+- **Trying to install a Base UI component into a React Aria project without the Base UI dep** — shadcn's Base UI registry items (`base-luma-button`, `base-nova-dialog`, etc.) assume `@base-ui/react` is installed. On a React Aria project without that dep, the install succeeds but the generated component throws at runtime. Install `@base-ui/react` first, or pick the equivalent `aria-*` registry item.
+- **Migrating from Radix for the sake of migrating** — Radix still ships security patches, the Base UI (default) team is the same team that built Radix, and React Aria is best for accessibility/i18n-heavy apps, not general-purpose migrations. Migrate only if the Base UI or React Aria feature set solves a problem you actually have.
+
+### Sources
+
+- [shadcn — July 2026: React Aria announcement](https://ui.shadcn.com/docs/changelog/2026-07-react-aria)
+- [shadcn — Changelog index](https://ui.shadcn.com/docs/changelog)
+- [shadcn twitter — React Aria launch announcement](https://x.com/shadcn/status/2078142090177806773)
+- [shadcn create — React Aria preset](https://ui.shadcn.com/create?base=aria)
+- [shadcn components — React Aria tabs](https://ui.shadcn.com/docs/components)
+- [React Aria Components — official docs](https://react-spectrum.adobe.com/react-aria/components.html)
+- [React Aria `react-aria-components` on npm](https://www.npmjs.com/package/react-aria-components)
+- [daily.dev — "React Aria components are now available in shadcn/ui" (Jul 17, 2026)](https://daily.dev/posts/react-aria-components-are-now-available-in-shadcn-ui-gyzi6eyu9)
+- [Adobe Spectrum / Photoshop web stack — context for React Aria maturity](https://react-spectrum.adobe.com/)
+
