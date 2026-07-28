@@ -1954,7 +1954,7 @@ npx biome init  # Creates biome.json
 ```json
 // biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.2/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -2063,6 +2063,48 @@ npx biome check --write  # Verify everything still passes
 - **`ignorePrimitives`** — useful if your code does `const name = user.name || 'Anonymous'` where `user.name` is `string | undefined`. Without this, the rule nudges you to `??` but for primitive primitives many teams prefer `||` for consistency with falsy handling.
 
 Both options are off by default (matching 2.5.1 behaviour); enable them per-project if the default `||` → `??` rewriting produces too many false positives for your codebase. Source: [Biome 2.5.2 release](https://github.com/biomejs/biome/releases/tag/v2.5.2). Pure patch → `biome migrate --write` is NOT required for this upgrade.
+
+
+### Biome 2.5.3 → 2.5.5 patch train (Jul 8 → Jul 21, 2026)
+
+Three pure-patch releases shipped between the v1.4.82 cron and this cycle. **All three are safe drop-in upgrades** for any project already on 2.5.x — `biome migrate --write` is NOT required for any of them. **`npm install -D @biomejs/biome@^2.5.5`** is now the recommended pin (supersedes 2.5.2). **Recommended Biome version: 2.5.5** — supersedes 2.5.2 / 2.5.3 / 2.5.4 as the latest stable. npm `latest` dist-tag now points to `2.5.5`.
+
+**Biome 2.5.3 (July 8, 2026):** Eight fixes, mostly recovery from the 2.5.0 cross-file linting work. Notable items:
+
+- **CSS Modules parser panic recovery** ([PR #10815](https://github.com/biomejs/biome/pull/10815), [issue #10708](https://github.com/biomejs/biome/issues/10708), @WaterWhisperer) — Biome previously hard-crashed when a `.module.css` file ended at EOF with an unsupported `@value` rule or a scoped `@keyframes` name with no terminating `}`. 2.5.3 recovers and produces a clean diagnostic. If your `biome check` died mid-test-suite on a CSS Modules file recently, this is your fix.
+- **Format-on-type stray-whitespace fix on closing delimiters** ([biome-zed #164](https://github.com/biomejs/biome-zed/issues/164)) — Biome's LSP formatter no longer inserts a stray space after `)`, `]`, or `}` when invoked from the editor's format-on-type hook (Zed, Helix, Lapce). Only matters if your editor invokes Biome LSP on every keystroke; not a CLI regression.
+- **HTML unquoted-attribute crash fix** ([issue #10864](https://github.com/biomejs/biome/issues/10864)) — Biome no longer crashes on `<textarea rows=4></textarea>` (unquoted attribute values). Affects every project with legacy HTML templates.
+- **`useExhaustiveDependencies` refined for component cleanup / mutable refs** ([PR #10827](https://github.com/biomejs/biome/pull/10827), @Aqu1bp) — `mutableRef` patterns and refs that flow into component cleanup effects are no longer flagged as unused, eliminating the noisy "this ref isn't used in any effect" diagnostics that plagued 2.5.2 on React 19 codebases.
+- **Type-aware lint inference for built-in globals and indexed calls** ([PR #10721](https://github.com/biomejs/biome/pull/10721), @minseong0324) — the type-aware rules (`useImportExtensions`, `noFloatingPromises`, etc.) now correctly recognise `Math.PI`, `Object.keys(arr)`, and other built-in globals during inference. Was producing false positives for any file that consumed built-ins alongside a non-trivial TS type.
+
+**Biome 2.5.4 (mid-July 2026):** Focused on regressions from the 2.5.3 housekeeping and a long-standing Vitest-formatting request:
+
+- **Module-inference regression fix** ([issue #10885](https://github.com/biomejs/biome/issues/10885)) — reverts the housekeeping commit from 2.5.3 that incorrectly classified certain module shapes. Affects monorepos with TypeScript project references.
+- **Curried `test.each`/`it.each`/`describe.each`/`test.for` line-width formatting** ([issue #10727](https://github.com/biomejs/biome/issues/10727)) — Biome now breaks the arguments of Vitest/Jest curried each-calls when they exceed the configured `lineWidth`. Previously the formatter left them on a single line forever, which now that Vitest uses `it.for` is a common project-wide reformat. Expect a one-time large diff on `format --write` the first time you run 2.5.4.
+- **Stale Unix daemon socket cleanup** ([PR #10895](https://github.com/biomejs/biome/pull/10895), @ematipico) — the Biome daemon (`biome daemon`) now removes stale socket files from older daemon versions on startup. Fixes confusing "address already in use" errors when upgrading while the previous daemon is still attached.
+
+**Biome 2.5.5 (July 21, 2026):** Patch fixes plus one small but useful lint rule improvement.
+
+- **`useExhaustiveSwitchCases` for unions of bigint literals** — the rule now reports missing bigint cases and compares bigint literals by value (including binary `0b…`, octal `0o…`, hex `0x…`, and separator-containing spellings like `1_000n`). Switches over `1n | 2n | 3n` unions now correctly enumerate all three cases. Closes the long-standing gap from when `bigint` switched to per-language canonicalisation.
+- **HTML/Vue parser panic fix** ([issue #10622](https://github.com/biomejs/biome/issues/10622), @Socialpranker, [PR #10901](https://github.com/biomejs/biome/pull/10901)) — Biome no longer panics on truncated Vue SFC `<template>` blocks. Affects every Vue 3 project using Biome 2.5.0–2.5.4 (the parser was throwing on a specific EOF-truncated template rather than warning).
+- **CSS formatter `allowWrongLineComments` fix** — selector lists with `//` line-comments after a selector are no longer re-ordered around the comment. Avoids a "CSS kept changing every `biome format`" diff loop for projects that comment intermediate selectors.
+- **YAML formatter `sequence mapping`** ([PR #10814](https://github.com/biomejs/biome/pull/10814), @ematipico) — the YAML formatter now handles sequence-of-mapping syntax (`- key: value\n- key2: value2`) and block-property YAML formatting. Small but unlocks Biome as the formatter for projects with embedded `compose.yaml` / GitHub Actions YAML.
+- **Markdown: parse whitespace after list markers** ([PR #10869](https://github.com/biomejs/biome/pull/10869), @tidefield) — fixes a Markdown parser crash on indented list continuations.
+
+**Migration checklist (2.5.x → 2.5.5):**
+
+```bash
+# 1. Update the schema URL in biome.json (or omit $schema — Biome CLI auto-resolves)
+sed -i 's|2.5.[0-9]*/schema.json|2.5.5/schema.json|' biome.json
+
+# 2. Update
+npm install -D @biomejs/biome@^2.5.5
+
+# 3. No `biome migrate --write` is needed for any 2.5.x patch (all three patches are pure-bug-fix)
+
+# 4. Format on first run — Vitest `it.for`/`test.each` reformat can produce large diffs, that's expected
+npx biome check --write
+```
 
 
 ### Option 2: ESLint (Flat Config — Next.js 16)
