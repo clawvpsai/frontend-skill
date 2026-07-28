@@ -353,6 +353,65 @@ function PrefetchButton({ href }: { href: string }) {
 - [PR #94568 — Rename `force-runtime` to `allow-runtime`](https://github.com/vercel/next.js/pull/94568)
 - [PR #94571 — Stabilize `export const prefetch`](https://github.com/vercel/next.js/pull/94571)
 - [PR #94577 — Remove `unstable_instant` agent hints; insights validate by default](https://github.com/vercel/next.js/pull/94577)
+
+### `prefetch` segment config — `allow-runtime` REMOVED in 16.3.0-canary.99 (BREAKING, July 28, 2026)
+
+**⚠️ Breaking change (canary.99+):** The `'allow-runtime'` value on `export const prefetch` was removed by [PR #96106](https://github.com/vercel/next.js/pull/96106) ("Unify allow-runtime with Partial Prefetching"). The original motivation for the `'allow-runtime'` segment option was to give apps control over server costs triggered by prefetches — until a route explicitly opted in, prefetches would only be served from the CDN, not from the server. In practice it was confusing to know when to add or remove it, and the incentive for many apps was to add it everywhere with no clear signal for when to remove.
+
+**The new model:** Partial Prefetching itself now provides sufficient protection against runaway prefetching costs (per-link prefetches only happen on Link components that explicitly opt in with the `prefetch` prop). The optimizations landed earlier in the stack also make `allow-runtime` less necessary — on pages where all content is statically renderable, prefetches are served from the static cache and no runtime request is ever issued. Only a page that accesses non-static data is prefetched at runtime, and only when a `<Link prefetch={true}>` is hovered.
+
+**Practical migration:**
+
+```tsx
+// ❌ Before canary.99 — removed
+export const prefetch = 'allow-runtime' as const
+
+// ✅ After canary.99 — implicit under Partial Prefetching
+// Just delete the export; runtime prefetch happens automatically when needed
+// For static-only apps, no action required at all
+
+// ✅ For programmatic API
+// router.prefetch(href, { kind: 'allow-runtime' }) // ❌ — removed
+router.prefetch(href, { kind: 'full' })              // ✅ — explicit full-route
+router.prefetch(href, { kind: 'app-shell' })          // ✅ — app-shell only
+// No `kind: 'allow-runtime'` option anymore — partial prefetching decides
+```
+
+**Audit recipe:**
+
+```bash
+# Find any remaining 'allow-runtime' references
+rg -n "allow-runtime|allow_runtime" --type ts --type tsx --type md   app/ components/ lib/ .next/ 2>/dev/null
+```
+
+**Codemod (no official codemod — manual removal):** Delete any `export const prefetch = 'allow-runtime' as const` lines; delete any `kind: 'allow-runtime'` references in `router.prefetch(href, { ... })` calls. Both patterns now silently no-op (Next.js will print a deprecation warning in canary.99 and ignore in stable 16.3).
+
+**Sources:**
+- [PR #96106 — `Unify allow-runtime with Partial Prefetching`](https://github.com/vercel/next.js/pull/96106) · merged 2026-07-28T16:14:53Z · **Shipped in `16.3.0-canary.99`** (2026-07-28T15:21:10Z) and **`16.3.0-preview.10`** (2026-07-28T16:18:11Z)
+- [Next.js canary.99 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.99)
+- [Next.js preview.10 release](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.10)
+- [Compare v16.3.0-canary.98...v16.3.0-canary.99](https://github.com/vercel/next.js/compare/v16.3.0-canary.98...v16.3.0-canary.99)
+- [Compare v16.3.0-canary.99...v16.3.0-preview.10](https://github.com/vercel/next.js/compare/v16.3.0-canary.99...v16.3.0-preview.10)
+
+### Attempt Static Prefetch Before Runtime (16.3.0-canary.99 / preview.10, PR [#96095](https://github.com/vercel/next.js/pull/96095))
+
+**What changed:** The prefetch scheduler now attempts a **static** prefetch first when it's "reasonably confident" that a segment can be prefetched statically without omitting data that would have been included during a runtime prefetch (e.g. cookies). If the static response turns out to be insufficient (missing dynamic holes), it falls back to a runtime request.
+
+**Why this matters:**
+- Cheaper prefetching for pages that are fully statically renderable — no runtime server cost on first hover, even with Partial Prefetching enabled.
+- Applies during both the **Shell phase** and the **Speculative phase** of the prefetch algorithm.
+- The decision for whether to attempt static prefetch first is based on a new `ShouldAttemptStaticPrefetch` flag added in earlier commits; can be refined per-segment in the future for more reliable computation.
+
+**Practical effect:** When hovering a `<Link>` on a fully-static route, the prefetch is served entirely from the static cache. No runtime request is issued. The behavior is invisible to app code — there's no new API to call, no flag to set. It just gets cheaper.
+
+**Coordinated with PR #96106:** With `allow-runtime` now removed, this is the main lever that keeps server-side prefetch costs bounded. The combination (PRs #96095 + #96106) is the architectural cleanup that lets the `allow-runtime` knob go away without paying for it on the server side.
+
+**Sources:**
+- [PR #96095 — `Attempt static prefetch before resorting to runtime`](https://github.com/vercel/next.js/pull/96095) · merged 2026-07-28T16:14:48Z · **Shipped in `16.3.0-canary.99`** + **`16.3.0-preview.10`**
+
+---
+
+
 - [PR #94911 — Scope the Cold cache indicator to shell cache misses](https://github.com/vercel/next.js/pull/94911)
 - [Next.js prefetching guide](https://nextjs.org/docs/app/guides/prefetching)
 - [Next.js instant navigation guide](https://nextjs.org/docs/app/guides/instant-navigation)

@@ -1954,7 +1954,7 @@ npx biome init  # Creates biome.json
 ```json
 // biome.json
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.5/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -2091,11 +2091,49 @@ Three pure-patch releases shipped between the v1.4.82 cron and this cycle. **All
 - **YAML formatter `sequence mapping`** ([PR #10814](https://github.com/biomejs/biome/pull/10814), @ematipico) — the YAML formatter now handles sequence-of-mapping syntax (`- key: value\n- key2: value2`) and block-property YAML formatting. Small but unlocks Biome as the formatter for projects with embedded `compose.yaml` / GitHub Actions YAML.
 - **Markdown: parse whitespace after list markers** ([PR #10869](https://github.com/biomejs/biome/pull/10869), @tidefield) — fixes a Markdown parser crash on indented list continuations.
 
+**Biome 2.5.6 (July 28, 2026):** The single biggest *patch* release of the 2.5.x cycle — 18 PRs, several materially relevant to common frontend workflows. Headline changes (in order of practical impact):
+
+- **Formatter ~7% faster across the board** ([PR #11045](https://github.com/biomejs/biome/pull/11045), @ematipico) — the formatter `print_element` is inlined and adds a fast-path for printable ASCII. On large monorepos with thousands of files, `biome check --write` measurably drops wall-clock time (single-digit percent per file but compounds over the whole tree).
+- **Type-aware lint inference: ~2-4× faster** ([PR #11009](https://github.com/biomejs/biome/pull/11009), @ematipico) — refactor of the analyzer cutover. Type-aware JS rules now infer only requested types and memoize export resolution, undoing a perf regression that 2.5.0-2.5.5 had introduced. **Materially affects `noFloatingPromises`, `noMisusedPromises`, `useExhaustiveDependencies`** — type-aware variants of these rules on large TS files run 2-4× faster on 2.5.6 vs 2.5.5.
+- **`noFloatingPromises` now catches async map/array callbacks** ([PR #11009](https://github.com/biomejs/biome/pull/11009)) — closes the long-standing gap where `[1,2,3].map(async (n) => n)` was not flagged as floating Promises (only direct `await`/`then` calls were). New examples that are now correctly reported: aliased callbacks `type AsyncCb = () => Promise<void>; declare const cb: AsyncCb; cb();` (fires) and the canonical `[1, 2, 3].map(async (n) => n)` (fires).
+- **`noMisusedPromises` perf regression fixed** ([PR #11035](https://github.com/biomejs/biome/pull/11035), @ematipico) — the rule was re-running type inference on every file lint, which on large monorepos slowed incremental lint by 10-30%. 2.5.6 caches inference results across lints.
+- **`useHookAtTopLevel` recognises named `forwardRef` with `ref` param** ([issue #9195](https://github.com/biomejs/biome/issues/9195), [PR #11007](https://github.com/biomejs/biome/pull/11007), @BTF-Kabir-2020) — Biome no longer false-positives `forwardRef(function MyComponent(props, ref) { useState(...) })`. The rule now treats the `ref` parameter as a valid hook-site input (matches React's own `forwardRef` rules). Silences a noisy React 19 warning on existing shadcn/Radix codebases where `useFormStatus` / `useId` were called inside named `forwardRef` wrappers.
+- **`rdjson` reporter now populates `severity`** ([PR #11030](https://github.com/biomejs/biome/pull/11030), @marschattha) — reviewdog-format output now correctly writes `ERROR` / `WARNING` / `INFO` per diagnostic instead of leaving the field empty (defaulting to `WARNING` in consumers). CI pipelines consuming rdjson no longer need to assume a default severity.
+- **CSS formatter: indent commented function arguments** ([PR #11043](https://github.com/biomejs/biome/pull/11043), @denbezrukov) — SCSS function calls with comments between arguments now keep their nesting level instead of breaking the parent group, fixing prettier parity.
+- **CSS formatter: SCSS custom properties preserved** ([PR #11029](https://github.com/biomejs/biome/pull/11029), @denbezrukov) — Biome no longer mangles `--my-var` declarations in SCSS that should pass through untouched.
+- **Svelte: `<script>` block re-indent idempotency fix** ([PR #10533](https://github.com/biomejs/biome/pull/10533), @Mokto, fixes [#10515](https://github.com/biomejs/biome/issues/10515)) — `biome check --write` was NOT idempotent on Svelte files: multi-line template literals in `<script>` blocks and block comments in `<style>` blocks gained an extra indent level on every run. 2.5.6 fixes the indent drift. **Required if your project uses Svelte 5** — without it, every CI run produced a new diff.
+- **Svelte: HTML comment duplication bug before `{@const}/{@debug}` blocks** ([PR #11040](https://github.com/biomejs/biome/pull/11040), @Mokto) — comments placed directly before Svelte `{@const ...}` or `{@debug ...}` blocks were duplicated on every `--write`, causing files to grow exponentially. Fixed.
+- **Svelte: support for `{let}/{const}` declaration tags** ([PR #11056](https://github.com/biomejs/biome/pull/11056), @dyc3) — Biome can now parse, format, and lint bindings declared in Svelte `<script>` via `{let x = 1}` / `{const y = 2}` tag syntax (Svelte 5 feature). Unblocks Svelte 5 `<script>` syntax adoption.
+- **Svelte: `{#each}` destructuring + multiline bind expressions** ([issue #10839](https://github.com/biomejs/biome/issues/10839), [PR #10858](https://github.com/biomejs/biome/pull/10858), @ruidosujeira) — fixes prettier parity for `{#each [a, b] as [x, y]}` (no inner spaces) and multiline `bind:value={() => ...}` getter/setter formatting.
+- **YAML formatter major upgrade** ([PR #11011](https://github.com/biomejs/biome/pull/11011) + [#11019](https://github.com/biomejs/biome/pull/11019) + [#11050](https://github.com/biomejs/biome/pull/11050) + [#11051](https://github.com/biomejs/biome/pull/11051) + [#11052](https://github.com/biomejs/biome/pull/11052), @dyc3) — the YAML formatter gains **flow scalars**, **block scalars**, **flow mappings**, **comment-indent per block structure**, and **node properties kept on entry line**. Combined with 2.5.5's sequence mapping, Biome's YAML formatter is now usable as the `compose.yaml` / GitHub Actions / `.prettierrc.yaml` formatter for real projects. One of the largest YAML-format improvements of the cycle.
+- **HTML parser: mixed-case `<!doctype>` accepted** ([PR #11071](https://github.com/biomejs/biome/pull/11071), @dyc3) — the HTML parser now accepts `<!DOCTYPE html>`, `<!Doctype html>`, etc. (previously rejected uppercase `<!DOCTYPE`); matches the HTML5 spec.
+- **Curried arrow in ternary consequent parsed** ([issue #10131](https://github.com/biomejs/biome/issues/10131), [PR #10152](https://github.com/biomejs/biome/pull/10152), @Zelys-DFKH) — `cond ? (x) => ({ a, b }) => body : alt` now parses correctly when the inner arrow's parameters use destructuring. Affects TypeScript HOCs and render-prop callbacks.
+- **`noUselessTernary` quick-fix preserves operator spacing** ([issue #11092](https://github.com/biomejs/biome/issues/11092), [PR #11105](https://github.com/biomejs/biome/pull/11105), @dadavidtseng) — Biome's autofix no longer inserts a double-space when simplifying or inverting boolean ternary expressions.
+- **`noRestrictedProperties` nursery rule added** ([PR #9806](https://github.com/biomejs/biome/pull/9806), @dyc3) — direct port of ESLint's `no-restricted-properties`: flags restricted member access (`foo.bar` where `bar` is restricted) and object destructuring (`const { bar } = foo`) of restricted properties. `biome migrate eslint` now preserves the rule's options. Opt-in via `"noRestrictedProperties": "error"` (currently nursery — prefix `noJsRestrictedProperties` in config).
+- **Type-aware rule false-positive suppression** ([PR #10973](https://github.com/biomejs/biome/pull/10973), @ematipico, + companion `noBaseToString` / `useNullishCoalescing` follow-up from 2.5.5) — `noMisleadingReturnType` (and the carry-over `noBaseToString` / `useNullishCoalescing` from 2.5.5) now suppress diagnostics when the generic-constraint, normalization, or substitution type comparison cannot complete, instead of suggesting a fix derived from partial information. Closes the long-running "Biome suggests fixing the wrong thing" complaints on recursive types.
+
+**Migration checklist (2.5.x → 2.5.6):**
+
+```bash
+# 1. Update the schema URL in biome.json (or omit $schema — Biome CLI auto-resolves)
+sed -i 's|2.5.[0-9]*/schema.json|2.5.6/schema.json|' biome.json
+
+# 2. Update
+npm install -D @biomejs/biome@^2.5.6
+
+# 3. No `biome migrate --write` is needed for any 2.5.x patch (all four patches are pure-bug-fix)
+
+# 4. Format on first run — Vitest `it.for`/`test.each` reformat from 2.5.4 can produce large diffs; Svelte indent drift from 2.5.5→2.5.6 produces a one-time reformat on every Svelte file
+npx biome check --write
+```
+
+---
+
 **Migration checklist (2.5.x → 2.5.5):**
 
 ```bash
 # 1. Update the schema URL in biome.json (or omit $schema — Biome CLI auto-resolves)
-sed -i 's|2.5.[0-9]*/schema.json|2.5.5/schema.json|' biome.json
+sed -i 's|2.5.[0-9]*/schema.json|2.5.6/schema.json|' biome.json
 
 # 2. Update
 npm install -D @biomejs/biome@^2.5.5
