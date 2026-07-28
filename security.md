@@ -602,6 +602,102 @@ export async function safeEncrypt(data: ArrayBuffer, key: CryptoKey) {
 - [Digital Applied — Node.js June 2026 Security Releases: 12 CVEs, 2 HIGH (full list + patch guide)](https://www.digitalapplied.com/blog/nodejs-june-2026-security-releases-cve-patch-guide)
 - [CVE-2026-48618 — TLS wildcard bypass via Unicode normalization (Node.js advisory)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
 
+## Node.js July 27, 2026 Security Release — Patch Day (HIGH in Each Line)
+
+The Node.js project pre-announced a coordinated security release for **Monday, July 27, 2026** (or "shortly after" if the disclosure process extends) covering all three active release lines — **Node 22 (Maintenance LTS), Node 24 (Active LTS), and Node 26 (Current)**. The project's [Monday, July 27, 2026 Security Releases](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) advisory confirms that **the highest severity issue fixed in each release line is HIGH**. Per Node.js's standard practice, the specific CVE numbers and component details are **embargoed until release day** — what is public pre-release is the date, the affected lines, and the HIGH ceiling. The first concrete CVE-level details will appear on the [Node.js vulnerability blog](https://nodejs.org/en/blog/vulnerability) the moment the embargo lifts.
+
+This is the **third Node.js security release of 2026** (after January 13 and June 17/18) and lands **six days after the Next.js July 20, 2026 security release** (9 CVEs, 4 HIGH). Two patches in one week is a "patch week" — the same calendar pattern that has been repeating across the JavaScript stack (Next.js, Node.js, Vercel, OpenSSL) starting in late 2025. **The expected patch versions are Node 22.24.x**, **Node 24.19.x**, and **Node 26.4.x** (incremental patches on top of the current 22.24.0 / 24.18.0 / 26.4.0 release lines per the Node.js [release schedule](https://github.com/nodejs/release)); confirm the exact versions on the [Monday, July 27, 2026 advisory](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) when it publishes.
+
+### What's Confirmed (pre-release window)
+
+| Field | Value |
+|---|---|
+| Release date | **Monday, July 27, 2026** (or "shortly after" if the disclosure process extends) |
+| Affected lines | **Node 22.x** (Maintenance LTS), **Node 24.x** (Active LTS), **Node 26.x** (Current) |
+| Maximum severity | **HIGH** in each of the three release lines |
+| CVE count | Not disclosed pre-release |
+| Specific CVE IDs | **Embargoed** — published on the security blog at release time |
+| Full disclosure URL | <https://nodejs.org/en/blog/vulnerability/july-2026-security-releases> |
+| Node.js 18 / 20 | **EOL — no upstream patches.** Node 20 EOL April 30, 2026; Node 18 EOL April 30, 2025. |
+| EOL-line maintained patches | [HeroDevs Node.js NES](https://www.herodevs.com/) — drop-in patched builds for EOL 18 / 20 |
+| Bundled-stack bumps expected | `llhttp`, `nghttp2`, `openssl`, `undici` (per the June 17 release pattern) |
+| Status as of 2026-07-28 00:03Z | Patch-day release window; advisory status pending confirmation |
+
+### Pre-Patch Audit Recipe (Run Sunday Night, July 26)
+
+Before the embargo lifts, inventory every Node version you have running. The patch is useless if you can't find the deployment:
+
+```bash
+# Local — current node
+node -v
+
+# Docker — every base image
+grep -rE "FROM node:.*[0-9]+\.[0-9]+\.[0-9]+" --include=Dockerfile . 2>/dev/null
+grep -rE "FROM node:.*-(bookworm|slim|alpine)" --include=docker-compose.y*ml . 2>/dev/null
+
+# CI — every matrix entry
+grep -rE "node-version:|setup-node" .github/workflows/ 2>/dev/null
+
+# Vercel / engines.node per project
+grep -rE "engines.node" --include=package.json . 2>/dev/null
+
+# Vercel / Netlify / Cloudflare — declarative node in the platform config
+grep -rE "engines.node|NODE_VERSION" .vercel/ netlify.toml .nvmrc 2>/dev/null
+```
+
+Record the output per app. Target upgrade list is the existing version + bump to the Mon Jul 27 patch line.
+
+### Required Actions (On Patch Day)
+
+The pattern from the June 17, 2026 release is the playbook. Frontend apps on Next.js / standalone Node / Docker / self-hosted workers / Vercel Lambda functions / Cloudflare Pages (build pipelines) all need to be on the patched line. Concrete steps:
+
+1. **Read the [July 27, 2026 advisory](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) the moment it publishes** (typical embargo lift: 14:00–16:00 UTC). Capture the exact patch versions (Node 22.x.y, 24.x.y, 26.x.y) and the CVE list.
+2. **Update Docker base images immediately** — bump `FROM node:22.x-bookworm-slim` → `node:22.24.x-bookworm-slim`, etc. **Bust the cache** with `--no-cache` on `docker build` (or `docker buildx build --pull`) so the patched layers are actually pulled in. Pin by digest (`@sha256:...`) for production deployments so the next layer-cache scrub doesn't regress you.
+3. **Update `.nvmrc` / `engines.node`** — pin the new patched version in `package.json`'s `engines.node` (e.g. `"node": ">=22.24.0"` or use a `.nvmrc` with the exact patch version). Vercel and Netlify honour the `engines.node` field and trigger automatic redeploys to a fresh Lambda runtime.
+4. **CI matrix** — update GitHub Actions `actions/setup-node` matrix versions, Renovate / Dependabot config, and base-image digests in any Dockerfile that pins a specific Node version. The patch is useless if your CI still runs on a frozen lockfile from June.
+5. **Vercel deployment** — set `engines.node` in `package.json` to the patched version; Vercel uses the highest `engines.node` declared across the project's serverless functions to pick the runtime. After the bump, force a redeploy (or wait for the next git push) to migrate to the new Lambda runtime.
+6. **Watch for the `undici` / `llhttp` / `nghttp2` / `openssl` bundled-version bumps** — each Node.js security release rolls forward the bundled HTTP/2 / TLS / fetch stack (June 17 release rolled `llhttp` → 9.4.2, `nghttp2` → 1.69.0, `openssl` → 3.5.7, `undici` → 6.27.0 / 7.28.0 / 8.5.0). Apps that pin `undici` directly via `npm overrides` / `pnpm.overrides` will need to refine the override range to match the new bundled version. Run `npm ls undici` after the patch.
+7. **Subscribe to the low-volume `nodejs-sec` mailing list** — the [Node.js security policy](https://nodejs.org/en/security/) page links to `https://groups.google.com/forum/#!forum/nodejs-sec` for release-day announcements.
+8. **Node 18 / Node 20 users** — Node 18 EOL April 30, 2025; Node 20 EOL April 30, 2026. **Neither line receives upstream security fixes** — including for this July 27 release. HeroDevs ships [Node.js NES](https://www.herodevs.com/) drop-in EOL builds if you can't migrate to Node 22 LTS yet. For new projects, always target Node 22 LTS (EOL April 30, 2027) or Node 24 LTS (EOL April 30, 2028).
+9. **If you maintain OSS Node-based packages** — widen the `engines.node` peer range to `^22.0.0 || ^24.0.0 || ^26.0.0` (or at least the patched versions) so users can pick up the July 27 patch without forking your plugin.
+
+### What "HIGH" Usually Means for Node.js Releases
+
+Cross-referencing the March / June 2026 Node.js security releases (the two most recent before this July 27 release): HIGH-severity Node.js CVEs in 2026 have tended to land in **crypto / TLS / HTTP** subsystems — `crypto.webcrypto` integer overflow (CVE-2026-48933, June), TLS wildcard-cert Unicode bypass (CVE-2026-48618, June), `node:http` DoS through `__proto__` header (CVE-2026-21710, March), `node:tls` SNICallback remote crash (CVE-2026-21637, March). The HIGH CVE in this July 27 release is most likely in one of these subsystems, but the **exact CVE numbers and components are not public until release day** — no reliable speculation is possible from the pre-announcement alone. Read the advisory at <https://nodejs.org/en/blog/vulnerability/july-2026-security-releases> on Monday.
+
+### Why This Matters for Frontend Skills
+
+- **Next.js apps on Vercel**: Vercel hosts the Lambda runtime. The `engines.node` field in `package.json` is the only lever you have to force a runtime upgrade; bump it the same day as the patch ships.
+- **Self-hosted Next.js** (`next start`, `output: 'standalone'`, Docker, K8s, ECS, Nomad): direct exposure. Bump the base image tag and `--no-cache` the build.
+- **Edge runtimes running on Cloudflare Workers / Vercel Edge**: NOT affected (use workerd or Vercel's Edge runtime, not Node). But CI pipelines that build these still run on Node.
+- **Microservices calling outbound HTTPS** through Node's `tls` / `https` modules: HIGH TLS-wildcard-bypass class (CVE-2026-48618 in June) is the dominant risk. Apply the same defense-in-depth hostname sanitization as for the June CVE (see ASCII-dot sanitizer in the [Node.js June 2026](#nodejs-june-2026-security-release-june-17-2026) section above).
+- **CI runners / build agents**: often the longest-lived Node version in a stack. Bump the GitHub Actions `actions/setup-node` / `node:XX-bookworm` image the same day.
+- **Vercel Connect / OpenAI SDK / Anthropic SDK / AWS SDK / Supabase / Prisma / NextAuth / WebSocket clients**: SDKs that bundle `undici` directly through `npm overrides` or `pnpm.overrides` may need the override range adjusted to match the new bundled version. Run `npm ls undici` after the patch.
+
+### Cross-Reference: 2026 Node.js Security-Release Cadence
+
+| Release | Date | Lines | CVEs | HIGH | Notes |
+|---|---|---|---|---|---|
+| Node.js January 2026 | Mon Jan 13 | 22, 24, 26 (current) | (per advisory) | (per advisory) | First 2026 release |
+| Node.js March 2026 | Tue Mar 24 | 20, 22, 24, 25 | 8 | 2 (CVE-2026-21637 TLS SNICallback, CVE-2026-21710 `__proto__` header) | 8 CVEs incl. two HIGH process crashes |
+| Node.js June 2026 | Wed Jun 17/18 | 22, 24, 26 | 12 | 2 (CVE-2026-48933 WebCrypto DoS, CVE-2026-48618 TLS wildcard bypass) | See [Node.js June 2026](#nodejs-june-2026-security-release-june-17-2026) section above |
+| **Node.js July 2026** | **Mon Jul 27** | **22, 24, 26** | **TBD (embargoed)** | **≥1 in each line** | **This section** |
+| Next.js July 2026 | Tue Jul 21 | 16.2, 15.5 | 9 | 4 | First drop of Vercel's monthly security release program (see [Vercel Next.js Security Release Program](#vercel-next-js-security-release-program-july-13-2026) section above) |
+
+### Sources
+
+- [Node.js — Monday, July 27, 2026 Security Releases (pre-announcement)](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases)
+- [Node.js vulnerability blog (live CVE feed)](https://nodejs.org/en/blog/vulnerability)
+- [Node.js security policy / `nodejs-sec` mailing list](https://nodejs.org/en/security/)
+- [Node.js release schedule / LTS lines](https://github.com/nodejs/release)
+- [TechTimes — Node.js Security Release: HIGH Severity Vulnerabilities Hit All Three Lines (July 23, 2026)](https://www.techtimes.com/articles/321432/20260723/nodejs-security-release-high-severity-vulnerabilities-hit-all-three-lines.htm)
+- [Digital Applied — Next.js and Node.js Patch Week: What to Update Before Monday (July 25, 2026)](https://www.digitalapplied.com/blog/nextjs-nodejs-july-2026-security-patch-week)
+- [Teramont — Node.js Security Release: July 27, 2026 (pre-announcement analysis)](https://teramont.net/blog/nodejs-security-release-july-27-2026)
+- [byteiota — Node.js July 2026 Security Patch: Patch All Three Lines Now (July 27, 2026)](https://byteiota.com/nodejs-july-2026-security-patch/)
+- [HeroDevs — Node.js NES for EOL 18 / 20 lines (drop-in patches)](https://www.herodevs.com/)
+- [Node.js — Thursday, June 18, 2026 Security Releases (12 CVEs, 2 HIGH — same playbook)](https://nodejs.org/en/blog/vulnerability/june-2026-security-releases)
+
+
 ## undici CVEs (June 19, 2026)
 
 On **June 19, 2026** the GitHub Advisory Database published **three new CVEs** against the standalone `undici` npm package (the HTTP/1.1 client that powers Node.js's built-in `fetch` and most third-party SDKs). These are the same fixes that were just bundled into the Node.js June 18 release, but they are published as **separate npm advisories** — meaning the GitHub Advisory feed, Dependabot, and `npm audit` only flag them if you have `undici` in your dependency tree (directly or transitively), not if you're on a patched Node.
@@ -1283,6 +1379,8 @@ NEXTAUTH_SECRET="..."
 - **Trusting the Node.js June 18 patch to cover all `undici` CVEs** — it only covers the version bundled with Node (`process.versions.undici`). If any package in your dependency tree pulls in its own `undici` (AWS SDK, OpenAI SDK, Anthropic SDK, Supabase, Prisma, NextAuth, WebSocket clients, etc.), `npm ls undici` may show an older version. Use `overrides` / `pnpm.overrides` to force a patched `undici` (7.28.0 / 8.5.0) across the whole tree
 - **Mismatched `typescript`/`next` versions on `next@15.5.21` or earlier** — since `next@15.5.22` (PR [#96110](https://github.com/vercel/next.js/pull/96110), shipped 2026-07-25T20:45:27Z), the 15.5 line fails fast with an actionable `CompileError` if `typescript@>=7.0.0` is installed (the legacy `typescript.js` Compiler API is no longer shipped by TS 7's Go-native compiler). Pre-15.5.22, the same setup produced a silent `SIGSEGV`/`SIGABRT` inside `verify-typescript-setup` that looked like an unrelated crash. The actionable error is a defensive improvement: **always pin `typescript` explicitly in `package.json`** rather than relying on `npm install -D typescript@latest` to do the right thing — `typescript@latest` is now `7.0.2`, which only works on `next@16.2.12+` with `experimental.useTypeScriptCli: true`. For 15.5.x: `typescript: "^6.0.0"`. See `typescript.md` → "Next.js 16.2.12 / 15.5.22 — TypeScript 7 Compatibility Matrix" and `setup.md` → "TypeScript 7 Integration".
 
+- **Missing the Node.js July 27, 2026 security release (patch day)** — Node.js pre-announced a HIGH-severity coordinated release for **Monday, July 27, 2026** covering all three active lines (22.x, 24.x, 26.x). The HIGH ceiling is confirmed; specific CVE numbers / components are embargoed until release-day. The patch is the **third Node.js security release of 2026** after the Jan 13 (per advisory) and June 17/18 (12 CVEs, 2 HIGH: CVE-2026-48933 WebCrypto DoS + CVE-2026-48618 TLS wildcard bypass) releases, and lands six days after the Next.js July 20, 2026 security release (9 CVEs, 4 HIGH) — forming a "patch week" across the JavaScript stack. Calendar a Mon morning reminder to read the [advisory](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases) the moment the embargo lifts and bump the base image tag (or `engines.node`) to the patched version the same day. **Definite-affected**: Node 22.x < 22.24.x, Node 24.x < 24.19.x, Node 26.x < 26.4.x (exact patch versions publish on release day). Node 18 / 20 lines are EOL — no upstream patches, use HeroDevs NES or migrate to Node 22 LTS. The local machine right now (this skill runs on Node 24.18.0) is **exposed** as soon as the patch ships — bump the boot image the same day. See the full [Node.js July 27, 2026 Security Release](#nodejs-july-27-2026-security-release--patch-day-high-in-each-line) section for the playbook, audit recipe, and 9-step patch-day checklist.
+
 **Sources:**
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
 - [GHSA-8h8q-6873-q5fj: DoS with Server Components](https://github.com/vercel/next.js/security/advisories/GHSA-8h8q-6873-q5fj)
@@ -1290,3 +1388,4 @@ NEXTAUTH_SECRET="..."
 - [GHSA-c4j6-fc7j-m34r: SSRF via WebSocket upgrades](https://github.com/vercel/next.js/security/advisories/GHSA-c4j6-fc7j-m34r)
 - [GHSA-ffhc-5mcf-pf4q: XSS via CSP nonces](https://github.com/vercel/next.js/security/advisories/GHSA-ffhc-5mcf-pf4q)
 - [GHSA-wfc6-r584-vfw7: Cache poisoning in RSC](https://github.com/vercel/next.js/security/advisories/GHSA-wfc6-r584-vfw7)
+- [Node.js — Monday, July 27, 2026 Security Releases (HIGH in each line)](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases)
