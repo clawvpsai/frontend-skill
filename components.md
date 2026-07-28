@@ -1732,6 +1732,113 @@ npm install --save-dev shadcn@^4.15.0   # or use npx shadcn@latest ...
 - [Compare `shadcn@4.14.1...shadcn@4.15.0`](https://github.com/shadcn-ui/ui/compare/shadcn@4.14.1...shadcn@4.15.0)
 - [shadcn registry schema docs](https://ui.shadcn.com/docs/registry)
 
+## shadcn 4.16.0 — `addRegistryItems` Accepts Config + Load Registries from `package.json` (July 27, 2026)
+
+Released **2 days after 4.15.0** (2026-07-27T18:32:08Z), `shadcn@4.16.0` is a **minor** release that makes the 4.15.0 programmatic registry API genuinely composable: it now accepts an explicit `Config` (so programmatic consumers don't need to shell out to a `cwd` reading), and it reads the registry map from the project's top-level `package.json` field when `components.json` is absent. Three new public registries were also added to the [shadcn registry directory](https://ui.shadcn.com/r/registries.json). The CLI surface is unchanged — `init`, `add`, `diff`, `info`, `migrate`, `eject` all work exactly as before. No breaking changes to 4.15.x.
+
+### What's new in 4.16.0
+
+Four material changes between 4.15.0 and 4.16.0, all registry-programmability-focused:
+
+#### 1. `addRegistryItems` accepts a `config` parameter (PR [#11307](https://github.com/shadcn-ui/ui/pull/11307))
+
+The 4.15.0 `addRegistryItems` only read registry configuration from `components.json` (via implicit `cwd`). 4.16.0 lets callers pass an explicit `Partial<Config>` so the registry map can be programmatically built, merged across monorepos, or sourced from anywhere (database, env vars, dynamic discovery). Pair with the new `getRegistriesConfig` helper (below) for a clean "load from project, then call" pattern:
+
+```ts
+// scripts/install-from-monorepo-registries.ts
+import { addRegistryItems, getRegistriesConfig } from "shadcn/registry"
+
+const cwd = process.cwd()
+const config = await getRegistriesConfig(cwd) // reads components.json OR package.json
+
+await addRegistryItems(["@acme/agent", "@platform/login-form"], {
+  cwd,
+  config,
+  overwrite: false,
+  silent: true,
+})
+```
+
+The `Config` shape mirrors what `components.json` stores under `registries` — a `{ "@namespace": "https://example.com/r/{name}.json" | { url, headers? } }` map. `addRegistryItems` no longer reads project configuration files itself; you pass the config (or the result of `getRegistriesConfig`).
+
+#### 2. Load registries from `package.json` (PR [#11304](https://github.com/shadcn-ui/ui/pull/11304))
+
+The new [`getRegistriesConfig(cwd)`](https://ui.shadcn.com/docs/registry/api-reference#getregistriesconfig) helper reads registry configuration from a project directory using a **two-tier resolution**:
+
+1. **If `components.json` exists in `cwd`** — read `registries` from it (existing behavior, unchanged).
+2. **Otherwise** — read the top-level `registries` field from `package.json`.
+
+This means projects that don't use `components.json` (the CLI init never ran — e.g., headless toolings, CI codegen pipelines, "I'm just consuming a registry" agents) can still declare their registry map in `package.json`:
+
+```json
+// package.json — registries field at the top level
+{
+  "name": "my-app",
+  "registries": {
+    "@acme": {
+      "url": "https://acme.com/r/{name}.json",
+      "headers": {
+        "Authorization": "Bearer ${ACME_TOKEN}"
+      }
+    },
+    "@platform": "https://platform.example.com/r/{name}.json"
+  }
+}
+```
+
+Then `getRegistriesConfig(process.cwd())` returns the parsed config — `addRegistryItems(["@acme/agent"])` resolves `@acme` to `https://acme.com/r/agent.json` and forwards `Authorization: Bearer <ACME_TOKEN>` automatically. **This is the agent-friendly entry point** — your agent can install from any registry by reading `package.json` alone, no need to run `shadcn init` first.
+
+**Note:** the `registries` field in `package.json` is **not read by the CLI's `npx shadcn add <item>` command** — only by the programmatic `getRegistriesConfig` helper. The CLI still reads from `components.json` (existing behavior). This is deliberate: `components.json` is the canonical registry map for the CLI workflow, while `package.json` is the canonical map for programmatic workflows.
+
+#### 3. `useCache` option on every registry helper
+
+Every registry helper (`getRegistry`, `getRegistryItems`, `getRegistriesConfig`) now accepts a `useCache: boolean` option (default `true`). Registry responses are cached **in memory for the lifetime of the process**, keyed by the resolved URL. Because the in-flight promise is cached, concurrent requests for the same URL are de-duplicated into a single fetch.
+
+```ts
+// Long-running server / watcher / MCP server — disable cache for fresh data
+const fresh = await getRegistry("@shadcn", { useCache: false })
+```
+
+**When to disable:** long-running processes (servers, watchers, the MCP server) where the registry can change between requests and you need fresh data each time. Leave enabled for one-off scripts and CLI runs.
+
+#### 4. Three new public registries in the registry directory
+
+The [shadcn registry directory](https://ui.shadcn.com/r/registries.json) (the index of third-party registries you can `npx shadcn add @namespace/item` from) gained three new entries on 2026-07-25 / 2026-07-27:
+
+| Registry | PR | Added | What it ships |
+|---|---|---|---|
+| `@navui` (NavUI) | [#11290](https://github.com/shadcn-ui/ui/pull/11290) | 2026-07-25 | Navigation primitives — top-bar / sidebar / breadcrumb / pagination / tabs registered against the shadcn API |
+| `@flowui` (flowui) | [#11236](https://github.com/shadcn-ui/ui/pull/11236) | 2026-07-25 | Flow-diagram components — nodes, edges, minimap, controls, toolbar; built on the shadcn registry contract so they install with `npx shadcn add @flowui/...` |
+| `@shadcn-dashboard` | [#11245](https://github.com/shadcn-ui/ui/pull/11245) | 2026-07-27 | Admin-dashboard blocks — sidebar shells, KPI cards, recent-orders tables, user-management tables, settings forms, all as installable items |
+
+Plus a small site fix ([#11308](https://github.com/shadcn-ui/ui/pull/11308) — remove React Aria logo from the announcement section on `ui.shadcn.com`, since the [announcement post](https://ui.shadcn.com/docs/changelog/2026-07-react-aria) already covers it).
+
+### Recommended version pin
+
+```bash
+npm install --save-dev shadcn@^4.16.0
+```
+
+**Migration checklist (4.15.x → 4.16.0):**
+- [ ] `npx shadcn@latest` (which now resolves to 4.16.0+) — no peer-dep changes
+- [ ] **No `components.json` migration required** — the new `package.json` `registries` field is opt-in; if you have `components.json` with a `registries` map, keep using it (it's still the canonical source for the CLI)
+- [ ] **No CLI workflow change** — `init` / `add` / `diff` / `info` / `migrate` / `eject` all work as in 4.15.x
+- [ ] **Programmatic consumers** — if your code calls `addRegistryItems` and relied on implicit `cwd`-based registry reading, switch to `addRegistryItems(items, { config: await getRegistriesConfig(cwd), cwd })` for explicit registry config (works whether the registry map lives in `components.json` or `package.json`)
+- [ ] **Headless toolings / agents** — if your tooling never ran `shadcn init` (no `components.json`), you can now declare `registries` in `package.json` and call `addRegistryItems` directly without writing a `components.json` first
+
+### Sources
+
+- [shadcn 4.16.0 release notes](https://github.com/shadcn-ui/ui/releases/tag/shadcn@4.16.0)
+- [PR #11307 — `feat(registry): accept config in addRegistryItems`](https://github.com/shadcn-ui/ui/pull/11307)
+- [PR #11304 — `feat(registry): load registries from package.json`](https://github.com/shadcn-ui/ui/pull/11304)
+- [PR #11290 — `feat: add NavUI registry`](https://github.com/shadcn-ui/ui/pull/11290)
+- [PR #11236 — `feat(registry): add flowui to registry directory`](https://github.com/shadcn-ui/ui/pull/11236)
+- [PR #11245 — `feat(registry): added new registry (@shadcn-dashboard)`](https://github.com/shadcn-ui/ui/pull/11245)
+- [shadcn registry API reference — `addRegistryItems`](https://ui.shadcn.com/docs/registry/api-reference#addregistryitems)
+- [shadcn registry API reference — `getRegistriesConfig`](https://ui.shadcn.com/docs/registry/api-reference#getregistriesconfig)
+- [Compare `shadcn@4.15.0...shadcn@4.16.0`](https://github.com/shadcn-ui/ui/compare/shadcn@4.15.0...shadcn@4.16.0)
+- [shadcn registry directory](https://ui.shadcn.com/r/registries.json)
+
 ## shadcn React Aria Support (July 17, 2026) — Third First-Class Component Base
 
 Announced on **July 17, 2026** via the official changelog post ["July 2026 — React Aria"](https://ui.shadcn.com/docs/changelog/2026-07-react-aria) (shadcn twitter: ["React Aria is now available in shadcn/ui. Use \`--base aria\` or choose React Aria in shadcn/create. All components, docs, CLI, styles and skills have been updated for React Aria Components."](https://x.com/shadcn/status/2078142090177806773)), **React Aria is now the third first-class component base in shadcn/ui**, joining **Base UI** (default since `shadcn@4.13.0`, July 3, 2026) and **Radix UI** (the original shadcn base since 2023). The skill previously documented only Base UI and Radix — this section closes the React Aria gap so agents can correctly recommend and use the third base.

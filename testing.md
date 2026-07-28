@@ -502,6 +502,153 @@ Eight days after 1.61.0, the team shipped 1.61.1 with **five fixes for regressio
 5. **pnpm workspace symlink resolution** — Extensionless `.ts` subpath imports across pnpm workspace symlinks failed in the sync ESM loader. Fixed.
 
 
+## Playwright 1.62 (July 24, 2026) — What's New
+
+`@playwright/test@1.62.0` shipped **2026-07-24T21:57:02Z** (per [npm](https://www.npmjs.com/package/@playwright/test)) and is the **second big release of July** after the July 21 Next.js security release. Two pieces (the **stories-and-galleries component testing model** and **bundled Playwright MCP server**) restructure how you write component tests and how you drive Playwright from agents; the rest are smaller quality-of-life wins. **Browsers bumped to Chromium 151.0.7922.34, Firefox 153.0, WebKit 26.5.** Tested against Google Chrome 151 and Microsoft Edge 151. **Announcement: ⚠️ Debian 11 is not supported anymore** — bump your CI containers to Debian 12 (`mcr.microsoft.com/playwright:v1.62.0-jammy`) or Ubuntu 24.04 before the next cycle.
+
+### 🧱 New component testing model — stories and galleries
+
+The single biggest addition. Component testing moves from "import the component, mount it inline" to a **stories and galleries** model: a **story** wraps your component in one specific scenario (hard-coded props, mock data, providers) and a **gallery** page that you serve renders stories on demand. The new [`fixtures.mount()`](https://playwright.dev/docs/api/class-fixtures#fixtures-mount) fixture navigates to the gallery, mounts a story by id, and returns a [`Locator`](https://playwright.dev/docs/api/class-locator) scoped to the story's root element:
+
+```ts
+// e2e/expandable.spec.ts
+import { test, expect } from '@playwright/experimental-ct-react'
+import type { ExpandableStory } from './expandable.story'
+
+test('click should expand', async ({ mount }) => {
+  // Pass a story type as a template argument to type-check its props
+  const component = await mount<ExpandableStory>('components/Expandable/Stateful')
+
+  await component.getByRole('button').click()
+  await expect(component.getByTestId('expanded')).toHaveValue('true')
+
+  // update(props) re-renders the story with new props; unmount() tears it down
+  await component.update({ defaultOpen: true })
+  await component.unmount()
+})
+```
+
+```tsx
+// e2e/expandable.story.tsx — a gallery page that hosts one or more named stories
+import { Expandable } from '@/components/Expandable'
+
+export const Stateful = (props: { defaultOpen?: boolean }) => (
+  <Expandable title="Click me" defaultOpen={props.defaultOpen ?? false}>
+    <p>Hidden content.</p>
+  </Expandable>
+)
+```
+
+**Why this matters:** the old inline-mount model made it painful to share scenarios across tests (every test had to re-declare providers, props, and mocked deps inline). The stories-and-galleries model centralizes scenario setup in story files that *both* your agent and your human reviewers can read, and `mount()` returns a Locator (not a React wrapper) so the rest of the test uses the standard Playwright locator API. Tests are decoupled from the component's prop shape — change the prop and the story's typing surfaces it everywhere.
+
+### 🛑 Cancel operations with `AbortSignal`
+
+Most operations and web-first assertions now accept a `signal` option that takes an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal). Cancel long-running actions, navigations, waits, and assertions the same way you would in any Web API:
+
+```ts
+const controller = new AbortController()
+setTimeout(() => controller.abort(), 1000) // 1s budget per click + assert
+
+await page.getByRole('button', { name: 'Submit' }).click({ signal: controller.signal })
+await expect(page.getByText('Done')).toBeVisible({ signal: controller.signal })
+```
+
+**Note:** providing a signal does **not** disable the default timeout — pass `timeout: 0` alongside if you want infinite wait time. Useful for tests that should fail fast in CI (1s budget) but more forgiving locally (no signal = default 30s timeout). Pairs well with the new `retryStrategy: 'isolated'` (below) for flaky-test debugging — abort the first attempt at the first sign of trouble, then retry in isolation.
+
+### 🖼️ WebP screenshots
+
+[`expect(page).toHaveScreenshot()`](https://playwright.dev/docs/api/class-pageassertions#page-assertions-to-have-screenshot-1) and [`expect(locator).toHaveScreenshot()`](https://playwright.dev/docs/api/class-locatorassertions#locator-assertions-to-have-screenshot-1) now store snapshots in the WebP format — give the snapshot a `.webp` name and Playwright writes a lossless WebP golden (or read it back the same way):
+
+```ts
+// Visual comparisons store the golden snapshot as lossless WebP
+await expect(page).toHaveScreenshot('homepage.webp')
+
+// Standalone screenshots can trade quality for size with lossy WebP
+await page.screenshot({ path: 'homepage.webp', quality: 50 })
+```
+
+[`page.screenshot()`](https://playwright.dev/docs/api/class-page#page-screenshot) and [`locator.screenshot()`](https://playwright.dev/docs/api/class-locator#locator-screenshot) also accept `webp` as a `type`, where quality `100` (the default) is **lossless** and lower values use lossy compression. **Practical win:** lossless WebP goldens are typically 25–35% smaller than lossless PNG — a 50MB PNG-heavy `__snapshots__` directory shrinks to ~35MB with no quality loss.
+
+### 🧩 Custom test filtering with `Reporter.preprocess()`
+
+New [`reporter.preprocess()`](https://playwright.dev/docs/api/class-reporter#reporter-preprocess) hook runs after the configuration is resolved and before `reporter.onBegin()`, letting a reporter mark individual tests as **skipped**, **excluded**, **fixed**, or **failing** through a [`TestRun`](https://playwright.dev/docs/api/class-testrun) object:
+
+```ts
+// reporters/team-policy.reporter.ts
+import type { Reporter, TestRun } from '@playwright/test/reporter'
+
+class TeamPolicyReporter implements Reporter {
+  async preprocess({ config, suite, testRun }: { config: any; suite: any; testRun: TestRun }) {
+    for (const test of suite.allTests()) {
+      // Skip work-in-progress tests in CI (not local dev)
+      if (process.env.CI && test.title.includes('[wip]')) testRun.skip(test)
+
+      // Tag known-flaky tests as 'fixed' so they're highlighted in the HTML report
+      if (KNOWN_FLAKES.has(test.title)) testRun.fix(test)
+    }
+  }
+}
+export default TeamPolicyReporter
+```
+
+**Use cases:** CI-only skip filters (skip `[wip]` only when `process.env.CI`), per-team policy enforcement (skip the platform team's tests on the marketing team's CI run), tagging known-flake tests so the HTML report shows the auto-retry status, and excluding slow integration tests from PR runs.
+
+### 🔁 Isolated retries — `retryStrategy: 'isolated'`
+
+New [`testConfig.retryStrategy`](https://playwright.dev/docs/api/class-testconfig#test-config-retry-strategy) controls when failed tests are retried. The default `'immediate'` retries as soon as a worker is free; `'isolated'` runs **all retries at the end**, one by one in a single worker, to minimize interference with the rest of the suite:
+
+```ts
+// playwright.config.ts
+import { defineConfig } from '@playwright/test'
+
+export default defineConfig({
+  retries: 2,
+  retryStrategy: 'isolated', // ← new in 1.62; all retries run after the main suite
+})
+```
+
+**When to pick `'isolated'`:** debugging a known-flaky test (you don't want other tests' noise while the retry happens), performance-sensitive suites (an isolated retry doesn't compete for worker time with the main run), and CI environments where you want a deterministic "first attempt results" view before the retry noise.
+
+### New APIs at a glance
+
+| Area | API | What it does |
+|---|---|---|
+| Browser / Context | `browserContext.storageState({ credentials: true })` | New `credentials` option includes the context's virtual WebAuthn passkeys in the storage state — persist + re-seed into later contexts via `browser.newContext({ storageState })` |
+| Actions | `locator.click({ scroll: 'auto' \| 'none' })` | New `scroll` option on every action to opt out of Playwright's automatic scroll-into-view — useful for sticky-header layouts where scrolling past an element is unwanted |
+| Network | `apiResponse.timing()` | Returns resource timing information for an API response — `startTime`, `responseEnd`, `domainLookupEnd`, `connectEnd`, etc. — mirrors the browser's [PerformanceResourceTiming](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming) |
+| Evaluation | `locator.waitForFunction(fn)` | Waits until `fn` — called with the matching element — returns a truthy value. Replaces `page.waitForFunction(() => el.matches(...))` boilerplate |
+| Evaluation | `page.evaluate(() => fn)` / `page.addInitScript(() => fn)` | Both now accept **functions** as arguments directly (previously only string-serialized form was supported in some call paths) — lets you pass a TypeScript function reference without ``() => `${...}` `` string concatenation |
+| Command line / MCP | `npx playwright mcp` / `npx playwright cli` | **Playwright now bundles the [Playwright MCP server](https://playwright.dev/docs/getting-started-mcp) and [`playwright-cli`](https://playwright.dev/docs/getting-started-cli)** — agents can drive browsers without separately installing the MCP server package. `playwright-cli` is a scriptable CLI for one-off browser operations |
+| Reporters | `reporter: [['html', { mergeFiles: true }]]` | The HTML report's **Merge files** grouping — previously only a UI toggle — can now be enabled from the config so PR comment artifacts use the merged-file layout by default |
+
+### Browser versions (1.62)
+
+- Chromium **151.0.7922.34**
+- Mozilla Firefox **153.0**
+- WebKit **26.5**
+
+Also tested against Google Chrome 151 and Microsoft Edge 151 stable channels.
+
+### Migration checklist (1.61.x → 1.62)
+
+- [ ] `npm install -D @playwright/test@^1.62.0` — no peer-dep changes, no `playwright.config.ts` migration
+- [ ] **Debian 11 host EOL** — bump CI containers to `mcr.microsoft.com/playwright:v1.62.0-jammy` (Debian 12) or Ubuntu 24.04. Local Linux dev machines still on Debian 11 will fail to install the browser bundle
+- [ ] **Component tests** — if you're using the old `@playwright/experimental-ct-react` inline-mount model, convert to the stories-and-galleries model (the inline mount still works but is deprecated; new projects should start with stories)
+- [ ] **Passkey persistence** — if you want passkeys seeded from one context to carry into the next, add `credentials: true` to `storageState()` calls (and to `browser.newContext({ storageState })`)
+- [ ] **No migration required** if you only used the standard `page` / `expect` API
+
+### Sources
+
+- [Playwright 1.62.0 release notes](https://github.com/microsoft/playwright/releases/tag/v1.62.0)
+- [Playwright 1.62 docs — Release notes](https://playwright.dev/docs/release-notes)
+- [Playwright docs — Components (stories and galleries model)](https://playwright.dev/docs/test-components)
+- [Playwright docs — fixtures.mount()](https://playwright.dev/docs/api/class-fixtures#fixtures-mount)
+- [Playwright docs — Reporter.preprocess()](https://playwright.dev/docs/api/class-reporter#reporter-preprocess)
+- [Playwright docs — testConfig.retryStrategy](https://playwright.dev/docs/api/class-testconfig#test-config-retry-strategy)
+- [Playwright docs — Getting Started with the Playwright MCP server](https://playwright.dev/docs/getting-started-mcp)
+- [Playwright docs — playwright-cli](https://playwright.dev/docs/getting-started-cli)
+
+
 ## DOM Environment Updates — happy-dom 20.11.x + jsdom 29.1.1 (July 2026)
 
 The two most-used DOM environments for Vitest got **meaningful updates in July 2026** that affect every test suite still on older versions. Both pin to their respective `@latest` dist-tags as of 2026-07-24.
