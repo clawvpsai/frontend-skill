@@ -1042,6 +1042,62 @@ Tree-shake fix for async imports of re-export modules. **Root cause:** code like
 
 **Fix:** `import_usage` now includes re-exports when computing which imports a module actually reads. The downstream module's unused exports are then dropped as normal. **Who needs to audit:** any project that does `await import('some-barrel-file')` and only references a single name from the barrel. **Verify:** `pnpm next build` + `npx next-bundle-analyzer` before/after; expect the barrel's unused exports to drop from the bundle. **Source:** [PR #95989 — `[turbopack] Track re-exports in import_usage inside of compute_import_usage`](https://github.com/vercel/next.js/pull/95989) · bgw · merged 2026-07-24T00:34:54Z · **Shipped in `16.3.0-canary.96`** · fixes [issue #95698](https://github.com/vercel/next.js/issues/95698).
 
+## Server Action Redirects Now Return `200` for Client-Handled Redirects (16.3.0-canary.100, [PR #96310](https://github.com/vercel/next.js/pull/96310) by Zack Tanner, merged 2026-07-28T08:40:12Z, SHIPPED in `16.3.0-canary.100` at 2026-07-28T21:04:54Z)
+
+Server Action redirects used to return a **`303 See Other`** without a `Location` header (and may have included a streamed RSC response body in the same response). The combination was hostile to HTTP intermediaries — reverse proxies, WAFs, CDN edge nodes, and corporate proxies commonly **reject** a `303` without `Location` as malformed, or **strip the response body** because it looks like a redirect response that shouldn't carry content. The fix changes the client-handled redirect path to **return `200 OK`** while continuing to use the `x-action-redirect` header and the RSC response body.
+
+### The three Server Action redirect paths
+
+| Redirect type | Pre-#96310 status | Post-#96310 status | Headers | Notes |
+|---|---|---|---|---|
+| **Server-rendered redirect** (call comes from a non-JS context — progressive enhancement, `curl`, no `Next-Action` header) | `303 See Other` | `303 See Other` (unchanged) | `Location: <target>` | Standards-compliant — proxies understand it. **Unchanged.** |
+| **Client-handled redirect** (call comes from the JS runtime — `useFormState`, `<form action={action}>`, `startTransition`) | `303 See Other` **without `Location`** + RSC body | **`200 OK`** + `x-action-redirect: <target>` + RSC body | `x-action-redirect: <target>` | The fix. `200` is the correct status for "client, please read the body and apply the redirect that the `x-action-redirect` header tells you". Proxies now pass it through cleanly. |
+| **`redirect()` from a Route Handler** (no Server Action context) | `307 Temporary Redirect` (unchanged) | `307 Temporary Redirect` (unchanged) | `Location: <target>` | Per the [`redirect()` docs](https://nextjs.org/docs/app/api-reference/functions/redirect). **Unchanged.** |
+
+### Why the `x-action-redirect` header pattern is correct
+
+The pre-#96310 `303` without `Location` was a misuse of the status code — `303` semantically means "I've moved the resource, go to this URL" but Next.js's client-handled redirect carries the destination **only in the response body / a custom header**, not in `Location`. This is fundamentally incompatible with HTTP/1.1 [RFC 7231 §6.4.4](https://datatracker.ietf.org/doc/html/rfc7231#section-6.4.4). The post-#96310 `200` is the honest status — "request succeeded, body and `x-action-redirect` header contain instructions for what to do next." HTTP intermediaries are expected to pass through `200 OK` responses and let the client (Next.js's action-result decoder) interpret the `x-action-redirect` header.
+
+### Who needs to audit
+
+- **Anyone with HTTP intermediary monitoring on Server Action endpoints** — your monitoring/alerting may have flagged `303` responses from Server Action POSTs as "potential redirect loop" or "incomplete response". Those alerts should be reviewed and **filtered to exclude Next.js Server Action endpoints** (or updated to whitelist `200` for these routes going forward).
+- **Anyone with custom WAF rules** that block `303` without `Location` as a defensive measure — these will now be triggered by **pre-#96310 Server Action responses**, not by post-#96310 ones (which return `200`). Re-test your WAF rules on canary.100+.
+- **Anyone proxying Next.js through Cloudflare, Fastly, Vercel Edge, AWS CloudFront, or nginx** — the body-stripping behavior that some intermediaries apply to `3xx` responses will now stop stripping the RSC body. This is a **fix for the bug**, not a regression.
+- **Anyone with end-to-end (E2E) tests asserting on the redirect status code from a Server Action POST** — those tests may have been asserting `303` to detect a redirect. Update to assert `200` + check the `x-action-redirect` header for the destination, or check the post-action navigation (e.g. `await page.waitForURL('/target')`).
+
+### Migration recipe for E2E tests
+
+```ts
+// Before (Playwright/Vitest/Detox):
+const response = await page.request.post('/action-endpoint', { form: { id: '1' } })
+expect(response.status()).toBe(303)  // fragile — depends on canary version
+expect(response.headers().location).toBe('/target/1')
+
+// After (works on canary.100+ AND pre-canary.100):
+const response = await page.request.post('/action-endpoint', { form: { id: '1' } })
+// Server-rendered: 303 + Location
+// Client-handled:  200 + x-action-redirect (no Location)
+// Either way, the browser ends up at /target/1 — just navigate and assert the URL:
+await page.waitForURL('/target/1')
+expect(page.url()).toBe('http://localhost:3000/target/1')
+```
+
+### Audit recipe
+
+```bash
+# Check what status code your Server Actions are returning today
+rg -B1 -A5 "x-action-redirect" .next/server 2>/dev/null | head -30
+
+# Or test directly:
+curl -i -X POST http://localhost:3000/your-action-endpoint   -H "Content-Type: application/x-www-form-urlencoded"   -H "Next-Action: <action-id>"   --data "id=1"
+# Pre-canary.100:  HTTP/1.1 303 See Other  (no Location)
+# Post-canary.100: HTTP/1.1 200 OK          x-action-redirect: /target/1
+```
+
+### Source
+
+- [PR #96310 — `Return 200 for client-handled Server Action redirects`](https://github.com/vercel/next.js/pull/96310) · Zack Tanner · merged 2026-07-28T08:40:12Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z) · fixes [#92882](https://github.com/vercel/next.js/issues/92882) · fixes [#74026](https://github.com/vercel/next.js/issues/74026)
+
 ## Common Mistakes — App Router uses `app/api/` with route handlers; don't mix with `pages/api/`
 - **Missing `await` on params** — In Next.js 15, route handler params are Promises
 - **Not returning proper status codes** — 201 for create, 204 for delete, 404 for not found

@@ -2304,6 +2304,136 @@ const icons = import.meta.glob('./icons/*.svg', { caseSensitive: true })
 - [PR #96226 — Turbopack: support import.meta.glob caseSensitive option](https://github.com/vercel/next.js/pull/96226) · merged 2026-07-26T23:46:17Z · **canary-branch ahead of canary.97** (timneutkens)
 - [Turbopack options reference (`docs/01-app/03-api-reference/08-turbopack.mdx`)](https://nextjs.org/docs/app/api-reference/turbopack#options-reference) — docs PR updated to add the `caseSensitive` row to the options table
 
+## 16.3 canary.100–102 Server HMR Refactor + Tree-Shaking Extensions + Dropped-Dynamic-Import Build Fix (July 28, 2026)
+
+Three canary releases shipped within 8 hours of each other (`16.3.0-canary.100` at 21:04:54Z, `canary.101` at 21:13:44Z, `canary.102` at 23:55:12Z). Combined they deliver **four user-facing improvements** of material interest: a major server-side HMR refactor that cuts per-chunk task churn, an extension of the dead-`require()` pruning to `Object.defineProperty` CJS interop patterns, a fatal build-error fix for fully-destructured-but-not-named dynamic imports, and the `experimental.useOffline` first-class guide. Plus a meta-story about re-export tracking instability.
+
+### Turbopack Server HMR Refactor — 4-PR Cluster by @wbinnssmith (canary.101, shipped 2026-07-28T21:13:44Z)
+
+Until canary.101, server-side HMR for Turbopack was using **per-chunk turbo tasks** — each compiled server chunk had its own subscription, its own version state, and its own diff path. On a large app with hundreds of server chunks, the tokio task churn was significant and the diff/clear logic was fanned out across every chunk's subscription. **The fix replaces all of that with a single firehose subscription** that diffs every HMR chunk together.
+
+The cluster:
+
+- **[PR #94948](https://github.com/vercel/next.js/pull/94948) `Turbopack: aggregate server HMR into one subscription`** (wbinnssmith) — replaces per-chunk Server HMR turbo tasks with a single subscription that diffs every HMR chunk. **Multi-second saving** on both cold and warm builds in large apps. New `aggregate_hmr` module in `turbopack/crates/turbopack/`: `AggregateHmrVersion` keyed by chunk path, `merged_partial_update` builder, and `is_hmr_eligible_chunk` (excludes `.map` files, which would force every diff to `Total`). `Project::all_hmr_version_state` / `all_hmr_update` aggregate over the whole `hmr_root_path`. The seed transition emits an empty `Partial` so the JS consumer doesn't treat it as a restart and wipe handlers the triggering request just populated. Any chunk requiring `Total`/`Missing` escalates the batch. **NAPI:** new `projectAllHmrEvents(target)` returns a single subscription. **JS:** `setupServerHmr` subscribes once via `allHmrEvents` instead of fanning out over `hmrChunkNamesSubscribe`. **`clear()` is renamed to `reEvaluateAllModulesExpensive()`** to label directly that this is a costly operation and should only be done in exceptional circumstances. **A follow-up PR brings the same to client chunks.**
+- **[PR #95661](https://github.com/vercel/next.js/pull/95661) `Turbopack: extract chunk list version/update into turbopack-ecmascript`** (wbinnssmith) — pure refactor. Moves the chunk-list version, update, and merged-update wire types out of `turbopack-browser` into a shared `turbopack-ecmascript::chunk_list` module so both the browser and node chunking contexts can build on them. `EcmascriptDevChunkListVersion` is renamed to `ChunkListVersion`; `update_chunk_list` becomes runtime-agnostic (plain path→`VersionedContent` maps). **No behavior change** — prerequisite for the server-side refactor in #94948.
+- **[PR #95795](https://github.com/vercel/next.js/pull/95795) `Turbopack HMR: extract deferring build messages and use it in server hmr`** (wbinnssmith) — extract the "building" → "built" debounce from the client HMR implementation and use it in server HMR. Graph churn previously caused a "building" message quickly followed by a "built" message; the debounce coalesces them. The PR description flags that the underlying issue should be addressed in a follow-up; this PR is the minimal debounce.
+- **[PR #95546](https://github.com/vercel/next.js/pull/95546) `Turbopack server hmr: avoid complete clear on graph changes`** (wbinnssmith) — **the largest individual win in the cluster**. Until this PR, importing a new module into a chunk's graph caused a complete eviction (`clear()`) and re-evaluation of server chunks, both in the Turbopack runtime's module cache and Node's `require.cache`. Root cause: `VersionedContentMap` works entirely on chunk paths, but a new module changes the chunk's `availability_info`, which in dev for non-entry chunks is encoded into the chunk's filepath. When constructing the transition instructions to move a chunk into its new state, the prior state can't be found, and the code falls back to `clear()`. The fix implements **chunk lists for server entry chunks** the same way the client HMR implementation does — an entry chunk's version aggregates the versions of its dependent chunks (including dynamically imported ones), keyed by merger rather than path. Entry chunks do not encode availability info in their paths, so they are insulated from missing versions. Updates apply in Node through the same shared merged-update machinery in the unified HMR runtime that the client already uses, plus a new `ChunkListUpdate` branch in the server HMR client to unwrap the merged updates.
+
+**Practical impact:**
+
+- **Large apps with many server chunks** — the combination of #94948 (one subscription) + #95546 (no full `clear()`) cuts dev-server HMR latency by multi-seconds per save in Vercel's internal large-app benchmarks.
+- **Anyone seeing `reEvaluateAllModulesExpensive` in dev logs** — this is the renamed `clear()`. If you're seeing it on a routine edit (not a dependency-graph change), that's a bug — file an issue with the trace and the canary.100+ dev-server log.
+- **Anyone using the `clear` method name in custom Turbopack plugins** — the method was renamed; if you have a wrapper around `clear()`, rename your call site too.
+
+### Turbopack `Object.defineProperty` CJS Interop Now Side-Effect-Free (16.3.0-canary.100, [PR #96273](https://github.com/vercel/next.js/pull/96273) by sampoder, merged 2026-07-28T07:45:12Z, SHIPPED in `16.3.0-canary.100`)
+
+The canary.96 PR #95716 ("Drop dead `require()` calls") was limited to CJS modules that assign exports directly (`module.exports.X = ...`). PR #96273 extends the side-effect-free analysis to the **`Object.defineProperty(exports, "X", { value: ... })` form**, which is what most transpilers emit for ESM→CJS interop:
+
+```js
+// TypeScript classic ESM→CJS, Babel @babel/preset-env CJS target, swc module.type: commonjs, etc.
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.foo = 1;
+```
+
+The PR body explicitly calls out that this is **prerequisite work** for [PR #95718](https://github.com/vercel/next.js/pull/95718) (the dead `require()` drop) to apply to the defineProperty-form CJS modules — meaning more dead `require()` calls are now eliminable across the dependency graph.
+
+**Practical impact:** Same as the canary.96 fix but extended to the most common transpiler CJS outputs. TypeScript and Babel-emitted CJS bundles (i.e. **almost every Next.js project's transitive dependencies**) now see the same pruning. Cumulative savings are small per file but universal.
+
+**Action:** upgrade to `next@canary@100` or later. No code change.
+
+**Source:** [PR #96273 — `[turbopack] Treat Object.defineProperty(exports, …, { value: … }) as side-effect free`](https://github.com/vercel/next.js/pull/96273) · sampoder · merged 2026-07-28T07:45:12Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z) · extends [#95718](https://github.com/vercel/next.js/pull/95718).
+
+### Turbopack Dropped-Dynamic-Import Build Fix (16.3.0-canary.102, [PR #96284](https://github.com/vercel/next.js/pull/96284) by sampoder, merged 2026-07-28T23:35:00Z, SHIPPED in `16.3.0-canary.102`)
+
+A **fatal build error** that fired when a `await import('./pure')` call destructured zero names from the imported module:
+
+```ts
+// pure.js — side-effect-free: nothing observable happens on evaluation
+export const version = '1.0.0'
+
+// app/page.tsx
+export default async function Page() {
+  const {} = await import('../pure')   // ← nothing destructured out
+  return <p>hello world</p>
+}
+```
+
+Pre-PR #96284 build error:
+
+```
+▲ Next.js 16.3.0-canary.87 (Turbopack)
+  Creating an optimized production build ...
+
+FATAL: An unexpected Turbopack error occurred.
+
+> Build error occurred
+Error [TurbopackInternalError]: Failed to write app endpoint /page
+
+Caused by:
+- ModuleId not found for ident: [project]/pure.js [app-rsc] (ecmascript, async loader)
+
+Debug info:
+...
+- Execution of PatternMapping::resolve_request failed
+- ModuleId not found for ident: [project]/pure.js [app-rsc] (ecmascript, async loader)
+```
+
+**Root cause:** for modules that were not used (and that Turbopack was asynchronously loading), Turbopack would still generate the loader call but the file would not exist. The loader pointed at a ModuleId that didn't resolve. **The fix:** rewrite those loaders to **empty promises**:
+
+```diff
+ async function evaluationOnly() {
+-    const {} = await __turbopack_context__.A("…/pure.js [test] (ecmascript, async loader)");
++    const {} = await Promise.resolve({});
+ }
+ async function named() {
+     const { used } = await __turbopack_context__.A("…/named.js [test] (ecmascript, async loader)");
+     console.log(used);
+ }
+ async function pattern(locale) {
+     const {} = await __turbopack_context__.f({
+         "./locales/effectful.js": {
+             id: ()=>"…/locales/effectful.js [test] (ecmascript, async loader)",
+             module: ()=>__turbopack_context__.A("…/locales/effectful.js …")
+         },
+         "./locales/pure.js": {
+-            id: ()=>"…/locales/pure.js [test] (ecmascript, async loader)",
+-            module: ()=>__turbopack_context__.A("…/locales/pure.js …")
++            id: ()=>undefined,
++            module: ()=>Promise.resolve({})
+         }
+     }).import(`./locales/${locale}.js`);
+ }
+```
+
+The implementation turns `UnusedReferences` into a map between references and target that can be dropped, where the target IDs are the unused targets. It then passes the reference through to `pattern_mapping.rs` so it can determine the `dropped_targets`. Needs to be target-specific — you can have a situation (like the `pattern` example above) where some targets are pure and some aren't.
+
+**Who needs to audit:**
+
+- **Anyone using `await import('...')` for side-effect-only modules** (CSS-in-JS initialization, polyfill imports, telemetry pings, feature-detection imports) — common in `app/layout.tsx` and middleware.
+- **Anyone using `import('...')` with a destructuring of zero names** (`const {} = await import('...')`) — usually accidental, but sometimes intentional for type-only side effects.
+- **Anyone using `import('...')` inside a `try { ... } catch {}` error boundary** where the import is never used — the loader was previously generating code that pointed at a non-existent ModuleId.
+
+**Practical impact:**
+
+- **Before canary.102:** `next build` fails with `Error [TurbopackInternalError]: Failed to write app endpoint /page` for any page/route that imports a side-effect-free module asynchronously.
+- **After canary.102:** builds cleanly. The loader call becomes `Promise.resolve({})` and the unused target is dropped from the bundle.
+
+**Workaround before canary.102:** swap `const {} = await import('../pure')` for `await import('../pure')` (no destructuring) — the non-destructured form is not affected by the bug.
+
+**Source:** [PR #96284 — `[turbopack] Remove loader calls for dropped dynamic imports`](https://github.com/vercel/next.js/pull/96284) · sampoder · merged 2026-07-28T23:35:00Z · **Shipped in `16.3.0-canary.102`** (2026-07-28T23:55:12Z).
+
+### Turbopack Re-Export Tracking — Revert-then-Re-Revert in 7 Hours (PR #95989 → #96311 → #96315)
+
+A meta-story about a feature that shipped in canary.96, was reverted in canary.100, then re-applied in canary.102:
+
+- **[PR #95989](https://github.com/vercel/next.js/pull/95989) `[turbopack] Track re-exports in import_usage inside of compute_import_usage`** (bgw) — shipped in `16.3.0-canary.96` (July 24, 2026). Fixes `viem/chains`-style async-import barrel-pruning bug. Documented in this file's `Turbopack Re-Export Tree-Shake — #95989` section.
+- **[PR #96311](https://github.com/vercel/next.js/pull/96311) `Revert "[turbopack] Track re-exports in import_usage inside of compute_import_usage"`** (sampoder) — **shipped in `16.3.0-canary.100`** (8 hours after #96311 was merged on the canary branch). The PR description is empty (`Reverts vercel/next.js#95989`) — likely a build/CI failure or regression found in the canary.97 → canary.100 cycle that wasn't caught in canary.96.
+- **[PR #96315](https://github.com/vercel/next.js/pull/96315) `Revert "Revert "[turbopack] Track re-exports in import_usage inside of compute_import_usage""`** (sampoder) — **shipped in `16.3.0-canary.102`** (2 hours after #96311). Reverts the revert, bringing the original PR #95989 back.
+
+**Net effect for users:** on `16.3.0-canary.100` and `16.3.0-canary.101`, the re-export tracking was OFF (the re-exported async-import barrel pruning fix didn't work). On `16.3.0-canary.102`+, it's back ON. If you benchmarked barrel-pruning during canary.100 or canary.101, re-benchmark on canary.102 — your numbers may be better.
+
+**Lesson:** short canary cut cycles (canary.100 → canary.101 → canary.102 within 3 hours) make rapid-fire fixes and reverts possible, but the flip-flop means **don't trust a single canary's perf numbers for a feature that has been re-applied in the same window**. Always benchmark the most recent canary before reporting results.
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |

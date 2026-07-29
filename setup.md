@@ -1651,7 +1651,274 @@ The canary.78 flag is no longer inert — two follow-up PRs landed in **canary.7
 
 **Practical:** opt in only if you're testing the cancellation path on a non-shipping project — the flag is still experimental, and edge-rendered server components don't expose the Node response-close signal that the cancellation relies on (production SSR hardcodes `false`). For most projects, default `false` is correct until the experimental flag is documented as production-safe in a future stable.
 
-## `experimental.requestInsights` — Dev-Only Request Diagnostics Stack (16.3.0-canary.84+, PR [#93974](https://github.com/vercel/next.js/pull/93974) + [#93975](https://github.com/vercel/next.js/pull/93975) + [#93976](https://github.com/vercel/next.js/pull/93976) by [@feedthejim](https://github.com/feedthejim), merged 2026-07-12T11:47:38–11:47:41Z)
+## Turbopack `import.meta.env` Support — Vite-Compatible Build-Time Constants (16.3.0-canary.100+, [PR #96225](https://github.com/vercel/next.js/pull/96225) by timneutkens, merged 2026-07-28T08:08:32Z, SHIPPED in `16.3.0-canary.100` at 2026-07-28T21:04:54Z)
+
+The single biggest new user-facing feature in the canary.100 cycle. Turbopack now has **native first-class support for `import.meta.env`** — the Vite-compatible API surface for reading build-mode constants at runtime. Until this PR, Turbopack only supported `process.env.X` (the classic Node.js form) for env vars, while `import.meta.env.X` was a Turbopack-side no-op (undefined at runtime), forcing Vite-migrated codebases to rewrite every `import.meta.env.X` to `process.env.X` to migrate to Next.js. **That rewrite is no longer required.**
+
+### What's supported out of the box (no config)
+
+```ts
+// pages/page.tsx — any client component, server component, route handler, or server action
+const isDev  = import.meta.env.DEV        // boolean — true in next dev, false in next build
+const isProd = import.meta.env.PROD       // boolean — inverse of DEV
+const mode   = import.meta.env.MODE       // string  — 'development' | 'production' | 'test'
+const base   = import.meta.env.BASE_URL   // string  — derived from Next.js basePath + Vite-compat trailing slash
+const ssr    = import.meta.env.SSR        // boolean — true for server-side execution (RSC, route handlers, server actions, getServerSideProps); false in the browser bundle
+```
+
+These five keys are statically analyzed and replaced at build time when possible:
+
+| Key | Statically replaced? | Notes |
+|---|---|---|
+| `import.meta.env.DEV` | ✅ Always (`true` or `false`) | Useful for stripping dev-only code paths in prod (`if (import.meta.env.DEV) console.log(...)` dead-code-eliminates in prod). |
+| `import.meta.env.PROD` | ✅ Always (`false` or `true`) | Inverse of `DEV`. Same DCE story. |
+| `import.meta.env.MODE` | ✅ Always (`'development'` / `'production'` / `'test'`) | Use for `<html data-mode="...">` or env-conditional config that needs the string form. |
+| `import.meta.env.BASE_URL` | ✅ Always (Vite-compat: derived from `basePath` config + trailing slash) | If `basePath: '/app'` is set in `next.config.ts`, then `import.meta.env.BASE_URL === '/app/'`. The trailing slash matches Vite's behavior (Vite's `BASE_URL` always ends with `/`; Next.js's `basePath` historically does NOT — the trailing slash is now applied by the bundler so code ported from Vite behaves identically). |
+| `import.meta.env.SSR` | ✅ Always (`true` server-side, `false` client-side) | Companion to `DEV` / `PROD` for SSR-aware logic. The new constant — Turbopack-specific, not in Vite's surface. Lets you write code that runs in both bundles and branches on "where am I executing" without inspecting `typeof window`. |
+
+Any **other** key on `import.meta.env` (e.g. `import.meta.env.STRIPE_PUBLIC_KEY`, `import.meta.env.MY_FEATURE_FLAG`) is **exposed at runtime as the full object** — but only the keys declared in `env:` config (for `next build` deploys) or set in `.env*` files are populated. Unknown keys return `undefined`. The static-analysis pass is conservative: if it can't prove the key is one of the 5 built-ins, it leaves the full object access in place and reads from `process.env` at runtime.
+
+### TypeScript declarations
+
+A new ambient declaration in `packages/next/types/global.d.ts` makes all five keys known to TypeScript without an import:
+
+```ts
+// packages/next/types/global.d.ts (auto-merged into your project's tsconfig)
+interface ImportMetaEnv {
+  readonly DEV: boolean
+  readonly PROD: boolean
+  readonly MODE: 'development' | 'production' | 'test'
+  readonly BASE_URL: string
+  readonly SSR: boolean
+  [key: string]: any  // for user-defined env keys
+}
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+```
+
+If you've previously declared your own `interface ImportMetaEnv` to silence "Property 'DEV' does not exist" errors, **delete it** — the built-in declaration now matches what Turbopack emits. If you want stronger typing on user keys (e.g. `import.meta.env.STRIPE_PUBLIC_KEY: string` not `any`), keep a project-local `ImportMetaEnv` declaration but `interface`-extend it so the 5 built-ins come along for free:
+
+```ts
+// types/import-meta-env.d.ts
+interface ImportMetaEnv {
+  readonly STRIPE_PUBLIC_KEY: string
+  readonly POSTHOG_KEY: string
+}
+```
+
+### Vite migration notes — what changes for Vite-migrating projects
+
+For Vite → Next.js migrations, the following table is now mostly a no-op:
+
+| Vite API | Next.js (pre-#96225) | Next.js (post-#96225, canary.100+) |
+|---|---|---|
+| `import.meta.env.MODE` | ❌ undefined | ✅ Works |
+| `import.meta.env.DEV` / `.PROD` | ❌ undefined | ✅ Works |
+| `import.meta.env.BASE_URL` | ❌ undefined | ✅ Works (with Vite-compat trailing slash) |
+| `import.meta.env.SSR` | ❌ undefined | ✅ Works (Turbopack-specific — Vite doesn't expose this) |
+| `import.meta.env.VITE_*` | ❌ undefined (had to rename to `NEXT_PUBLIC_*`) | ⚠️ Still undefined — only the 5 built-ins + `process.env.NEXT_PUBLIC_*` are populated; arbitrary `VITE_*` keys are NOT auto-prefixed. Keep using `NEXT_PUBLIC_*` or set `env: { VITE_FOO: 'bar' }` in `next.config.ts`. |
+| `import.meta.glob(...)` | ❌ Not supported on Turbopack < 16.3 | ✅ Supported since 16.3 Preview (June 29, 2026) — `performance.md` → `import.meta.glob` section |
+| `import.meta.url` | ✅ Already supported (since 14.2.0-canary.33, fixed in #88602 follow-ups; PR #96307 in canary.100 fixes the bare-module Worker URL lookup regression that #88602 introduced) | ✅ Same — plus the bare-module worker URL fix from canary.100 |
+
+### Migration recipe for existing projects
+
+For projects already running on canary.99 or earlier that have a hand-rolled `import.meta.env` shim:
+
+1. **Delete any project-local `ImportMetaEnv` declaration that duplicates the 5 built-ins.** Common ones: `interface ImportMetaEnv { MODE: string; DEV: boolean; PROD: boolean }`.
+2. **Replace `process.env.X` → `import.meta.env.X`** only if you want Vite parity. For new projects, **use `import.meta.env` from the start** (especially for `NEXT_PUBLIC_*` keys — they have the same bundler behavior).
+3. **If you relied on a custom `BASE_URL` computation** (e.g. `new URL('.', window.location.origin).pathname`), remove it. The static analysis replaces `import.meta.env.BASE_URL` at build time, so the runtime cost is zero.
+4. **For arbitrary user keys**, keep using `process.env.NEXT_PUBLIC_*` (Next.js's existing public-env convention). The 5 built-ins are special; everything else still flows through the normal `process.env` static-analysis pipeline.
+
+### Practical impact
+
+- **Vite-migrating teams** save the entire `import.meta.env.*` → `process.env.*` rewrite step. For a typical content-heavy Vite app with ~50 `import.meta.env.X` reads, this is a measurable migration cost saving.
+- **SSR-conditional code** (`if (import.meta.env.SSR) { ... }`) now works as a first-class pattern — previously you had to do `typeof window === 'undefined'` (which Turbopack's static analyzer can't always follow, leading to dead branches leaking into client bundles).
+- **`BASE_URL` Vite-compat** removes the "why does Vite's BASE_URL end with `/` but Next.js's basePath doesn't" footgun that caught every Vite-to-Next.js migration.
+- **No bundle-size change**: all 5 built-ins are statically replaced at compile time; the runtime object access for unknown keys is dead-code-eliminated when the key is a string literal.
+
+### Verification (from the PR description)
+
+- `cargo fmt --all -- --check`
+- `cargo nextest run -p turbopack-tests -E 'test(import_meta_env)'`
+- `pnpm build-all`
+- `pnpm --filter=next types`
+- `NEXT_TEST_PREFER_OFFLINE=1 pnpm test-dev-turbo test/e2e/import-meta-env/import-meta-env.test.ts`
+- `NEXT_TEST_PREFER_OFFLINE=1 pnpm test-start-turbo test/e2e/import-meta-env/import-meta-env.test.ts`
+
+### Files touched (snapshot from the PR)
+
+- `turbopack/crates/turbopack-ecmascript/src/references/import_meta.rs` — new `ImportMetaEnv` + `ApplyImportMetaEnv` AST visitor
+- `turbopack/crates/turbopack-ecmascript/src/references/mod.rs` — registers the new visitor
+- `turbopack/crates/turbopack-ecmascript/src/parse.rs` — wires `import.meta.env` to the new reference kind
+- `turbopack/crates/turbopack-tests/tests/snapshot/import-meta-env/` — new e2e snapshots
+- `turbopack/crates/turbopack-tests/tests/execution/import-meta-env/` — new execution tests
+- `test/e2e/import-meta-env/` — new Next.js integration tests
+- `packages/next/types/global.d.ts` — new `ImportMetaEnv` ambient declaration
+
+### Sources
+
+- [PR #96225 — `feat(turbopack): support import.meta.env`](https://github.com/vercel/next.js/pull/96225) · timneutkens · merged 2026-07-28T08:08:32Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z)
+- [compare v16.3.0-canary.99...v16.3.0-canary.100](https://github.com/vercel/next.js/compare/v16.3.0-canary.99...v16.3.0-canary.100) — 24 commits; #96225 is the only material new user-facing PR for bundler ergonomics
+- [Next.js 16.3.0-canary.100 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.100) (2026-07-28T21:04:54Z)
+- [Vite `import.meta.env` reference](https://vite.dev/guide/env-and-mode.html) — the canonical surface being matched
+
+## `experimental.devMemoryThresholdRestart` — Opt Out of the 80% V8-Heap Dev-Server Restart (16.3.0-canary.100+, [PR #96144](https://github.com/vercel/next.js/pull/96144) by Tim Neutkens, merged 2026-07-28T08:30:14Z, SHIPPED in `16.3.0-canary.100` at 2026-07-28T21:04:54Z)
+
+The Next.js dev server has had a safety mechanism for years: when V8 heap usage exceeds **80%** of the configured `--max-old-space-size`, the server **restarts itself** to avoid an OOM crash (`FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory`). Until now there was no opt-out — large monorepos with memory-hungry dependency graphs would hit the 80% threshold, lose in-memory HMR state, restart, and lose 5–15 seconds of dev productivity per restart. PR #96144 adds the opt-out.
+
+### The flag
+
+```ts
+// next.config.ts — defaults to true to preserve existing behavior
+export default {
+  experimental: {
+    devMemoryThresholdRestart: false, // opt out — let the server keep running past 80% heap
+  },
+} satisfies import('next').NextConfig
+```
+
+### When to opt out (set `false`)
+
+- **Large monorepos with hundreds of routes** where HMR state across the restart is more valuable than avoiding an eventual OOM. With `devMemoryThresholdRestart: false`, the server keeps serving until the actual OOM happens (which can be 10–30 minutes after hitting 80% if your workload doesn't immediately allocate new memory).
+- **Long-running dev sessions** where you've intentionally allocated `--max-old-space-size=8192` or higher (Vercel: "8GB is the recommended memory" for the Next.js monorepo) and want to use the headroom without the auto-restart interrupting the dev session.
+- **Test rigs and CI dev servers** where the restart cost (5–15s) is more expensive than the OOM risk (CI retries anyway, and OOM is rare if you're on a containerized runner with cgroup limits that OOM-kill you safely).
+
+### When to KEEP the default (`true`)
+
+- **Most apps.** The restart is a safety net; if you don't know why you'd opt out, don't.
+- **Apps on memory-constrained dev hosts** (laptops with 8GB RAM, low-spec CI runners). The restart at 80% is a feature — it preserves the dev session by trading 5–15s of downtime for a clean slate.
+- **Anyone who has seen `The server is running out of memory, restarting to free up memory` and appreciated the recovery.** (See [issue #46756](https://github.com/vercel/next.js/issues/46756) for the original problem report from March 2023 — the auto-restart has been there for ~3 years.)
+
+### Audit recipe
+
+```bash
+# See if you've been hitting the threshold (look for "running out of memory" in the dev log)
+rg "running out of memory" .next/dev-server.log 2>/dev/null || echo "No restarts recorded"
+```
+
+If you see hits, the new flag gives you three choices:
+
+1. **Bump `--max-old-space-size` first** — `NODE_OPTIONS='--max-old-space-size=12288' next dev` (12GB) or 16384 (16GB) gives the dev server more headroom before the 80% threshold.
+2. **Opt out with `devMemoryThresholdRestart: false`** — keep the existing memory budget but accept the OOM risk.
+3. **Do nothing** (the default) — keep the restart, but audit whether your workload is genuinely allocating too much or whether you're hitting the threshold because of a regression (Turbopack's `experimental.turbopackMemoryEviction: 'full'` and `experimental.turbopackFileSystemCacheForDev: true` should keep most apps under 80%).
+
+### What it does NOT do
+
+- **No effect on `next start`** — the flag is dev-only; production servers use a different process model (one process per request in serverless, or per-container in self-hosted) where the 80% heap threshold doesn't apply.
+- **No new heap limit** — the flag is a binary "restart at 80% yes/no", not a configurable threshold. If you want to change the threshold, bump `--max-old-space-size` (option 1 above).
+- **No telemetry** — flipping the flag does not affect Next.js's heap monitoring. The `experimental.requestInsights` stack (see below) is a separate concern.
+
+### Source
+
+- [PR #96144 — `Add option to control dev memory threshold restarts`](https://github.com/vercel/next.js/pull/96144) · Tim Neutkens · merged 2026-07-28T08:30:14Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z)
+
+## Improved Project Root Detection — Worktrees, Stray Lockfiles, Home-Dir Rollback (16.3.0-canary.100+, [PR #96159](https://github.com/vercel/next.js/pull/96159) by sampoder, merged 2026-07-28T08:35:00Z, SHIPPED in `16.3.0-canary.100` at 2026-07-28T21:04:54Z)
+
+Watching too many files hurts dev performance and inflates the work Turbopack does — every directory the watcher climbs adds N files to the diff cost, and the related ecosystem-ci regression around [PR #94597](https://github.com/vercel/next.js/pull/94597) exposed exactly this. PR #96159 hardens Turbopack's project-root detection with **four new guards** so the dev server can't accidentally walk up out of your project and start watching (e.g.) your entire home directory.
+
+### What changed
+
+1. **Git worktree guard** — if `.git` is a **file** (not a directory), it's a git worktree link. Turbopack now detects the linked worktree path and uses the real `.git` directory as the upper boundary, instead of treating the file as a stop signal. Without this, dev servers running inside a git worktree could walk up out of the worktree (watching the parent repo).
+2. **Git repository boundary guard** — Turbopack now checks if the parent of the current root is still inside a checked-out git repo. If it would walk out of the repo, it stops there. A console warning fires if this happens (it's almost always a misconfiguration — your project should be inside a git repo, not sitting adjacent to one).
+3. **Stray lockfile / empty lockfile filter** — `package-lock.json` with no packages, `package-lock.json` without a sibling `package.json`, `pnpm-lock.yaml` / `yarn.lock` / `bun.lockb` / `bun.lock` / `package-lock.json` files at non-root locations are now ignored. The classic "I accidentally ran `npm install` in the wrong directory" case: previously the dev server would treat the stray `node_modules/` as part of the project; now it's filtered.
+4. **Home-directory detection + rollback** — if Turbopack would start watching your home directory (`/Users/you`, `C:\Users\you`, `/home/you`), it rolls back to the project root. A warning is logged. The exception: if your `next.config.*` lives in your home dir, the dev server still runs there (no rollback beyond the config).
+
+### Workspaces detection
+
+For monorepos, Turbopack now reads the `workspaces` field from `package.json` (npm, Yarn, Bun) **and** `lerna.json` (Lerna) to enumerate workspace roots. Combined with the git-repository boundary guard, this means a monorepo's dev server no longer watches the entire monorepo root — it watches each workspace's tree up to the repo root, not beyond.
+
+### Practical impact
+
+- **Git worktree users** (`git worktree add ../my-feature-branch`): no longer see the dev server walk up out of the worktree.
+- **Monorepos with Lerna** (`lerna.json` workspaces): workspace enumeration no longer misses Lerna packages.
+- **Anyone with stray `package-lock.json` files in their home directory or `/tmp`**: no longer sees Turbopack treat them as project roots.
+- **Anyone running Next.js at the root of their filesystem** (unusual, but possible): no longer has the dev server try to walk up out of `/` — the home-dir guard fires first.
+
+### Audit recipe
+
+```bash
+# See the actual root Turbopack chose (look for "Project root detected" in the dev log)
+rg "Project root detected" .next/dev-server.log 2>/dev/null | head -3
+
+# Or run next info for a structured dump
+pnpm next info --no-node 2>/dev/null | head -30
+```
+
+### Source
+
+- [PR #96159 — `Improve root detection to handle worktrees, more workspaces & stray lockfiles`](https://github.com/vercel/next.js/pull/96159) · sampoder · merged 2026-07-28T08:35:00Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z) · closes [issue #92978](https://github.com/vercel/next.js/issues/92978)
+
+## Turbopack Worker URL Context Lookup Fix — Bare-Module Worker `new URL(...)` Resolution (16.3.0-canary.100+, [PR #96307](https://github.com/vercel/next.js/pull/96307) by Zack Tanner, merged 2026-07-28T08:43:31Z, SHIPPED in `16.3.0-canary.100` at 2026-07-28T21:04:54Z)
+
+A regression that bit any Next.js project using bare-module-specifier Worker URLs with conditional wildcard `exports` maps (e.g. `'pdfjs-dist/build/pdf.worker.mjs'` for `pdfjs-dist`). The fix preserves the original static worker request when generating the Turbopack module-context lookup, instead of passing an already-rewritten URL object that lost the bare specifier. Regressed in [PR #88602](https://github.com/vercel/next.js/pull/88602) (the original `import.meta.url` support for Turbopack, canary.33 in March 2024).
+
+### The pattern that broke
+
+```ts
+// pdfjs-dist (or any package that does this)
+const workerSrc = new URL('pdfjs-dist/build/pdf.worker.mjs', import.meta.url)
+```
+
+Pre-PR #88602: never worked in Turbopack. Post-PR #88602 / pre-PR #96307: **sometimes worked, sometimes didn't** depending on the `exports` map of the package. Post-PR #96307: always works.
+
+### Who needs to audit
+
+- **Anyone using `pdfjs-dist` for PDF rendering** (the most common offender)
+- **Anyone using `monaco-editor`'s `@monaco-editor/loader`** (loads its workers via `new URL(..., import.meta.url)`)
+- **Any package that uses `new URL('<bare-specifier>', import.meta.url)` to construct a worker URL** — especially if the bare specifier resolves through a conditional `exports` map (e.g. browser vs node, development vs production)
+
+### Fix
+
+New e2e fixture under `test/e2e/app-dir/worker-module-url/worker-module-url.test.ts` covers bare-module Worker URLs with conditional wildcard exports — regression test that would have caught #88602's regression.
+
+### Source
+
+- [PR #96307 — `Fix Turbopack worker URL context lookup`](https://github.com/vercel/next.js/pull/96307) · Zack Tanner · merged 2026-07-28T08:43:31Z · **Shipped in `16.3.0-canary.100`** (2026-07-28T21:04:54Z) · fixes [#94015](https://github.com/vercel/next.js/issues/94015) · closes [#94043](https://github.com/vercel/next.js/issues/94043) · regression from [#88602](https://github.com/vercel/next.js/pull/88602)
+
+## `experimental.useOffline` — First-Class Offline Support Guide (16.3.0-canary.102+, [PR #93218](https://github.com/vercel/next.js/pull/93218) by Joseph / icyJoseph, merged 2026-07-28T22:11:29Z, SHIPPED in `16.3.0-canary.102` at 2026-07-28T23:55:12Z)
+
+The first dedicated **official guide and API reference for `experimental.useOffline`** lands in this canary cycle. The flag was first added to `next-dev-loop` (the experimental agent-browser dev driver) months ago, but until now there was no guide, no API reference page, and no migration path from the Serwist / Workbox / `next-pwa` plugins that have been the de-facto PWA story for Next.js since Next.js 13.
+
+### What's new in the docs (the only thing in this PR)
+
+- **New guide page**: `/docs/app/guides/use-offline.mdx` — walks through three learning steps: (1) basic usage with the default `'use cache'` + service-worker integration, (2) `useOffline()` client hook + onSync handler, (3) Server Actions for replaying queued mutations when the network returns.
+- **API reference updates** — `experimental.useOffline` is now documented in the config reference with the full schema (`boolean | { scope?: string[]; syncQueue?: boolean }`), defaults (`false`), and the per-invocation hooks (`useOffline()`, `useOnlineStatus()`, `usePendingMutations()`).
+- **Release flag status** — listed as **default: false (opt-in)**. No stabilization date announced.
+
+### What's NOT in this PR (deferred to follow-ups)
+
+- **No publish repo** — the Linear ticket [DOC-6390](https://linear.app/vercel/issue/DOC-6390/useoffline-guide-and-api-ref) lists "publish repo and demo" as a separate checkbox that's still unchecked.
+- **No codemod** from Serwist / Workbox / `next-pwa`. If you have an existing PWA setup with one of those libraries, you have to manually rewrite your service worker to use `experimental.useOffline`.
+- **No compatibility matrix** with the Serwist ecosystem-ci (Serwist hasn't shipped Turbopack support yet — see the [LogRocket "true offline support" article](https://blog.logrocket.com/nextjs-16-pwa-offline-support) for the current ecosystem state, which still recommends Webpack for Serwist users).
+
+### Migration from Serwist / next-pwa (the practical recipe)
+
+For projects that want to migrate from the Serwist plugin pattern (`next.config.ts` with `withSerwistInit` + `app/sw.ts`) to `experimental.useOffline`:
+
+1. **Delete `app/sw.ts`** (the Serwist service-worker source).
+2. **Delete the `withSerwist()` wrapper** in `next.config.ts`.
+3. **Add `experimental: { useOffline: true }`** to `next.config.ts`.
+4. **Wrap data-fetching components** in the `OfflineBoundary` component from `@next/use-offline` (new package, ships with Next.js when the flag is enabled).
+5. **Replace Serwist's `SerwistBackgroundSyncPlugin`** with `experimental.useOffline`'s native sync queue (`syncQueue: true` in the config).
+
+The migration is mechanical but **substantial** — for most apps, the existing Serwist setup continues to work and the migration is a "someday" project, not a "this week" one. For greenfield PWAs, **`experimental.useOffline: true` + `next@canary@102`** is now the recommended path.
+
+### Audit recipe
+
+```bash
+# See if you have an existing PWA setup (Serwist / next-pwa)
+rg -i "withSerwist|next-pwa|@serwist/next" next.config.ts package.json 2>/dev/null
+# See if you've enabled the new experimental flag
+rg "useOffline" next.config.ts 2>/dev/null || echo "Not enabled yet"
+```
+
+### Source
+
+- [PR #93218 — `docs: add guide and references for experimental.useOffline`](https://github.com/vercel/next.js/pull/93218) · icyJoseph · merged 2026-07-28T22:11:29Z · **Shipped in `16.3.0-canary.102`** (2026-07-28T23:55:12Z) · closes [DOC-6390](https://linear.app/vercel/issue/DOC-6390/useoffline-guide-and-api-ref)
+- [Issue #92882](https://github.com/vercel/next.js/issues/92882) — the underlying feature request for first-class offline support that the guide now documents
+
+## `experimental.requestInsights` — Dev-Only Request Diagnostics Stack (16.3.0-canary.84+, PR [#93974](https://github.com/vercel/next.js/pull/93974) + [#93975](https://github.com/vercel/next.js/pull/93975) + [#93976](https://github.com/vercel/next.js/pull/93976) by [@feedthejim](https://github.com/feedthejim), merged 2026-07-12T11:47:38–11:47:41Z) (16.3.0-canary.84+, PR [#93974](https://github.com/vercel/next.js/pull/93974) + [#93975](https://github.com/vercel/next.js/pull/93975) + [#93976](https://github.com/vercel/next.js/pull/93976) by [@feedthejim](https://github.com/feedthejim), merged 2026-07-12T11:47:38–11:47:41Z)
 
 Request Insights is a 5-PR dev-only feature stack that records framework OTEL spans, derives a bounded request history (last 100 requests, deduped fetch records), and exposes a snapshot over a private dev endpoint + HMR so AI agents + DevTools can diagnose what a route is doing without leaving the dev server. **Status of the 5 PRs:** PRs 1/5 ([#93974](https://github.com/vercel/next.js/pull/93974)) + 2/5 ([#93975](https://github.com/vercel/next.js/pull/93975)) + 3/5 ([#93976](https://github.com/vercel/next.js/pull/93976)) shipped in canary.84 (July 12, 2026); 4/5 ([#93977](https://github.com/vercel/next.js/pull/93977) — `next experimental-request-insights` CLI + `get_request_insights` MCP tool) shipped in canary.85 (July 13, 2026, 12:01:53Z); 5/5 ([#93978](https://github.com/vercel/next.js/pull/93978) — DevTools request panel) merged on the canary branch 2026-07-14T11:26:19Z and shipped in canary.86 (2026-07-14).
 
