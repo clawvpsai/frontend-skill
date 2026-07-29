@@ -2434,6 +2434,34 @@ A meta-story about a feature that shipped in canary.96, was reverted in canary.1
 
 **Lesson:** short canary cut cycles (canary.100 → canary.101 → canary.102 within 3 hours) make rapid-fire fixes and reverts possible, but the flip-flop means **don't trust a single canary's perf numbers for a feature that has been re-applied in the same window**. Always benchmark the most recent canary before reporting results.
 
+### Turbopack Star-Import String-Key Tree-Shaking (canary-branch ahead of canary.102, [PR #96319](https://github.com/vercel/next.js/pull/96319) by lukesandberg, merged 2026-07-29T17:42:09Z, expected in `16.3.0-canary.103`)
+
+A small but real extension to Turbopack's barrel-pruning analysis. Until this PR, when Turbopack saw the star-import with a computed-string-literal member access pattern:
+
+```javascript
+import * as ns from './lib';
+// ...
+ns["foo"];
+```
+
+...the analyzer would treat the `ns["foo"]` access as if it could be any member of the namespace, forcing the algorithm to expand the usage to `All` (i.e. preserve every export of `./lib`, even the unused ones — defeats tree-shaking). This is the **computed-string-literal** form of member access (`MemberProp::Computed(ComputedPropName { expr: box Expr::Lit(Lit::Str(_)), .. })` in the SWC AST). The PR adds a 6-line gate in `turbopack/crates/turbopack-ecmascript/src/analyzer/imports.rs` that recognizes this case and narrows the usage to just the literal key (`"foo"` in the example), so the unused exports can be pruned by the existing `removeUnusedImports` + `removeUnusedExports` pipeline.
+
+The new snapshot test fixture confirming the prune is `turbopack/crates/turbopack-tests/tests/snapshot/remove-unused-imports/star-import-string-key/input/`, which sets `removeUnusedImports: true, removeUnusedExports: true, followReexports: true, scopeHoisting: false` and checks that the output drops `unused` from `./lib.js` while preserving `foo`. The `output/1jsg_..._.js` snapshot shows the pruned bundle referencing only `t.e("...lit.js...").foo` and an empty `t.s([])` side-effect list.
+
+**Practical impact for users:** any code that uses the dynamic-key string-literal pattern (common in shims that wrap icon libraries, jQuery-style plugin registries, or `lodash`-style utility bundles indexed by name) gets a small barrel-pruning win. The biggest win is for projects importing multi-export modules and then accessing them via a lookup pattern — most libraries don't follow this pattern, so the overall impact is modest. **No new API**, no config flag, no codemod. Opt-in only by upgrading to canary.103+ (when it ships — currently expected ~2026-07-30T00:00Z based on the 24h cadence).
+
+**Audit recipe** — find every star-import + computed-key access in your codebase:
+
+```bash
+# Multi-line: star-import + computed-string key access 2-5 lines later
+rg --multiline --no-heading   -e 'import \* as \w+ from [\x27"][^\x27"]+[\x27"];?\s*\n[\s\S]{0,300}\w+\[(\x27|")\w+(\x27|")\]'
+
+# By-hand inspection: most projects have <50 such patterns
+rg -n 'import \* as' --type ts --type tsx --type js --type jsx | head -50
+```
+
+**Source:** [PR #96319 — `[turbopack] Tree shake w/ bar['foo'] syntax for star imports`](https://github.com/vercel/next.js/pull/96319) · @lukesandberg · merged 2026-07-29T17:42:09Z · **expected in `16.3.0-canary.103`** (canary-branch ahead of canary.102, 6-line patch in `turbopack-ecmascript/src/analyzer/imports.rs` + 8-file snapshot test).
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |
