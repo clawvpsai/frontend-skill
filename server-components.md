@@ -916,6 +916,68 @@ export function ThemeProvider({ children, theme }: { children: React.ReactNode; 
 }
 ```
 
+
+
+## `headers()` Returns a Unique Object Per Render Pass — PR #96085 (canary-branch ahead of canary.103, [Sebastian "Sebbie" Silbermann](https://github.com/eps1lon), merged 2026-07-29T22:16:35Z, expected in `16.3.0-canary.103`)
+
+**The change:** every render pass within a single HTTP request now resolves `await headers()` (from `next/headers`) to a **distinct `Headers` object** over the **same underlying data**. Previously, all passes within the same request resolved to the **same sealed `Headers` object** created lazily by the request store.
+
+**Why "render pass" matters:** a single HTTP request can render the same React tree in **multiple passes** with different semantics for `connection()`:
+
+1. **Prospective prerender + final prerender of a runtime prefetch** — the runtime-prefetch path first does a prospective prerender, then a final prerender. Both are server-side, both can read `headers()`, but they have different runtime semantics (e.g. the prospective render can be canceled/discarded).
+2. **Dynamic render + the runtime prerender spawned from it to refresh the client's prefetch cache** — when a user navigates, the page is dynamically rendered; that dynamic render can spawn a runtime prerender to update the prefetch cache for future navigations. Both renders can read `headers()`, but the user's request only goes through the dynamic pass — the runtime prerender is for the cache.
+
+Before PR #96085, both passes shared the same sealed `Headers` object — so any userland cache keyed on the identity of `await headers()` (e.g. `WeakMap<Headers, Promise<MyData>>` to memoize expensive request-derived data) **leaked promises across passes**. A discarded prospective prerender could leave a resolved Promise attached to a Headers object that's also visible from the final prerender; a runtime prefetch cache could pick up data from the dynamic render's Headers object that wasn't supposed to be cached for the next request.
+
+After PR #96085, every render pass gets a distinct Headers object, even though the underlying data (the request's actual headers) is the same. So:
+
+```ts
+// ❌ WRONG (this is what was happening before)
+const headersA = await headers();
+const promise = memoizePerHeaders(headersA);  // keyed on identity
+// ...later in the same request, a different render pass runs...
+const headersB = await headers();
+const samePromise = memoizePerHeaders(headersB);  // returned the SAME promise, even though it should be a fresh per-pass memo
+```
+
+```ts
+// ✅ RIGHT (this is what happens now)
+const headersA = await headers();
+const promise = memoizePerHeaders(headersA);  // keyed on identity
+// ...later in the same request, a different render pass runs...
+const headersB = await headers();
+const samePromise = memoizePerHeaders(headersB);  // returns a DIFFERENT promise — headersB is a different object
+```
+
+**The new contract:** *"the headers object identifies the request within one render pass"*. This is now a real, enforceable contract. Identity checks (`===`) on `headers()` are reliable for "are we in the same pass" but **not** for "is this the same request".
+
+**Practical impact for users today:**
+
+- **Anyone using `WeakMap<Headers, T>` or `Map<Headers, T>` as a request-scoped memoization cache** — this PR fixes the leak. If you saw memoized data from a discarded prospective prerender appearing in the final prerender, that's now fixed.
+- **Anyone using `headers()` as a `useMemo` / `use cache` cache key** — if your key was the `Headers` object identity, you need to switch to a stable derived key (e.g. `JSON.stringify(Object.fromEntries(headers.entries()))` or a specific header like `headers.get('cookie')`). The `Headers` object identity is now per-pass, not per-request, so it's not a stable cache key across passes.
+- **Anyone reading `headers()` inside `use cache`** — this PR does not change `use cache` semantics; the cached scope is still a separate request from the headers reading scope. But if your cache was keyed on `headers` identity, see above.
+- **Anyone reading `headers()` inside Server Actions** — Server Actions are their own render pass, so `headers()` in a Server Action is the request's headers (not a separate request's headers). This PR doesn't change that semantic.
+
+**Migration recipe** — find any code that uses `headers()` as a Map/WeakMap key:
+
+```bash
+# Find request-scoped memos keyed on headers identity
+rg -n 'WeakMap.*[Hh]eaders|new Map\(\[\[headers' --type ts --type tsx --type js --type jsx
+
+# Or simpler: find any WeakMap that's keyed on something derived from headers()
+rg -n 'WeakMap' --type ts --type tsx | head -20
+
+# Find any userland cache that uses headers() as a key
+rg -n 'cache.*headers\(\)|headers\(\).*cache' --type ts --type tsx
+```
+
+For each match, either (a) use a stable derived key (specific header values, not the object identity), or (b) scope the cache to a single pass via React's `cache()` from `react` (which is already per-render-pass scoped) instead of a long-lived `WeakMap`.
+
+**Source:** [PR #96085 — `Ensure unique resolved headers() value between render passes`](https://github.com/vercel/next.js/pull/96085) · Sebastian "Sebbie" Silbermann · merged 2026-07-29T22:16:35Z · **canary-branch ahead of canary.103**.
+
+**Test coverage added:** the PR adds a test that demonstrates the previous incorrect behavior (the same `Headers` object returned across passes), and confirms the post-fix behavior (distinct objects per pass).
+
+
 ## Server Actions
 
 Server Actions are functions that run on the server but can be called from client components — like an API endpoint you call directly:

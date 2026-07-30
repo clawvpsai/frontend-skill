@@ -649,6 +649,68 @@ Also tested against Google Chrome 151 and Microsoft Edge 151 stable channels.
 - [Playwright docs — playwright-cli](https://playwright.dev/docs/getting-started-cli)
 
 
+
+
+## Playwright `retry` Now Respects the Given Duration — PR #96354 (canary-branch ahead of canary.103, [dan](https://github.com/gaoJude) / [Next.js team](https://github.com/vercel/next.js), merged 2026-07-29T20:42:57Z, expected in `16.3.0-canary.103`)
+
+**The bug:**
+
+```js
+await retry(async () => {
+  expect(await browser.elementById('never-appears').text()).toBe('x')
+}, 15_000)
+```
+
+You'd reasonably expect this to wait at most 15 seconds. Before PR #96354, the actual answer was **~3 minutes** (170103ms in the PR's own measurement).
+
+**Why:** Playwright's `retry(fn, ms)` was dividing `ms` by the 500ms internal interval and running that many tries (so `15_000` → 30 tries, plus the initial try = 31 tries). The bug was that **the per-try stall wasn't being measured**. For cheap tries (e.g. pure JS state checks), the per-try time is negligible and the calculation roughly holds. But for tries that look for a DOM element via `elementById('never-appears')` / `page.waitForSelector(...)`, each try sits in the selector for its full 5-second timeout before giving up — so 31 tries × 5 seconds = ~155s, plus the 15s of sleeps in between = ~170s. The user-visible behavior: `retry(fn, 15_000)` actually waits ~3 minutes.
+
+**The downstream effect (the worse bug):** Jest kills the test at its own timeout long before that. So the actual underlying error gets thrown away, and the user sees a useless `Exceeded timeout of 120000 ms` with no indication of which assertion never came true. The PR author writes: *"My agent lost an hour trying to make sense of this twice now."*
+
+**The fix:** `retry` now **counts time**, not tries. After the fix, `retry(fn, 15_000)` actually waits 15 seconds (well, 15 seconds + whatever the last attempt takes, so 20 in the worst case if the last try is slow). The interval no longer has to divide the duration (because nothing counts steps anymore).
+
+**Semantics after the fix:**
+
+- **`retry` watches the clock and stops when its time is up.**
+- **`retry` always makes at least one try** (never zero tries).
+- **Cheap waits behave exactly as before** — only the slow-stall case is fixed.
+- **The interval no longer divides the duration** — you can pass `retry(fn, 7_000)` with `interval: 500` and it'll just run "as many 500ms-spaced tries as fit in 7s", with the last one partial.
+- **The timeout is not strictly respected if the last try is slow** — Playwright waits for the last try to finish so it can show the correct error in the correct test. This is intentional.
+
+**Before/after measurements (from the PR):**
+
+| Scenario | Before PR #96354 | After PR #96354 |
+|---|---|---|
+| `retry(fn, 15_000)` with cheap `fn` | ~15s (correct) | ~15s (unchanged) |
+| `retry(fn, 15_000)` with slow `fn` (5s stall per try) | **170s** (bug) | **~20s** (correct — 15s + final 5s try) |
+| `retry(fn, 5_000)` with cheap `fn` | ~5s | ~5s (unchanged) |
+| `retry(fn, 5_000)` with slow `fn` (5s stall per try) | ~155s (bug, hits Jest's 120s timeout) | ~10s (correct — 5s + final 5s try) |
+
+**Practical impact:**
+
+- **Anyone using `playwright.retry(...)` in test code** — the retry duration is now reliable.
+- **Anyone whose CI was failing with `Exceeded timeout of 120000 ms` with no underlying assertion** — the fix means the underlying assertion error now surfaces in the test report. So the failure mode "test times out and we don't know why" goes away.
+- **Agent-driven dev loops** — agents that lose time to "I need to figure out which assertion is hanging" now get the actual assertion error in the report.
+- **No new API, no new config flag, no migration needed** — pure bug fix.
+
+**Who needs to audit:**
+
+```bash
+# Find every retry() call in your test code
+rg -n '\bretry\(' --type ts --type js --type tsx --type jsx
+
+# Find every custom retry helper that wraps playwright's retry
+rg -n 'function.*retry|const.*=.*retry' --type ts --type js
+
+# Find any test that mentions timeout-related flake
+rg -n 'timeout|flake|slow' test/ tests/ e2e/ 2>/dev/null | head -20
+```
+
+For each match, the retry semantics are now reliable; you don't need to change anything, but you can re-evaluate any "retry for 60s to give it enough time" patterns that were previously masking the slow-stall bug.
+
+**Source:** [PR #96354 — `Make retry stop when the time it was given is up`](https://github.com/vercel/next.js/pull/96354) · dan · merged 2026-07-29T20:42:57Z · **canary-branch ahead of canary.103**.
+
+
 ## DOM Environment Updates — happy-dom 20.11.x + jsdom 29.1.1 (July 2026)
 
 The two most-used DOM environments for Vitest got **meaningful updates in July 2026** that affect every test suite still on older versions. Both pin to their respective `@latest` dist-tags as of 2026-07-24.

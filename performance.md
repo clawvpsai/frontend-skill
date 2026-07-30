@@ -2462,6 +2462,198 @@ rg -n 'import \* as' --type ts --type tsx --type js --type jsx | head -50
 
 **Source:** [PR #96319 — `[turbopack] Tree shake w/ bar['foo'] syntax for star imports`](https://github.com/vercel/next.js/pull/96319) · @lukesandberg · merged 2026-07-29T17:42:09Z · **expected in `16.3.0-canary.103`** (canary-branch ahead of canary.102, 6-line patch in `turbopack-ecmascript/src/analyzer/imports.rs` + 8-file snapshot test).
 
+
+
+## 16.3 canary.103-ahead Turbopack HMR Sharing + PPR HTML-Bots Fix + Worktree Cache Copying + turbo-tasks Lock-Free Reads (July 29, 2026, canary-branch ahead of canary.103)
+
+The previous cron (v1.5.04 at 2026-07-29T18:03Z) captured `next@canary` = `16.3.0-canary.102`. As of this cron (2026-07-30T00:03Z), the canary-branch has advanced 19 commits past canary.102 — the canary.103 tag exists in the canary-branch (commit `f3edea1 - next-js-bot[bot]: v16.3.0-canary.103` at 2026-07-29T23:50:00Z) but npm has not yet published it (`npm view next dist-tags.canary` still returns `16.3.0-canary.102`); the publish typically lands 2-6 hours after the canary-branch tag, so canary.103 should be live by the next cron window. The 5 most material commits ahead of canary.103 are documented below. (PR #96319 — Turbopack star-import string-key tree-shaking — was already documented in v1.5.04 as the only material commit ahead of canary.102; it carries forward unchanged into canary.103.)
+
+### Turbopack Share Ecmascript HMR Chunk Versioning, Diffing, and Merging Between Browser and Node — PR #96325 (canary-branch ahead of canary.103, [wbinnssmith](https://github.com/wbinnssmith), merged 2026-07-29T21:51:34Z, expected in `16.3.0-canary.103`)
+
+`packages/next/src/build/turbopack-build/`, `turbopack/crates/turbopack-browser/`, and `turbopack/crates/turbopack-nodejs/` each previously carried their own copy of the Ecmascript chunk versioning + HMR diffing stack. `chunk_list/merged_update.rs` already documented the intent to share this, noting the turbo-tasks value types "cannot be generic and therefore remain per-runtime". A new **`value_trait`** resolves that: the shared machinery is written against `EcmascriptHmrChunkContent`, which each runtime implements in a few lines to expose `entries()` and `own_version()`.
+
+**The shared code now lives in `turbopack-ecmascript/src/hmr/`** with four files: `version.rs`, `update.rs`, `content.rs`, `merger.rs`. Both runtimes' `ecmascript/version.rs`, `ecmascript/update.rs`, and `ecmascript/**/merged/` directories are **deleted**. No struct fields were widened and no `ChunkingContext` methods changed.
+
+**Behavior changes (5 small, additive):**
+
+1. **Browser chunk version IDs now hash `minify_type`** — matching the node runtime. IDs are opaque and recomputed in-memory on both ends of an HMR connection, so this cannot desync a client.
+2. **The shared diff uses node's lazy `entries()` materialization** — so chunks with only deletions no longer materialize any `Vc<Code>`. This now applies to the browser path too.
+3. **Node error text fixed** — was "chunk path ... is not in client root" (a copy-paste artifact from the browser copy); now correctly says "output root".
+4. **`#[turbo_tasks(trace_ignore)]` applied consistently to the merged chunk version** — previously only the browser copy had it.
+5. **Browser chunk content keeps the default `VersionedContent::update`** — overriding it would bypass the `ChunkListUpdate` envelope the client runtime expects.
+
+**What is explicitly NOT included** (deferred for the unification pass):
+
+- **Unifying the chunk-content structs** — requires widening to `Box<dyn ChunkingContext>`, and both chunking contexts define `minify_type` twice — an inherent method and a `ChunkingContext` method whose trait default is `NoMinify`. So it needs separate verification. The trait added by PR #96325 lets the two structs coexist at no cost.
+- **The runtime, evaluate, and entry chunk types** are also out of scope (the runtime/evaluate types share machinery via a different path).
+
+**Practical impact for users today:**
+
+- **No new API, no config flag, no codemod** — this is a pure internal refactor + dedup. Existing Turbopack projects need no changes.
+- **For custom Turbopack plugins** that override the chunk-content version computation — audit for any code that depended on the browser version NOT hashing `minify_type` (very rare — most plugins just subscribe to updates, they don't compute IDs).
+- **For large apps** — the only user-visible change is a slightly more compact browser chunk-version representation (one fewer field in the hash); no perf delta measured.
+- **The copy-paste "not in client root" error** — if you saw this in node-runtime logs before canary.103, it was the wrong text; canary.103+ will correctly say "output root" so log-monitoring tools can match it.
+
+**Audit recipe** — find any code that depends on browser chunk-version ID shape:
+
+```bash
+# Custom Turbopack plugin code that reads chunk version IDs
+rg -n 'minify_type|chunkVersion|own_version' packages/ turbopack/
+
+# Look for: anything that hashes/minifies for browser but not node
+rg -n 'ChunkingContext.*minify_type' --type rust turbopack/
+```
+
+**Source:** [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **canary-branch ahead of canary.103**.
+
+### Fix PPR Rendering for Configured HTML Bots — PR #96364 (canary-branch ahead of canary.103, [Zack Tanner](https://github.com/ztanner), merged 2026-07-29T22:49:58Z, expected in `16.3.0-canary.103`)
+
+When `cacheComponents: true` (PPR) was enabled, requests matching a custom `htmlLimitedBots` pattern could still use the prerendered route path. As a result, the configured blocking-metadata behavior was not applied consistently. The fix routes HTML-bot requests through the **existing streaming-metadata decision** when selecting the PPR render path:
+
+- **Built-in bots** retain their existing fully buffered behavior (unchanged).
+- **Custom HTML-limited bots** can continue streaming body content after metadata resolves (the new behavior).
+- **Regular user agents** remain unchanged.
+
+**Why this matters for SEO:** if you've configured `htmlLimitedBots` in `next.config.ts` to control how Googlebot / Bingbot / DuckDuckBot / etc. see your pages (e.g. to block JS execution and serve only metadata + initial HTML), but `cacheComponents` was on, the configured pattern was being ignored for the prerendered branch. This meant the bot was getting either the full SSR'd page (when it should have gotten a metadata-only stub) or vice versa, depending on the request path. canary.103+ makes the behavior match your config.
+
+**Verification path** (the test file):
+
+```text
+HEADLESS=true pnpm test-start-turbo test/e2e/app-dir/html-limited-bots-ppr/html-limited-bots-ppr.test.ts
+HEADLESS=true pnpm test-start-webpack test/e2e/app-dir/html-limited-bots-ppr/html-limited-bots-ppr.test.ts
+```
+
+**Practical impact:**
+
+- **No new API, no new config flag** — the existing `htmlLimitedBots` setting now works as documented when PPR is on.
+- **Anyone using `htmlLimitedBots`** with `cacheComponents: true` — re-test your bot-rendered snapshots to confirm the metadata-blocking behavior matches expectations. Most projects see the desired behavior appear for the first time.
+- **Anyone NOT using `htmlLimitedBots`** — no behavior change.
+
+**Audit recipe:**
+
+```bash
+# Find your htmlLimitedBots config
+rg -n 'htmlLimitedBots' next.config.* 2>/dev/null
+
+# Find any e2e tests that depend on bot rendering behavior
+rg -n 'htmlLimitedBots|html_limited_bots' test/ tests/ e2e/ 2>/dev/null
+```
+
+**Source:** [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **canary-branch ahead of canary.103**.
+
+### Cache Immutable Current Task IDs Outside the Task-State Lock — PR #96180 (canary-branch ahead of canary.103, [Marcos Hernanz](https://github.com/marcoshernanz), merged 2026-07-29T19:22:34Z, expected in `16.3.0-canary.103`)
+
+A Turbopack `turbo-tasks` internal change that introduces a cloneable **`CurrentTaskStateHandle`** that keeps the execution's immutable `Option<TaskId>` beside the existing shared `Arc<RwLock<CurrentTaskState>>`.
+
+**Before PR #96180:** `current_task_if_available` and `current_task` acquired a shared standard-library `RwLock` on every native function call and tracked read — even though the task ID is fixed for the entire execution. The lock and its contention path remained visible in both HMR and production profiles.
+
+**After PR #96180:** only current-task ID reads bypass the lock; all other state remains behind the existing `RwLock`. Global tasks, local tasks, detached futures, and top-level runs continue to share the same mutable state and task-local scope.
+
+**File-level diff:** source-independent, changes only `turbopack/crates/turbo-tasks/src/manager.rs`. Was split from #96179 following review feedback.
+
+**Performance evidence** (from the PR description, measured at commit `0950e8ae05db20c33302f02257114f5b857edabc`):
+
+- These measurements are **directional evidence**, not a precise standalone estimate.
+- Changes around 1–2% are difficult to measure reliably.
+- The #96179 and #96180 campaigns used separate run sets, and #96179's absolute endpoint does not match this campaign's starting point; that mismatch demonstrates cross-campaign noise.
+- **The percentages must not be added**, and the absolute values must not be compared across the two PRs.
+- The standalone GitHub aggregate benchmark also moved in the opposite direction at the same time, so the directional magnitude is "small positive, source-independent, applies to every execution".
+
+**Practical impact for users today:**
+
+- **No new API, no new config flag, no codemod** — pure internal refactor.
+- **No user-actionable change** unless you're writing custom `turbo_tasks` Rust plugins (extremely rare outside Vercel). Even then, the trait surface is unchanged; only the internal locking changed.
+- **For most users:** expect a 1-2% reduction in `turbo-tasks` lock contention overhead during HMR sessions and large production builds. Not measurable in normal dev-loop work, but visible in microbenchmarks and large-app HMR cycles.
+
+**Source:** [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **canary-branch ahead of canary.103**.
+
+### Gate Partial Fallback Shell Upgrades Behind `partialPrefetching` for `next start` — PR #96297 (canary-branch ahead of canary.103, [Andrew Clark](https://github.com/acdlite), merged 2026-07-29T19:56:50Z, expected in `16.3.0-canary.103`)
+
+**Context:** PR #96074 put `partialFallback` behavior behind the `partialPrefetching` flag for deploy mode (i.e. the build output consumed by the Vercel adapter). That PR was intended to prevent an explosion in ISR costs for apps that haven't opted into Partial Prefetching — but it turned out the PR only handled the deploy-adapter path. **`next start`** (the self-hosted Node runtime) still performed the partial-fallback shell upgrade unconditionally, regardless of `partialPrefetching`. So a self-hosted Next.js 16.3+ user on `cacheComponents: true` (without `partialPrefetching`) was paying the "specialize a shell per request on first hit" cost even though they hadn't opted into the full Partial Prefetching flow.
+
+**Why it was easy to miss:** `next start` and the Vercel adapter express partial fallback shells through completely separate mechanisms.
+
+- **Adapter:** emits a `partialFallback` flag into the build output and lets the platform's ISR layer perform the shell upgrade.
+- **`next start`:** has no such flag; the server performs the upgrade itself, in the compiled page runtime.
+
+So the gate added to the adapter output had no effect on the self-hosted path.
+
+**What PR #96297 gates (and what it doesn't):**
+
+- **Gates (only these, when `partialPrefetching: false`):**
+  - The background ISR revalidation that specializes a shell per request.
+  - The client-facing `isFallbackUpgradeable` signal that tells the client to retry a prefetch waiting for that upgrade.
+- **Does NOT gate (always on):**
+  - The shell machinery as a whole (the value that decides whether a shell can be specialized, `remainingPrerenderableParams`).
+  - Build-time partial prerendering of params.
+  - Serving build-time sub-shells.
+
+This last point is important: the core Cache Components behavior stays on regardless of `partialPrefetching`. The "upgrade on first request" cost is what's now correctly gated.
+
+**Why this matters:** before PR #96297, self-hosted Next.js users who turned on `cacheComponents: true` but did NOT turn on `partialPrefetching: true` were paying for shell-specialization they hadn't asked for. Most projects won't notice (the cost is per-request on first hit only, and Cache Components typically serves shells from the static cache); but for high-traffic apps with many concurrent first-hits, the saved ISR work is non-trivial.
+
+**Test coverage added:** `partialPrefetching`-disabled fixture asserting that fallback shells stay shared rather than specializing per request.
+
+**Practical impact for users today:**
+
+- **No new API, no new config flag** — `partialPrefetching: false` (the default) just does the right thing now for `next start`.
+- **Self-hosted Next.js 16.3+ users with `cacheComponents: true` and `partialPrefetching: false` (the default):** behavior matches the deploy adapter now. If you saw unexpected ISR costs or shell-specialization work in production before, this PR reduces them.
+- **Vercel-deploy users:** no behavior change (the adapter path was already gated in #96074).
+
+**Source:** [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **canary-branch ahead of canary.103**.
+
+### Cache Copying Support for Worktrees — PR #95646 (canary-branch ahead of canary.103, [Jimmy Miller](https://github.com/jimmymiller), merged 2026-07-29T18:52:36Z, expected in `16.3.0-canary.103`)
+
+Turbopack now **detects if it is in a worktree**, finds the main repo, and **copies turbopack caches for build or dev** to make initial build faster.
+
+**Why:** engineers running parallel feature work often use `git worktree add ../project-feature-branch` to check out multiple branches simultaneously in separate directories, each sharing the same `.git/` but with their own working tree. Without this PR, each worktree had to rebuild Turbopack's dev/build caches from scratch — the cached `.next` artifacts are not portable across worktrees because they reference absolute paths. With this PR, Turbopack looks up the main repo from the worktree and copies the cached artifacts into the worktree's `.next/`, giving the worktree a warm start.
+
+**Caveats (from the PR description):**
+
+- **Only looks at the root project** — does not look in other worktrees. So if you have 5 worktrees of the same repo, the 2nd-through-5th will copy from the root, not from each other. This is the "I don't look in other worktrees but instead the root project. Not sure if this is the right answer or not. But works for the patterns I think people typically follow." note from the PR body.
+- **Requires git** — the worktree detection relies on `.git` / git metadata.
+- **PR author notes no unit tests** ("I wasn't sure about commiting tests for this and how exactly we'd won't to go about this with the git requirement. I also could do some unit tests, but following the library conventions there wasn't a nice abstracted out file system. So I did various tests locally. If anyone has good ideas on what kind of testing totally opened to it.")
+
+**Practical impact for users today:**
+
+- **No new API, no new config flag, no codemod.**
+- **Anyone using `git worktree`** to parallelize feature branches on a Next.js project — expect a noticeable speedup on the first `next dev` / `next build` in a fresh worktree. The cached artifacts are copied from the root project, not built from scratch.
+- **Anyone NOT using `git worktree`** — no behavior change. The detection logic doesn't fire.
+
+**Audit recipe:**
+
+```bash
+# Are you in a worktree? (output: 'true' if yes)
+git rev-parse --is-inside-work-tree && git rev-parse --show-superproject-working-tree || echo "not a worktree"
+
+# List all worktrees for the current repo
+git worktree list
+```
+
+**Source:** [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **canary-branch ahead of canary.103**.
+
+### Smaller Items in the canary.103 Window (Already in 1.5.04 or low-impact)
+
+- **PR #96321 by dan — `Bump @types/node to 20.17.7 to fix findSourceMap type`** — merged 2026-07-29 (date approximate; no time tracked in the public compare). Fixes a type error that was silently failing in some Node.js 20.x type imports. Affects anyone using `findSourceMap` from `@types/node`. Internal-only fix; no user-actionable change.
+- **PR #96316 by Joseph — `docs: remove PPR adapter page from Pages Router`** — pure docs; removes a Pages Router doc page that referenced PPR adapter (PPR is App Router only).
+- **PR #96351 by Joseph — `docs: Parallel routes, conditional rendering and auth`** — pure docs.
+- **PR #96146 by Joseph — `docs(preventing-flash): cover reconciling state`** — pure docs.
+- **PR #96314 by Aurora Scharff — `docs: modernize Next 16 upgrade AI guidance`** — pure docs.
+- **PR #96360 by Adham Fayrouz — `Update PWA guide with enhanced offline support details and example links for serwist`** — docs-only update to the PWA guide, adds serwist example links.
+- **PR #96195 by Benjamin Woodruff — `[ci] Background some steps in build_reusable to reduce setup overhead, remove unneeded lld installation`** — pure CI.
+- **PR #96324 by dan — `Restore comments dropped during a refactor`** — comment-only change.
+
+**Sources:**
+
+- [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **canary-branch ahead of canary.103**
+- [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **canary-branch ahead of canary.103**
+- [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **canary-branch ahead of canary.103**
+- [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **canary-branch ahead of canary.103**
+- [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **canary-branch ahead of canary.103**
+- [PR #96321 — `Bump @types/node to 20.17.7 to fix findSourceMap type`](https://github.com/vercel/next.js/pull/96321) · dan · **canary-branch ahead of canary.103**
+- [compare/v16.3.0-canary.102...canary](https://github.com/vercel/next.js/compare/v16.3.0-canary.102...canary) — 19 commits ahead of canary.102 as of 2026-07-30T00:03Z
+
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |

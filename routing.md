@@ -1576,6 +1576,89 @@ The 1.4.73 cycle covered `createLinkBodyErrorInNavigation`/error 1390 + `createL
 - [PR #95415 — `Unify appShells flag with Partial Prefetching`](https://github.com/vercel/next.js/pull/95415) · merged 2026-07-16T20:30:58Z · **Shipped in `16.3.0-canary.88`**
 - [GitHub Security Advisory GHSA-p9j2-gv94-2wf4](https://github.com/vercel/next.js/security/advisories/GHSA-p9j2-gv94-2wf4) — internal redirect origin (PR #96011)
 - [GitHub Security Advisory GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24) — i18n single-locale middleware matcher (PR #96014)
+
+
+## Query-String `router.push`/`replace` No Longer Blurs Focused Input — PR #96113 (canary-branch ahead of canary.103, [Joseph](https://github.com/icyJoseph), merged 2026-07-29T23:13:36Z, expected in `16.3.0-canary.103`)
+
+Closes Next.js issue **[#96050](https://github.com/vercel/next.js/issues/96050) — "App Router: query-string-only router.push/replace blurs the focused input (dismisses mobile keyboard) with the new scroll/focus handler (appNewScrollHandler)"**.
+
+**The regression:** canary.71 (PR #95378) enabled a new scroll/focus handler (`appNewScrollHandler`) by default — replacing the old fragment-scroll handler. The new handler correctly handles View Transitions + Cache Components shells, but it has a side effect: **dynamic pages (all pages in dev), the new handler blurs and selects the body as `activeElement` after every navigation**. That includes navigations that don't actually change the page identity — specifically, `router.push('?q=foo')` (or `router.replace`) where only the query string changes but the URL pathname stays the same.
+
+**Why it matters:** the canonical React search-as-you-type pattern is to sync the input value to the URL query string on every keystroke:
+
+```jsx
+'use client';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+export default function Page() {
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  return (
+    <input
+      autoFocus
+      value={q}
+      placeholder="type here"
+      onChange={(e) => {
+        setQ(e.target.value);
+        router.push('?q=' + encodeURIComponent(e.target.value)); // reflect query in URL
+      }}
+    />
+  );
+}
+```
+
+Before canary.71 this worked fine — typing into the input updated the URL query but kept the input focused. After canary.71, every keystroke would:
+
+1. Update the input value via `setQ(e.target.value)`.
+2. Call `router.push('?q=...')` which navigates (only the query, but a navigation nonetheless).
+3. The new `appNewScrollHandler` runs after the navigation commits → `document.activeElement` becomes `document.body`, the input is blurred.
+4. **On iOS Safari / Android Chrome:** the on-screen software keyboard dismisses. The user cannot type continuously.
+5. **On desktop:** the caret/selection is lost mid-word. The user has to click the input again to continue typing.
+
+This **breaks every search-as-you-type / filter input that syncs the query to the URL** — one of the most common App Router patterns.
+
+**What PR #96113 does:** the PR title says "Stop blurring on navigations" but the PR description is honest about the scope:
+
+> Dynamic pages (all pages in dev), blur and select the body as `activeElement`.
+> - [x] e2e for https://github.com/vercel/next.js/issues/96050
+> - [ ] attempt a fix that prevents blur
+
+So PR #96113 is **mostly an e2e test fix** that locks in the *correct* behavior for the query-string-only case (and probably tweaks the runtime so that query-string-only navigations don't run the full `appNewScrollHandler`). A full fix that prevents the blur on all navigation types is still TODO. Concretely:
+
+- **Query-string-only `router.push('?...')` / `router.replace('?...')`** — no longer blurs the focused input. ✓ Fixed in this PR.
+- **Path-changing `router.push('/other-page')`** — still blurs the focused input (existing behavior, full fix pending).
+
+**Before/after behavior for the search-as-you-type pattern:**
+
+| Scenario | Before canary.103 | After canary.103 |
+|---|---|---|
+| Type `h` into `<input>` with `router.push('?q=h')` | Input blurs, caret lost | Input stays focused |
+| Type `he` into `<input>` with `router.push('?q=he')` | Input blurs, caret lost | Input stays focused |
+| Click a `<Link href="/other-page">` | Input blurs (expected) | Input blurs (unchanged) |
+| Click browser Back button to restore input on a query-string page | Input may or may not be focused | Improved (related work) |
+
+**Practical impact:**
+
+- **Every App Router project with a search-as-you-type / filter input that syncs to the URL** — affects form-heavy apps (search bars, admin filters, command palettes, autocomplete inputs, instant-find UI).
+- **The 1.62.0+ Playwright stories-and-galleries component testing model** (`fixtures.mount(storyId)`) was used to write the e2e for this PR — the e2e ships in the Next.js repo at `test/e2e/app-dir/fragment-scroll/` (path approximate; the PR doesn't specify a new directory, so it's likely added to the existing fragment-scroll test suite).
+- **iOS Safari / Android Chrome users** — biggest immediate win: the on-screen keyboard no longer dismisses while typing.
+
+**Audit recipe** — find every `router.push`/`router.replace` that uses a `?...` or `&...` query pattern in your App Router codebase:
+
+```bash
+# Find every router.push/replace that touches query strings
+rg -n 'router\.(push|replace)\(['''"]\?' --type tsx --type ts --type jsx --type js
+
+# Or more broadly: any push/replace whose first arg starts with ?
+rg -n '(push|replace)\(\s*['''"]\?' --type tsx --type jsx
+```
+
+For each match, the input the user is typing into should remain focused after every keystroke once you upgrade to canary.103+.
+
+**Source:** [PR #96113 — `[fragment-scroll] Stop blurring on navigations`](https://github.com/vercel/next.js/pull/96113) · Joseph · merged 2026-07-29T23:13:36Z · **canary-branch ahead of canary.103** · closes issue [#96050](https://github.com/vercel/next.js/issues/96050).
+
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.

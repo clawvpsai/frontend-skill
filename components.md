@@ -1572,6 +1572,112 @@ The headline is **[PR #37075](https://github.com/facebook/react/pull/37075) `[De
 - [PR #37050 — `[DevTools] Validate Store operation invariants`](https://github.com/facebook/react/pull/37050)
 - [PR #37076 — `[DevTools] Shut down standalone Bridge on socket close`](https://github.com/facebook/react/pull/37076)
 
+
+## React 19.3.0-canary-1724e9ce-20260729 — [Fiber] Hidden-Tree Dehydration Hang Fix (#37135) + Fragment-Ref Blur Nesting Fix (#37125) (July 29, 2026)
+
+The previous cron (v1.5.04 at 2026-07-29T18:03Z) captured `react@canary` = `19.3.0-canary-96fcba90-20260728`, but **46 minutes later** (at 2026-07-29T18:48:34Z) the npm `dist-tag.canary` pointer moved to `19.3.0-canary-1724e9ce-20260729` — a 2-commit bump that the v1.5.04 cron completely missed by virtue of timing. Both commits are bug fixes; no new public API or config flags. The headline is **[React PR #37135](https://github.com/facebook/react/pull/37135)** by **dan**, merged 2026-07-28T22:18:44Z (the underlying commit hash `9a81195` is dated Jul 28, but the npm publish was Jul 29):
+
+```text
+[Fiber] Fix hang when updating a dehydrated boundary inside a hidden tree (#37135)
+
+Closes https://github.com/vercel/next.js/issues/95848.
+
+Fixes a hang: if an update changes what's inside a server-rendered
+Suspense or Activity boundary before that boundary has hydrated, and the
+affected content is hidden, React stops committing. The new content
+renders once its data arrives, but the render is discarded every time,
+nothing is scheduled, and nothing ever pings — the update never lands
+and the app appears frozen.
+
+"Hidden" means either of two things:
+- the update itself hides a dehydrated <Activity> (while mounting new
+  sibling content that suspends), or
+- the dehydrated boundary is inside the primary tree of a parent
+  boundary that just suspended and is showing its fallback.
+
+With https://github.com/vercel/next.js/pull/95682, pressing Back before
+hydration finishes made the router replay the missed navigation from its
+first effect. This worked fine outside of Cache Components, but in Cache
+Components mode (which turns on Activity), the old page's Activity
+(still dehydrated) gets hidden, the new page's content suspends inside
+the layout's Suspense boundary, and after the data arrives the page
+stays blank forever.
+
+As a result, https://github.com/vercel/next.js/pull/95682 got reverted.
+If we fix this, we can unrevert it.
+```
+
+**Why this React PR matters for every Next.js App Router user on 16.3+ (Cache Components):** it directly fixes Next.js issue #95848 ("Blank page when pressing Back between a reload and hydration with cacheComponents (regression in 16.3.0-canary.87)"). That issue was the **sole reason** Next.js PR #95682 (`Replay same-document traversals that happen before hydration`, by `icyJoseph`) **got reverted** in PR #95853 on 2026-07-15T16:36:26Z — the fix introduces a hang in Cache Components mode. The replacement PR **[#96252](https://github.com/vercel/next.js/pulls/96252)** is open on the Next.js repo (created 2026-07-27T00:00:35Z, by `icyJoseph`) and its body explicitly says: *"Turns out, the reason it had to be reverted was https://github.com/react/react/pull/37134. When https://github.com/react/react/pull/37134 lands, we can land this one."* The reference is approximate (the actual unblocker turned out to be PR #37135, not #37134 — the underlying Fiber bug dan found is the real fix), but the implication is exact: **once a React canary containing PR #37135 is published, Next.js can un-revert #95682**.
+
+**What "Back before hydration" actually means (the user-facing behavior being unblocked):** if a user opens page A, navigates to page B client-side, reloads B (which replaces B's document with fresh server HTML), then presses Back — at the time `popstate` fires to A, JS hasn't loaded yet, so nothing listens for it. After JS loads, the router would hydrate B's content onto B's HTML despite technically being on the A route, and from that point forward Back/Forward would change the URL but keep showing B's content. PR #95682 fixed this by using Navigation API to detect the missed traversal and replay it after hydration. Without this fix, every Cache Components app that ever handles a post-reload Back press is silently corrupt.
+
+**Practical impact for users today:**
+
+- **`react@canary` install** — anyone on `npm install react@19.3.0-canary-1724e9ce-20260729 react-dom@19.3.0-canary-1724e9ce-20260729` immediately gets the hidden-tree-dehydration fix.
+- **`next@canary` users** — the next Next.js canary React vendor bump (the commit titled `Upgrade React from <prev> to 1724e9ce-20260729`) will pick this up; expected in `16.3.0-canary.104` or `16.3.0-canary.105` (canary.103 was tagged in the canary-branch commit `f3edea1` at 2026-07-29T23:50:00Z but the React vendor bump for this PR is not yet in the canary-branch; the canary.103 tag is `npm view next dist-tags.canary`).
+- **Next.js PR #96252** is open and waiting — expect it to be merged into canary-branch and shipped in the canary immediately after the React vendor bump PR lands. So **the "Back before hydration" behavior is expected to be back on `next@canary@105` or `next@canary@106`** (approximately 2026-07-31 → 2026-08-02 window on the 24h canary cadence).
+- **`next@preview`** — preview lags canary by ~1 release, so expect it in `16.3.0-preview.11` or `16.3.0-preview.12` (approximately 2026-08-01 → 2026-08-03).
+- **`next@latest` (16.2.12)** — not affected. The "Back before hydration" feature is only relevant for App Router + Cache Components, both 16.3-only. If you're on stable, you don't have either.
+
+**The other commit in this canary bump — [React PR #37125](https://github.com/facebook/react/pull/37125) `[DOM] Blur focused descendants in Fragment refs`** by **Minh Vu** (merged 2026-07-29T16:21:37Z, commit `1724e9c`):
+
+```text
+[DOM] Blur focused descendants in Fragment refs (#37125)
+
+FragmentInstance.blur() only matched the active element against the
+first level of host children. If the focused element was nested inside
+one of those children, focus() could reach it but blur() would leave it
+focused.
+
+This treats an active element contained by a Fragment host child as part
+of the Fragment and blurs the active element itself. It also adds
+regression coverage for a nested input.
+
+Fixes #37124.
+```
+
+**Practical impact:** Fragment refs (React 19.3 experimental) — `FragmentInstance.blur()` now correctly blurs nested focused elements instead of leaving them focused. Affects any code that uses the experimental `Fragment ref` API and relies on `.blur()` to clear focus programmatically (e.g. closing a popover that wraps a form input). Most projects don't use Fragment refs yet (still behind the `enableFragmentRefs` flag), so the blast radius is small.
+
+**Test coverage added:**
+
+- PR #37135 — new failing tests for both boundary-hide scenarios (the update itself hides a dehydrated `<Activity>` while mounting sibling content that suspends, OR the dehydrated boundary is inside the primary tree of a parent that just suspended). `startTransition` variants of the same scenarios are included as passing controls. Ran the Activity, partial/selective hydration, Fizz, Suspense, and Offscreen suites in both release channels.
+- PR #37125 — `yarn test ReactDOMFragmentRefs-test --runInBand` (65 tests passed) + `--prod` variant (65 tests passed) + prettier + linc + flow `dom-node`.
+
+**Coverage: which Next.js tags ship this canary?**
+
+| Tag | Bundled React | This canary? |
+|---|---|---|
+| `next@latest` (`16.2.12`) | `19.2.8` (vendored) | ❌ |
+| `next@backport` (`15.5.22`) | vendored old | ❌ |
+| `next@canary` (`16.3.0-canary.102`, canary.103 staged) | `19.3.0-canary-96fcba90-20260728` | ❌ (will be ✅ after vendor-bump PR for `1724e9ce` lands — expected `16.3.0-canary.104`/`105`) |
+| `next@preview` (`16.3.0-preview.10`) | `19.3.0-canary-96fcba90-20260728` | ❌ (will be ✅ after preview vendor bump — expected `16.3.0-preview.11`/`12`) |
+| Standalone `react@canary` install | `19.3.0-canary-1724e9ce-20260729` | ✅ |
+
+Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-1724e9ce-20260729`.
+
+**Timing analysis (why the v1.5.04 cron missed this):**
+
+- v1.5.04 cron started at 2026-07-29T18:03Z.
+- React canary bump to `1724e9ce-20260729` happened at 2026-07-29T18:48:34Z — 45min after the cron started.
+- The v1.5.04 cron's React canary detection ran in the first 5min of its execution (the standard `npm view react dist-tags.canary` check), so it saw `96fcba90-20260728`.
+- The new canary was published mid-execution of the v1.5.04 cron, so it landed in the gap between cycles.
+- This is a fundamental ceiling on the 6h cadence — canary bumps that happen inside the cron window can only be picked up by the *next* cron, even if they're published in the first hour of the current cycle. Future cron windows should expect this pattern for any 6h boundary.
+- **The next cron (v1.5.05, this entry) DID pick it up** because by 2026-07-30T00:03Z the React canary had been live for 5h15min.
+
+**Sources:**
+
+- [React canary `19.3.0-canary-1724e9ce-20260729` GitHub compare (`96fcba90...1724e9ce`)](https://github.com/facebook/react/compare/96fcba90...1724e9ce) — 2 commits since `96fcba90`, both bug fixes
+- [React PR #37135 — `[Fiber] Fix hang when updating a dehydrated boundary inside a hidden tree`](https://github.com/facebook/react/pull/37135) — the headline (closes Next.js issue #95848)
+- [React PR #37125 — `[DOM] Blur focused descendants in Fragment refs`](https://github.com/facebook/react/pull/37125) — the secondary fix (closes React issue #37124)
+- [Next.js issue #95848 — Blank page when pressing Back between a reload and hydration with cacheComponents (regression in 16.3.0-canary.87)](https://github.com/vercel/next.js/issues/95848)
+- [Next.js PR #95682 — Replay same-document traversals that happen before hydration](https://github.com/vercel/next.js/pulls/95682) — the feature that got reverted
+- [Next.js PR #95853 — Revert "Replay same-document traversals that happen before hydration"](https://github.com/vercel/next.js/pulls/95853) — the revert
+- [Next.js PR #96252 — Replay same-document traversals that happen before hydration (redo)](https://github.com/vercel/next.js/pulls/96252) — open, waiting for this React PR
+- [React issue #37124 — FragmentInstance.blur() doesn't blur nested focused elements](https://github.com/facebook/react/issues/37124)
+- [npm: `react@19.3.0-canary-1724e9ce-20260729`](https://www.npmjs.com/package/react/v/19.3.0-canary-1724e9ce-20260729) (published 2026-07-29T18:48:34Z)
+- [npm: `react-dom@19.3.0-canary-1724e9ce-20260729`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-1724e9ce-20260729) (published 2026-07-29T18:47:43Z)
+
+
 ## shadcn/ui 4.14.1 — Base UI Toast Support (July 23, 2026)
 
 Released 1 day after 4.14.0 (July 22 → July 23), `shadcn@4.14.1` is a **patch** that adds **Base UI Toast support** ([PR #11266](https://github.com/shadcn-ui/ui/pull/11266) by shadcn himself, commit `6cd3f4c65c361ab6554e06a77e6a0af9cf8b6e37`). Purely additive on top of 4.14.0 — no breaking changes, no removals.
