@@ -1104,11 +1104,101 @@ Vite 8.2.0-beta.0 ([released 2026-07-22T06:41:43Z](https://github.com/vitejs/vit
 
 **Recommended Vite version for new projects (July 22, 2026):** **Vite 8.1.5 stable** is still the recommended stable. **Vite 8.2.0-beta.0** is the first beta of the 8.2 line — install only if you specifically want to test the new features above.
 
+**Superseded by 8.2.0 (July 30, 2026):** The 8.2.0-beta.0 recommendation above is now superseded by the stable [Vite 8.2.0](#vite-820-july-30-2026--stable-release--input-on-serverfsallow-bundled-dev-hmr-for-workers-network-url-interface-name-resolution-frozen-objectprototype-module-runner-fix) release. The `latest` npm dist-tag moved to 8.2.0 at 2026-07-30T12:03:25Z. If you installed `vite@8.2.0-beta.0` for evaluation, upgrade to `^8.2.0` to get the same features plus the 5 new 8.2.0 features + 7 bug fixes (notably the bundled-dev worker HMR + reload-once-after-rebuild + frozen-`Object.prototype` module-runner fixes).
+
 **Sources:**
 
 - [Vite 8.2.0-beta.0 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.2.0-beta.0)
 - [Vite 8.2.0-beta.0 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.2.0-beta.0/packages/vite/CHANGELOG.md)
 - [Compare `v8.1.5...v8.2.0-beta.0`](https://github.com/vitejs/vite/compare/v8.1.5...v8.2.0-beta.0)
+### Vite 8.2.0 (July 30, 2026) — Stable Release — `input` on `server.fs.allow`, bundled-dev HMR for workers, network-URL interface-name resolution, frozen-`Object.prototype` module-runner fix
+
+Vite 8.2.0 ([released 2026-07-30T12:00:47Z, GitHub release tag `v8.2.0`](https://github.com/vitejs/vite/releases/tag/v8.2.0), [compare `v8.2.0-beta.0...v8.2.0`](https://github.com/vitejs/vite/compare/v8.2.0-beta.0...v8.2.0), npm `latest` dist-tag pointer moved to 8.2.0 at 2026-07-30T12:03:25Z) is the **stable release of the 8.2 line** — 8 days after the 8.2.0-beta.0 cut, 14 days after 8.1.5, and the **new recommended Vite version for all projects**. The npm `latest` pointer moved 8 days after the beta.0 cut, which is on the long end of Vite's normal "beta → stable" cadence (typical is 4–7 days; the extra time was the Cloudflare CI pipeline reorganization + ecosystem-ci synchronization for the 8.2 minor). **No breaking changes from 8.1.x** — every new commit is either a feature, a bug fix, or a monthly dep bump.
+
+**Status:** STABLE — recommended for production. All 8.2.0-beta.0 features promoted unchanged. Pin with `"vite": "^8.2.0"` and watch for `8.2.1` patches in the next 2–4 weeks.
+
+**New features in 8.2.0 (after beta.0, from [CHANGELOG](https://github.com/vitejs/vite/blob/v8.2.0/packages/vite/CHANGELOG.md)):**
+
+| Area | Feature | PR |
+|---|---|---|
+| **server.fs.allow** | Add `input` to `server.fs.allow` — restricts which build inputs can be served by the dev server via the `server.fs.allow` allowlist. Previously `server.fs.allow` only accepted directory patterns; now it accepts a top-level `input` option separately so the build inputs are constrained independently of the served-files allowlist. Affects security posture for any project that ingests untrusted CSS/HTML and wants to harden the dev server. | [#23035](https://github.com/vitejs/vite/issues/23035) (commit `95a3cda`) |
+| **bundled-dev** | Reload once after rebuild instead of via the fallback page — when a bundled-dev rebuild produces a new module graph, the dev server now does a single `location.reload()` rather than the slower "fallback page" full-page-redirect. Materially faster iteration on Rolldown-bundled dev projects. | [#23106](https://github.com/vitejs/vite/issues/23106) (commit `b24381d`) |
+| **bundled-dev** | Support worker file update accepted by HMR — workers created via `new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` now receive HMR updates in bundled-dev mode. Previously the worker was a single-shot load and updates required a manual reload. Pairs with the #23106 reload-once improvement above. | [#23068](https://github.com/vitejs/vite/issues/23068) (commit `0d04351`) |
+| **config** | Include column in config incompatibility location — when Vite emits a config incompatibility warning (e.g. `native`-loader incompatibilities from PR #22850), the location now includes the **column number** alongside the line number. Cuts the round-trip from "warning → IDE → fix" by giving the IDE column to highlight directly. | [#23064](https://github.com/vitejs/vite/issues/23064) (commit `8a24572`) |
+| **dev** | Resolve interface name for explicit host in network URLs — completes the 8.2.0-beta.0 PR #22830 work for the case where you explicitly pass `--host 192.168.1.5` (vs `--host` with no arg, which was already labeled in beta.0). The explicit-host code path used to print only the IP; now it prints the IP + the interface name in parens. Useful for VPN/Docker/WSL setups where `--host` is targeted. | [#22965](https://github.com/vitejs/vite/issues/22965) (commit `3ac77d9`) |
+
+**Bug fixes in 8.2.0 (after beta.0):**
+
+| Area | Fix | PR |
+|---|---|---|
+| **bundledDev** | Print build errors to the terminal when an HMR update fails — previously a failed HMR update in bundled-dev mode silently swallowed the underlying build error and just showed the fallback page. The build error now prints to the terminal where the dev server is running, so a `Cmd+C` is no longer required to see why. | [#23024](https://github.com/vitejs/vite/issues/23024) (commit `41c4658`) |
+| **hmr** | Preserve environment snapshot during server restart — when Vite auto-restarts (e.g. config change), the `environment` snapshot passed to plugins is now preserved across the restart. Previously the snapshot was rebuilt from scratch, which could cause plugin hooks to see a stale `environment` reference. | [#22992](https://github.com/vitejs/vite/issues/22992) (commit `b1186c3`) |
+| **importAnalysis** | Interop imports injected into optimized dep files by plugins — when an import-analysis plugin injects a new import into an optimized dep file (e.g. for a pre-bundled package), Vite now correctly handles the interop-default case instead of leaving the import undefined. Affects any plugin that post-processes `vite:optimized-deps-*` modules. | [#23029](https://github.com/vitejs/vite/issues/23029) (commit `8c2a87d`) |
+| **module-runner** | Keep stack trace interception working when `Object.prototype` is frozen — `module-runner` was augmenting `Error.prototype.toString` to enable better stack-trace rendering, but this augmentation broke when `Object.prototype` (or `Error.prototype`) was frozen (e.g. via `Object.freeze(Object.prototype)` for hardening, or by web-standard runtimes that ship frozen prototypes). The new code path uses a getter trap on `Error` instances instead of patching the prototype, so frozen prototypes no longer break stack-trace interception. | [#23073](https://github.com/vitejs/vite/issues/23073) (commit `599c5b0`) |
+| **server** | Strip base in indexHtml module graph lookup — Vite's `indexHtmlMiddleware` was looking up the HTML module by the raw request URL (including the `base` prefix), but the module graph keys modules by their de-based path. The mismatch caused `indexHtml` hooks to fire for the wrong module in projects with a non-default `base` config. Now strips base before the lookup. | [#22932](https://github.com/vitejs/vite/issues/22932) (commit `fa005d1`) |
+| **resolve** | Support resolving top-level `input` option with plugins — `build.input` (PR #22642, from 8.2.0-beta.0) now resolves through Vite plugins, so plugins that emit additional entrypoints (e.g. a "locales" plugin that wants to emit `<locale>.json` for each registered locale) can hook into the `resolveId` chain and have their entries picked up. | [#23101](https://github.com/vitejs/vite/issues/23101) (commit `41df81a`) |
+| **deps** | `deps: update all non-major dependencies` — routine monthly dep bump. | [#23069](https://github.com/vitejs/vite/issues/23069) (commit `4c07b74`) |
+
+**Documentation in 8.2.0:**
+
+| Area | Fix | PR |
+|---|---|---|
+| **config** | Correct `cacheDir` default fallback description — the JSDoc for `cacheDir` had an outdated fallback description (the actual fallback is `node_modules/.vite`, not `node_modules/.vite-temp`). | [#23060](https://github.com/vitejs/vite/issues/23060) (commit `aafa103`) |
+
+**Tests in 8.2.0:**
+
+| Area | Fix | PR |
+|---|---|---|
+| **config** | Config CJS module vars in ESM case — adds a regression test ensuring that when a CJS config file is loaded by Vite's ESM config loader, the `module.exports` and `exports` references are correctly visible to plugins. | [#23010](https://github.com/vitejs/vite/issues/23010) (commit `d8cd388`) |
+
+**Notable new features explained:**
+
+- **`input` on `server.fs.allow`** (PR #23035) — the dev-server-side defense-in-depth option. For projects that ingest untrusted CSS/HTML (CMS themes, user-uploaded `style` strings, dynamic `dangerouslySetInnerHTML` content), the dev server can now allow the build inputs via `server.fs.allow.input` while still restricting the served-files directory. Previously you'd have to allowlist the entire served tree, which over-permitted. Full example:
+
+  ```ts
+  // vite.config.ts
+  export default defineConfig({
+    server: {
+      fs: {
+        // Build inputs allowed to be read (e.g. for HTML rendering / SSR)
+        input: ['./content/**', './templates/**'],
+        // Served-files directory restricted (e.g. only the build output)
+        allow: ['./dist'],
+      },
+    },
+  })
+  ```
+
+- **`bundled-dev` worker HMR** (PR #23068 + #23106) — the largest dev-UX win in 8.2.0. Projects using Rolldown bundled-dev mode (`experimental.bundledDev: true`) now get HMR updates on worker files instead of the old "manual reload" pattern. Combined with the #23106 reload-once-after-rebuild fix, the iteration loop for a typical Vite + Web Worker project goes from "Edit worker → Cmd+R → re-render" to "Edit worker → automatic HMR". This is the single biggest reason to upgrade if you use workers.
+
+- **`module-runner` frozen-`Object.prototype` fix** (PR #23073) — important for any project that runs Vite's module-runner in a hardened runtime (Cloudflare Workers with `Object.freeze(Object.prototype)` for security, or frameworks that auto-freeze prototypes). Before 8.2.0, stack traces in module-runner were silently broken in these environments.
+
+**Performance notes (inherited from 8.2.0-beta.0, no new perf changes in 8.2.0 final):**
+
+- `config` — skip native-config compat check when warning is ignored (PR #23000)
+- `optimizer` — check popular package-manager lockfiles first (avoids scanning every lockfile in monorepos) (PR #22909)
+
+**No behavior changes for plugin authors:** every plugin API prior to 8.2.0 still works. The only new opt-in is `server.fs.allow.input` (PR #23035) and the new `build.input` resolution via plugins (PR #23101).
+
+**Who should upgrade to 8.2.0:**
+
+- **Anyone on Vite 8.1.0 / 8.1.1 / 8.1.2 / 8.1.3 / 8.1.4 / 8.1.5** — `8.1.0 → 8.2.0` is a safe upgrade. You get all of 8.1.1–8.1.5's bug fixes plus all of 8.2.0-beta.0's features plus the 5 new 8.2.0 features + 7 bug fixes. `8.1.5 → 8.2.0` is the recommended path.
+- **Anyone on Vite 8.2.0-beta.0** — pure additive upgrade. No API changes, no plugin incompatibilities. The `beta.0` → `8.2.0` diff is just the 5 features + 7 bug fixes + 1 docs + 1 test above.
+- **Anyone using Rolldown bundled-dev mode (`experimental.bundledDev: true`)** — the worker HMR + reload-once-after-rebuild fixes are the headline wins.
+- **Anyone using Cloudflare Workers / Vercel Edge / Deno Deploy with `module-runner`** — the frozen-`Object.prototype` fix matters.
+- **Anyone with `server.fs` security concerns** — the new `input` option is a real win.
+
+**Recommended Vite version for new projects (July 30, 2026):** **Vite 8.2.0** — supersedes 8.1.5 as the recommended Vite version (and transitively 8.1.0–8.1.4). 8.2.0 contains all of 8.1.5's contents (the six 8.1.5 bug fixes + 8.1.4's seven bug fixes + 8.1.3's `es-module-lexer` 2.3.0 bump + 8.1.2's reverts + 8.1.1's bundler fixes + 8.1.0's foundational features) **plus** all 8.2.0-beta.0's features (`build.input` PR #22642, `native`-loader compat warnings PR #22850, `PostcssUserConfig` type export PR #22792, network URL interface labels PR #22830, `aube`/`nub` lockfile support PRs #22813/#22891, css chunks in chunk import maps PR #22947, `root` real-path resolution PR #22832, `magic-string` v1 bump PR #22998, perf improvements PRs #23000/#22909) **plus** the 5 new 8.2.0 features + 7 bug fixes documented above. **Skip 8.1.1 entirely** — go 8.1.0 → 8.2.0 (or 8.1.5 → 8.2.0). All of the 8.1.1 → 8.1.5 recommendation is preserved in 8.2.0.
+
+**Supersedes 8.2.0-beta.0:** The 8.2.0-beta.0 section above is now historical — beta.0 is superseded by 8.2.0 stable. All 8.2.0-beta.0 features and bug fixes are unchanged in 8.2.0. The only thing 8.2.0 adds on top of beta.0 is the 5 features + 7 bug fixes + 1 docs + 1 test listed above.
+
+**Sources:**
+
+- [Vite 8.2.0 release on GitHub](https://github.com/vitejs/vite/releases/tag/v8.2.0)
+- [Vite 8.2.0 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.2.0/packages/vite/CHANGELOG.md)
+- [Compare `v8.2.0-beta.0...v8.2.0`](https://github.com/vitejs/vite/compare/v8.2.0-beta.0...v8.2.0)
+- [Vite 8.2.0-beta.0 release (now superseded)](https://github.com/vitejs/vite/releases/tag/v8.2.0-beta.0)
+
 
 ### Vite `build.input` Option (July 17, 2026, ahead of Vite 8.1.5 — Vite PR [#22642](https://github.com/vitejs/vite/pull/22642) by sapphi-red, merged 2026-07-17T07:50:31Z)
 
