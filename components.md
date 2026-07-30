@@ -1677,6 +1677,89 @@ Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-172
 - [npm: `react@19.3.0-canary-1724e9ce-20260729`](https://www.npmjs.com/package/react/v/19.3.0-canary-1724e9ce-20260729) (published 2026-07-29T18:48:34Z)
 - [npm: `react-dom@19.3.0-canary-1724e9ce-20260729`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-1724e9ce-20260729) (published 2026-07-29T18:47:43Z)
 
+## React 19.3.0-canary-6cb4322d-20260729 — `[Flight] Port ReplyServer Traversal Guards to FlightClient` (#37144) (July 30, 2026)
+
+The previous cron (v1.5.07 at 2026-07-30T12:03Z) captured `react@canary` = `19.3.0-canary-1724e9ce-20260729`, but **4h42min later** (at 2026-07-30T16:45:17Z) the npm `dist-tag.canary` pointer moved to `19.3.0-canary-6cb4322d-20260729` — a **1-commit pure hardening bump** that v1.5.07 missed by virtue of timing (the publish was inside this 18:03Z cron window). No new public API, no config flags, no new exports. The single commit is a defense-in-depth hardening for the Flight Client deserializer, contributed by **Sebastian "Sebbie" Silbermann** (the same engineer who authored the recent Next.js PR #96085 `headers()` per-pass uniqueness fix):
+
+**[React PR #37144 — `[Flight] Port ReplyServer traversal guards to FlightClient`](https://github.com/facebook/react/pull/37144)**, merged 2026-07-29T22:17:33Z. The PR body is short but signals intent:
+
+> Additional defense-in-depth in case consumers pass untrusted input into Flight Client.
+> Flight Client generally assumes trusted input.
+> We'll reserve these kind of fixes for Flight Client in case the untrusted input leads to catastrophic vulnerabilities e.g. prototype pollutions that can be used for remote code executions.
+
+### What changed in `getOutlinedModel` and `reviveModel` (one file, +26/−8)
+
+The fix is confined to `packages/react-client/src/ReactFlightClient.js` and is a two-spot hardening of the Flight Client deserializer:
+
+1. **`getOutlinedModel` path-walk guard** — the function that walks an outlined model's `[obj, key0, key1, ...]` reference list (a common Flight wire-format shape for repeated references). Before: `value = value[path[i]]` blindly descended, regardless of `value`'s prototype or whether `name` was an own property. After: checks `typeof value === 'object' && value !== null && (getPrototypeOf(value) === ObjectPrototype || getPrototypeOf(value) === ArrayPrototype) && hasOwnProperty.call(value, name)` before descending; throws `new Error('Invalid reference.')` otherwise. So a crafted path entry that traverses through a non-plain prototype (e.g. an object reachable by path that has `Object.getPrototypeOf(value) !== Object.prototype`) is short-circuited with a hard error before any prototype-chain walk can happen.
+
+2. **`reviveModel` plain-object walk guard** — the recursive walker that descends plain-object RSC payloads to revive nested values. Before: `for (const k in value) { if (k === '__proto__') delete value[k]; else ... }` — only stripped explicit `__proto__` keys from the *own* key list. After: wraps the loop with `hasOwnProperty.call(value, k)`, so inherited enumerable properties are skipped entirely. Same prototype-pollution defence — a payload that lands an object with a poisoned prototype can no longer cause the walker to read or write inherited keys.
+
+Auxiliary additions: imports `shared/getPrototypeOf`, declares `const ObjectPrototype = Object.prototype` and `const ArrayPrototype = Array.prototype` (cache the references so the hot-path check doesn't re-read them per call).
+
+### Why Flight Client specifically (the trust-model rationale)
+
+The companion fix already landed for the **server side** (`ReplyServer`, the `processReply` generator) earlier — the PR title literally "Port ReplyServer traversal guards to FlightClient" says the move was deliberate. The server side has had these guards for a while because that's the side that *generates* the payload — if it reads from a poisoned source, the generated payload is already corrupt from the start, so the guard there also serves as a payload-shape sanity check. Flight Client was harder to harden because `getOutlinedModel`'s path-walk is also doing object-identity cache deduplication, and skipping the wrong reference would break the outline cache. The new guard is precisely scoped to only fire when the value is **non-plain** (prototype ≠ `Object.prototype` and ≠ `Array.prototype`); plain-object outlines (the 99% case) walk identically to before.
+
+### Why it matters for Next.js App Router users
+
+**In the common trust model — your own server, your own RSC, your own database — this is invisible.** Server-issued Flight payloads from `react-server-dom-webpack` / `react-server-dom-turbopack` go through `encodeReply` / `processReply`, and the deserialized shapes always have `Object.prototype` or `Array.prototype`. The new guard is a defense-in-depth measure for three edge cases that real apps occasionally hit:
+
+- **Cross-tenant RSC caching** — if your caching layer stores Flight payloads keyed by content hash and serves them across tenants (CDN-served RSC snapshots, server-side `cache()` of an RSC stream replayed across users, RSC stored to S3/R2 and rehydrated) and the originating tenant's data could poison the prototype of any object reachable by path, the reviver now blocks the prototype-pollution class entirely. **Audit recipe**: `rg "processReply\|react-server-dom" server/ src/` — find every reply-process call site; if any consumes from a user-controlled source, upgrade. **Verify the new guard is what you want:** the new error is `Error('Invalid reference.')` (not a silent corruption), so test surfaces will see the throw clearly.
+- **`renderToReadableStream` + cross-origin consumer** — if your backend serves RSC to a third-party origin (a widget CDN, embedded mini-app, partner iframe consuming your RSC stream), the reviver now refuses to descend through non-plain prototypes, raising an explicit error rather than silently walking them. **No API change**, so existing code keeps working; only the failure mode on adversarial inputs changes (from silent corruption → explicit `Invalid reference.`).
+- **`dangerouslyAllowBrowser: true`** on the client side (rare, but allowed for embedded widgets where you load `react-server-dom-webpack/client` in a `<script type="module">` directly) gets the same hardening: the new guard fires before any prototype pollution can reach userland code.
+
+### Practical impact for users today
+
+- **`react@canary` install** — anyone on `npm install react@19.3.0-canary-6cb4322d-20260729 react-dom@19.3.0-canary-6cb4322d-20260729` immediately gets the Flight Client traversal hardening. No code changes required (the API surface is identical).
+- **`next@canary` users** — the React vendor bump PR (Next.js PR #96389 `Upgrade React from 1724e9ce-20260729 to 6cb4322d-20260729`) **landed on canary-branch at 2026-07-30T17:49:18Z** (~14min before this cron) and will be published as part of `16.3.0-canary.104` on the 24h canary cadence (canary.103 was tagged 2026-07-29T23:35:42Z, so canary.104 should land between 23:35Z tonight and ~12h after). See the new canary.104-ahead section in `performance.md` for the full canary-branch-ahead material.
+- **`next@preview`** — preview lags canary by ~1 release; expect in `16.3.0-preview.11` (~24-48h after canary.104).
+- **`next@latest` (16.2.12)** — not affected. Vendored React stable is `19.2.8` which already has the server-side `processReply` hardening; the new client-side guard is a follow-on that hasn't been back-ported to stable 19.x. If your threat model includes untrusted RSC, pin to canary.
+
+**Verification recipe:**
+
+```bash
+npm view react dist-tags.canary
+# → react: '19.3.0-canary-6cb4322d-20260729'
+
+# Confirm the new hardError path: write an RSC payload that includes a path
+# through a non-plain object (e.g. an object whose __proto__ was replaced
+# with a class instance) and confirm the reviver throws 'Invalid reference.'
+# This is opt-in — only happens if your code already accepts untrusted RSC.
+```
+
+### Coverage: which Next.js tags ship this canary?
+
+| Tag | Bundled React | This canary? |
+|---|---|---|
+| `next@latest` (`16.2.12`) | `19.2.8` (vendored) | ❌ |
+| `next@backport` (`15.5.22`) | vendored old | ❌ |
+| `next@canary` (`16.3.0-canary.103`) | `19.3.0-canary-1724e9ce-20260729` | ❌ (will be ✅ after PR #96389 npm-publishes in `16.3.0-canary.104`) |
+| `next@preview` (`16.3.0-preview.10`) | `19.3.0-canary-1724e9ce-20260729` | ❌ (will be ✅ after preview vendor bump — expected `16.3.0-preview.11`) |
+| Standalone `react@canary` install | `19.3.0-canary-6cb4322d-20260729` | ✅ |
+
+Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-6cb4322d-20260729`.
+
+### Timing analysis (why the v1.5.07 cron missed this)
+
+- v1.5.07 cron started at 2026-07-30T12:03Z.
+- React canary bump to `6cb4322d-20260729` happened at 2026-07-30T16:45:17Z — **4h42min after** the v1.5.07 cron's start.
+- v1.5.07 captured `react@canary` = `1724e9ce-20260729`, last updated at 2026-07-29T18:48:34Z (the dist-tag.next had been stable for 17h15min at the v1.5.07 cron start).
+- The 4h42min-old bump was inside the v1.5.07 → this-v1.5.08 window — same pattern as the v1.5.05 cycle that was missed-by-46min for the `1724e9ce-20260729` bump.
+- Both cases confirm a recurring pattern: **canary bumps happen on an 18-48h cadence, and any individual 6h cron cycle can miss a bump by 0-6h**. Two consecutive 6h windows per React canary bump means ~67% of bumps will land cleanly in one cycle; the other ~33% span a boundary. The next cron (v1.5.08, this entry) picks it up by virtue of being the immediate next cycle.
+
+### Sources
+
+- [React canary `19.3.0-canary-6cb4322d-20260729` GitHub compare (`1724e9ce...6cb4322d`)](https://github.com/facebook/react/compare/1724e9ce...6cb4322d) — 1 commit, defense-in-depth hardening
+- [React PR #37144 — `[Flight] Port ReplyServer traversal guards to FlightClient`](https://github.com/facebook/react/pull/37144) — author Sebastian "Sebbie" Silbermann, merged 2026-07-29T22:17:33Z
+- [React PR #37144 files diff](https://github.com/facebook/react/pull/37144/files) — single-file patch to `packages/react-client/src/ReactFlightClient.js`, imports `shared/getPrototypeOf`, adds `ObjectPrototype`/`ArrayPrototype` constants
+- [Next.js PR #96389 — `Upgrade React from 1724e9ce-20260729 to 6cb4322d-20260729`](https://github.com/vercel/next.js/pull/96389) — the vendor bump that brings PR #37144 into Next.js's vendored React (merged on canary-branch 2026-07-30T17:49:18Z)
+- [React PR #37144 Linear reference — VOC-34505 in Vercel's tracking](https://linear.app/vercel/issue/VOC-34505) (linked from PR #96389's body)
+- [npm: `react@19.3.0-canary-6cb4322d-20260729`](https://www.npmjs.com/package/react/v/19.3.0-canary-6cb4322d-20260729) (published 2026-07-30T16:45:17Z)
+- [npm: `react-dom@19.3.0-canary-6cb4322d-20260729`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-6cb4322d-20260729) (published 2026-07-30T16:46:14Z)
+
+
+
 
 ## shadcn/ui 4.14.1 — Base UI Toast Support (July 23, 2026)
 

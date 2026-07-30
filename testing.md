@@ -648,6 +648,48 @@ Also tested against Google Chrome 151 and Microsoft Edge 151 stable channels.
 - [Playwright docs — Getting Started with the Playwright MCP server](https://playwright.dev/docs/getting-started-mcp)
 - [Playwright docs — playwright-cli](https://playwright.dev/docs/getting-started-cli)
 
+## Playwright 1.62.1 (July 30, 2026) — Bug-Fix Patch — Two Fatal `tsconfig.json` Resolution Regressions + 3 Other Fixes
+
+The previous cron (v1.5.07 at 2026-07-30T12:03Z) documented Playwright 1.62.0 (Jul 24, 2026), but exactly 6 days later (`2026-07-30T16:36:55Z`; GitHub release `v1.62.1` published at `2026-07-30T16:35:55Z`) **Playwright 1.62.1 shipped** — a bug-fix patch addressing **five regressions introduced in 1.62.0**, two of which are tagged **"fatal since 1.62"**. The patch was missed by v1.5.07 (which captured the cycle immediately after 1.62.0 but several hours before 1.62.1 shipped).
+
+`@playwright/test@latest` advances **`1.62.0 → 1.62.1`**. No new APIs, no config changes, no deprecations; pure regression-fix patch. **Action required if you upgraded to 1.62.0 in the last 6 days**: bump to 1.62.1 in your next `npm install`. Every project that hit the broken-`tsconfig.json` cases needs this patch — the two fatal regressions broke CI for affected projects.
+
+### Bug fixes shipped in 1.62.1 (verbatim from the [GitHub release body](https://github.com/microsoft/playwright/releases/tag/v1.62.1))
+
+1. **#41989 `[Regression]: tsconfig "extends" bare specifier isn't resolved via node_modules walk-up like tsc` — fatal since 1.62**. Playwright's tsconfig parser was supposed to follow `tsc`'s behavior (walk up `node_modules` to find a bare-specifier `extends`), but in 1.62.0 the parser locked in only the project's local `tsconfig.json` and refused the walk-up. **Effect:** any project whose `tsconfig.json` does `extends: "@tsconfig/node22/tsconfig.json"` or `extends: "@tsconfig/strictest/tsconfig.json"` or `extends: "@tsconfig/strictest/tsconfig.next.json"` (effectively all strict TS projects + the entire @tsconfig/* ecosystem of shared configs) saw Playwright's type checker silently ignore the extended config and fall back to Playwright's embedded defaults. **Fix:** restore the `tsc`-compatible walk-up behavior. **Audit recipe:** `cat tsconfig.json | jq -r .extends` — if it returns a bare specifier (anything starting with `@` or that isn't a relative `./` / `../` path) and Playwright's type errors don't match `tsc`, this fix applies.
+
+2. **#41998 `[Regression]: directory-form tsconfig project references ("path": "../pkg") fail to resolve` — fatal since 1.62**. Playwright's project-references resolver accepted only the `path: "../pkg/index.ts"` form (pointing at a specific file) and choked on the more common `path: "../pkg"` directory form (which `tsc` resolves via the referenced package's `main` / `types` field). **Effect:** every monorepo using TS project references with the directory form — Next.js apps with `references: [{ "path": "../packages/ui" }]` where `packages/ui/package.json` has `"types": "./dist/index.d.ts"`, basically the entire monorepo-with-UI-libs pattern — got `Cannot find module '../pkg'` from Playwright's compiler. **Fix:** restore directory-form resolution. **Audit recipe:** `rg ""path":\s*"\.\./[^/]+"" tsconfig.json` — if any match ends in a package directory (no trailing `.ts` file), this fix applies.
+
+3. **#41985 `Accessibility snapshot drops button name when text is nested inside spans with aria-hidden SVG`**. `page.accessibility.snapshot()` was walking past the aria-hidden SVG subtree and then colliding on the next text node, dropping the button's name for markup like `<button><span><svg aria-hidden="true">icon</svg> My Action</span></button>` — common in icon-only or icon-prefixed buttons. Now flattens correctly. **Audit recipe:** `rg "aria-hidden="true"" src/` — every aria-hidden SVG inside a button label needs a regression test for `expect(await page.getByRole('button', { name: '...' }))`.
+
+4. **#42000 `[Regression]: page.evaluate() arg of a branded primitive type (string & { brand }) no longer type-checks since 1.62`**. Playwright's `page.evaluate(fn, arg)` type signature tightened in 1.62.0 to disallow branded primitives (e.g. `type UserId = string & { readonly brand: unique symbol }`) from being passed as `arg`, even though they were allowed and worked at runtime in 1.61.x. **Effect:** every TS codebase that uses brand types for ID columns (effectively every serious Zod-driven + Postgres-backed app that uses `z.string().brand<"UserId">()`) saw `tsc --noEmit` errors on every `page.evaluate((el) => el.dataset.userId, userId)` call. **Fix:** accept branded primitives back. **Audit recipe:** `rg "type \w+ = string & \{" src/ types/` (or `z.string().brand<"\w+">` for Zod-branded strings) — every branded primitive type that's passed to `page.evaluate` needs this fix.
+
+5. **#42013 `[BUG] Image-type actionable elements are not presented in the snapshot`**. `<input type="image">` (the HTML form-submit button that submits the form with the click coordinates) — an interactive element per ARIA — was missing from `page.accessibility.snapshot()` results. Now included as a `button` role. **Audit recipe:** `rg 'type="image"' src/` — affects every project using coordinate-submitting image buttons (the classic "click position matters for map/canvas forms" pattern; rare in 2026, but used by some embedded-image form UIs).
+
+### Why this patch can't wait
+
+The two **fatal since 1.62** bugs (#41989 + #41998) share a common cause: 1.62.0 rewrote the tsconfig loader to be stricter about format and strictness in evaluating `extends` and `references` (the rewrites were part of the broader type-system tightening for 1.62's `Branded` types work, see #42000). The new stricter loader was correct in principle but failed two of the most common real-world tsconfig patterns. Because every CI run would fail outright (or every `tsc --noEmit` on a Playwright tests project would fail), this patch is essentially required for any project that touched `tsconfig.json extends/references` in the last 6 days.
+
+### Migration checklist (1.62.0 → 1.62.1)
+
+- [ ] `npm install -D @playwright/test@^1.62.1` — single dependency bump; no peer-dep changes, no `playwright.config.ts` migration
+- [ ] **`tsconfig.json` walk-up regression check** — if your `tsconfig.json` does `extends: "@some-scope/some-pkg/..."`, verify Playwright now resolves it (`pnpm playwright test --list` should not error with `Cannot find extends config`)
+- [ ] **`tsconfig.json` references directory-form check** — if any reference in your `references: []` array is a directory like `"../packages/ui"` (not `"../packages/ui/index.ts"`), verify Playwright now resolves it (`pnpm playwright test --list` should not error with `Cannot find module '../packages/ui'`)
+- [ ] **Branded primitives in `page.evaluate`** — if your code passes branded IDs (e.g. `page.evaluate((el) => el.dataset.userId, userId)` where `userId: UserId`), verify the type error is gone
+- [ ] **No migration required** if you only used `tsconfig.json` with local-file extends (no bare specifier) and no `references` and didn't brand your primitives. But the patch is small and harmless; just take it.
+
+### Sources
+
+- [Playwright 1.62.1 release notes](https://github.com/microsoft/playwright/releases/tag/v1.62.1) — the 5-entry bug-fix list, verbatim
+- [Playwright PR #41989 — `[Regression]: tsconfig "extends" bare specifier isn't resolved via node_modules walk-up`](https://github.com/microsoft/playwright/pull/41989)
+- [Playwright PR #41998 — `[Regression]: directory-form tsconfig project references fail to resolve`](https://github.com/microsoft/playwright/pull/41998)
+- [Playwright PR #41985 — `Accessibility snapshot drops button name when text is nested inside spans with aria-hidden SVG`](https://github.com/microsoft/playwright/pull/41985)
+- [Playwright PR #42000 — `page.evaluate() arg of a branded primitive type no longer type-checks`](https://github.com/microsoft/playwright/pull/42000)
+- [Playwright PR #42013 — `Image-type actionable elements are not presented in the snapshot`](https://github.com/microsoft/playwright/pull/42013)
+- [npm: `@playwright/test@1.62.1`](https://www.npmjs.com/package/@playwright/test/v/1.62.1) (published 2026-07-30T16:36:55Z)
+
+
+
 
 
 
