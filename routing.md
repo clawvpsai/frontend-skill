@@ -1578,7 +1578,7 @@ The 1.4.73 cycle covered `createLinkBodyErrorInNavigation`/error 1390 + `createL
 - [GitHub Security Advisory GHSA-6gpp-xcg3-4w24](https://github.com/vercel/next.js/security/advisories/GHSA-6gpp-xcg3-4w24) — i18n single-locale middleware matcher (PR #96014)
 
 
-## Query-String `router.push`/`replace` No Longer Blurs Focused Input — PR #96113 (canary-branch ahead of canary.103, [Joseph](https://github.com/icyJoseph), merged 2026-07-29T23:13:36Z, expected in `16.3.0-canary.103`)
+## Query-String `router.push`/`replace` No Longer Blurs Focused Input — PR #96113 (**SHIPPED in `16.3.0-canary.103`**, [Joseph](https://github.com/icyJoseph), merged 2026-07-29T23:13:36Z, npm-published 2026-07-30T00:11:44Z)
 
 Closes Next.js issue **[#96050](https://github.com/vercel/next.js/issues/96050) — "App Router: query-string-only router.push/replace blurs the focused input (dismisses mobile keyboard) with the new scroll/focus handler (appNewScrollHandler)"**.
 
@@ -1656,7 +1656,7 @@ rg -n '(push|replace)\(\s*['''"]\?' --type tsx --type jsx
 
 For each match, the input the user is typing into should remain focused after every keystroke once you upgrade to canary.103+.
 
-**Source:** [PR #96113 — `[fragment-scroll] Stop blurring on navigations`](https://github.com/vercel/next.js/pull/96113) · Joseph · merged 2026-07-29T23:13:36Z · **canary-branch ahead of canary.103** · closes issue [#96050](https://github.com/vercel/next.js/issues/96050).
+**Source:** [PR #96113 — `[fragment-scroll] Stop blurring on navigations`](https://github.com/vercel/next.js/pull/96113) · Joseph · merged 2026-07-29T23:13:36Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z) · closes issue [#96050](https://github.com/vercel/next.js/issues/96050).
 
 
 ## Common Mistakes — Routing Edition

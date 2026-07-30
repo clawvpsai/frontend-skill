@@ -651,7 +651,7 @@ Also tested against Google Chrome 151 and Microsoft Edge 151 stable channels.
 
 
 
-## Playwright `retry` Now Respects the Given Duration — PR #96354 (canary-branch ahead of canary.103, [dan](https://github.com/gaoJude) / [Next.js team](https://github.com/vercel/next.js), merged 2026-07-29T20:42:57Z, expected in `16.3.0-canary.103`)
+## Playwright `retry` Now Respects the Given Duration — PR #96354 (**SHIPPED in `16.3.0-canary.103`**, [dan](https://github.com/gaoJude) / [Next.js team](https://github.com/vercel/next.js), merged 2026-07-29T20:42:57Z, npm-published 2026-07-30T00:11:44Z)
 
 **The bug:**
 
@@ -708,7 +708,7 @@ rg -n 'timeout|flake|slow' test/ tests/ e2e/ 2>/dev/null | head -20
 
 For each match, the retry semantics are now reliable; you don't need to change anything, but you can re-evaluate any "retry for 60s to give it enough time" patterns that were previously masking the slow-stall bug.
 
-**Source:** [PR #96354 — `Make retry stop when the time it was given is up`](https://github.com/vercel/next.js/pull/96354) · dan · merged 2026-07-29T20:42:57Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96354 — `Make retry stop when the time it was given is up`](https://github.com/vercel/next.js/pull/96354) · dan · merged 2026-07-29T20:42:57Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z).
 
 
 ## DOM Environment Updates — happy-dom 20.11.x + jsdom 29.1.1 (July 2026)

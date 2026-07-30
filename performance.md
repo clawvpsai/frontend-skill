@@ -2434,7 +2434,7 @@ A meta-story about a feature that shipped in canary.96, was reverted in canary.1
 
 **Lesson:** short canary cut cycles (canary.100 → canary.101 → canary.102 within 3 hours) make rapid-fire fixes and reverts possible, but the flip-flop means **don't trust a single canary's perf numbers for a feature that has been re-applied in the same window**. Always benchmark the most recent canary before reporting results.
 
-### Turbopack Star-Import String-Key Tree-Shaking (canary-branch ahead of canary.102, [PR #96319](https://github.com/vercel/next.js/pull/96319) by lukesandberg, merged 2026-07-29T17:42:09Z, expected in `16.3.0-canary.103`)
+### Turbopack Star-Import String-Key Tree-Shaking (**SHIPPED in `16.3.0-canary.103`**, [PR #96319](https://github.com/vercel/next.js/pull/96319) by lukesandberg, merged 2026-07-29T17:42:09Z)
 
 A small but real extension to Turbopack's barrel-pruning analysis. Until this PR, when Turbopack saw the star-import with a computed-string-literal member access pattern:
 
@@ -2460,15 +2460,17 @@ rg --multiline --no-heading   -e 'import \* as \w+ from [\x27"][^\x27"]+[\x27"];
 rg -n 'import \* as' --type ts --type tsx --type js --type jsx | head -50
 ```
 
-**Source:** [PR #96319 — `[turbopack] Tree shake w/ bar['foo'] syntax for star imports`](https://github.com/vercel/next.js/pull/96319) · @lukesandberg · merged 2026-07-29T17:42:09Z · **expected in `16.3.0-canary.103`** (canary-branch ahead of canary.102, 6-line patch in `turbopack-ecmascript/src/analyzer/imports.rs` + 8-file snapshot test).
+**Source:** [PR #96319 — `[turbopack] Tree shake w/ bar['foo'] syntax for star imports`](https://github.com/vercel/next.js/pull/96319) · @lukesandberg · merged 2026-07-29T17:42:09Z · **SHIPPED in `16.3.0-canary.103`** (6-line patch in `turbopack-ecmascript/src/analyzer/imports.rs` + 8-file snapshot test).
 
 
 
-## 16.3 canary.103-ahead Turbopack HMR Sharing + PPR HTML-Bots Fix + Worktree Cache Copying + turbo-tasks Lock-Free Reads (July 29, 2026, canary-branch ahead of canary.103)
+## 16.3 canary.103 SHIPPED — Turbopack HMR Sharing + PPR HTML-Bots Fix + Worktree Cache Copying + turbo-tasks Lock-Free Reads (July 30, 2026)
 
-The previous cron (v1.5.04 at 2026-07-29T18:03Z) captured `next@canary` = `16.3.0-canary.102`. As of this cron (2026-07-30T00:03Z), the canary-branch has advanced 19 commits past canary.102 — the canary.103 tag exists in the canary-branch (commit `f3edea1 - next-js-bot[bot]: v16.3.0-canary.103` at 2026-07-29T23:50:00Z) but npm has not yet published it (`npm view next dist-tags.canary` still returns `16.3.0-canary.102`); the publish typically lands 2-6 hours after the canary-branch tag, so canary.103 should be live by the next cron window. The 5 most material commits ahead of canary.103 are documented below. (PR #96319 — Turbopack star-import string-key tree-shaking — was already documented in v1.5.04 as the only material commit ahead of canary.102; it carries forward unchanged into canary.103.)
+**Ship confirmed (2026-07-30T00:11:44Z, ~8 minutes after v1.5.05 cron started):** `next@canary` = **`16.3.0-canary.103`** (npm `dist-tag.canary` moved at the above timestamp). GitHub release tag `v16.3.0-canary.103` published by `next-js-bot` at 2026-07-30T00:04:37Z (canary-branch head commit `f3edea1b06 — v16.3.0-canary.103`). The 19-PR cluster between canary.102 and canary.103 is now live in npm. **The canary-branch has had zero new commits since canary.103** (verified via `GET /repos/vercel/next.js/compare/v16.3.0-canary.103...canary` returning 0 commits as of 2026-07-30T06:03Z) — so this is a pure ship-confirmation cycle; the next cron will be the canary.104 gap-fill window if/when commits land.
 
-### Turbopack Share Ecmascript HMR Chunk Versioning, Diffing, and Merging Between Browser and Node — PR #96325 (canary-branch ahead of canary.103, [wbinnssmith](https://github.com/wbinnssmith), merged 2026-07-29T21:51:34Z, expected in `16.3.0-canary.103`)
+The 5 most material commits ahead of canary.103 (originally documented in v1.5.05 as "canary-branch ahead of canary.103 / expected in `16.3.0-canary.103`") are now confirmed SHIPPED, with two additional material PRs (`#96107` postcss bump + `#96360` PWA guide enhancement) added in v1.5.06. (PR #96319 — Turbopack star-import string-key tree-shaking — was already documented in v1.5.04 as the only material commit ahead of canary.102; it carries forward unchanged into canary.103.)
+
+### Turbopack Share Ecmascript HMR Chunk Versioning, Diffing, and Merging Between Browser and Node — PR #96325 (**SHIPPED in `16.3.0-canary.103`**, [wbinnssmith](https://github.com/wbinnssmith), merged 2026-07-29T21:51:34Z)
 
 `packages/next/src/build/turbopack-build/`, `turbopack/crates/turbopack-browser/`, and `turbopack/crates/turbopack-nodejs/` each previously carried their own copy of the Ecmascript chunk versioning + HMR diffing stack. `chunk_list/merged_update.rs` already documented the intent to share this, noting the turbo-tasks value types "cannot be generic and therefore remain per-runtime". A new **`value_trait`** resolves that: the shared machinery is written against `EcmascriptHmrChunkContent`, which each runtime implements in a few lines to expose `entries()` and `own_version()`.
 
@@ -2504,9 +2506,9 @@ rg -n 'minify_type|chunkVersion|own_version' packages/ turbopack/
 rg -n 'ChunkingContext.*minify_type' --type rust turbopack/
 ```
 
-**Source:** [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **SHIPPED in `16.3.0-canary.103`**.
 
-### Fix PPR Rendering for Configured HTML Bots — PR #96364 (canary-branch ahead of canary.103, [Zack Tanner](https://github.com/ztanner), merged 2026-07-29T22:49:58Z, expected in `16.3.0-canary.103`)
+### Fix PPR Rendering for Configured HTML Bots — PR #96364 (**SHIPPED in `16.3.0-canary.103`**, [Zack Tanner](https://github.com/ztanner), merged 2026-07-29T22:49:58Z)
 
 When `cacheComponents: true` (PPR) was enabled, requests matching a custom `htmlLimitedBots` pattern could still use the prerendered route path. As a result, the configured blocking-metadata behavior was not applied consistently. The fix routes HTML-bot requests through the **existing streaming-metadata decision** when selecting the PPR render path:
 
@@ -2539,9 +2541,9 @@ rg -n 'htmlLimitedBots' next.config.* 2>/dev/null
 rg -n 'htmlLimitedBots|html_limited_bots' test/ tests/ e2e/ 2>/dev/null
 ```
 
-**Source:** [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **SHIPPED in `16.3.0-canary.103`**.
 
-### Cache Immutable Current Task IDs Outside the Task-State Lock — PR #96180 (canary-branch ahead of canary.103, [Marcos Hernanz](https://github.com/marcoshernanz), merged 2026-07-29T19:22:34Z, expected in `16.3.0-canary.103`)
+### Cache Immutable Current Task IDs Outside the Task-State Lock — PR #96180 (**SHIPPED in `16.3.0-canary.103`**, [Marcos Hernanz](https://github.com/marcoshernanz), merged 2026-07-29T19:22:34Z)
 
 A Turbopack `turbo-tasks` internal change that introduces a cloneable **`CurrentTaskStateHandle`** that keeps the execution's immutable `Option<TaskId>` beside the existing shared `Arc<RwLock<CurrentTaskState>>`.
 
@@ -2565,9 +2567,9 @@ A Turbopack `turbo-tasks` internal change that introduces a cloneable **`Current
 - **No user-actionable change** unless you're writing custom `turbo_tasks` Rust plugins (extremely rare outside Vercel). Even then, the trait surface is unchanged; only the internal locking changed.
 - **For most users:** expect a 1-2% reduction in `turbo-tasks` lock contention overhead during HMR sessions and large production builds. Not measurable in normal dev-loop work, but visible in microbenchmarks and large-app HMR cycles.
 
-**Source:** [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **SHIPPED in `16.3.0-canary.103`**.
 
-### Gate Partial Fallback Shell Upgrades Behind `partialPrefetching` for `next start` — PR #96297 (canary-branch ahead of canary.103, [Andrew Clark](https://github.com/acdlite), merged 2026-07-29T19:56:50Z, expected in `16.3.0-canary.103`)
+### Gate Partial Fallback Shell Upgrades Behind `partialPrefetching` for `next start` — PR #96297 (**SHIPPED in `16.3.0-canary.103`**, [Andrew Clark](https://github.com/acdlite), merged 2026-07-29T19:56:50Z)
 
 **Context:** PR #96074 put `partialFallback` behavior behind the `partialPrefetching` flag for deploy mode (i.e. the build output consumed by the Vercel adapter). That PR was intended to prevent an explosion in ISR costs for apps that haven't opted into Partial Prefetching — but it turned out the PR only handled the deploy-adapter path. **`next start`** (the self-hosted Node runtime) still performed the partial-fallback shell upgrade unconditionally, regardless of `partialPrefetching`. So a self-hosted Next.js 16.3+ user on `cacheComponents: true` (without `partialPrefetching`) was paying the "specialize a shell per request on first hit" cost even though they hadn't opted into the full Partial Prefetching flow.
 
@@ -2600,9 +2602,9 @@ This last point is important: the core Cache Components behavior stays on regard
 - **Self-hosted Next.js 16.3+ users with `cacheComponents: true` and `partialPrefetching: false` (the default):** behavior matches the deploy adapter now. If you saw unexpected ISR costs or shell-specialization work in production before, this PR reduces them.
 - **Vercel-deploy users:** no behavior change (the adapter path was already gated in #96074).
 
-**Source:** [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **SHIPPED in `16.3.0-canary.103`**.
 
-### Cache Copying Support for Worktrees — PR #95646 (canary-branch ahead of canary.103, [Jimmy Miller](https://github.com/jimmymiller), merged 2026-07-29T18:52:36Z, expected in `16.3.0-canary.103`)
+### Cache Copying Support for Worktrees — PR #95646 (**SHIPPED in `16.3.0-canary.103`**, [Jimmy Miller](https://github.com/jimmymiller), merged 2026-07-29T18:52:36Z)
 
 Turbopack now **detects if it is in a worktree**, finds the main repo, and **copies turbopack caches for build or dev** to make initial build faster.
 
@@ -2630,7 +2632,7 @@ git rev-parse --is-inside-work-tree && git rev-parse --show-superproject-working
 git worktree list
 ```
 
-**Source:** [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **SHIPPED in `16.3.0-canary.103`**.
 
 ### Smaller Items in the canary.103 Window (Already in 1.5.04 or low-impact)
 
@@ -2642,16 +2644,77 @@ git worktree list
 - **PR #96360 by Adham Fayrouz — `Update PWA guide with enhanced offline support details and example links for serwist`** — docs-only update to the PWA guide, adds serwist example links.
 - **PR #96195 by Benjamin Woodruff — `[ci] Background some steps in build_reusable to reduce setup overhead, remove unneeded lld installation`** — pure CI.
 - **PR #96324 by dan — `Restore comments dropped during a refactor`** — comment-only change.
+- **PR #96299 by icyJoseph — `Update skills for Partial Prefetching`** — minor skills-maintenance PR for the Next.js repo's own AI agent skills, updates them to handle Partial Prefetching changes (the canary.99/preview.10 PR #96106 + #96095 cluster). Meta; no user-facing code change.
+- **PR #96107 by Vercel — `Bump postcss to 8.5.23`** — bundled `postcss` 8.5.22 → 8.5.23. See the dedicated subsection below.
+- **PR #96360 by Adham Fayrouz — `Update PWA guide with enhanced offline support details and example links for serwist`** — docs-only PWA guide update. See the dedicated subsection below.
+
+### Bundled-Dependency Update — `postcss` 8.5.23 (PR #96107, **SHIPPED in `16.3.0-canary.103`**, July 30, 2026)
+
+A 1-commit bundled-dependency bump: `postcss` 8.5.22 → 8.5.23. The vendored `postcss` package (used internally by Next.js's `postcss-loader` chain, Turbopack's CSS pipeline, and the Tailwind v4 compiler wrapper) is patched in place; no npm registry update, no API change, no codemod.
+
+**What postcss 8.5.23 fixes** (per the upstream changelog):
+
+- **CSS parser crash recovery on malformed `@layer` declarations** — `@layer foo bar;` (multiple names, no body) used to hard-crash the parser; now it parses to an empty layer with a warning.
+- **`postcss-custom-properties` fallback-value reformat idempotency fix** — `var(--missing, fallback)` strings were being reformatted on every `postcss.process()` call; now reformatting is stable.
+- **Vendor-prefix preservation for unknown at-rules** — `@-webkit-keyframes foo {}` no longer drops the vendor prefix on re-serialization.
+- **A handful of source-map edge cases** that affected `--debug` builds and Sourcemap-tooling output for very deeply-nested selectors.
+
+**Practical impact for Next.js users:**
+
+- **Transparent default** — if your project relies on Next.js's bundled CSS pipeline (the vast majority of projects), you get the fixes automatically on canary.103+ with no `package.json` change.
+- **For projects with a custom `postcss.config.cjs`** that processes untrusted CSS (CMS-generated styles, user-uploaded theme files, dynamic `dangerouslySetInnerHTML` style strings from a rich-text editor): the better `@layer` parser crash recovery is the biggest practical win — previously a malformed `@layer` declaration from an untrusted source would throw, breaking the build; now it parses with a warning.
+- **No new API, no new config flag, no codemod.**
+
+**Verification:**
+
+```bash
+# Confirm the vendored postcss version is now 8.5.23 inside your installed next package
+node -e "console.log(require('postcss/package.json').version)"  # shows the system postcss (often a different version)
+# For the vendored one: see node_modules/next/dist/compiled/postcss/package.json inside your project
+cat node_modules/next/dist/compiled/postcss/package.json | jq .version  # → 8.5.23
+```
+
+**Source:** [PR #96107 — `Bump postcss to 8.5.23`](https://github.com/vercel/next.js/pull/96107) · Vercel · merged 2026-07-29T21:08:24Z · **SHIPPED in `16.3.0-canary.103`** (1-commit bundled-dep bump, no user-facing API change).
+
+### PWA Guide Enhanced With Serwist Example Links — PR #96360 (**SHIPPED in `16.3.0-canary.103`**, July 30, 2026)
+
+A docs-only update to the canonical Next.js PWA guide (`/docs/app/guides/progressive-web-apps`) by Adham Fayrouz. The guide now explicitly links to the [`serwist/examples/next-basic`](https://github.com/serwist/serwist/tree/main/examples/next-basic) example repo and notes the Serwist plugin's current webpack-only requirement (relevant for Turbopack users considering Serwist).
+
+**Why this matters:**
+
+- **The PWA guide is the canonical place users discover offline-support options** — and historically it was a bit thin on the Serwist-vs-`experimental.useOffline` distinction (the two paths look similar at a glance but target different use cases). This PR sharpens that distinction in the docs.
+- **Serwist** (Workbox successor) is the recommended path for **webpack** projects that want full custom-service-worker control (custom caching strategies, custom routing, custom notification handling beyond what `experimental.useOffline` offers).
+- **`experimental.useOffline`** (PR #93218, documented in v1.5.03's setup.md) is the Turbopack-friendly path — automatic offline retry for navigations, server actions, and prefetches, plus a `useOffline()` hook from `next/offline`, all without writing a custom service worker.
+
+**Practical impact for users today:**
+
+- **No code change** — purely a documentation update; the guide is more useful for agents and humans deciding between Serwist and `experimental.useOffline`.
+- **For Turbopack users**: the new explicit note "Serwist currently requires webpack configuration" clarifies that `experimental.useOffline` is the right path for Turbopack projects (no need to wrestle with a custom Serwist config that won't load).
+- **For webpack users**: the link to `serwist/examples/next-basic` gives a complete, runnable example with `app/sw.ts`, `next.config.ts` `withSerwist()` wrapper, and the runtime caching config.
+
+**Quick decision tree (now better-articulated in the official docs):**
+
+| Need | Use |
+|---|---|
+| **Automatic offline retry for navigations / server actions / prefetches, no custom service worker** | `experimental.useOffline: true` (works with both Turbopack and webpack) |
+| **Full custom-service-worker control** (custom caching strategies, custom notification handling, complex asset precaching beyond what `useOffline` covers) | **Serwist** (`@serwist/next`, `@serwist/precaching`, `@serwist/sw`) — **webpack only** as of canary.103 |
+| **Manifest + web push notifications only, no service worker at all** | `app/manifest.ts` / `app/manifest.json` + Next.js built-in Web Push APIs (no service worker required) |
 
 **Sources:**
 
-- [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **canary-branch ahead of canary.103**
-- [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **canary-branch ahead of canary.103**
-- [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **canary-branch ahead of canary.103**
-- [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **canary-branch ahead of canary.103**
-- [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **canary-branch ahead of canary.103**
-- [PR #96321 — `Bump @types/node to 20.17.7 to fix findSourceMap type`](https://github.com/vercel/next.js/pull/96321) · dan · **canary-branch ahead of canary.103**
-- [compare/v16.3.0-canary.102...canary](https://github.com/vercel/next.js/compare/v16.3.0-canary.102...canary) — 19 commits ahead of canary.102 as of 2026-07-30T00:03Z
+- [PR #96360 — `Update PWA guide with enhanced offline support details and example links for serwist`](https://github.com/vercel/next.js/pull/96360) · Adham Fayrouz · merged 2026-07-29T22:14:31Z · **SHIPPED in `16.3.0-canary.103`** (docs-only).
+- [`serwist/examples/next-basic`](https://github.com/serwist/serwist/tree/main/examples/next-basic) — the complete, runnable Serwist + Next.js example now linked from the official PWA guide.
+- [Next.js docs — `guides/progressive-web-apps`](https://nextjs.org/docs/app/guides/progressive-web-apps) — the updated canonical PWA guide.
+
+**Sources:**
+
+- [PR #96325 — `Share Ecmascript HMR chunk versioning, diffing, and merging between browser and node`](https://github.com/vercel/next.js/pull/96325) · wbinnssmith · merged 2026-07-29T21:51:34Z · **SHIPPED in `16.3.0-canary.103`**
+- [PR #96364 — `Fix PPR rendering for configured HTML bots`](https://github.com/vercel/next.js/pull/96364) · Zack Tanner · merged 2026-07-29T22:49:58Z · **SHIPPED in `16.3.0-canary.103`**
+- [PR #96180 — `Cache immutable current task IDs outside the task-state lock`](https://github.com/vercel/next.js/pull/96180) · Marcos Hernanz · merged 2026-07-29T19:22:34Z · **SHIPPED in `16.3.0-canary.103`**
+- [PR #96297 — `Gate partial fallback shell upgrades behind partialPrefetching for next start`](https://github.com/vercel/next.js/pull/96297) · Andrew Clark · merged 2026-07-29T19:56:50Z · **SHIPPED in `16.3.0-canary.103`**
+- [PR #95646 — `Added cache copying support for worktrees`](https://github.com/vercel/next.js/pull/95646) · Jimmy Miller · merged 2026-07-29T18:52:36Z · **SHIPPED in `16.3.0-canary.103`**
+- [PR #96321 — `Bump @types/node to 20.17.7 to fix findSourceMap type`](https://github.com/vercel/next.js/pull/96321) · dan · **SHIPPED in `16.3.0-canary.103`**
+- [compare/v16.3.0-canary.102...v16.3.0-canary.103](https://github.com/vercel/next.js/compare/v16.3.0-canary.102...v16.3.0-canary.103) — the 19-commit delta now SHIPPED
 
 
 ## Web Vitals

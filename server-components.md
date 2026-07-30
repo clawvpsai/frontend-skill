@@ -918,7 +918,7 @@ export function ThemeProvider({ children, theme }: { children: React.ReactNode; 
 
 
 
-## `headers()` Returns a Unique Object Per Render Pass — PR #96085 (canary-branch ahead of canary.103, [Sebastian "Sebbie" Silbermann](https://github.com/eps1lon), merged 2026-07-29T22:16:35Z, expected in `16.3.0-canary.103`)
+## `headers()` Returns a Unique Object Per Render Pass — PR #96085 (**SHIPPED in `16.3.0-canary.103`**, [Sebastian "Sebbie" Silbermann](https://github.com/eps1lon), merged 2026-07-29T22:16:35Z, npm-published 2026-07-30T00:11:44Z)
 
 **The change:** every render pass within a single HTTP request now resolves `await headers()` (from `next/headers`) to a **distinct `Headers` object** over the **same underlying data**. Previously, all passes within the same request resolved to the **same sealed `Headers` object** created lazily by the request store.
 
@@ -973,7 +973,7 @@ rg -n 'cache.*headers\(\)|headers\(\).*cache' --type ts --type tsx
 
 For each match, either (a) use a stable derived key (specific header values, not the object identity), or (b) scope the cache to a single pass via React's `cache()` from `react` (which is already per-render-pass scoped) instead of a long-lived `WeakMap`.
 
-**Source:** [PR #96085 — `Ensure unique resolved headers() value between render passes`](https://github.com/vercel/next.js/pull/96085) · Sebastian "Sebbie" Silbermann · merged 2026-07-29T22:16:35Z · **canary-branch ahead of canary.103**.
+**Source:** [PR #96085 — `Ensure unique resolved headers() value between render passes`](https://github.com/vercel/next.js/pull/96085) · Sebastian "Sebbie" Silbermann · merged 2026-07-29T22:16:35Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z).
 
 **Test coverage added:** the PR adds a test that demonstrates the previous incorrect behavior (the same `Headers` object returned across passes), and confirms the post-fix behavior (distinct objects per pass).
 
