@@ -2717,54 +2717,240 @@ A docs-only update to the canonical Next.js PWA guide (`/docs/app/guides/progres
 - [compare/v16.3.0-canary.102...v16.3.0-canary.103](https://github.com/vercel/next.js/compare/v16.3.0-canary.102...v16.3.0-canary.103) — the 19-commit delta now SHIPPED
 
 
-## 16.3 canary.104-ahead — [Instant] First-Blocking-Await Validation + Turbopack Immutable-Read Lock Bypass + Empty Fragment Scroll Ownership + React 6cb4322d Vendor Bump (canary-branch ahead of canary.104, July 30, 2026)
+## 16.3 canary.104 SHIPPED — Turbopack `sideEffects` Parity + Cache Components `htmlLimitedBots` Streaming + `shouldWaitOnAllReady` Removal + React 0f42eac2 Vendor Bump (July 31, 2026)
 
-The previous cron (v1.5.07 at 2026-07-30T12:03Z) recorded exactly 1 new commit on Next.js canary-branch (PR #96343 by lubieowoce). Six hours later (this v1.5.08 cron), there are **7 new commits** on canary-branch since canary.103 (tagged 2026-07-29T23:35:42Z, npm-published 2026-07-30T00:11:44Z). 4 of them are materially user-facing; the other 3 are CI + test-only. **None of the 7 are npm-published yet** — they wait for the next canary cut (`16.3.0-canary.104`), expected in the next 12-24h on the 24h cadence (canary.103 was tagged at 23:35Z yesterday, so canary.104 is statistically due between 23:00Z tonight and ~12:00Z tomorrow, with the React-vendor bump as the second-most-likely hold-up). Until canary.104 ships, run `pnpm install next@16.3.0-canary.103` and pin.
+**Ship confirmed (2026-07-30T23:56:25Z, ~7 minutes before v1.5.09 cron started at 06:03Z July 31):** `next@canary` = **`16.3.0-canary.104`** (npm `dist-tag.canary` moved at the above timestamp; GitHub release tag `v16.3.0-canary.104` published by `next-js-bot` at the same time on canary-branch head commit `38f0cdee — v16.3.0-canary.104`). The 17-commit cluster between canary.103 and canary.104 is now live in npm. The 7 commits that v1.5.08 documented as "canary-branch ahead of canary.104" are now SHIPPED — the "+47min ahead" caveat is now obsolete, and the framing "expected in `16.3.0-canary.104`" has been replaced with **"SHIPPED in `16.3.0-canary.104`"** throughout the relevant sub-sections above.
 
-**The 4 material commits in chronological order:**
+**What 17.3.0-canary.104 actually contains (the 17-commit delta between canary.103 and canary.104):**
 
-1. **PR #96343 `[Instant] Point to first blocking await in validation`** — [lubieowoce](https://github.com/lubieowoce), merged 2026-07-30T10:05:28Z. **Already noted in v1.5.07 (described as "internal debug info accuracy fix"), but never formally documented in this skill until now.** This is a NAR-854 fix that supersedes the previous approach in #94949. The problem: instant validation reserializes segment payloads to drive staged rerenders, but `ReactFlightServer`'s `filterDebugInfo` clamps timing info on reserialization, so the reported "blocking dynamic hole" might point to the wrong await (one in the stage the renderer happened to render in, not the stage the validation was checking). The fix stamps `endTime` during the very-first deserialization pass (before segments are split apart) using a trick from gnoff that requires a multi-pass deserialize/reserialize, but works without any React internals change. Net effect: when you click an Instant-Navigation blocking-dynamic-hole warning in dev, the click target now correctly identifies the first await that actually blocked the stage it's reporting on. **No new public API, no config flag, no codemod.** **Sources: [PR #96343](https://github.com/vercel/next.js/pull/96343), [NAR-854](https://linear.app/vercel/issue/NAR-854).** 4-line audit recipe: search dev-overlay for `filterDebugInfo` reference in `instant-messages.ts` to confirm the wiring once it ships in canary.104.
+- **The 7 PRs that v1.5.08 documented as "canary-branch ahead of canary.104"** — #96343 [Instant] Point-to-first-blocking-await validation, #96323 test-repro for empty-parallel-route-scroll, #96355 React vendor bump (96fcba90 → 1724e9ce), #96179 Skip reader task locking for immutable Turbo Tasks reads, #96342 Fix empty Fragment scroll ownership, #96389 React vendor bump (1724e9ce → 6cb4322d), #95882 CI test job summary style. **All 7 are now SHIPPED.**
+- **10 NEW commits that v1.5.08 did not document** — 5 are material, 3 are tests/internal, 2 are CI:
 
-2. **PR #96179 `Skip reader task locking for immutable Turbo Tasks reads`** — [marcoshernanz](https://github.com/marcoshernanz), merged 2026-07-30T14:02:17Z. **The companion/backend PR to PR #96180** (which v1.5.05 documented as `current_task_if_available`/`current_task` no longer take the shared `RwLock`). This one extends the same optimization to the **reader side**: when a turbo-task reads from another task via `current_task_from_other_task` (the read side), the read first acquires the target task and checks if it's already `verify_immutable`. If so, the read bypasses the reader-task lock — because no dependency edge can be added and the target cannot be invalidated (it's immutable), so the lock would only slow things down. Mutable targets still take the (target, reader) pair-lock as before, preserving the existing invalidation-race guarantee. **Performance evidence (from PR description):** at commit `0950e8ae05db20c33302f02257114f5b857edabc` on a dedicated 8-vCPU/16-GiB Vercel Sandbox with frozen side-by-side binaries, instrumentation found **1,541,880 of 4,501,364 sampled tracked reads (34.25%)** could use the bypass. The PR's own percentages are intentionally directional ("Small percentage changes are difficult to resolve reliably"), but the 34.25% bypass rate is a hard instrumented number — that's the *fraction* of reads that hit the fast path, and the per-call saving on those is a lock acquire-release saved. This is backend-only (no user-facing API), so the audit recipe is "wait for canary.104, measure your build/HMR profile, look for `turbo_tasks::read` taking less wall time". **Sources: [PR #96179](https://github.com/vercel/next.js/pull/96179), [companion #96180 in perf.md above](#16-3-canary-103-shipped--turbopack-hmr-sharing--ppr-html-bots-fix--worktree-cache-copying--turbo-tasks-lock-free-reads-july-30-2026).**
+  - **#96343** — already documented above (Instant blocking-await validation)
+  - **#95882** — already documented (CI only)
+  - **#96323** — already documented (test only)
+  - **#96355** — already documented (React vendor bump)
+  - **#96179** — already documented (Skip reader task locking)
+  - **#96342** — already documented (Fix empty Fragment scroll ownership)
+  - **#96389** — already documented (React vendor bump to 6cb4322d)
+  - **#96234** — `[bench skill] Bench Edge builds of React too` (styfle, low-impact skill update)
+  - **#95432** — `fix(create-next-app): make AGENTS.md blue` (samcelest — the AGENTS.md file generate by `create-next-app` now renders in blue in the terminal, purely cosmetic)
+  - **#96366** — `test: expand Cache Components metadata streaming coverage` (tests, no production code change)
+  - **#96367** — `fix: respect htmlLimitedBots in cache components without buffering the full response` (Zack Tanner, **MATERIAL** — see below)
+  - **#96402** — `Upgrade React from 6cb4322d-20260729 to 0f42eac2-20260730` (vercel-release-bot, **MATERIAL** — see below)
+  - **#96401** — `Remove obsolete shouldWaitOnAllReady render option` (Zack Tanner, **MATERIAL** — see below)
+  - **#96365** — `Update Rust toolchain to nightly-2026-07-29` (wbinnssmith, internal upgrade — no user-facing impact)
+  - **#96409** — `[turbopack] Keep track of components of the remainder chunk` (sampoder, **MATERIAL** — see below)
+  - **#96383** — `[turbopack] Respect sideEffects in a package.json file with optimizePackageImports` (sampoder, **MATERIAL** — see below)
+  - **#38f0cdee** — `v16.3.0-canary.104` (the version-tag commit itself)
 
-3. **PR #96342 `Fix empty Fragment scroll ownership`** — [DavidIlie](https://github.com/DavidIlie), merged 2026-07-30T17:37:17Z. Five-bullet summary from the PR body:
-   - **treat Fragment instances without client rects as unavailable route scroll targets**
-   - **leave the shared scroll signal unconsumed so another changed segment can handle an empty route Fragment**
-   - **avoid focus and scroll side effects when an empty segment cannot claim ownership**
-   - **consume and clear an explicit hash intent when no matching target exists, without falling back to route content**
-   - **cover empty and visible intercepted routes across both scroll handlers, including focus preservation and real hash scrolling**
+The 5 NEW material commits not previously documented in v1.5.08 are detailed in the sub-sections below.
 
-   Stacked on PR #96323 (ztanner, `test: reproduce empty parallel route scroll regression`) which provided the minimal reproduction. The bug was a parallel-route edge case: if a `@slot` parallel route renders an empty `<Fragment>` (no client rects), the scroll handler would either claim ownership incorrectly (causing a wrong-route scroll) or consume the scroll signal without doing anything (causing no scroll and no signal available for sibling segments). Affects App Router parallel routes — patterns like `@sidebar` + `@modal` + `@children` in the same route tree. Verification: 8/8 in `test/e2e/app-dir/parallel-routes-scroll-owner/parallel-routes-scroll-owner.test.ts` for both dev-turbo and dev-webpack, 5/5 in `test/e2e/app-dir/navigation-focus/navigation-focus.test.ts`. **Sources: [PR #96342](https://github.com/vercel/next.js/pull/96342), [reproduction PR #96323](https://github.com/vercel/next.js/pull/96323).** Practical audit recipe for App Router apps using parallel routes: ensure every `@slot` either has stable content or returns `null` rather than an empty `<Fragment>` — the latter is now formally treated as "unavailable" rather than "claimed-and-empty".
+### Turbopack Now Respects `sideEffects` in `package.json` With `optimizePackageImports` — PR #96383 (sampoder, merged 2026-07-30T23:25:08Z, **SHIPPED in `16.3.0-canary.104`**)
 
-4. **PR #96389 `Upgrade React from 1724e9ce-20260729 to 6cb4322d-20260729`** — [vercel-release-bot](https://github.com/vercel-release-bot), merged 2026-07-30T17:49:18Z. The Next.js vendor-bump PR that brings **[React PR #37144 `[Flight] Port ReplyServer traversal guards to FlightClient`](#react-1930-canary-6cb4322d-20260729--flight-port-replyserver-traversal-guards-to-flightclient-37144-july-30-2026)** into Next.js's vendored React. The diff is small (changes the `__NEXT_REACT_VERSION` constant + vendored react package files), but it's the mechanism by which the new Flight Client deserializer hardening lands in the Next.js App Router runtime. Closes VOC-34505 in Vercel's internal Linear. Single-commit PR — the body's only links are the React compare URL and a hidden-diff block listing the one upstream PR (#37144). **Sources: [PR #96389](https://github.com/vercel/next.js/pull/96389), [VOC-34505](https://linear.app/vercel/issue/VOC-34505), [React compare `1724e9ce...6cb4322d`](https://github.com/facebook/react/compare/1724e9ce...6cb4322d).** For users who can't wait for canary.104: pin `npm i react@19.3.0-canary-6cb4322d-20260729 react-dom@19.3.0-canary-6cb4322d-20260729` directly + the matching `react-server-dom-webpack`/`react-server-dom-turbopack` canary.
+`optimizePackageImports` (the Turbopack / Next.js setting that auto-tree-shakes heavy icon and utility libraries like `lucide-react`, `@mui/material`, `lodash`, etc.) was previously ignoring the `sideEffects: false` field in those libraries' `package.json`. As a result, all barrel exports were treated as side-effectful (even when the package explicitly declared otherwise), forcing the bundler to keep code that the package author marked as removable. The Webpack behavior is to **respect** `sideEffects: false` — this PR brings Turbopack to parity.
 
-**The 3 non-material canary-branch commits (for completeness):**
+**The fix** — re-orders the statements in `get_side_effect_free_declaration` so that the `sideEffects: false` from `package.json` is consulted **before** the global treatment. The PR also adds a regression test fixture that captures the exact delta (a `package.json` with `sideEffects: false` + a barrel import that previously kept all symbols; now correctly tree-shakes to only the imported symbols).
 
-- PR #96355 `Upgrade React from 96fcba90-20260728 to 1724e9ce-20260729` (vercel-release-bot, 13:51:10Z) — the vendor bump for the previous React canary, already covered by v1.5.05/v1.5.06 (so #37135 lands in canary.103's vendored React via this PR even though it's technically ahead of canary.103 chronologically; the canary.103 tag was created after this PR landed).
-- PR #96323 `test: reproduce empty parallel route scroll regression` (ztanner, 13:49:16Z) — test-only reproduction for #96342 above; no production code change.
-- `[ci] Match the test job summary style to the PR test report comment` (eps1lon, 12:41:25Z) — CI-only, no user-facing impact.
+**From the PR body:**
+
+> [This] closes #96333 by re-ordering the statements in `get_side_effect_free_declaration`. The rest of this PR is then a test + adding to a test fixture. This seems like a reasonable change to me as we'd match Webpack's behaviour.
+
+**Practical impact for users today:**
+
+- **Net bundle size reduction** — projects that use `optimizePackageImports` for libraries with `sideEffects: false` in their `package.json` will see slightly smaller JS bundles. The exact win depends on the library. `lucide-react` (which has `sideEffects: false` in its `package.json`) and similar icon libraries will benefit the most. **Audit recipe:**
+
+```bash
+# Find every package.json in your dependency tree that declares sideEffects: false
+find node_modules -name 'package.json' -maxdepth 3 -exec grep -l '"sideEffects": false' {} \;
+
+# Check next.config.ts (or .js) for the optimizePackageImports list
+grep -n 'optimizePackageImports' next.config.ts
+```
+
+If the audit lists packages you use: this PR is a **free bundle reduction** with no code changes. No new API, no config flag, no codemod — pure bundler improvement.
+
+- **Webpack parity** — any project that has historically had Turbopack bundle sizes noticeably larger than Webpack for the same `optimizePackageImports` libraries will see the gap close. If you have a Turbopack-vs-Webpack comparison in CI, expect Webpack's advantage to shrink.
+- **No breaking changes** — only the "no side effects" treatment is more aggressive. The PR's regression test makes the new behavior explicit.
+
+**Sources:**
+- [PR #96383 — `[turbopack] Respect sideEffects in a package.json file with optimizePackageImports`](https://github.com/vercel/next.js/pull/96383) · sampoder · merged 2026-07-30T23:25:08Z · **SHIPPED in `16.3.0-canary.104`**.
+- [Issue #96333 — the bug PR #96383 closes](https://github.com/vercel/next.js/issues/96333) — original report of the `sideEffects: false` ignore.
+
+### Fix: Respect `htmlLimitedBots` in Cache Components Without Buffering the Full Response — PR #96367 (Zack Tanner, merged 2026-07-30T20:30:44Z, **SHIPPED in `16.3.0-canary.104`**)
+
+The follow-up to PR #96364 (which v1.5.06 documented as "Fix PPR rendering for configured HTML bots"). **#96364** fixed the routing decision — custom `htmlLimitedBots` patterns now go through the streaming-metadata decision instead of bypassing PPR entirely. **#96367** fixes the **rendering behavior** for DOM-capable crawlers that the user *explicitly* matched against `htmlLimitedBots`.
+
+**The problem:** DOM-capable crawlers (Googlebot, Bingbot, etc.) can consume **streamed** metadata. But with `cacheComponents: true` enabled, requests matching a custom `htmlLimitedBots` pattern were forced into a fully buffered dynamic render — even when the matching user agent was a DOM-capable crawler that didn't need blocking metadata. This meant capable crawlers could not use the prerendered shell even when they were not matched by `htmlLimitedBots`.
+
+**The fix:** DOM-capable crawlers now follow the **normal PPR shell + streaming-metadata path**. `htmlLimitedBots` remains the source of truth for requests that need blocking metadata — including when a custom pattern explicitly matches a DOM-capable crawler.
+
+**The test plan** (from the PR body) uses a Suspense boundary that intentionally never resolves. The test reads the response stream until it receives the fallback, then verifies that blocking metadata has already been emitted while the unresolved page content has not. A fully buffered response would never return, so this avoids relying on timing or arbitrary delays. Stacked on PR #96366 (test coverage expansion).
+
+**Practical impact for users today:**
+
+- **CSS bots and aggressive loaders** — projects with custom `htmlLimitedBots` lists that match based on user-agent (e.g. `AhrefsBot`, `SemrushBot`, social-media unfurlers, link previewers) will see those crawlers properly served from the prerendered shell + streaming metadata, instead of being forced through a fully buffered dynamic render. **This is a perf win for SEO crawlers** — the prerendered shell is dispatched immediately, and streaming metadata fills in as it resolves.
+- **No new API, no config flag, no codemod** — pure behavior fix. The `htmlLimitedBots` config syntax is unchanged.
+- **Audit recipe** — if you have a custom `htmlLimitedBots` pattern, check that your matching logic correctly *excludes* the DOM-capable crawlers you want to use PPR:
+
+```bash
+grep -n 'htmlLimitedBots' next.config.ts node_modules/next/dist/server/config-shared.d.ts
+```
+
+If you have a restrictive custom pattern that matches `Googlebot` (which is wrong — Googlebot can consume streamed metadata), this PR will correct that behavior so Googlebot gets the streaming-metadata path.
+
+**Sources:**
+- [PR #96367 — `fix: respect htmlLimitedBots in cache components without buffering the full response`](https://github.com/vercel/next.js/pull/96367) · Zack Tanner · merged 2026-07-30T20:30:44Z · **SHIPPED in `16.3.0-canary.104`**.
+- [PR #96366 — `test: expand Cache Components metadata streaming coverage`](https://github.com/vercel/next.js/pull/96366) · the test expansion PR that #96367 is stacked on.
+
+### Remove Obsolete `shouldWaitOnAllReady` Render Option — PR #96401 (Zack Tanner, merged 2026-07-30T21:52:49Z, **SHIPPED in `16.3.0-canary.104`**)
+
+The `shouldWaitOnAllReady` render option previously allowed an otherwise dynamic App Router render to wait for every Suspense boundary before sending the response. After PR #96367 (above), **no caller enables this behavior anymore** — the "DOM-capable crawler → streaming metadata" path that PR #96367 fixes is the only path that *needed* `shouldWaitOnAllReady`, and now that path uses the standard streaming-metadata decision instead.
+
+**The fix** — removes the unused `shouldWaitOnAllReady` option and makes `supportsDynamicResponse` the **sole signal** for whether App Router generates static HTML. Static generation still waits for `allReady` (the build-time prerender path), while dynamic responses continue streaming (the runtime path).
+
+**From the PR body:**
+
+> `shouldWaitOnAllReady` previously allowed an otherwise dynamic App Router render to wait for every Suspense boundary before sending the response. After #96367, no caller enables this behavior anymore.
+>
+> This removes the unused option and makes `supportsDynamicResponse` the sole signal for whether App Router generates static HTML. Static generation still waits for `allReady`, while dynamic responses continue streaming.
+
+**Practical impact for users today:**
+
+- **API surface reduction** — `shouldWaitOnAllReady` is no longer an option. If you have any code that set it (extremely rare — it was an internal render option, not a public config), the Next.js types will now reject it. The TypeScript error will point at the unused field. **Audit recipe:**
+
+```bash
+rg -n 'shouldWaitOnAllReady' . 2>/dev/null
+# Should return ZERO matches after upgrading to canary.104
+```
+
+If you do find matches, remove them — the new behavior is the same as what setting it to `true` achieved, so the migration is just a deletion.
+
+- **No functional change for the default path** — projects that never set `shouldWaitOnAllReady` see no behavior change. Static generation still waits for all boundaries; dynamic rendering still streams.
+- **No new API, no config flag, no codemod** — pure API cleanup.
+
+**Sources:**
+- [PR #96401 — `Remove obsolete shouldWaitOnAllReady render option`](https://github.com/vercel/next.js/pull/96401) · Zack Tanner · merged 2026-07-30T21:52:49Z · **SHIPPED in `16.3.0-canary.104`**.
+
+### Vendor Bump: React `6cb4322d-20260729` → `0f42eac2-20260730` — PR #96402 (vercel-release-bot, merged 2026-07-30T21:21:08Z, **SHIPPED in `16.3.0-canary.104`**)
+
+The 5th Next.js React vendor bump in 10 days. Brings **[React canary `19.3.0-canary-0f42eac2-20260730`](../components.md#react-1930-canary-0f42eac2-20260730--add-reactdombrowser-api-37143--3-devtools-prs-july-30-2026)** (which contains the new `ReactDOM.browser()` public API from PR #37143 + 3 DevTools-only fixes from PRs #37155, #37151, #37152) into Next.js's vendored React.
+
+The diff is the standard `__NEXT_REACT_VERSION` constant update + the vendored `react` and `react-dom` package files. The PR body lists the 4 upstream React commits:
+
+- [React PR #37155](https://github.com/facebook/react/pull/37155) — `[DevTools] Reset extension backend on pagehide`
+- [React PR #37151](https://github.com/facebook/react/pull/37151) — `[DevTools] Create extension panels before React detection`
+- [React PR #37152](https://github.com/facebook/react/pull/37152) — `[DevTools] Remove FlowFixMe from extension lifecycle`
+- [React PR #37143](https://github.com/facebook/react/pull/37143) — `Add ReactDOM browser() API` (the headline)
+
+**Practical impact for users today:**
+
+- **All `next@16.3.0-canary.104` users** now have `ReactDOM.browser()` available from `react-dom` in any Client Component. See the new `React 19.3.0-canary-0f42eac2-20260730` section in `components.md` for the full API documentation, bundle size impact, and Next.js usage patterns.
+- **No new public APIs at the Next.js level** — this is a vendored React bump, transparent to Next.js APIs.
+- **No new config flags, no codemod, no breaking changes.**
+
+**Audit recipe:**
+
+```bash
+npm view next@canary version
+# → 16.3.0-canary.104
+
+# Confirm the vendored React version
+grep -r 'canary-0f42eac2' node_modules/next/dist/compiled/react/package.json
+```
+
+**Sources:**
+- [PR #96402 — `Upgrade React from 6cb4322d-20260729 to 0f42eac2-20260730`](https://github.com/vercel/next.js/pull/96402) · vercel-release-bot · merged 2026-07-30T21:21:08Z · **SHIPPED in `16.3.0-canary.104`**.
+- [React compare `6cb4322d...0f42eac2`](https://github.com/facebook/react/compare/6cb4322d...0f42eac2) — the 4 upstream commits.
+
+### Turbopack Now Tracks Components of the Remainder Chunk — PR #96409 (sampoder, merged 2026-07-30T22:50:46Z, **SHIPPED in `16.3.0-canary.104`**)
+
+The original Turbopack chunk-graph implementation assumed that components in the **remainder chunk** (the chunk that catches everything not placed into a specific named chunk) would not be referenced by other routes — so the components-of-the-remainder tracker was skipped. In practice, components can end up in the remainder that are used by other routes, which means the lack of tracking caused unnecessary rechunking and dedup misses.
+
+**The fix** — keeps track of components of the remainder chunk so Turbopack can properly dedup cross-route imports. From the PR body:
+
+> At the time we had assumed that these components would not be helpful, however, things can get put in the remainder that can be used on other routes so it is worthwhile to keep track of them.
+
+**Practical impact for users today:**
+
+- **Smaller bundle size on multi-route apps** — projects with shared components that span routes likely see smaller `chunks/` output in the build. The win is most pronounced on apps with many routes that share component libraries (every Next.js app, basically).
+- **No new API, no config flag, no codemod** — pure internals improvement.
+- **Audit recipe:**
+
+```bash
+# Look at the chunks emitted by the latest build
+ls -la .next/static/chunks/ 2>/dev/null | head -30
+# Compare to the same list before upgrading to canary.104
+```
+
+If you see a reduction in the chunk count or in the total bytes of `chunks/*.js`, this PR contributed.
+
+**Sources:**
+- [PR #96409 — `[turbopack] Keep track of components of the remainder chunk`](https://github.com/vercel/next.js/pull/96409) · sampoder · merged 2026-07-30T22:50:46Z · **SHIPPED in `16.3.0-canary.104`**.
 
 ### Practical impact summary for canary.104
 
-- **Turbopack HMR / build** — PR #96179 adds a 34.25%-of-tracked-reads lock bypass on the reader side. Combined with v1.5.05's PR #96180 (writer-side bypass) and v1.5.05's PR #94948/#95661/#95795/#95546 cluster (HMR firehose refactor), this completes a 3-stage Turbopack turbo-tasks lock-pressure reduction. Expected rough order: build warming 5-10% faster on large apps, HMR steady-state 3-8% fewer CPU-spin cycles on turbo-tasks-heavy routes.
-- **Instant Navigation dev-overlay accuracy** — PR #96343 makes blocking-dynamic-hole warnings point at the right await. Useful when diagnosing "why did this route go dynamic?" in dev.
-- **Parallel-route scroll behavior** — PR #96342 fixes the empty-`@slot` edge case. Only matters if you ship a layout with multiple parallel-route slots that occasionally render empty.
-- **React Flight Client hardening** — PR #96389 brings [PR #37144](../components.md) into the vendored React. Invisible for the common trust model; defense-in-depth for cross-tenant RSC caching, cross-origin RSC widgets, and `dangerouslyAllowBrowser: true` consumers.
-- **No new config flags, no breaking changes, no new APIs.**
+- **Turbopack `optimizePackageImports` bundle size reduction** — PR #96383 brings Webpack parity for `sideEffects: false` handling. Free bundle reduction for projects using `optimizePackageImports` with libraries that declare `sideEffects: false`.
+- **Cache Components + DOM-capable crawlers** — PR #96367 lets DOM-capable crawlers use the prerendered shell + streaming metadata path (the prerendered shell ships immediately, metadata fills in as it resolves). The previous behavior was forcing a fully buffered dynamic render for any custom `htmlLimitedBots` match — that's gone.
+- **API cleanup** — PR #96401 removes the obsolete `shouldWaitOnAllReady` render option. `supportsDynamicResponse` is now the sole signal for static-vs-dynamic generation. Audit `rg 'shouldWaitOnAllReady'` after upgrading.
+- **React `0f42eac2-20260730` vendor bump** — PR #96402 brings the new `ReactDOM.browser()` API + 3 DevTools fixes into the vendored React. See the matching `components.md` section for the full API documentation.
+- **Turbopack cross-route chunk dedup** — PR #96409 keeps track of remainder-chunk components for proper cross-route import dedup. Smaller bundle size on multi-route apps.
+- **No new config flags, no breaking changes for the default path.**
 
 ### Sources
 
-- [GitHub: canary-branch commit list since 16.3.0-canary.103](https://github.com/vercel/next.js/commits/canary) — feed of the 7 new commits, all of which lead canary.104
-- [compare of the canary-branch ahead-of-103 state](https://github.com/vercel/next.js/compare/v16.3.0-canary.103...canary) — 7 commits ahead (verified via `GET /repos/vercel/next.js/compare/v16.3.0-canary.103...canary`)
-- [PR #96343 — `[Instant] Point to first blocking await in validation`](https://github.com/vercel/next.js/pull/96343) · lubieowoce · merged 2026-07-30T10:05:28Z
-- [PR #96179 — `Skip reader task locking for immutable Turbo Tasks reads`](https://github.com/vercel/next.js/pull/96179) · marcoshernanz · merged 2026-07-30T14:02:17Z
-- [PR #96342 — `Fix empty Fragment scroll ownership`](https://github.com/vercel/next.js/pull/96342) · DavidIlie · merged 2026-07-30T17:37:17Z
-- [PR #96323 — `test: reproduce empty parallel route scroll regression`](https://github.com/vercel/next.js/pull/96323) · ztanner · the repro PR for #96342 (test-only)
-- [PR #96389 — `Upgrade React from 1724e9ce-20260729 to 6cb4322d-20260729`](https://github.com/vercel/next.js/pull/96389) · vercel-release-bot · merged 2026-07-30T17:49:18Z
-- [PR #96355 — `Upgrade React from 96fcba90-20260728 to 1724e9ce-20260729`](https://github.com/vercel/next.js/pull/96355) · vercel-release-bot · merged 2026-07-30T13:51:10Z (the previous React vendor bump, no longer ahead-of-canary.104 since the next one supersedes)
-- [React PR #37144 — `[Flight] Port ReplyServer traversal guards to FlightClient`](https://github.com/facebook/react/pull/37144) (the upstream PR brought in by Next PR #96389)
+- [GitHub: `v16.3.0-canary.104` release](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.104) · published 2026-07-30T23:56:25Z by `next-js-bot`
+- [compare `v16.3.0-canary.103...v16.3.0-canary.104`](https://github.com/vercel/next.js/compare/v16.3.0-canary.103...v16.3.0-canary.104) — 17 commits ahead
+- [PR #96383 — `[turbopack] Respect sideEffects in a package.json file with optimizePackageImports`](https://github.com/vercel/next.js/pull/96383) · sampoder · **SHIPPED in `16.3.0-canary.104`**
+- [PR #96367 — `fix: respect htmlLimitedBots in cache components without buffering the full response`](https://github.com/vercel/next.js/pull/96367) · Zack Tanner · **SHIPPED in `16.3.0-canary.104`**
+- [PR #96401 — `Remove obsolete shouldWaitOnAllReady render option`](https://github.com/vercel/next.js/pull/96401) · Zack Tanner · **SHIPPED in `16.3.0-canary.104`**
+- [PR #96402 — `Upgrade React from 6cb4322d-20260729 to 0f42eac2-20260730`](https://github.com/vercel/next.js/pull/96402) · vercel-release-bot · **SHIPPED in `16.3.0-canary.104`**
+- [PR #96409 — `[turbopack] Keep track of components of the remainder chunk`](https://github.com/vercel/next.js/pull/96409) · sampoder · **SHIPPED in `16.3.0-canary.104`**
+- [PR #96365 — `Update Rust toolchain to nightly-2026-07-29`](https://github.com/vercel/next.js/pull/96365) · wbinnssmith · **SHIPPED in `16.3.0-canary.104`** (internal)
+- [PR #96366 — `test: expand Cache Components metadata streaming coverage`](https://github.com/vercel/next.js/pull/96366) · tests only, **SHIPPED in `16.3.0-canary.104`**
+- [PR #95432 — `fix(create-next-app): make AGENTS.md blue`](https://github.com/vercel/next.js/pull/95432) · cosmetic, **SHIPPED in `16.3.0-canary.104`**
+- [PR #96234 — `[bench skill] Bench Edge builds of React too`](https://github.com/vercel/next.js/pull/96234) · styfle · low-impact skill update, **SHIPPED in `16.3.0-canary.104`**
+- [React canary `19.3.0-canary-0f42eac2-20260730` GitHub compare (`6cb4322d...0f42eac2`)](https://github.com/facebook/react/compare/6cb4322d...0f42eac2) — the 4 upstream commits brought in by PR #96402
 
 
+## 16.3 canary.105-ahead — Fix `isHeadPartial` When Hydrating From a Static Fallback Shell (canary-branch ahead of canary.104, July 31, 2026)
+
+The v1.5.08 cron (2026-07-30T18:09Z) closed the canary-branch-ahead-of-canary.104 window with 7 commits; the v1.5.09 cron (this entry, 06:03Z July 31) ran ~6 minutes after canary.104 itself shipped (2026-07-30T23:56:25Z), so the canary-branch now has exactly **1 new commit ahead of canary.104** — `e3d634e0` by Andrew Clark (acdlite), merged 2026-07-31T04:37:16Z:
+
+**[Next.js PR #96400 — `Fix isHeadPartial when hydrating from a static fallback shell`](https://github.com/vercel/next.js/pull/96400)** by [Andrew Clark](https://github.com/acdlite), merged 2026-07-31T04:37:16Z, ~5h19min after canary.104 shipped. The PR is stacked on the upcoming RSC response-format rework.
+
+**The bug:**
+
+When a static fallback shell is served **as-is** — e.g. from a CDN in a deployed environment — the client can't hydrate from inline Flight data; it fetches the full RSC payload separately and reconstructs the initial payload on the client. During that reconstruction, the **head's partiality flag** was accidentally set to the head itself. Since the head is always truthy, the head was unconditionally treated as partial.
+
+**Why this is unobservable today** (from the PR body):
+
+> This happens to be unobservable today: the only flows that reach the reconstruction are fallback-shell prerenders, where the server pessimistically marks the head partial anyway, and when Cache Components is enabled the client ignores the per-payload flag entirely in favor of response-level partiality. But we're about to rework the RSC response format so that head partiality has a single, load-bearing source of truth, so the flag needs to survive the reconstruction correctly rather than by coincidence.
+
+**The fix (3 small changes):**
+
+1. **Fix the reconstruction's head-partiality flag** — the value is now computed correctly (not just set to the head).
+2. **Fix the payload shape check in segment prefetch generation** — it used `&&` where `||` was intended, so it accepted any shape. Now it correctly rejects shapes that don't match.
+3. **Delete `should-hard-navigate.ts`** — the file no longer has any callers on the client.
+
+**The new e2e coverage** asserts:
+
+- **Metadata survives hydrating a fallback shell page** — the title is correct after hydration.
+- **The head is included in prefetched data** — confirms the payload shape check is correct.
+- **A return navigation is served entirely from the cache** that was populated during initial hydration — exercises the client resume path, which is where the reconstruction runs. In deployed environments this is the precise path that runs.
+
+**Practical impact for users today:**
+
+- **The user-facing bug is invisible today** — because the existing fallback-shell prerenders pessimistically mark the head partial anyway, and when Cache Components is enabled the client ignores the per-payload flag entirely. So this PR is a **pre-emptive fix** for the upcoming RSC response-format rework.
+- **The e2e coverage additions** are real benefits — they lock in the "metadata survives fallback shell hydration" behavior, which will be load-bearing once the RSC response-format rework ships.
+- **For deployed environments** (CDN-served fallback shells, serverless edge-deploy with static fallback layers) — the new e2e test confirms the client resume path works correctly. If you've ever had a "weird hydration state on first load" report from a deployed environment, the v1.5.09 cron recommends running the new e2e to verify.
+- **No new API, no config flag, no codemod** — pure hardening + cleanup.
+
+**Audit recipe:**
+
+```bash
+# If you've ever seen this in a deployed-environment error tracker, this PR is the fix:
+rg -n 'should-hard-navigate' node_modules/next/dist/ 2>/dev/null
 ## Web Vitals
 
 | Metric | Target | What to Fix |

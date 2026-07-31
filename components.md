@@ -1760,6 +1760,142 @@ Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-6cb
 
 
 
+## React 19.3.0-canary-0f42eac2-20260730 — Add `ReactDOM.browser()` API (#37143) + 3 DevTools PRs (July 30, 2026)
+
+The v1.5.08 cron (2026-07-30T18:09Z) captured `react@canary` = `19.3.0-canary-6cb4322d-20260729`, but **2h17min later** (at 2026-07-30T20:26:06Z) the npm `dist-tag.canary` pointer moved to `19.3.0-canary-0f42eac2-20260730` — a **4-commit bump that ships the first new public React API in `react-dom` in a while**. v1.5.08 missed this by virtue of timing (the publish was inside this v1.5.09 06:03Z cron window). The diff is `facebook/react` `6cb4322d...0f42eac2` — 4 commits, 1 of which is a new public API + 3 DevTools-only fixes.
+
+### `#37143` — The headline: `ReactDOM.browser()` API (by gnoff, merged 2026-07-30T19:21:08Z)
+
+This is the **first new public React API surface added in a canary in many months**. The PR adds a new function `ReactDOM.browser()` that returns a `"usable"` — an object the `use()` hook can read, which errors during SSR and resolves during rendering in the browser.
+
+**From the PR description (paraphrased):**
+
+> Adds a new API to `react-dom` called `browser()`. `browser()` returns a "usable" that will error during SSR and resolve during rendering in the browser. The purpose is to allow you to express the idea that a component should suspend on the server but not in the browser. The method is not available inside a `react-server` environment. This is a client only feature. This is a `react-dom` API because the concept of browser doesn't apply generally to React itself.
+>
+> This codifies a pattern that is common in some apps where you error during SSR to prevent rendering some component on the server and you end up suppressing the error that is reported in the client to avoid this appearing like a problem rather than intended behavior. Unfortunately this is not an option for many because hacking around to prevent errors from being logged is not practical for many. By making this a React API we enabled this common pattern in any React using library or application.
+
+**Canonical usage:**
+
+```tsx
+import { use, Suspense } from "react"
+import { browser } from "react-dom"
+
+function BrowserOnly() {
+  use(browser())  // throws on the server, resolves in the browser
+  return <ClientContent />
+}
+
+function App() {
+  return (
+    <Suspense fallback={<Fallback />}>
+      <BrowserOnly />
+    </Suspense>
+  )
+}
+```
+
+**What this solves:**
+
+Before this PR, the canonical pattern for "only render in the browser" was to throw a promise during SSR and suppress the error in the console (via `ErrorBoundary` + `console.error` stubbing). That worked but was ugly — it triggered a "real" error log that lints and observability tools had to special-case. `browser()` is the ergonomic, first-class solution: the throw is an **intentional recoverable error**, the framework logs nothing, the `Suspense` boundary exactly above catches the suspend, and the fallback renders during SSR + the resolved content renders after hydration.
+
+**Implementation notes (from the PR body):**
+
+- The "render in the browser" intent is modeled as an **intentional recoverable error** (React already exposes this primitive via halted references in RSC; `browser()` reuses the same machinery).
+- The error is **intentionally suppressed** in client logging — `browser()` returns an isomorphic object that's the same on every environment; the `use()` or `abort()` function is what handles the differing behavior. This means you can create `browser()` objects in **module scope** and use them even in complex scenarios like "server rendering inside the browser while React is rendering" (the SSR-in-CSR case).
+- The implementation is **flagged** so the feature can be disabled quickly if the React team decides not to ship it in stable.
+- **It is an error to use `use(browser())` outside of a Suspense boundary** — you cannot recover from the root. This restriction may be lifted later but is part of the current limitations.
+- The feature is going into React **canary** first (we're here); stable expected once the team is confident in the API.
+
+**Bundle size impact (from the PR's size-bot table):**
+
+| Bundle | Change | Size before | Size after | Gzip before | Gzip after |
+|---|---|---|---|---|---|
+| `oss-stable/react-dom/cjs/react-dom.production.js` | **+3.67%** | 7.19 kB | 7.45 kB | 1.91 kB | 1.99 kB |
+| `oss-stable/react-dom/cjs/react-dom.production.min.js` (gzip) | **+4.51%** | 1.91 kB | 1.99 kB | — | — |
+| `oss-stable/react-dom/cjs/react-dom.development.js` | **+3.42%** | 18.33 kB | 18.95 kB | 3.93 kB | 4.14 kB |
+| `react-dom-client.production.js` (full bundle) | +0.02% | 616.42 kB | 616.54 kB | 109.22 kB | 109.27 kB |
+| `facebook-www/ReactDOM-prod.modern.js` | +0.05% | 697.82 kB | 698.15 kB | 122.53 kB | 122.63 kB |
+| `facebook-react-native/react-dom/cjs/ReactDOM-prod.js` | **+3.78%** | 6.98 kB | 7.25 kB | 1.89 kB | 1.97 kB |
+
+Read this as: **the standalone `react-dom` core bundle grows ~240 bytes / ~80 bytes gzipped**. The full `react-dom-client` bundle grows only ~120 bytes total (~50 bytes gzipped) — the cost is amortized across the much larger package. For most apps this is negligible; for use-cases that ship the standalone `react-dom` (the React Native + custom-renderer space) it's the most noticeable.
+
+**Why this matters for Next.js App Router users:**
+
+The App Router already has [`"use client"`](#client-component-island-pattern) for "client only" components, but that's a **module-level** boundary — it forces the entire module to render on the client. `browser()` is a **fine-grained per-instance** boundary: a single component can render client-only while the rest of the tree stays shared. This is useful for:
+
+- **Browser-only libraries that crash in SSR** (e.g. `window.matchMedia` polyfills, libraries that touch `document` at module load) inside a route that otherwise wants to share code between server and client.
+- **Heavy client-only visualizations** (a chart library that uses `OffscreenCanvas` or browser WebGL) where you want the parent layout to be a Server Component but the visualization to suspend on SSR.
+- **Hydration-only analytics / observability hooks** that intentionally only run in the browser.
+- **Migration** — if you have a Next.js Pages Router component that uses a `<ClientOnly>` HOC and you're migrating to App Router, `browser()` is the cleanest 1:1 replacement.
+
+**Practical impact for users today:**
+
+- **`react@canary` install** — `npm install react@19.3.0-canary-0f42eac2-20260730 react-dom@19.3.0-canary-0f42eac2-20260730` immediately gives you `browser()`. The new React vendor bump is in `next@canary.104` (see `performance.md` for the canary.104 SHIPPED section).
+- **`next@canary` users** — `next@16.3.0-canary.104` vendors `react@19.3.0-canary-0f42eac2-20260730` (via [Next.js PR #96402](https://github.com/vercel/next.js/pull/96402)). The `ReactDOM.browser()` API is available from `react-dom` in any Client Component (and the `<BrowserOnly>` pattern above works inside `'use client'` modules).
+- **`next@preview`** — vendors react@canary from the previous cycle until preview.11 ships; expect preview.11 within 24-48h of canary.104.
+- **`next@latest` (16.2.12)** — vendors `react@19.2.8` stable. Does **not** have `browser()`. If you need this on stable, pin `react@canary` + `react-dom@canary` directly + the matching `react-server-dom-webpack`/`react-server-dom-turbopack` canary (no codemod required, drop-in API).
+- **Bundle size** — as noted above, +3.67% on standalone `react-dom` core / +0.05% on full `react-dom-client`. Acceptable for most apps; budget for the standalone `react-dom` case in React Native + custom-renderer workloads.
+
+**Verification recipe:**
+
+```bash
+npm view react dist-tags.canary
+# → '19.3.0-canary-0f42eac2-20260730'
+
+# Confirm ReactDOM.browser() is exported from react-dom:
+node -e 'console.log(Object.keys(require("react-dom")).filter(k => k === "browser"))'
+# → ['browser']
+
+# Confirm it throws in SSR (the "use" hook will fail inside an SSR React tree, then resolve in the browser)
+```
+
+### `#37155` — `[DevTools] Reset extension backend on pagehide` (by hoxyq, merged 2026-07-30T18:34:46Z)
+
+DevTools-only. Fixes an inconsistency during browser navigations that involve BFCache entries: Chrome kills the port manually while freezing and preserving the JS heap (per [Chrome's bfcache-extension-messaging-changes](https://developer.chrome.com/blog/bfcache-extension-messaging-changes)), so the port can be dead while the Backend/Agent are still alive — a state the React DevTools backend doesn't expect. The PR hooks the `pagehide` event to reset the backend cleanly so the next page-reactivation sees a fresh connection. **No public API change, no user-facing impact outside DevTools**, no bundle cost for non-DevTools builds. Stack: 1 commit, still-WIP test (the author notes they couldn't reproduce BFCache in unit tests and is looking for a better test strategy).
+
+### `#37151` — `[DevTools] Create extension panels before React detection` (by hoxyq, merged 2026-07-30T17:06:13Z)
+
+DevTools-only. Bug: if React DevTools was installed but the page wasn't a React app, no panel was mounted at all, and historically a few users reported this as a bug. The fix: always create the panel (Chrome has no API to unmount a panel), and populate the contents dynamically based on whether the target is a React app. If not a React app, the stub message still shows. **No public API change, no user-facing impact outside DevTools.**
+
+### `#37152` — `[DevTools] Remove FlowFixMe from extension lifecycle` (by hoxyq, merged 2026-07-30T17:12:54Z)
+
+DevTools-only. The Flow types in the React DevTools extension lifecycle had a `FlowFixMe` that suppressed real type errors — the author noticed a few during BFCache triage. **No public API change, no user-facing impact outside DevTools.**
+
+### Coverage: which Next.js tags ship this canary?
+
+| Tag | Bundled React | This canary? |
+|---|---|---|
+| `next@latest` (`16.2.12`) | `19.2.8` (vendored) | ❌ |
+| `next@backport` (`15.5.22`) | vendored old | ❌ |
+| `next@canary` (`16.3.0-canary.104`) | `19.3.0-canary-0f42eac2-20260730` | ✅ (via Next.js PR #96402) |
+| `next@preview` (`16.3.0-preview.10`) | `19.3.0-canary-1724e9ce-20260729` (still — preview lags canary by 1 release) | ❌ (will be ✅ after preview.11 ships within 24-48h) |
+| Standalone `react@canary` install | `19.3.0-canary-0f42eac2-20260730` | ✅ |
+
+Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-0f42eac2-20260730`.
+
+### Timing analysis (why the v1.5.08 cron missed this)
+
+- v1.5.08 cron committed at 2026-07-30T18:09Z.
+- React canary bump to `0f42eac2-20260730` happened at 2026-07-30T20:26:06Z — **2h17min after** the v1.5.08 commit.
+- v1.5.08 captured `react@canary` = `6cb4322d-20260729`, last updated at 2026-07-30T16:45:17Z (the dist-tag had been stable for 1h24min at the v1.5.08 commit).
+- This is the **third consecutive React canary bump that landed inside a 6h cron window** (v1.5.05 missed `1724e9ce` by 46min, v1.5.08 missed `6cb4322d` by 4h42min, v1.5.08 missed `0f42eac2` by 2h17min). The pattern confirms: **React canary bumps happen on an 18-48h cadence, and any individual 6h cron cycle can miss a bump by 0-6h**. The next cron (this v1.5.09) picks it up by virtue of being the immediate next cycle.
+
+### Sources
+
+- [React canary `19.3.0-canary-0f42eac2-20260730` GitHub compare (`6cb4322d...0f42eac2`)](https://github.com/facebook/react/compare/6cb4322d...0f42eac2) — 4 commits, 1 new public API + 3 DevTools-only fixes
+- [React PR #37143 — `Add ReactDOM browser() API`](https://github.com/facebook/react/pull/37143) — author gnoff, merged 2026-07-30T19:21:08Z — the new `ReactDOM.browser()` public API
+- [React PR #37143 files diff](https://github.com/facebook/react/pull/37143/files) — 5 commits across `packages/react-dom/src/ReactDOMBrowser.js` (new), `ReactDOM.js`, `ReactFiberConfigDOM.js`, hooks plumbing
+- [React PR #37143 size-bot report](https://github.com/facebook/react/pull/37143) — bundle size deltas (the +3.67% on standalone `react-dom` core / +0.05% on full `react-dom-client` table above)
+- [React PR #37155 — `[DevTools] Reset extension backend on pagehide`](https://github.com/facebook/react/pull/37155) — author hoxyq
+- [React PR #37151 — `[DevTools] Create extension panels before React detection`](https://github.com/facebook/react/pull/37151) — author hoxyq
+- [React PR #37152 — `[DevTools] Remove FlowFixMe from extension lifecycle`](https://github.com/facebook/react/pull/37152) — author hoxyq
+- [Next.js PR #96402 — `Upgrade React from 6cb4322d-20260729 to 0f42eac2-20260730`](https://github.com/vercel/next.js/pull/96402) — the vendor bump that brings PR #37143 into Next.js's vendored React (merged 2026-07-30T21:21:08Z, SHIPPED in `16.3.0-canary.104`)
+- [Chrome bfcache extension messaging changes](https://developer.chrome.com/blog/bfcache-extension-messaging-changes) — the Chrome behavior that motivates #37155 (DevTools backend reset on pagehide)
+- [npm: `react@19.3.0-canary-0f42eac2-20260730`](https://www.npmjs.com/package/react/v/19.3.0-canary-0f42eac2-20260730) (published 2026-07-30T20:26:06Z)
+- [npm: `react-dom@19.3.0-canary-0f42eac2-20260730`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-0f42eac2-20260730) (published 2026-07-30T20:28:30Z)
+
+
+
 
 ## shadcn/ui 4.14.1 — Base UI Toast Support (July 23, 2026)
 

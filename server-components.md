@@ -978,6 +978,96 @@ For each match, either (a) use a stable derived key (specific header values, not
 **Test coverage added:** the PR adds a test that demonstrates the previous incorrect behavior (the same `Headers` object returned across passes), and confirms the post-fix behavior (distinct objects per pass).
 
 
+## `ReactDOM.browser()` — Per-Instance "Client-Only" Boundary (React canary `0f42eac2-20260730`, **SHIPPED in `next@16.3.0-canary.104`**)
+
+The App Router's primary mechanism for "only render in the browser" is the `"use client"` directive — but it's a **module-level** boundary: every export in the module becomes a client component, and the entire module's transitive imports are forced into the client bundle. For some use cases that's overkill.
+
+**The new public API** [React PR #37143](https://github.com/facebook/react/pull/37143) (shipped in `react@19.3.0-canary-0f42eac2-20260730`, vendored into `next@16.3.0-canary.104` via [Next.js PR #96402](https://github.com/vercel/next.js/pull/96402)) adds `ReactDOM.browser()` — a function that returns a **"usable"** object that errors during SSR and resolves during rendering in the browser. When combined with the `use()` hook inside a `<Suspense>` boundary, this gives you a **per-instance** client-only boundary — a single component can render client-only while the rest of the tree stays shared.
+
+### Canonical usage
+
+```tsx
+// components/browser-only-chart.tsx — 'use client' (needed for `use()`)
+'use client'
+import { use, Suspense } from 'react'
+import { browser } from 'react-dom'
+import { ChartCanvas } from './chart-canvas' // browser-only WebGL
+
+function Chart() {
+  use(browser())  // throws on the server, resolves in the browser
+  return <ChartCanvas />
+}
+
+export function BrowserOnlyChart({ data }: { data: ChartData }) {
+  return (
+    <Suspense fallback={<ChartSkeleton />}>
+      <Chart data={data} />
+    </Suspense>
+  )
+}
+```
+
+```tsx
+// app/dashboard/page.tsx — server component (default)
+import { BrowserOnlyChart } from '@/components/browser-only-chart'
+
+export default async function DashboardPage() {
+  const data = await getDashboardData()  // runs on the server
+  return (
+    <main>
+      <h1>Dashboard</h1>
+      {/* Server-rendered shell, but the chart suspends on SSR and renders in the browser */}
+      <BrowserOnlyChart data={data} />
+    </main>
+  )
+}
+```
+
+### Why not just `"use client"`?
+
+If you move the entire `BrowserOnlyChart` into a `'use client'` module, then:
+
+- The whole module (and its imports) goes into the client bundle.
+- The chart's `data` prop gets serialized across the network (RSC payload) — costs bandwidth.
+- The chart's parent layout cannot share code between server and client.
+
+With `browser()` instead:
+
+- The parent `app/dashboard/page.tsx` stays a **Server Component** (gets all the data on the server, no serialization).
+- Only the `Chart` component inside the `Suspense` boundary is "client-only" — and only at the per-instance level.
+- The skeleton's `ChartSkeleton` renders during SSR (no client JS for the skeleton).
+- The chart's `data` prop is passed by closure from the Server Component — no network serialization.
+
+### Rules & limitations
+
+- **`use(browser())` must be inside a `<Suspense>` boundary.** It's an error to use it at the root — you can't recover from the root. The `use()` hook throws, and the `Suspense` boundary above catches the throw.
+- **`react-dom` only.** `browser()` is intentionally a `react-dom` API, not a `react` API, because the concept of "browser" doesn't apply generally to React (think React Native, custom renderers, server-only contexts).
+- **Module-scope safe.** You can create `browser()` objects at module scope and use them in complex scenarios like "server rendering inside the browser while React is rendering" (the SSR-in-CSR case) — the API is isomorphic.
+- **Currently canary-only.** The implementation is **flagged** so the React team can disable it quickly if they decide not to ship it in stable. As of `react@19.3.0-canary-0f42eac2-20260730`, the API is exported from `react-dom` and works in production usage. Track [`react@canary`](https://www.npmjs.com/package/react?activeTab=versions) for the stable promotion.
+
+### When to use `browser()` vs `"use client"` vs `<ClientOnly>` HOC
+
+| Pattern | Granularity | Server-rendered shell? | Network serialization? | Use when |
+|---|---|---|---|---|
+| `"use client"` (module-level) | Module | No (whole module is client) | Yes (RSC payload) | The component is genuinely interactive — state, effects, event handlers |
+| `ReactDOM.browser()` + `use()` + `<Suspense>` | Per-instance | Yes (shell renders on server) | No (data passed by closure) | The component is "display-only" but needs `window` / WebGL / browser-only APIs |
+| `<ClientOnly>` HOC (manual) | Per-instance | Yes (shell renders on server) | No (data passed by closure) | You can't use canary React yet — manual alternative to `browser()` |
+
+**Recommendation:** for any new app on `next@16.3.0-canary.104`+ (or a standalone `react@canary`), prefer `browser()` over the manual `<ClientOnly>` HOC. It's the canonical, first-class API and it correctly suppresses the "real error" log that the HOC pattern triggers.
+
+### Practical impact + bundle size
+
+- **Bundle size:** `react-dom` core grows +3.67% (~240 bytes / ~80 bytes gzipped); full `react-dom-client` grows +0.05% (~120 bytes / ~50 bytes gzipped). See the `## React 19.3.0-canary-0f42eac2-20260730` section in `components.md` for the full size-bot table.
+- **No new config flags, no breaking changes** — pure API addition.
+- **Available on:** `next@16.3.0-canary.104+` (vendored via PR #96402), standalone `react@19.3.0-canary-0f42eac2-20260730+`, and `next@16.3.0-preview.11` once it ships (preview lags canary by 1 release). **Not in `next@latest` (16.2.12)** — that's stable React 19.2.8.
+
+### Sources
+
+- [React PR #37143 — `Add ReactDOM browser() API`](https://github.com/facebook/react/pull/37143) · gnoff · merged 2026-07-30T19:21:08Z
+- [Next.js PR #96402 — `Upgrade React from 6cb4322d-20260729 to 0f42eac2-20260730`](https://github.com/vercel/next.js/pull/96402) · vercel-release-bot · merged 2026-07-30T21:21:08Z · **SHIPPED in `16.3.0-canary.104`**
+- [React canary `19.3.0-canary-0f42eac2-20260730` on npm](https://www.npmjs.com/package/react/v/19.3.0-canary-0f42eac2-20260730) (published 2026-07-30T20:26:06Z)
+- [`## React 19.3.0-canary-0f42eac2-20260730` in `components.md`](../components.md#react-1930-canary-0f42eac2-20260730--add-reactdombrowser-api-37143--3-devtools-prs-july-30-2026) — full API doc + bundle impact + 3 DevTools PRs
+
 ## Server Actions
 
 Server Actions are functions that run on the server but can be called from client components — like an API endpoint you call directly:
