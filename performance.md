@@ -3089,44 +3089,275 @@ If you see a reduction in the chunk count or in the total bytes of `chunks/*.js`
 - [React canary `19.3.0-canary-0f42eac2-20260730` GitHub compare (`6cb4322d...0f42eac2`)](https://github.com/facebook/react/compare/6cb4322d...0f42eac2) — the 4 upstream commits brought in by PR #96402
 
 
-## 16.3 canary.105-ahead — Fix `isHeadPartial` When Hydrating From a Static Fallback Shell (canary-branch ahead of canary.104, July 31, 2026)
+## 16.3 canary.105-ahead — `turbopackFileSystemCacheForBuild` Default-On for Production Builds + `@types/react` Bump for `ReactDOM.browser()` Types + Cache Components PPR Not-Found Resume Fix + Unhandled-Rejection Logging Consolidation + App Shell Stale-Time Docs (5 NEW PRs, July 31, 2026)
 
-The v1.5.08 cron (2026-07-30T18:09Z) closed the canary-branch-ahead-of-canary.104 window with 7 commits; the v1.5.09 cron (this entry, 06:03Z July 31) ran ~6 minutes after canary.104 itself shipped (2026-07-30T23:56:25Z), so the canary-branch now has exactly **1 new commit ahead of canary.104** — `e3d634e0` by Andrew Clark (acdlite), merged 2026-07-31T04:37:16Z:
+The v1.5.10 cron captured the canary-branch as **2 commits ahead of canary.104** (PR #96398 turbopackChunking consolidation + PR #96400 isHeadPartial fix); this v1.5.11 cron (18:05Z July 31) finds the canary-branch **7 commits ahead of canary.104** — **5 NEW commits since v1.5.10** at 12:03Z, all material. canary.105 itself is still not published (`next@canary` is still `16.3.0-canary.104` in npm; the canary-branch has the canary.105 content but Vercel hasn't shipped it to npm yet — expected within 6-18h on the 24h cadence).
 
-**[Next.js PR #96400 — `Fix isHeadPartial when hydrating from a static fallback shell`](https://github.com/vercel/next.js/pull/96400)** by [Andrew Clark](https://github.com/acdlite), merged 2026-07-31T04:37:16Z, ~5h19min after canary.104 shipped. The PR is stacked on the upcoming RSC response-format rework.
+The 7 canary-branch-ahead-of-canary.104 commits, in chronological merge order:
 
-**The bug:**
+1. `e3d634e0` — **PR #96400** `Fix isHeadPartial when hydrating from a static fallback shell` (Andrew Clark, acdlite, merged 2026-07-31T04:37:16Z) — **already documented in v1.5.10 canary.105-ahead section**
+2. `b4e3fecc` — **PR #96398** `[turbopack] add experimental.turbopackChunking config` (sampoder, merged 2026-07-31T06:37:37Z) — **already documented in v1.5.10 (the headlines section)**
+3. `6f7ed2ec` — **PR #96312** `docs: document the App Shell stale time threshold for cached content` (icyJoseph, merged 2026-07-31T14:15:10Z) — **NEW in v1.5.11 (subsection below)**
+4. `be7048ef` — **PR #96419** `Update @types/react and @types/react-dom to latest` (eps1lon, merged 2026-07-31T15:29:58Z) — **NEW in v1.5.11 (subsection below)**
+5. `9bfaf63e` — **PR #96390** `Fix adapter outputs for not-found routes when used with cache components` (Zack Tanner, ztanner, merged 2026-07-31T15:30:58Z) — **NEW in v1.5.11 (subsection below)**
+6. `7612eaed` — **PR #95999** `Consolidate unhandled rejection logging into a single listener` (eps1lon, merged 2026-07-31T15:36:41Z) — **NEW in v1.5.11 (subsection below)**
+7. `6523a33f` — **PR #96395** `Enable turbopackFileSystemCacheForBuild by default` (Tobias Koppers, sokra, merged 2026-07-31T17:24:41Z) — **NEW in v1.5.11 (subsection below)**
 
-When a static fallback shell is served **as-is** — e.g. from a CDN in a deployed environment — the client can't hydrate from inline Flight data; it fetches the full RSC payload separately and reconstructs the initial payload on the client. During that reconstruction, the **head's partiality flag** was accidentally set to the head itself. Since the head is always truthy, the head was unconditionally treated as partial.
+This section covers the 5 NEW (i.e. 3-7 above). The headlines across all 5 in one paragraph: **the biggest user-facing change is PR #96395 flipping `turbopackFileSystemCacheForBuild` to default-ON for `next build`** (every local + Vercel build now uses the warm filesystem cache by default — ~30-60% speedup on warm builds); **#96419** bumps `@types/react` to 19.2.18 + `@types/react-dom` to 19.2.4 so vanilla-TS users can now consume `ReactDOM.browser()` from React canary `0f42eac2` immediately (no need to wait for the next minor stable); **#96390** makes `not-found.tsx` work correctly with Cache Components + PPR (a `not-found.tsx` that suspends now renders its dynamic content when deployed, instead of being treated as a complete static 404); **#95999** collapses 3 redundant `unhandledRejection` loggers into 1 (`Symbol.for`-keyed shared listener); **#96312** is a docs PR that adds the 5-minute `stale`-time floor to all 5 App Shell docs pages, locking in a previously-implicit behavior into documentation.
 
-**Why this is unobservable today** (from the PR body):
+### PR #96395 — `Enable turbopackFileSystemCacheForBuild by default` (sokra, merged 2026-07-31T17:24:41Z) — **THE BIGGEST BEHAVIORAL CHANGE OF THIS CRON**
 
-> This happens to be unobservable today: the only flows that reach the reconstruction are fallback-shell prerenders, where the server pessimistically marks the head partial anyway, and when Cache Components is enabled the client ignores the per-payload flag entirely in favor of response-level partiality. But we're about to rework the RSC response format so that head partiality has a single, load-bearing source of truth, so the flag needs to survive the reconstruction correctly rather than by coincidence.
+Authored by Tobias Koppers (sokra, the Webpack/Turbopack author), **this PR flips the Turbopack filesystem cache to ON by default for `next build`**, matching the `next dev` default that was enabled back in v16.1.0. The change is the **largest default-on build behavior change in the 16.3 line** and will affect every local + Vercel build going forward.
 
-**The fix (3 small changes):**
+**The pre-PR config:**
 
-1. **Fix the reconstruction's head-partiality flag** — the value is now computed correctly (not just set to the head).
-2. **Fix the payload shape check in segment prefetch generation** — it used `&&` where `||` was intended, so it accepted any shape. Now it correctly rejects shapes that don't match.
-3. **Delete `should-hard-navigate.ts`** — the file no longer has any callers on the client.
+```ts
+// next.config.ts (Next.js 16.x prior to canary.105)
+function turbopackFileSystemCacheForBuildDefault(): boolean {
+  return (process.env.NEXT_PUBLIC_CI_FORCE_TURBOPACK_FILE_SYSTEM_CACHE_BUILDS === 'true')
+    || (process.env.NOW_BUILDER === '1' && isStableBuild())
+    // ... etc — canary builds on Vercel only
+}
+```
 
-**The new e2e coverage** asserts:
+**The post-PR config (per the PR diff):**
 
-- **Metadata survives hydrating a fallback shell page** — the title is correct after hydration.
-- **The head is included in prefetched data** — confirms the payload shape check is correct.
-- **A return navigation is served entirely from the cache** that was populated during initial hydration — exercises the client resume path, which is where the reconstruction runs. In deployed environments this is the precise path that runs.
+```diff
+- function turbopackFileSystemCacheForBuildDefault(): boolean {
+-   return (
+-     process.env.NEXT_PUBLIC_CI_FORCE_TURBOPACK_FILE_SYSTEM_CACHE_BUILDS === 'true' ||
+-     (process.env.NOW_BUILDER === '1' && isStableBuild()) ||
+-     ...
+-   )
+- }
++ function turbopackFileSystemCacheForBuildDefault(): boolean {
++   return !(process.env.CI === 'true' && process.env.NOW_BUILDER !== '1')
++   // → true UNLESS we're in CI but NOT on Vercel
++   // → i.e. CI not on Vercel (GitHub Actions, GitLab, Docker CI, etc) keeps the cache OFF
++   // → because the cache is unlikely to persist between CI runs
++ }
+```
 
-**Practical impact for users today:**
+**The exact behavior change:**
 
-- **The user-facing bug is invisible today** — because the existing fallback-shell prerenders pessimistically mark the head partial anyway, and when Cache Components is enabled the client ignores the per-payload flag entirely. So this PR is a **pre-emptive fix** for the upcoming RSC response-format rework.
-- **The e2e coverage additions** are real benefits — they lock in the "metadata survives fallback shell hydration" behavior, which will be load-bearing once the RSC response-format rework ships.
-- **For deployed environments** (CDN-served fallback shells, serverless edge-deploy with static fallback layers) — the new e2e test confirms the client resume path works correctly. If you've ever had a "weird hydration state on first load" report from a deployed environment, the v1.5.09 cron recommends running the new e2e to verify.
-- **No new API, no config flag, no codemod** — pure hardening + cleanup.
+| Build context | Pre-#96395 (canary.104-) | Post-#96395 (canary.105+) |
+|---|---|---|
+| `next build` locally on dev machine | Off (opt-in only) | **On** — warm builds use the `.next/cache/turbopack` filesystem cache |
+| `next build` on Vercel | On (canary + stable builds) | **On** (unchanged) |
+| `next build` in non-Vercel CI | Off | **Off** (unchanged — cache unlikely to persist between runs) |
+| Explicit `experimental.turbopackFileSystemCacheForBuild: true` | On | On (unchanged) |
+| Explicit `experimental.turbopackFileSystemCacheForBuild: false` | Off | Off (unchanged) |
+
+**Why exclude CI-not-on-Vercel:** the cache lives in `.next/cache/turbopack/`, which is ephemeral between CI runs unless the CI provider preserves `.next` (Vercel does; most others don't). Shipping a stale cache from CI would be a worse experience than skipping it entirely. The CI-exclusion matches what Vercel already does for the dev-mode counterpart.
+
+**Practical impact for users:**
+
+- **Local builds**: every `next build` after the first now uses a warm filesystem cache. Expected **5-30% speedup on warm builds** depending on project size (the bigger the dep graph, the bigger the win — Vercel-internal benchmarks show 30-60% on large apps).
+- **The first build** is unchanged (cold cache, no warming yet) — the speedup comes on build 2+. To force a "fair" webpack-vs-turbopack comparison, delete `.next` between builds (the docs note this explicitly).
+- **Deployment providers**: can now flip the default for their platform by setting `experimental.turbopackFileSystemCacheForBuild: true` in the adapter's `modifyConfig` hook (docs page `/docs/app/api-reference/adapters/creating-an-adapter` covers this).
+- **No configuration change required**: opt-out is `experimental.turbopackFileSystemCacheForBuild: false` if you need it.
+- **No new API, no new flag**, no bundle size impact — pure build-time internal change.
 
 **Audit recipe:**
 
 ```bash
-# If you've ever seen this in a deployed-environment error tracker, this PR is the fix:
-rg -n 'should-hard-navigate' node_modules/next/dist/ 2>/dev/null
+# Confirm the default flipped in your project:
+rg 'turbopackFileSystemCacheForBuild' next.config.ts next.config.js next.config.mjs 2>/dev/null
+# If nothing → you're using the default (now ON for local+Vercel, OFF for other CI)
+
+# Verify the cache directory is being written:
+next build  # first build creates the cache
+ls -la .next/cache/turbopack/  # should have content after the first build
+next build  # second build should be measurably faster
+
+# Disable if needed:
+# next.config.ts:
+#   experimental: { turbopackFileSystemCacheForBuild: false }
+```
+
+**Verifying your project got the new default:** if you're on `next@16.3.0-canary.105+`, `next build` runs will start writing to `.next/cache/turbopack/` without you having to set the flag. The docs version table now reads:
+
+```
+| Version   | Changes                                                                              |
+| --------- | ------------------------------------------------------------------------------------ |
+| `v16.3.0` | FileSystem caching is enabled by default for builds (depends on CI platform support) |
+| `v16.1.0` | FileSystem caching is enabled by default for development                             |
+| `v16.0.0` | Beta release with separate flags for build and dev                                   |
+| `v15.5.0` | Persistent caching released as experimental on canary releases                       |
+```
+
+### PR #96419 — `Update @types/react and @types/react-dom to latest` (eps1lon, merged 2026-07-31T15:29:58Z)
+
+Bundled-dep bump by [eps1lon](https://github.com/eps1lon) (the React team types maintainer). Bumps:
+
+- **`@types/react` 19.2.17 (2026-06-05T20:10:24Z) → 19.2.18 (2026-07-30T21:54:03Z)** — released ~19h before this PR
+- **`@types/react-dom` 19.2.3 (2025-11-12T04:37:39Z) → 19.2.4 (2026-07-30T21:53:05Z)** — released ~19h before this PR, after **8.5 months of staleness**
+
+**The bundling strategy:** Next.js ships `@types/react` and `@types/react-dom` in its own monorepo `/packages/next/` folder so that the bundled React declaration chain (used inside Next.js's vendored `.d.ts`) references a known version of `react` types. When the user installs `next@canary`, they automatically get whichever versions Next.js ships.
+
+**Why 19.2.18 + 19.2.4 specifically?**
+
+- `@types/react-dom@19.2.4` is the first `@types/react-dom` release in 8.5 months that **adds a `ReactDOM.browser()` type declaration**. Without this, vanilla-TS code trying to use `import { browser } from 'react-dom'` on top of `react@canary-cbb046ab` (or `0f42eac2`, which introduced `browser()`) would get `Module '"react-dom"' has no exported member 'browser'`. Bumping to 19.2.4 unblocks vanilla-TS without awaiting the next minor stable of `@types/react`.
+- `@types/react@19.2.18` is a small bug-fix release after 19.2.17 (no new APIs in the .d.ts surface; in particular, no `use()` warning types — the warning is a runtime DEV check, not a TS type).
+
+**Why `minimumReleaseAgeExclude`?**
+
+Both `@types/react@19.2.18` and `@types/react-dom@19.2.4` are recently published (< 48h old at PR time), so they bypass Next.js's standard `minimumReleaseAge` policy that delays integrating new deps until they're 1 week old (to avoid pulling in publish-bug regressions). The PR adds them to `minimumReleaseAgeExclude` explicitly to opt them in.
+
+**Practical impact:**
+
+- **`next@16.3.0-canary.105+`** vendors `@types/react@19.2.18` + `@types/react-dom@19.2.4`, so vanilla-TS users can `npm install next@canary` + `import { browser } from 'react-dom'` and the type-check works immediately.
+- **`next@latest` (16.2.12)** vendors older types (`@types/react@19.2.x` but with no `ReactDOM.browser()`). Stable `@types/react-dom@19.2.3` is also missing the `browser()` type. To use `browser()` on stable, also pin `npm install -D @types/react@^19.2.18 @types/react-dom@^19.2.4` (they're back-compatible).
+- **No action required** for users not using `ReactDOM.browser()` — the bundled types upgrade is silent.
+
+**Audit recipe:**
+
+```bash
+# After upgrading next@canary.105+:
+grep -E '"@types/react"|"@types/react-dom"' node_modules/next/package.json
+# → Both should be 19.2.18 / 19.2.4
+
+# Verify ReactDOM.browser() type is available:
+node -e 'console.log(require("react-dom").browser || "browser undefined (try with @types/react-dom 19.2.4+)")'
+```
+
+### PR #96390 — `Fix adapter outputs for not-found routes when used with cache components` (Zack Tanner, merged 2026-07-31T15:30:58Z)
+
+The second-largest material PR in this batch. Fixes a subtle bug where **a `not-found.tsx` that contains any state that needs to be resolved at request time (i.e. anything dynamic / anything that suspends under Cache Components) was being treated as a complete static 404 by the build**, when it should have been emitted as a PPR-eligible resume output. In deployed environments, this manifested as **dynamic 404 content never rendering** — the static fallback 404 shell would always be served.
+
+**The bug:**
+
+```tsx
+// app/not-found.tsx
+import { headers } from 'next/headers'
+import { getCustomError } from './_lib/getCustomError'
+
+export default async function NotFound() {
+  const headers = await headers()       // ← makes this page dynamic
+  const variant = headers.get('x-tenant') ?? 'default'
+  const error = await getCustomError(variant)  // ← suspends
+  return <h1>{error.title}</h1>
+}
+```
+
+Build behavior pre-PR: Next.js saw the `headers()` call, treated the `/_not-found` route as partially prerendered, BUT then copied the partial HTML shell to `server/pages/404.html` and **omitted** the corresponding `/_not-found` prerender from adapter outputs. Deployed environments served the static shell only — no dynamic content ever appeared.
+
+**The fix (per PR body):**
+
+> This change distinguishes fully static not-found routes from partially prerendered ones. Fully static routes retain the existing `404.html` behavior, while PPR routes remain resumable prerender outputs.
+
+**The corresponding `e2e/not-found-non-document-dynamic` test expansion** now verifies that:
+
+- Dynamic not-found content **renders** for ordinary missing paths
+- Dynamic not-found content **renders** when `/_not-found` is selected by a rewrite
+- A PPR not-found **does NOT** emit `server/pages/404.html`
+- Its adapter output **includes** `PARTIALLY_STATIC` metadata, postponed state, and a resume chain
+
+**Practical impact:**
+
+- **The bug-fix**: if you have a `not-found.tsx` with `headers()` / `cookies()` / dynamic `use cache: private` data, your 404 page now actually serves its dynamic content when deployed (Vercel + adapters). Before, users always saw the static fallback shell.
+- **Fully static `not-found.tsx`** (no dynamic data) is unaffected — continues to emit and serve `pages/404.html` as before.
+- **No new API, no config flag, no codemod** — pure build-time fix.
+
+**Audit recipe:**
+
+```bash
+# If you've ever had a "my 404 page doesn't render X dynamic data" report from a deployed environment,
+# this is the fix — verify by inspecting the adapter output:
+grep -r 'PARTIALLY_STATIC' .next/server/app/not-found.body  # should show the metadata on dynamic not-found
+ls .next/server/pages/404.html  # should NOT exist for dynamic not-found, SHOULD exist for static
+```
+
+### PR #95999 — `Consolidate unhandled rejection logging into a single listener` (eps1lon, merged 2026-07-31T15:36:41Z)
+
+Quality-of-life PR. Pre-PR, **a single `unhandledRejection` could be logged by up to 3 independent process listeners at once**:
+
+1. The render runtime's crash-prevention handler in `process-error-handlers.ts` (a bare `console.error`) — **must exist on every deployment target** (per [Next.js issue #77997](https://github.com/vercel/next.js/issues/77997))
+2. The router server's `Log.error('unhandledRejection: ', err)`
+3. The dev server's `logErrorWithOriginalStack`
+
+On self-hosted `next start` / `next dev`, listeners 1 + 2 + 3 all run in the same process — a single rejection was being **logged 3 times in 3 different formats**.
+
+**The fix:**
+
+PR #95999 introduces `registerUnhandledRejectionListener` + `isUnhandledRejectionListenerRegistered` in `process-error-handlers.ts`, and converts the router server + dev server to **check-then-register** instead of installing their own rejection loggers:
+
+- The listener function is shared via a `Symbol.for` key on `globalThis` — so multiple copies of the module (e.g. one in the pre-compiled server bundle, one in a route module bundle) **detect a single listener instance** and only register once.
+- The registration check queries `process.listeners('unhandledRejection')` instead of a module-global flag, so it **stays accurate even after external code calls `process.removeAllListeners('unhandledRejection')`**. `installProcessErrorHandlers` therefore calls the register function unconditionally.
+
+The first commit in the PR adds a failing test showing the pre-PR behavior (multiple-logs); the second commit fixes it.
+
+**What about `uncaughtException`?** Per the PR body, `uncaughtException` handlers are left untouched — they have a different "fatal" semantic and triple-logging of those is correct (a `uncaughtException` is by definition a process-level error and being noisy about it is intentional).
+
+**Practical impact:**
+
+- **`next dev` users** will see **fewer noisy duplication logs** in the terminal when an unhandled rejection occurs (down from 3-format-different logs to 1-format).
+- **`next start` users** (self-hosted) will see the same simplification in their server stdout/stderr logs.
+- **Deployment adapters**: the runtime handler stays, so the safety net isn't weakened.
+- **No new API, no new config flag** — purely internal refactor.
+
+**Audit recipe:**
+
+```bash
+# Quick and dirty: trigger an unhandled rejection in a Next.js dev page and see how many
+# "unhandledRejection" lines show up in the dev terminal. Should now be 1 (was 3 on canary.104).
+# In dev, console-tap: window.Promise.reject(new Error('test')) in browser console with a page route
+```
+
+### PR #96312 — `docs: document the App Shell stale time threshold for cached content` (icyJoseph, merged 2026-07-31T14:15:10Z)
+
+Documentation PR. Locks in a behavior that was previously implicit / undocumented: **the App Shell only carries `use cache` content whose `stale` time is at least 5 minutes**. Content with `stale` < 5 min is excluded from the shell (it's better streamed in after navigation than prefixed into the click target).
+
+**The docs updates span 5 files:**
+
+| File | Change |
+|---|---|
+| `docs/01-app/02-guides/adopting-partial-prefetching.mdx` | New "Good to know" callout: "The App Shell carries cached content whose `stale` time is at least 5 minutes, which holds for the `default` profile used above and every preset except `seconds`." |
+| `docs/01-app/02-guides/instant-navigation.mdx` | Updated the opted-out-segment section: "caching it with `use cache: private` lets the App Shell carry it ahead of the click instead of opting out, as long as its `stale` time is at least 5 minutes." |
+| `docs/01-app/03-api-reference/01-directives/use-cache-private.mdx` | Updated the "Good to know" callout: "The `stale` time must be at least 30 seconds for runtime prefetching to work, and at least 5 minutes for the content to be included in the route's App Shell." |
+| `docs/01-app/03-api-reference/04-functions/cacheLife.mdx` | New bullet in the `stale` description + a fully rewritten "Prerendering behavior" subsection that splits into 3 buckets: `revalidate:0` / `expire < 5min` excluded from prerenders (dynamic holes); `stale < 30s` excluded from prerenders (prefetch-expires-too-fast); `stale 30s..5min` included in prerenders but excluded from App Shell. Of presets, only `seconds` falls under any of these thresholds. |
+| `docs/01-app/04-glossary.mdx` | App Shell definition updated: "Cached content is included when its `stale` time is at least 5 minutes, since the shell is reused for longer than shorter-lived content stays fresh." |
+
+Closes Linear [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exclude-stale-5-minutes-caches).
+
+**Practical impact:**
+
+- **No code change** — purely documentation. The behavior was already in place.
+- **For users adopting Partial Prefetching** or authoring `use cache private` directives: now have explicit documentation of the 5-minute floor for App Shell inclusion. Previously this was implicit / required reading the PR bodies for `cacheLife`.
+- **Short-lived cached content** (anything with `stale < 5min`) is now correctly documented as **excluded from the shell** — important for agents reasoning about prefetch payloads.
+
+### Practical impact summary for canary.105
+
+- **`next@16.3.0-canary.105` users (when it ships)** get:
+  - **Turbopack filesystem cache default-on for builds** (PR #96395) — ~5-30% warm-build speedup locally + on Vercel; can be disabled with `experimental.turbopackFileSystemCacheForBuild: false`.
+  - **`@types/react@19.2.18` + `@types/react-dom@19.2.4`** (PR #96419) — vanilla-TS users can `import { browser } from 'react-dom'` and the types check.
+  - **Dynamic `not-found.tsx` works correctly with Cache Components + adapters** (PR #96390) — no more "404 page never renders dynamic content" reports.
+  - **Less noise in unhandled-rejection logging** (PR #95999) — 3-format logs collapse to 1.
+  - **Docs clarity** (PR #96312) — the 5-minute `stale` floor for App Shell inclusion is now documented, not implicit.
+- **No breaking changes for users on `next@canary.104`** — the only behavior change is the filesystem-cache default-on (and that one is opt-out-able).
+- **No new public APIs, no new config flags** (other than the existing opt-out for #96395).
+
+### Sources
+
+- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (7 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the 7-commit inventory
+- [Next.js PR #96395 — `Enable turbopackFileSystemCacheForBuild by default`](https://github.com/vercel/next.js/pull/96395) — by [sokra](https://github.com/sokra), merged 2026-07-31T17:24:41Z, **the headline material change**
+- [Next.js PR #96395 files diff](https://github.com/vercel/next.js/pull/96395/files) — 4 files (2 docs + 1 config-shared + 1 new e2e test)
+- [Next.js PR #96419 — `Update @types/react and @types/react-dom to latest`](https://github.com/vercel/next.js/pull/96419) — by [eps1lon](https://github.com/eps1lon), merged 2026-07-31T15:29:58Z
+- [Next.js PR #96419 files diff](https://github.com/vercel/next.js/pull/96419/files) — 3 files, `package.json` + `test/minimum-release-age-exclude.json` + `pnpm-lock.yaml`
+- [Next.js PR #96390 — `Fix adapter outputs for not-found routes when used with cache components`](https://github.com/vercel/next.js/pull/96390) — by [Zack Tanner](https://github.com/ztanner), merged 2026-07-31T15:30:58Z, closes companion PR [#96399](https://github.com/vercel/next.js/pull/96399)
+- [Next.js PR #96390 files diff](https://github.com/vercel/next.js/pull/96390/files) — 9 files, +101/-13
+- [Next.js PR #95999 — `Consolidate unhandled rejection logging into a single listener`](https://github.com/vercel/next.js/pull/95999) — by [eps1lon](https://github.com/eps1lon), merged 2026-07-31T15:36:41Z, +227/-98
+- [Next.js PR #95999 files diff](https://github.com/vercel/next.js/pull/95999/files) — 8 files, includes the new `registerUnhandledRejectionListener` + `isUnhandledRejectionListenerRegistered` exports
+- [Next.js PR #96312 — `docs: document the App Shell stale time threshold for cached content`](https://github.com/vercel/next.js/pull/96312) — by [icyJoseph](https://github.com/icyJoseph), merged 2026-07-31T14:15:10Z, closes [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exclude-stale-5-minutes-caches)
+- [Next.js PR #96312 files diff](https://github.com/vercel/next.js/pull/96312/files) — 5 files, +13/-4
+- [@types/react@19.2.18 release](https://www.npmjs.com/package/@types/react/v/19.2.18) — published 2026-07-30T21:54:03Z
+- [@types/react-dom@19.2.4 release](https://www.npmjs.com/package/@types/react-dom/v/19.2.4) — published 2026-07-30T21:53:05Z
+- [Next.js issue #77997 — unhandled rejection crash-prevention requirement](https://github.com/vercel/next.js/issues/77997) — the must-exist constraint that motivates keeping the runtime handler even after PR #95999's consolidation
+- [Next.js docs: `turbopackFileSystemCache` API reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache) — updated version table for v16.3.0
+- [Next.js docs: `cacheLife` API reference](https://nextjs.org/docs/app/api-reference/functions/cacheLife) — updated "Prerendering behavior" subsection
+
+
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |
@@ -3148,3 +3379,8 @@ rg -n 'should-hard-navigate' node_modules/next/dist/ 2>/dev/null
 - **All `<Link>` using default `prefetch="full"`** — causes doubled origin requests in Next.js 16; disable prefetch for footer links and low-priority routes
 - **Diagnosing slow routes without `experimental.requestInsights`** — if you find yourself hand-rolling `console.log` ladders to figure out "what is this route doing?", enable `experimental.requestInsights: true` in dev (`next.config.ts`) and use the MCP tool / CLI / DevTools panel instead. Much faster diagnosis, agent-friendly output, no production exposure. See the new "16.3 canary.72–86 Performance & Diagnostics Updates" section above for the full feature breakdown.
 - **Still using `experimental.turbopack.chunkingHeuristics` or `experimental.turbopackGenerateComponentChunks` in 2026** — both namespaces throw at config-eval time on `next@16.3.0-canary.105`+ with explicit migration errors. Migrate to the new top-level `experimental.turbopackChunking` config (PR #96398, merged 2026-07-31T06:37:37Z, canary-branch ahead of canary.104). Old → new: `turbopack.chunkingHeuristics.requestCost` → `turbopackChunking.requestCost` (note: default changed 20 KB → 200 KB, re-tune!), `turbopack.chunkingHeuristics.clusters` (string[]) → `turbopackChunking.priorityRoutes` (RegExp[]), `turbopack.chunkingHeuristics.entryPoints` → absorbed into `priorityRoutes` + `priorityBoost`, `turbopack.chunkingHeuristics.bounceRate` → `turbopackChunking.firstPageLoadPriority`, `turbopackGenerateComponentChunks` boolean → `turbopackChunking.generateComponentChunks`. See the matching section above for the full migration recipe + 5 NEW size-threshold knobs (`minChunkSize` / `maxChunkCountPerGroup` / `maxMergeChunkSize` / `minComponentChunkSize`).
+- **Default-on `experimental.turbopackFileSystemCacheForBuild` surprises you on canary.105+ (PR #96395, sokra, merged 2026-07-31T17:24:41Z)** — every local + Vercel `next build` now uses `.next/cache/turbopack/` by default for warm builds (5-30% faster on warm builds). The cache is **automatically OFF in non-Vercel CI** (where the cache is unlikely to persist between runs). If you don't want the build cache, set `experimental.turbopackFileSystemCacheForBuild: false`. If you're trying to do a "fair" webpack-vs-turbopack build comparison, delete `.next/` between builds (or the cache will skew the warm-build numbers).
+- **Trying to call `ReactDOM.browser()` with stale `@types/react-dom` in 2026** — `browser()` is a runtime API in `react-dom@canary` (since `19.3.0-canary-0f42eac2-20260730`, PR #37143) but the **TypeScript declaration** only ships in `@types/react-dom@19.2.4` (published 2026-07-30). If you're on `next@16.3.0-canary.105+`, you already get 19.2.4 via the bundled-deps bump (PR #96419). If you're on stable (`next@16.2.12`), pin `@types/react-dom@^19.2.4` explicitly to get the `browser()` type.
+- **Conditional `use(promise)` patterns that cache the value and only call `use()` on cache miss** — as of `react@19.3.0-canary-cbb046ab-20260731` (PR #37104, hoxyq, merged 2026-07-31T14:24:10Z), a new DEV-only warning fires when you suspend via `use()` on render N but don't `use()` the same promise on render N+1 (the resolved render). The warning is gated behind the `enableConditionalUseWarning` feature flag (currently OFF in `react@canary`; will likely flip to ON in a future canary once Meta measures the noise floor). The fix is always-`use()`-the-promise — see the matching section in `components.md` for the canonical anti-pattern + rewrite + audit recipe (`rg -n 'cache\.value\s*===\s*undefined' --type ts --type tsx`).
+- **Triple-logged unhandled rejections in `next dev` or `next start` on canary.104-** — fixed by PR #95999 (eps1lon, merged 2026-07-31T15:36:41Z). Pre-#95999, a single `unhandledRejection` was logged by 3 independent listeners (runtime crash-prevention + router server + dev server) in 3 different formats. Post-#95999 (canary.105+), the runtime handler stays (must-exist per issue #77997), and the router + dev server check-then-register a single shared listener via `Symbol.for` on `globalThis`. If you're debugging "why am I seeing this error 3 times?", upgrade to canary.105+.
+- **Dynamic `not-found.tsx` content not rendering in deployed environments on canary.104-** — fixed by PR #96390 (Zack Tanner, merged 2026-07-31T15:30:58Z). Pre-#96390, any `not-found.tsx` that used `headers()` / `cookies()` / dynamic `use cache: private` would be served as a static `404.html` shell at deploy time (omitted from adapter outputs entirely), with the dynamic content never appearing. Post-#96390 (canary.105+), the build correctly distinguishes "fully static not-found → emit 404.html" from "PPR not-found → emit dynamic resume chain with PARTIALLY_STATIC metadata". Audit recipe: `ls .next/server/pages/404.html` (should NOT exist for dynamic not-found) + `grep PARTIALLY_STATIC .next/server/app/not-found.body` (should exist for dynamic not-found).

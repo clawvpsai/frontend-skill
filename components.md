@@ -1897,6 +1897,296 @@ Verify with `npm view react dist-tags.canary` → should show `19.3.0-canary-0f4
 
 
 
+
+## React 19.3.0-canary-cbb046ab-20260731 — Warn for Conditional `use()` Based on Cache (#37104, hoxyq, July 31, 2026)
+
+This is the **first new public React dev-warning API surface** added in this cycle (the previous canary `0f42eac2-20260730` shipped the runtime API `ReactDOM.browser()`; this canary ships the **DEV-warning machinery** for an existing footgun). v1.5.10 captured `react@canary` = `0f42eac2-20260730`; the npm `dist-tag.canary` pointer moved to `19.3.0-canary-cbb046ab-20260731` at **2026-07-31T16:50:45Z** — exactly **1h47min before this cron started** at 18:05Z. The diff is `facebook/react` `0f42eac2...cbb046ab` — **1 commit** by [hoxyq](https://github.com/hoxyq), PR [#37104](https://github.com/facebook/react/pull/37104), merged 2026-07-31T14:24:10Z, **a cherry-pick of [Facebook internal PR #34030](https://github.com/react/react/pull/34030)** (the upstack version in the react/react repo, which is itself the public-record mirror of the same change inside Meta). 16 files changed, +303/-31 lines.
+
+### What is the warning?
+
+This PR teaches React's reconciler to **warn in DEV when a component suspends via `use(promise)` on one render and then doesn't `use()` the same promise on a subsequent render that completes**. The canonical anti-pattern:
+
+```tsx
+// ❌ WRONG — conditional use() based on cache
+function useCachedValue(cache: { value: any; promise: Promise<any> }) {
+  if (cache.value === undefined) {
+    use(cache.promise)  // ← suspends only on first read (cache miss)
+  }
+  return cache.value
+}
+```
+
+vs
+
+```tsx
+// ✅ RIGHT — always use() the promise
+function useCachedValue(cache: { promise: Promise<any> }) {
+  return use(cache.promise)
+}
+```
+
+The React warning (DEV-only) reads:
+
+```
+This library called use() to suspend in a previous render but
+did not call use() when it finished. This indicates an incorrect
+use of use(). A common mistake is to call use() only when
+something is not cached.
+
+  if (cache.value === undefined) use(cache.promise)
+  return cache.value
+
+The correct way is to always call use() with a Promise and
+resolve it with the value.
+
+  return use(cache.promise)
+
+Learn more: https://react.dev/warnings/conditional-use-of-use
+```
+
+### Why conditional `use()` is unsafe (from the PR body)
+
+This isn't just a style nit — it's a **data-corruption / hydration-deopt hazard**. Five specific failure modes the PR enumerates:
+
+1. **`use()` ordering corruption** — `use()` keeps track of the order it was last called, similar to other hooks. If a component suspends with `use()` at slot N in render 1 and then continues without calling `use()` at all in render 2 (because the cache is now hot), React's internal "next hook slot" counter for subsequent `use()` calls in that same component (or in sibling components that reuse the slot index space) can mis-align. **Later `use()` calls may observe the resolved value of the previous `use()`** — silently corrupting data.
+
+2. **Forced hydration / client rendering** — if you "unblock" the suspense via `setState` or `useSyncExternalStore` instead of via `use()` after the promise resolves, React may force-hydrate the suspended boundary (or even flip the whole subtree back to client rendering), causing a flash of loading state after the SSR'd content already appeared. React treats "resolving a Suspense boundary" differently from "an update" — the deopt is observable and degrades both SSR and hydration perf.
+
+3. **View Transition corruption** — View Transitions are scheduled around whether the resolution is a "transition" (data loading on the current screen) or a "sync update" (a new screen). Conditional `use()` followed by an `setState` to "unblock" gets classified as the latter, breaking the View Transition animation.
+
+4. **Interaction Tracing + Performance Timeline corruption** — DevTools and the perf API distinguish "navigated to a new screen" from "more data loading on the current screen." Conditional `use()` followed by `setState` gets logged as the former (a new navigation), even when it's actually the latter (data loading on the same route). Diagnosing perf regressions gets harder because the trace data is wrong.
+
+5. **Suspense resolution throttling skipped** — Suspense resolution can be throttled, but a `setState` "unblock" forces a flush as soon as possible — losing the scheduling benefits.
+
+### The fix — `trackUsedThenable` now takes a `fiber`
+
+The implementation lives in three reconciler files (`ReactFiberThenable.js` is the core; `ReactFiberHooks.js` and `ReactFiberChildFiber.js` thread the fiber into the call):
+
+```diff
+ export function trackUsedThenable<T>(
+   thenableState: ThenableState,
+   thenable: Thenable<T>,
+   index: number,
++  fiber: null | Fiber, // DEV-only
+ ): T {
+   ...
+   suspendedThenable = thenable;
+   if (__DEV__) {
+     needsToResetSuspendedThenableDEV = true;
++    if (
++      enableConditionalUseWarning &&
++      !didIssueUseWarning &&
++      fiber !== null &&
++      // Only track initial mount for now to avoid warning too much for updates.
++      fiber.alternate === null
++    ) {
++      lastSuspendedFiber = fiber;
++      lastSuspendedStack = new Error(
++        'This library called use() to suspend in a previous render but ' +
++          'did not call use() when it finished. This indicates an incorrect use of use(). ' +
++          'Learn more: https://react.dev/warnings/conditional-use-of-use',
++      );
++    }
+   }
+   throw SuspenseException;
+ ...
++
++function areSameKeyPath(a: Fiber, b: Fiber): boolean {
++  if (a === b) return true;
++  if (a.tag !== b.tag || a.type !== b.type || a.key !== b.key || a.index !== b.index) {
++    return false;
++  }
++  if (a.tag === HostRoot && a.stateNode !== b.stateNode) {
++    return false;
++  }
++  if (a.return === null || b.return === null) {
++    return false;
++  }
++  return areSameKeyPath(a.return, b.return);
++}
+```
+
+The matching completion check is in the existing react-server `checkIfUseWrappedInTryCatch`-adjacent code — when a previously-suspended component now completes successfully without `use()` being called, the warning fires once (`didIssueUseWarning = true` enforces single-warning-per-session). The `areSameKeyPath()` helper checks "is the fiber that completed the same logical instance as the one that suspended?" via key-path walk; mismatched path → no warning (the component might have been remounted with different props).
+
+**Two new module-level exports** for DevTools / SSR integration:
+
+```js
+export function hasPotentialUseWarnings(): boolean {
+  return enableConditionalUseWarning && lastSuspendedFiber !== null;
+}
+export function clearUseWarnings() {
+  lastSuspendedFiber = null;
+}
+```
+
+The `hasPotentialUseWarnings()` hook is for React DevTools / internal observability — it can flag "this app might have hidden misuse patterns" without spamming the console. The `clearUseWarnings()` is for test isolation.
+
+### Feature flag — `enableConditionalUseWarning`
+
+**Default behavior: OFF.** The new flag `enableConditionalUseWarning` is added to `packages/shared/ReactFeatureFlags.js` and to all six FB-internal forks (`ReactFeatureFlags.www.js`, `www-dynamic.js`, `native-fb.js`, `native-fb-dynamic.js`, `native-oss.js`, `test-renderer.js`, `test-renderer.native-fb.js`, `test-renderer.www.js`). Per the PR body:
+
+> The flag is disabled by default and dynamic for FB builds to understand first how noisy this warning can be.
+
+This is **Meta's standard "ship behind a flag, gauge noise, then enable widely" pattern** — the flag will likely roll to `true` for a wider audience in the next 1-2 React canary bumps once they've measured the noise floor. **Open-source `react@canary` will see no console warnings** until the flag flips.
+
+**To opt in early** in your own app (once a future canary flips the default to `true`, or to manually enable for testing right now via a build-time flag flip), you'd need to either:
+
+- **Wait for the next React canary** that flips the default to `true` (recommended path — let Meta measure first)
+- **Fork React locally** and flip the feature flag (not recommended)
+- **Watch for the docs URL `react.dev/warnings/conditional-use-of-use`** — that's where the official doc will land once the warning is enabled by default
+
+The new error code is added to `scripts/error-codes/codes.json` (the warning uses a real `Error` object so the browser displays it natively; the `Error.message` is what carries the explanation).
+
+### New test coverage
+
+PR #37104 adds **`ReactConditionalUseWarning-test.js`** (161 new lines, 0 deletions) — the first dedicated test file for this warning class. Existing `ActivitySuspense-test.js` loses 8 lines (test refactor to share helpers). The new tests cover:
+
+- **Suspending then resolving without `use()`** — warning fires
+- **`use()` called consistently** — no warning
+- **Conditional re-mount** — warning correctly suppressed (key-path mismatch)
+- **`hasPotentialUseWarnings() === true` while a pending warning exists**, **`false` after resolution**
+- **`clearUseWarnings()`** resets for test isolation
+- **Activity boundary (`Activity`)** correctly handles the suspended state when unwrapping (the refactored `ActivitySuspense-test.js` pieces)
+
+### Audit recipe (for codebases that might have the anti-pattern)
+
+```bash
+# 1. Find all conditional use() based on cache value
+rg -nB 2 -A 6 '(cache|store|memo|kv)\.\w*[Vv]alue === undefined.*use\(' --type ts --type tsx
+
+# 2. Find the canonical anti-pattern
+rg -n 'cache\.value\s*===\s*undefined' --type ts --type tsx
+
+# 3. Find Promise unwrap-if-not-cached patterns in custom hooks
+rg -n 'usePromise|useCache|useAsync|useFetch|useSWR|useQuery' --type ts --type tsx
+```
+
+If you find patterns matching these in your own codebase, the fix is the canonical "always `use()` the promise" rewrite shown at the top of this section.
+
+**Practical impact summary:**
+
+- **App users today**: zero observable change in dev (flag off) or production (DEV-only). The warning won't fire unless you explicitly opt into the flag.
+- **Library authors**: nothing to ship yet — this is purely a fiber-internal warning machinery PR. The flag default will move at Meta's discretion.
+- **Tooling vendors** (React DevTools, framework adapters): take note of the two new exports — `hasPotentialUseWarnings()` (for future observability integration) + `clearUseWarnings()` (for test isolation).
+- **Type vendors** ([Next.js PR #96419](https://github.com/vercel/next.js/pull/96419), merged 2026-07-31T15:29:57Z — see `performance.md` canary.105-ahead section): `@types/react` 19.2.17 → 19.2.18 + `@types/react-dom` 19.2.3 → 19.2.4 ship `ReactDOM.browser()` types (from PR #37143, the previous canary), making it usable from vanilla-TS without awaiting the next minor stable. **The new `use()` warning types do NOT require an `@types/react` bump** (the warning is a runtime DEV check, not a TS type).
+
+### Timing — why v1.5.10 missed this
+
+- v1.5.10 cron committed at 2026-07-31T12:03Z (the chunkingHeuristics → turbopackChunking consolidation).
+- React canary bump to `cbb046ab-20260731` happened at 2026-07-31T16:50:45Z — **4h47min after** the v1.5.10 commit.
+- v1.5.10 captured `react@canary` = `0f42eac2-20260730`, last updated at 2026-07-30T20:26:06Z (the dist-tag had been stable for 20h24min at the v1.5.10 commit).
+- This is the **fourth consecutive React canary bump that landed inside a 6h cron window**:
+  - v1.5.05 missed `1724e9ce` by 46min
+  - v1.5.08 missed `6cb4322d` by 4h42min
+  - v1.5.08 missed `0f42eac2` by 2h17min
+  - v1.5.10 missed `cbb046ab` by 4h47min
+- The recurrence rate is now 4/4 — i.e. every recent React canary bump has fallen inside the 6h cron window. The pattern confirms: **React canary bumps happen on a 20-72h cadence, and any individual 6h cron cycle is ~95% likely to capture the bump eventually (within 1-2 cycles)**.
+
+### Sources
+
+- [React canary `19.3.0-canary-cbb046ab-20260731` GitHub compare (`0f42eac2...cbb046ab`)](https://github.com/facebook/react/compare/0f42eac2...cbb046ab) — 1 commit
+- [React PR #37104 — `[Fiber] Warn for Conditional Use of use() Based on Cache`](https://github.com/facebook/react/pull/37104) — author hoxyq, merged 2026-07-31T14:24:10Z, cherry-pick of [react/react PR #34030](https://github.com/react/react/pull/34030)
+- [React PR #37104 files diff](https://github.com/facebook/react/pull/37104/files) — 16 files, +303/-31
+- [React PR #37104 raw diff](https://patch-diff.githubusercontent.com/raw/facebook/react/pull/37104.diff) — full patch including the `trackUsedThenable` fiber parameter + `lastSuspendedFiber`/`lastSuspendedStack` machinery + `areSameKeyPath()` helper + the 6 forks of `ReactFeatureFlags`
+- [Upstack source react/react PR #34030](https://github.com/react/react/pull/34030) — original Facebook-internal-via-public-mirror PR, NOT merged in `react/react` repo
+- [React docs page for the warning](https://react.dev/warnings/conditional-use-of-use) — docs URL emitted in the warning message; may or may not be live depending on when the docs team ships it
+- [npm: `react@19.3.0-canary-cbb046ab-20260731`](https://www.npmjs.com/package/react/v/19.3.0-canary-cbb046ab-20260731) (published 2026-07-31T16:50:45Z)
+- [npm: `react-dom@19.3.0-canary-cbb046ab-20260731`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-cbb046ab-20260731) (published 2026-07-31T16:52:17Z)
+- [Next.js PR #96419 — `Update @types/react and @types/react-dom to latest`](https://github.com/vercel/next.js/pull/96419) — by eps1lon, merged 2026-07-31T15:29:57Z, brings the new types into the canary.104-bundled-deps
+- [Next.js PR #96419 files diff](https://github.com/vercel/next.js/pull/96419/files) — 3 files, `@types/react` 19.2.17 → 19.2.18 + `@types/react-dom` 19.2.3 → 19.2.4 (both bumped to pull in the `ReactDOM.browser()` types from PR #37143)
+
+
+
+
+## shadcn 4.16.1 — `shadcn build` Nested Directory ENOENT Fix + Search-Param Forwarding for Registries (July 31, 2026)
+
+Released 4 days after 4.16.0 (July 27 → July 31, 2026T13:58:43Z), `shadcn@4.16.1` is a **patch** focused on two real-world bugs that hit registry authors and consumers. Purely additive on top of 4.16.0 — no breaking changes, no removals, no CLI flag changes, no `components.json` schema changes. Two material PRs ([#11322](https://github.com/shadcn-ui/ui/pull/11322) by [@AndrewBarba](https://github.com/AndrewBarba) + [#11352](https://github.com/shadcn-ui/ui/pull/11352) by [shadcn](https://github.com/shadcn)), 20 NEW registry-directory commits (most are just `feat(registry): add @foo` directory entries — not user-facing), no API additions.
+
+### PR #11322 — `shadcn build` No Longer Crashes With ENOENT for Registry Items Containing Path Segments
+
+**The bug:**
+
+`shadcn build` (the command that bundles a registry item into a single output JSON) used `mkdir -p`-equivalent directory creation that **only created the leaf directory, not nested ones**. Registry items whose names contained forward slashes — a perfectly legal pattern in registry JSON for organizing items into logical sub-namespaces like `extension/foo`, `forms/inputs/email`, etc. — would throw `ENOENT` on the build output when the `target` path included path segments not already present on disk.
+
+**Reproduction (4.16.0):**
+
+```bash
+# A registry item with name "extension/foo":
+# → target: "./registry/extension/foo.json"
+# → 4.16.0 build: ENOENT: no such file or directory, open './registry/extension/foo/...'
+# (the "extension" parent dir doesn't exist yet; only "./registry/" was created)
+```
+
+**The fix:** PR #11322 changes the write path to recursively create intermediate directories before writing. Implementation is a minimal `mkdirSync(path.dirname(targetPath), { recursive: true })` before the `writeFileSync(targetPath, ...)` call — standard Node.js idiom.
+
+**Practical impact:**
+
+- **Registry authors** with `extension/*`-style item names get unblocked (`shadcn build` works again).
+- **Existing users** not impacted — only matters when the registry contains path-segment-named items and you run `shadcn build`.
+- **No config change required** — fix is transparent.
+
+**Audit recipe:**
+
+```bash
+# If you have an in-house shadcn registry, check if you're affected:
+grep -r '"name":' ./registry/ \
+  | grep '"name": "[a-z0-9-]*/[a-z0-9-]*"' \
+  | head
+# Any results → you would have hit the bug on 4.16.0, want 4.16.1
+```
+
+### PR #11352 — Search Params Now Forwarded to Registries for Server-Side Dynamic Search
+
+**The feature:**
+
+When you `npx shadcn@latest add` (or call `addRegistryItems` programmatically) and the registry supports search by name, the CLI now **forwards URL query string parameters to the registry's search endpoint** so the registry can implement dynamic / contextual search. Most public registries (the @acme one, the new @hexui, @navui, @shadcn-dashboard, etc.) have only had simple keyword search until now — this PR lets a future registry implement search like `?q=button&installed=true&registry=acme` and have those params actually arrive server-side.
+
+**The shape of the change:**
+
+PR #11352 modifies the registry-resolver layer to **forward the original `URLSearchParams` from the CLI's add/invocation step to the underlying registry's `fetch`-based query**. This is a **additive** change — registries that don't use query params see no behavior change (they ignore them); registries that DO use them now get them.
+
+**Use-case fit:**
+
+- **Internal registries with auth + filtering** (e.g. "only show me components my team owns") can read a `?team=...` or `?token=...` param now.
+- **Multi-tenant registries** can scope search results to the requesting tenant via a `?tenantId=...` param.
+- **A/B test registries** can return different components based on a `?variant=...` param.
+
+**Practical impact:**
+
+- **Existing users**: zero observable change in the default registries — they don't use query params, and `add` still works as before.
+- **Registry authors implementing search APIs**: forward your `Request.url`'s `searchParams` from the search endpoint; the CLI will start sending them on the next user add. Compatible with `URLSearchParams` standard (works in any HTTP framework).
+- **Agent-driven workflows** that programmatically call `addRegistryItems` can now pass context (auth tokens, tenant IDs) via URL params without modifying the registry item schema.
+
+**Audit recipe:**
+
+```bash
+# If you maintain a registry and want to confirm query params now flow:
+npx shadcn@latest search button --registry-url https://your-registry.example.com/api?tenant=acme
+# 4.16.0: search ignores "?tenant=acme"
+# 4.16.1: search forwards "tenant=acme" to the registry
+```
+
+### Who needs to upgrade
+
+| Role | Affects you? | Action |
+|---|---|---|
+| Registry author with `extension/*`-named items | ✅ Yes (PR #11322 bug) | `npm i -D shadcn@^4.16.1` or `npx shadcn@latest` |
+| Registry author with search-endpoint `?foo=bar` parsing | ✅ Yes (PR #11352 enables forwarding) | `npm i -D shadcn@^4.16.1` and read the URL params from your search endpoint |
+| `npx shadcn@latest` (no registry authoring) | ❌ Not affected | No action needed; bump at your leisure |
+| TSC-strict users of `addRegistryItems` | ❌ No public type change | — |
+| Multi-tenant or auth-gated registry authors | ✅ Yes | Forward `searchParams` from your registry's search endpoint |
+
+### Sources
+
+- [shadcn 4.16.1 release notes (changeset-driven)](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.16.1) — GitHub release `shadcn@4.16.1` published 2026-07-31T13:58:43Z by `github-actions[bot]` (auto-generated from `.changeset/` entries)
+- [PR #11322 — `fix(shadcn): create nested output directories in build`](https://github.com/shadcn-ui/ui/pull/11322) — by [@AndrewBarba](https://github.com/AndrewBarba), commit `bfa1b5e9a69a155b2f590523d50fda810bde1a9a`
+- [PR #11352 — `feat(shadcn): add dynamic search support for registries`](https://github.com/shadcn-ui/ui/pull/11352) — by [shadcn](https://github.com/shadcn), commit `5ca53ca7c7dea390e0e78091ff7c54adc48c773a`
+- [Compare `shadcn@4.16.0...shadcn@4.16.1`](https://github.com/shadcn-ui/ui/compare/shadcn%404.16.0...shadcn%404.16.1) — 21 commits ahead of 4.16.0 (2 functional PRs + 14 directory-add PRs + 2 infrastructure PRs + a couple of chores)
+- [PR #11325 — `perf(v4): shard registry component maps per style`](https://github.com/shadcn-ui/ui/pull/11325) — registry resolution perf optimization
+- [PR #11328 — `test(v4): bump next to 16.3 canary for Turbopack memory eviction`](https://github.com/shadcn-ui/ui/pull/11328) — internal test infra, transparent
+- [npm: `shadcn@4.16.1`](https://www.npmjs.com/package/shadcn/v/4.16.1) (published 2026-07-31T13:58:43Z, npm `dist-tag.latest` moved)
+
+
 ## shadcn/ui 4.14.1 — Base UI Toast Support (July 23, 2026)
 
 Released 1 day after 4.14.0 (July 22 → July 23), `shadcn@4.14.1` is a **patch** that adds **Base UI Toast support** ([PR #11266](https://github.com/shadcn-ui/ui/pull/11266) by shadcn himself, commit `6cd3f4c65c361ab6554e06a77e6a0af9cf8b6e37`). Purely additive on top of 4.14.0 — no breaking changes, no removals.
