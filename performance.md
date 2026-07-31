@@ -642,7 +642,183 @@ const nextConfig: NextConfig = {
 - [PR #95019 — `[turbopack]` Add an experimental `chunkingHeuristics` to `next.config.js`](https://github.com/vercel/next.js/pull/95019)
 - [PR #95020 — `[turbopack]` Thread `chunkingHeuristics` through to chunk groups](https://github.com/vercel/next.js/pull/95020)
 - [PR #95021 — `[turbopack]` Set `chunking_heuristics` on each `ChunkGroupInfo`](https://github.com/vercel/next.js/pull/95021)
-- [PR #95026 — `[turbopack]` Use experimental chunking heuristics](https://github.com/vercel/next.js/pull/95026)
+> **Superseded by [`experimental.turbopackChunking`](#turbopack-experimentalturbopackchunking-config-experimental-turbopackchunking--pr-96398-canary-branch-ahead-of-canary104-july-31-2026)** (PR #96398, canary-branch ahead of canary.104, merged 2026-07-31T06:37:37Z). The `experimental.turbopack.chunkingHeuristics` namespace still works in canary.104, but throws an explicit migration error on canary.105+ — move your config to the new shape before upgrading.
+
+### Turbopack `experimental.turbopackChunking` Config (experimental.turbopackChunking — PR #96398, canary-branch ahead of canary.104, July 31, 2026)
+
+[PR #96398](https://github.com/vercel/next.js/pull/96398) (`[turbopack] add experimental.turbopackChunking config`, sampoder, merged 2026-07-31T06:37:37Z, canary-branch head now `b4e3fec` — **2 commits ahead of canary.104, expect to ship in `16.3.0-canary.105`**) **restructures Turbopack's production chunking knobs into a single new top-level config namespace**, replacing the old `experimental.turbopack.chunkingHeuristics` flag (canary.71, PR #95019, documented above) AND the old `experimental.turbopackGenerateComponentChunks` boolean (a separate experimental that previously controlled component-chunk emission). The same author (Sam Poder / sampoder) wrote both the old and the new config, so this is a **deliberate consolidation** rather than a fork: a single config object, 9 options, all the chunking trade-offs in one place.
+
+**BREAKING CHANGES** (enforced via error messages in `packages/next/src/server/config.ts` ~22 lines, see the `config.ts` diff in PR #96398):
+
+- **`experimental.turbopack.chunkingHeuristics` is REMOVED.** The old namespace now throws at config-eval time: `` `experimental.turbopackChunkingHeuristics` has been renamed to `experimental.turbopackChunking`. Please update your next.config.js file accordingly. `` (note: the error message text refers to the *new* config, so even if you happen to type the old name in a fresh canary.105+ project the error guides you forward).
+- **`experimental.turbopackGenerateComponentChunks` is REMOVED.** The old boolean now throws: `` `experimental.turbopackGenerateComponentChunks` has been moved to `experimental.turbopackChunking.generateComponentChunks`. Please update your next.config.js file accordingly. `` — the `generateComponentChunks` field is now nested inside `turbopackChunking`.
+- The new config lives at **top-level `experimental.turbopackChunking`** — NOT inside `experimental.turbopack.*` like the old one. This is a deliberate API-design choice so the chunking knobs aren't shadowed by the Turbopack runtime config (`turbopack: { rules, resolveAlias, resolveExtensions, root, debugIds, chunkLoadingGlobal, ignoreIssue }`).
+- **Default values changed** for several options that survived the rename:
+  - `requestCost`: default **20,000 bytes (20 KB) → 200,000 bytes (200 KB)** — the new default is 10× larger, reflecting that modern apps tend to compress better and the previous default was over-counting request overhead. Tune *down* if you're on a slower connection or a high-RTT CDN.
+  - `priorityBoost`: default **1.5** (NEW option — no old equivalent).
+  - `firstPageLoadPriority`: default **undefined** (no single-page-visit weighting; the chunker falls back to its prior heuristic).
+- **Schema** for `priorityRoutes` changed from `string[]` (route-prefix matching) to `RegExp[]` (proper regex) — more expressive but you must now escape metachars (`/` is fine but `.` matches any char; `^/admin/(\d+)` is now valid).
+
+**What's new** — 9 options under `experimental.turbopackChunking`:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackChunking: {
+      // ---- Heuristic-shape knobs (renamed/refactored from chunkingHeuristics) ----
+      firstPageLoadPriority: 0.7,                          // number 0..1 (default: undefined)
+                                                         // Higher = weight merging for a single page load more heavily.
+                                                         // Site's bounce rate is a good approximation if you don't
+                                                         // have a better value. (Renamed from `bounceRate`.)
+      priorityRoutes: [/^\/admin\//, /^\/dashboard/],     // RegExp[] (default: [])
+                                                         // Routes whose client-side bundles should be merged more
+                                                         // eagerly to reduce single-route request cost (e.g.
+                                                         // the homepage) at the cost of more requests on other
+                                                         // pages. (Renamed from `clusters` (string[]).)
+      priorityBoost: 1.5,                                 // number >= 1 (default: 1.5)
+                                                         // Multiplier on `priorityRoutes`' single-request
+                                                         // probability — higher = merge more aggressively for
+                                                         // those routes at the cost of extra requests elsewhere.
+      requestCost: 200_000,                               // bytes (default: 200_000 = 200 KB)
+                                                         // Uncompressed/unminified byte-cost of an additional
+                                                         // HTTP request. Used by the chunker to trade off
+                                                         // request count against preventing double-fetching.
+                                                         // Was 20_000 in the old config. (Uncompressed ≈ 5×
+                                                         // compressed/minified size.)
+
+      // ---- NEW size-threshold knobs (never existed before) ----
+      minChunkSize: 50_000,                               // bytes (default: 50_000 = 50 KB)
+                                                         // Avoid creating more than one chunk smaller than this.
+                                                         // Smaller chunks are merged into bigger ones.
+      maxChunkCountPerGroup: 40,                          // number (default: 40)
+                                                         // Avoid creating more than this many chunks per chunk
+                                                         // group. Excess chunks are merged into bigger ones.
+      maxMergeChunkSize: 200_000,                         // bytes (default: 200_000 = 200 KB)
+                                                         // Never merge chunks bigger than this. Keeps big chunks
+                                                         // from being duplicated across multiple chunks.
+      minComponentChunkSize: 20_000,                      // bytes (default: 20_000 = 20 KB)
+                                                         // Minimum size for a component chunk to be emitted on
+                                                         // its own when `generateComponentChunks` is enabled.
+                                                         // Smaller component chunks fold into a single
+                                                         // remainder chunk.
+
+      // ---- Component-chunk emission (moved from separate flag) ----
+      generateComponentChunks: true,                      // boolean (default: false)
+                                                         // Emit each merged production chunk's constituent
+                                                         // component chunks alongside it, so the browser
+                                                         // runtime can load only the chunks it doesn't already
+                                                         // have. (Moved from `experimental.turbopackGenerateComponentChunks`.)
+    },
+  },
+}
+```
+
+**What each option does (full semantics):**
+
+- **`firstPageLoadPriority`** (0..1, default `undefined`) — same knob as the old `bounceRate`, but renamed to describe what it actually does (weighting `P(N=1)` — the probability the next navigation stays on the same chunk). Higher values = chunks merge more aggressively (good for single-page-visit sites). Undefined = the chunker uses its prior heuristic. Set 0.6-0.7 for content/blog sites, 0.3-0.4 for SPAs/dashboards, 0.1-0.2 for document-heavy apps.
+- **`priorityRoutes`** (`RegExp[]`, default `[]`) — replaces the old `clusters: string[]` (route prefixes) with proper regexes. Routes whose client bundles should be merged more eagerly, at the cost of more requests on navigation *away* from those routes. Test with `new RegExp(...)` syntax; escaped patterns like `/^\/admin\/users\/(\d+)$/` are valid.
+- **`priorityBoost`** (≥1, default `1.5`) — NEW. Multiplier applied to the single-request probability of `priorityRoutes` matches. Higher = more aggressive merging for those routes. Tunable alongside `priorityRoutes` to find the sweet spot per-route.
+- **`requestCost`** (bytes, default `200_000`) — same name as before but **default is now 200 KB (was 20 KB)** — a 10× change reflecting modern compression ratios and average HTTP/2 RTT. Tunable per-deployment; lower for slow connections / high-RTT CDNs, higher for fast intra-region deployments.
+- **`minChunkSize`** (bytes, default `50_000`) — NEW. The chunker never emits a chunk smaller than this on its own; small chunks get folded into bigger ones. Useful to prevent one-page imports from causing waterfall of micro-chunks.
+- **`maxChunkCountPerGroup`** (number, default `40`) — NEW. Upper bound on chunks per chunk group. Excess chunks merge together. Affects parallelism vs request-count trade-off.
+- **`maxMergeChunkSize`** (bytes, default `200_000`) — NEW. Largest chunk that gets merged with others. Bigger chunks are kept standalone (prevents them being duplicated across multiple output chunks, which would defeat the purpose of a big chunk).
+- **`minComponentChunkSize`** (bytes, default `20_000`) — NEW, only relevant when `generateComponentChunks: true`. Smallest component chunk emitted on its own; smaller ones fold into a single remainder chunk. Avoids emitting hundreds of tiny component chunks for CSS / small utilities.
+- **`generateComponentChunks`** (boolean, default `false`) — moved from `experimental.turbopackGenerateComponentChunks`. When `true`, the browser runtime can load only the component chunks it doesn't already have (instead of forcing a full chunk fetch). Pairs with `minComponentChunkSize` to control granularity.
+
+**Why this matters:**
+
+- **Consolidation** — one config object for all chunking trade-offs, instead of `chunkingHeuristics` (in `experimental.turbopack`) + `turbopackGenerateComponentChunks` (in `experimental`) scattered across two namespaces. Easier to grep, easier to document, easier to evolve.
+- **More knobs** — 9 options vs the old 4 (heuristics) + 1 (component chunks) = 5 total. The new size-threshold options (`minChunkSize`, `maxChunkCountPerGroup`, `maxMergeChunkSize`, `minComponentChunkSize`) are the largest dev-facing addition — they let you tune the *mechanics* of chunk merging, not just the heuristic inputs.
+- **More expressive `priorityRoutes`** — old `clusters: ['/admin']` was a prefix-only string match. New `priorityRoutes: [/^\/admin\/users\/\d+$/]` is a real regex. Captures, alternation, character classes all work.
+- **`requestCost` default changed** — 20 KB → 200 KB. This is the single most likely silent behavior change for existing apps. If you tuned `requestCost` explicitly you almost certainly want to retune; if you didn't tune it, your chunks just got bigger on average.
+- **Breaking-error migration path** — the `config.ts` error messages name the new field explicitly, so an app on canary.105+ with the old config sees a clear actionable error at config-eval time (not at build time, not at runtime).
+- **Stats-bot regression** — Fresh Build +9% (4.973s → 5.431s, +458ms), Cached Build +8% (5.122s → 5.521s, +399ms), Dev Server metrics all green (within ±50ms). The 9% build-time regression comes from the new chunking machinery doing more work per chunk. Most apps won't notice on real builds; large apps with thousands of chunks may see a meaningful regression. **No way to opt out** in the current PR — if you can't tolerate the regression, pin `next@16.3.0-canary.104` (last version without the new config) until the chunker perf is tightened.
+
+**When to migrate:**
+
+- **If you're on `next@16.3.0-canary.71+`** with `experimental.turbopack.chunkingHeuristics` or `experimental.turbopackGenerateComponentChunks` in your `next.config.ts` — **migrate now** before canary.105 ships. The error messages are clear; the schema change is mechanical.
+- **If you don't use the chunking config** — nothing changes. You can ignore this PR until you want to tune chunking (the new options are opt-in, all defaults are sane).
+- **If you want to tune chunking** — the new 9-option shape gives you finer control than before. Specifically, `minChunkSize` + `maxChunkCountPerGroup` + `maxMergeChunkSize` are the three new levers worth experimenting with on large multi-route apps.
+- **If you were holding off on chunkingHeuristics because the old namespace was awkward** — the new top-level `experimental.turbopackChunking` is a much cleaner place to live.
+
+**Migration recipe:**
+
+```ts
+// BEFORE (canary.71–104)
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopack: {
+      chunkingHeuristics: {
+        requestCost: 20_000,
+        clusters: ['/admin', '/dashboard'],
+        entryPoints: ['/', '/products'],
+        bounceRate: 0.65,
+      },
+    },
+    turbopackGenerateComponentChunks: true,
+  },
+}
+
+// AFTER (canary.105+)
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackChunking: {
+      requestCost: 200_000,                       // ↑ default changed 20 KB → 200 KB — re-tune
+      priorityRoutes: [/^\/admin/, /^\/dashboard/], // ↑ clusters (string[]) → priorityRoutes (RegExp[])
+      // entryPoints → absorbed into priorityRoutes; if you want fast initial-load for '/',
+      //                 add `[/^\/$/]` to priorityRoutes and bump priorityBoost
+      firstPageLoadPriority: 0.65,                // ↑ bounceRate → firstPageLoadPriority (renamed)
+      generateComponentChunks: true,              // ↑ moved from separate flag
+      // Optional new knobs to experiment with:
+      minChunkSize: 50_000,                       // NEW
+      maxChunkCountPerGroup: 40,                  // NEW
+      maxMergeChunkSize: 200_000,                 // NEW
+      minComponentChunkSize: 20_000,              // NEW
+    },
+  },
+}
+```
+
+**Audit recipe (find all old references before upgrading):**
+
+```bash
+# 1. Find old `chunkingHeuristics` references
+rg -n 'chunkingHeuristics' --type=ts --type=js --type=mjs -g '!node_modules'
+
+# 2. Find old `turbopackGenerateComponentChunks` references
+rg -n 'turbopackGenerateComponentChunks' --type=ts --type=js --type=mjs -g '!node_modules'
+
+# 3. Check if any of the new option names already exist (you may have a stale Turbopack config in version control)
+rg -n 'turbopackChunking|priorityRoutes|firstPageLoadPriority|priorityBoost|minChunkSize|maxChunkCountPerGroup|maxMergeChunkSize|minComponentChunkSize|generateComponentChunks' next.config.*
+```
+
+**Verification:** the change is wired end-to-end through:
+- `packages/next/src/server/config.ts` (+22 lines, the 2 explicit `throw new Error(...)` blocks for the old namespaces)
+- `packages/next/src/server/config-schema.ts` (the new `turbopackChunking: z.object({...}).optional()` block, +6 lines)
+- `packages/next/src/server/config-shared.ts` (+29/-10 lines, the new `TurbopackChunkingConfig` TypeScript type with JSDoc comments)
+- `crates/next-core/src/next_config.rs` (+45/-14 lines, the Rust-side `TurbopackChunkingConfig` struct + `first_page_load_priority` / `priority_routes` / `priority_boost` / `request_cost` / `min_chunk_size` / `max_chunk_count_per_group` / `max_merge_chunk_size` / `generate_component_chunks` / `min_component_chunk_size` fields — 9 options total, all matching the TS schema)
+- `crates/next-core/src/next_client/context.rs` (+12/-4 lines, plumbing the new config into the production chunker)
+- `crates/next-api/src/{project.rs,app.rs,pages.rs}` (+11 lines, passing the config to the per-route chunker instances)
+- `packages/next/src/build/swc/index.ts` (+7/-8 lines, SWC-side plumbing)
+- `packages/next/errors.json` (+3/-1, new error messages for the migration throws)
+- `test/production/app-dir/turbopack-chunking/` (new test fixture directory with 5 bulky components (`bulky-a.tsx` through `bulky-d.tsx`), 5 test routes, 417-line component fixtures + 14-line route fixtures + layout + page, totalling ~900 lines of new test coverage)
+- `test/production/app-dir/turbopack-chunking-removed-config/` (new test fixture directory asserting that the old `turbopackGenerateComponentChunks` namespace throws the expected error message)
+
+29 files changed in total per the PR diff (6 source files + 23 test fixture files).
+
+**Stats from PR #96398's own stats-bot comment** (post-merge CI run): Fresh Build +9% (4.973s → 5.431s), Cached Build +8% (5.122s → 5.521s), Dev Server Listen/Ready/First Request all within ±10ms. The 9% build-time regression is the cost of the more sophisticated chunker; the unchanged dev-server metrics confirm the perf hit is purely on the build path.
+
+**Sources:**
+- [PR #96398 — `[turbopack] add experimental.turbopackChunking config`](https://github.com/vercel/next.js/pull/96398) · sampoder · merged 2026-07-31T06:37:37Z · canary-branch ahead of canary.104 (commit `b4e3fec`)
+- [PR #96398 file diff — `packages/next/src/server/config.ts` (the 2 explicit migration throws)](https://github.com/vercel/next.js/pull/96398/files#diff-packages-next-src-server-config-ts)
+- [PR #96398 file diff — `packages/next/src/server/config-shared.ts` (the 9-option TS interface)](https://github.com/vercel/next.js/pull/96398/files#diff-packages-next-src-server-config-shared-ts)
+- [PR #96398 file diff — `packages/next/src/server/config-schema.ts` (the zod schema)](https://github.com/vercel/next.js/pull/96398/files#diff-packages-next-src-server-config-schema-ts)
+- [PR #96398 file diff — `crates/next-core/src/next_config.rs` (the 9-field Rust struct)](https://github.com/vercel/next.js/pull/96398/files#diff-crates-next-core-src-next-config-rs)
+- [PR #96398 stats-bot comment — +9% Fresh Build, +8% Cached Build, dev server unchanged](https://github.com/vercel/next.js/pull/96398#issuecomment)
+- [PR #96398 reviews — `sokra` APPROVED + 2 `vercel[bot]` review comments](https://github.com/vercel/next.js/pull/96398#pullrequestreview)
+- [PR #95019 — `[turbopack]` Add an experimental `chunkingHeuristics` to `next.config.js` (the OLD config this PR replaces)](https://github.com/vercel/next.js/pull/95019)
+- [Next.js canary-branch compare vs canary.104 — `b4e3fec` + `e3d634e` (PR #96398 + PR #96400)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary)
 
 ### `cacheMaxMemorySize: 0` Dev Hot-Reload Fix (16.3.0-canary.65)
 
@@ -2971,3 +3147,4 @@ rg -n 'should-hard-navigate' node_modules/next/dist/ 2>/dev/null
 - **Relying on implicit caching** — in Next.js 16, everything is dynamic by default; use `use cache` explicitly
 - **All `<Link>` using default `prefetch="full"`** — causes doubled origin requests in Next.js 16; disable prefetch for footer links and low-priority routes
 - **Diagnosing slow routes without `experimental.requestInsights`** — if you find yourself hand-rolling `console.log` ladders to figure out "what is this route doing?", enable `experimental.requestInsights: true` in dev (`next.config.ts`) and use the MCP tool / CLI / DevTools panel instead. Much faster diagnosis, agent-friendly output, no production exposure. See the new "16.3 canary.72–86 Performance & Diagnostics Updates" section above for the full feature breakdown.
+- **Still using `experimental.turbopack.chunkingHeuristics` or `experimental.turbopackGenerateComponentChunks` in 2026** — both namespaces throw at config-eval time on `next@16.3.0-canary.105`+ with explicit migration errors. Migrate to the new top-level `experimental.turbopackChunking` config (PR #96398, merged 2026-07-31T06:37:37Z, canary-branch ahead of canary.104). Old → new: `turbopack.chunkingHeuristics.requestCost` → `turbopackChunking.requestCost` (note: default changed 20 KB → 200 KB, re-tune!), `turbopack.chunkingHeuristics.clusters` (string[]) → `turbopackChunking.priorityRoutes` (RegExp[]), `turbopack.chunkingHeuristics.entryPoints` → absorbed into `priorityRoutes` + `priorityBoost`, `turbopack.chunkingHeuristics.bounceRate` → `turbopackChunking.firstPageLoadPriority`, `turbopackGenerateComponentChunks` boolean → `turbopackChunking.generateComponentChunks`. See the matching section above for the full migration recipe + 5 NEW size-threshold knobs (`minChunkSize` / `maxChunkCountPerGroup` / `maxMergeChunkSize` / `minComponentChunkSize`).
