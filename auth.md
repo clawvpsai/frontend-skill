@@ -6,10 +6,10 @@
 
 | Library | Latest stable | Cadence | License | When to Use |
 |---|---|---|---|---|
-| **NextAuth.js v5 (Auth.js)** | `5.0.0-beta.31` (April 14, 2026) | ⚠️ **Stagnant** — no new beta since April 14, 2026 (~3 months stale; previous beta.30 was October 27, 2025 — 6-month gap) | MIT | Free, framework-agnostic, integrates with Next.js 16 `proxy.ts`. Use when you don't want a hosted dependency and Auth.js v5 has the providers you need. |
-| **NextAuth.js v4** | `4.24.14` (April 14, 2026) | Maintenance only — same date as v5 beta | MIT | Existing v4 projects only. Do not start new projects on v4. |
-| **Better Auth** | `1.6.25` (July 23, 2026); `1.7.0-rc.1` (July 2, 2026); `1.7.0-beta.10` (July 22, 2026) | ✅ **Active** — 1.6.24→1.6.25 in 1 day, 1.7.0-rc.1 21 days ago | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
-| **Clerk** | `7.5.12` (`@clerk/nextjs` `latest`, July 3, 2026); also ships `@clerk/nextjs@latest-nextjs-v5` `5.7.6` | ✅ Active — daily canaries + weekly stables | Proprietary (free tier to 10K MAU; ~$0.02/MAU + $25/mo after) | Use when DX velocity matters more than cost/control. Pre-built UI components, organizations + MFA + passkeys out of the box. |
+| **NextAuth.js v5 (Auth.js)** | `5.0.0-beta.32` (July 20, 2026) — ships with `@auth/core@0.41.3` security fixes | ⚠️ **Resumed** — beta.32 ends the 3-month gap (Apr 14 → Jul 20); pre-release cadence is still slower than Better Auth | MIT | Free, framework-agnostic, integrates with Next.js 16 `proxy.ts`. Use when you don't want a hosted dependency and Auth.js v5 has the providers you need. **Upgrade immediately — beta.32 fixes the auth-check failing-open bug (see [Critical Security Update](#nextauthjs-v5--v4--critical-security-update-july-20-2026) below).** |
+| **NextAuth.js v4** | `4.24.15` (July 20, 2026) — same-day security backport from v5 | Maintenance only — backports the v5 `@auth/core@0.41.3` security fixes | MIT | Existing v4 projects only. **Upgrade immediately** — same security advisories apply. Do not start new projects on v4. |
+| **Better Auth** | `1.6.25` (July 23, 2026); `1.7.0-rc.2` (July 22, 2026); `1.7.0-beta.10` (June 26, 2026) | ✅ **Active** — 1.6.24→1.6.25 in 1 day, 1.7.0-rc.2 on Jul 22 | MIT | Recommended default for new Next.js apps in 2026. TypeScript-first, batteries-included (email/password, magic links, passkeys, 2FA, organizations, admin plugin), no hosted dependency, owns its DB schema. |
+| **Clerk** | `7.6.4` (`@clerk/nextjs` `latest`, July 31, 2026); also ships `@clerk/nextjs@latest-nextjs-v5` `5.7.6` (Apr 15, 2026 — maintenance) | ✅ Active — daily canaries + weekly stables (16 stable releases since 7.5.12 on Jul 3) | Proprietary (free tier to 10K MAU; ~$0.02/MAU + $25/mo after) | Use when DX velocity matters more than cost/control. Pre-built UI components, organizations + MFA + passkeys out of the box. See [Clerk 7.6 coverage](#clerk--coverage--75613-764-patch-train-july-2026) for the new `fapiUrl` proxy helper option + the CSP-header `client.protect.clerk.com` cleanup. |
 | **Supabase Auth** | bundled with Supabase | Active (platform cadence) | MIT (library) + SaaS pricing | Use when you're already on Supabase (native RLS integration via `auth.uid()`). |
 | **Auth0 / WorkOS** | n/a | SaaS cadence | Proprietary | Enterprise SSO (SAML/SCIM). Better Auth doesn't have native SSO yet — see Better Auth section. |
 | **Lucia / Oslo + custom** | n/a | Library cadence | MIT | Low-level primitives when no library's opinions fit. Rare in 2026. |
@@ -17,7 +17,7 @@
 **Current state (July 2026):** The auth landscape has materially shifted in the last 6 months:
 
 1. **Better Auth has overtaken Auth.js in monthly npm downloads** for the first time (per [npm trends](https://npmtrends.com/better-auth-vs-next-auth), June 2026). 1.6.23 shipped June 29, 1.7.0-rc.1 shipped July 2, 1.6.24 shipped July 22, 1.6.25 shipped July 23 — active development.
-2. **NextAuth v5 beta has stagnated**: beta.31 (April 14, 2026) is the latest, ~3 months old. The previous release (beta.30) was October 27, 2025 — a 6-month gap. The API is stable but the release cadence is a yellow flag if you need new providers/features. Plan for a possible Auth.js v6 announcement — check the [Auth.js discussions](https://github.com/nextauthjs/next-auth/discussions) before committing to a major build on top of it.
+2. **NextAuth.js v5 + v4 critical security update (July 20, 2026)** — both tracks shipped security releases on the same day: `next-auth@5.0.0-beta.32` (npm `dist-tag.beta`) + `next-auth@4.24.15` (npm `dist-tag.latest`) + `@auth/core@0.41.3` (the underlying core library). The headline v5-only fix: **auth checks no longer fail open on provider configuration errors** — a non-OK session response now returns `null` so `if (!!session)` style checks fail closed; previously a misconfigured provider returned an `Error`-shaped session object that truthy-checks passed. Pairs with malformed-Bearer `getToken()` fix (no more uncaught exceptions → request now returns 401 cleanly), provider-bound OAuth `state`/`nonce`/PKCE check cookies (closes a cross-provider confusion vector), and NFKC email normalization closing a homoglyph `@` bypass. **This breaks the "NextAuth v5 beta has stagnated" assessment above** — beta.32 ends the 3-month gap. The skill keeps Better Auth as the default for new SaaS, but NextAuth v5 remains a viable pick if you need a minimal API surface.
 3. **Clerk has matured** to v7 with React 19 + Next.js 16 support; its free tier now extends to 10K MAU (was 5K MAU pre-v7).
 
 **Decision matrix for July 2026:**
@@ -31,7 +31,7 @@
 | Enterprise SSO (SAML / SCIM) today | **WorkOS** (Better Auth doesn't yet have native SAML/SCIM — see Better Auth section) |
 | B2C consumer app at huge scale with social login only | **Clerk** or **NextAuth.js v5** + social providers |
 
-**Note on the npm dist-tag:** `next-auth@5.0.0-beta.31` (April 14, 2026) is still published under the `beta` dist-tag — you install with `next-auth@beta`. This remains a packaging artifact; the API and runtime have been stable for ~21 months. The skill lists v5 as "✅ Production" because that's the de-facto reality across the ecosystem, but the cadence concern above is real.
+**Note on the npm dist-tag:** `next-auth@5.0.0-beta.32` (July 20, 2026) is still published under the `beta` dist-tag — you install with `next-auth@beta`. This remains a packaging artifact; the API and runtime have been stable for ~21 months. The skill lists v5 as "✅ Production" because that's the de-facto reality across the ecosystem. **beta.32 ends the 3-month release gap (Apr 14 → Jul 20) but the cadence is still slower than Better Auth's weekly stable + monthly RC cadence** — see the security-update section below before pinning.
 
 ### When to Consider an Alternative
 
@@ -64,6 +64,75 @@ For most new Next.js SaaS apps in 2026, **Better Auth is the default recommendat
 | Providers | Same set | Same set + new providers |
 
 
+
+## NextAuth.js v5 + v4 — Critical Security Update (July 20, 2026)
+
+**This is a same-day, two-track security release.** On **July 20, 2026** (16:00Z), the Auth.js / NextAuth.js maintainers shipped security fixes to every supported line simultaneously:
+
+- `next-auth@5.0.0-beta.32` (the v5 beta dist-tag) — published at 2026-07-20T22:57:40Z
+- `next-auth@4.24.15` (the `latest` stable dist-tag) — published at 2026-07-20T23:19:38Z
+- `@auth/core@0.41.3` (the underlying shared core library that both versions depend on)
+
+All three ship the same `processReply` / `processAuthorization` hardening patch (`@auth/core@0.41.3` → `0.41.3`, published 2026-07-20T15:00Z, GitHub release [`@auth/core@0.41.3`](https://github.com/nextauthjs/next-auth/releases/tag/@auth%2Fcore%400.41.3)) — **advisory [GHSA-xmf8-cvqr-rfgj](https://github.com/advisories/GHSA-xmf8-cvqr-rfgj), HIGH severity, CWE-20 (improper input validation)**. Tenable Cloud Security tagged it as Plugin 445216 on 2026-07-23 (HIGH).
+
+### What was fixed (shared by v5 + v4, all from `@auth/core@0.41.3`)
+
+- **`getToken()` no longer throws on malformed Bearer authorization headers** — previously a malformed `Authorization: Bearer <garbage>` header made `getToken()` throw an uncaught exception. The exception bubbled up to the route handler, often with a generic 500 response and no useful log line. Patched: `getToken()` now returns `null` on a malformed Bearer so route handlers can branch on "no token" cleanly. **Action required if you catch `getToken` exceptions** — the catch block is now dead code; replace with a `if (!token)` guard.
+- **OAuth `state`, `nonce`, and PKCE check cookies are now provider-bound** — previously a `state` cookie set by Provider A could be replayed against Provider B (e.g. a Google OAuth flow using a `state` cookie that was originally set during a GitHub OAuth flow on the same session). The cookies now carry a `__Host-` prefix bound to the originating provider id, and a `state`/`nonce`/PKCE cookie presented against a different provider's callback is rejected. **This closes the cross-provider OAuth confusion vector** — a class of attack where an attacker could swap providers mid-handshake and reuse the upstream-issued authorization code against the wrong callback. Per [Patchstack](https://patchstack.com/database/npm/npm/next-auth/vulnerability/npm-auth-js-configuration-errors-can-cause-existence-based-auth-checks-to-fail-open-auth-object-populated-with-an-error), this also addresses the configuration-errors-can-cause-existence-based-auth-checks-to-fail-open vector that allowed an `auth-object-populated-with-an-error` shape to bypass checks that relied on truthy session values.
+- **Email addresses are Unicode-normalized (NFKC) before validation** in the email sign-in flow — closes a homoglyph `@` bypass where visually identical non-ASCII characters (e.g. Cyrillic `е` U+0435 vs Latin `e` U+0065) could be used to register an email that would collide with a legitimate user account at the trust boundary. **Action required if you compare emails anywhere in your auth pipeline** (e.g. allow-lists, secondary-contact merging) — re-compare under the same NFKC normalization, or you'll silently mis-classify legitimate vs impostor accounts.
+
+### What was fixed in v5 ONLY (`5.0.0-beta.32` beyond `@auth/core@0.41.3`)
+
+- **Auth checks no longer fail open on provider configuration errors** — the headline v5 fix and the reason beta.32 is a high-priority upgrade. Per the [`next-auth@5.0.0-beta.32` GitHub release](https://github.com/nextauthjs/next-auth/releases/tag/next-auth@5.0.0-beta.32) (published by @gustavovalverde at 2026-07-20T22:57:40Z): *"Fixes auth checks failing open on provider configuration errors: a non-OK session response now yields no session instead of an error object, so checks like `!!auth` fail closed."* In other words, when a provider throws during session resolution (e.g. a misconfigured OIDC provider returns an error object), the session is now `null` instead of an `Error`-shaped value that truthy-checks pass. **Anywhere you wrote `if (session?.user) { ... }` or `if (await auth()) { ... }`, you're now safe by default** — previously those checks would pass for an error-object session and route the user into authenticated code paths. **Audit your code now** for any place where the session was treated as truthy without inspecting the user.
+
+### What was fixed in v4 ONLY (`4.24.15` beyond `@auth/core@0.41.3`)
+
+- **Explicit `NEXTAUTH_URL` now takes precedence over auto-detected forwarded host in trusted-host mode** — previously if you set `NEXTAUTH_URL` but trusted the `X-Forwarded-Host` header (e.g. behind a reverse proxy), the forwarded host could win and silently redirect OAuth callbacks to an attacker-controlled domain. Now the explicit `NEXTAUTH_URL` always wins.
+- **Restores CommonJS compatibility by pinning `uuid` to `^11.1.1`** — the `uuid` 14.x line is ESM-only and broke `require('uuid')` on Node versions below 20.19. The pin keeps next-auth v4 working on older Node LTS lines (Node 18.x EOL users especially).
+- **Sign-ins in flight across the upgrade fail once and succeed on retry** — the OAuth state-cookie provider-binding change (see above) invalidates any cookie set before the upgrade; the user's first sign-in attempt after deploy will fail with `OAuthSignInError` and the second attempt will succeed. **Briefly expected post-deploy**, not a bug.
+
+### Why v5 + v4 shipped together
+
+Both lines share `@auth/core` (the shared library that holds the OAuth/JWT/session state machine). The `@auth/core@0.41.3` patches the same code paths, so both `next-auth@5.0.0-beta.32` and `next-auth@4.24.15` are thin wrappers around the same `@auth/core` bump + v4/v5-specific glue. The v5-only failing-open fix is in `next-auth` itself (not `@auth/core`), which is why it's not in v4 — v4's API surface is different (no `auth()` helper that returns a session, just `getServerSession()` returning `{ user } | null`), so the failing-open attack shape doesn't apply.
+
+### Recommended Migration
+
+```bash
+# v5 projects
+npm install next-auth@beta      # picks up 5.0.0-beta.32
+
+# v4 projects
+npm install next-auth@latest    # picks up 4.24.15
+```
+
+**Migration checklist (any version → 5.0.0-beta.32 or 4.24.15):**
+
+- [ ] **Run `npm install` and verify the version** (`npm ls next-auth @auth/core` — both should match the table above)
+- [ ] **Audit `getToken()` callers** — drop any `try/catch` around `getToken()` since it no longer throws on malformed Bearer; replace with an `if (!token)` guard
+- [ ] **Audit email comparison code paths** — re-apply NFKC normalization everywhere you compare emails (allow-lists, contact merging, password-reset flows)
+- [ ] **Audit auth-check patterns** — search the codebase for `if (session?.user)`, `if (await auth())`, `if (!!session)`, `if (user)` patterns; verify they all branch on the user object, not just on the session truthiness. v5 users get the failing-open fix automatically; v4 users get the same hardening via the underlying `@auth/core` patch.
+- [ ] **First sign-in after deploy may fail with `OAuthSignInError`** (v4 only — see the "sign-ins in flight" note above) — this is expected and self-resolves on retry. Don't roll back the upgrade.
+- [ ] **Reverse-proxy users (v4 only)** — confirm `NEXTAUTH_URL` is set explicitly in your environment; the upgrade makes it the authoritative redirect base even when behind a trusted proxy.
+
+**Practical impact per tag:**
+
+| Tag | Currently | Upgrade to | Action |
+|---|---|---|---|
+| `next-auth@5.0.0-beta.31` (Apr 14) | **Vulnerable** to failing-open + Bearer-throw + cross-provider OAuth confusion + homoglyph bypass | `5.0.0-beta.32` | Upgrade immediately |
+| `next-auth@4.24.14` (Apr 14) | **Vulnerable** to Bearer-throw + cross-provider OAuth confusion + homoglyph bypass | `4.24.15` | Upgrade immediately |
+| `next-auth@latest` (= 4.24.14) | Same as above | `next-auth@latest` (= 4.24.15) | Upgrade immediately |
+| `next-auth@beta` (= 5.0.0-beta.31) | Same as above | `next-auth@beta` (= 5.0.0-beta.32) | Upgrade immediately |
+| `@auth/core@<0.41.3` (transitive, any version) | Vulnerable (transitively) | `@auth/core@0.41.3` (via next-auth bump) | Upgrade next-auth; don't pin @auth/core separately |
+
+**Sources:**
+- [NextAuth.js `5.0.0-beta.32` GitHub release](https://github.com/nextauthjs/next-auth/releases/tag/next-auth@5.0.0-beta.32) (Jul 20, 2026) — the v5-only failing-open fix
+- [NextAuth.js `4.24.15` GitHub release](https://github.com/nextauthjs/next-auth/releases/tag/next-auth@4.24.15) (Jul 20, 2026) — v4 maintenance backport
+- [`@auth/core@0.41.3` GitHub release](https://github.com/nextauthjs/next-auth/releases/tag/@auth%2Fcore%400.41.3) (Jul 20, 2026) — shared security patches
+- [GitHub Security Advisory GHSA-xmf8-cvqr-rfgj](https://github.com/advisories/GHSA-xmf8-cvqr-rfgj) (HIGH, CWE-20)
+- [Patchstack — npm-auth-js-configuration-errors-can-cause-existence-based-auth-checks-to-fail-open](https://patchstack.com/database/npm/npm/next-auth/vulnerability/npm-auth-js-configuration-errors-can-cause-existence-based-auth-checks-to-fail-open-auth-object-populated-with-an-error)
+- [Tenable Plugin 445216 — @auth/core, next-auth SCA update (Jul 23, 2026)](https://www.tenable.com/plugins/cloud-security/445216)
+- [npm `next-auth` package versions](https://www.npmjs.com/package/next-auth?activeTab=versions) — confirms 5.0.0-beta.32 and 4.24.15 are the live dist-tag pointers
+- [oday-bakkour.com — Daily Release Radar July 26, 2026 (Auth.js section)](https://oday-bakkour.com/blog/daily-release-radar-july-26-2026) — independent coverage of the same security release
 
 ## Better Auth — Recommended Default for New Next.js Apps
 
@@ -493,6 +562,76 @@ Better Auth publishes an official [migration guide from Auth.js](https://better-
 - [Better Auth Drizzle adapter](https://better-auth.com/docs/adapters/drizzle)
 - [Better Auth plugins catalog](https://better-auth.com/docs/plugins)
 - [Better Auth — migration guide from Auth.js](https://better-auth.com/docs/guides/next-auth-migration-guide)
+
+## Clerk — Coverage — 7.5.13–7.6.4 Patch Train (July 2026)
+
+The table at the top of this file mentions Clerk but doesn't drill into its release cadence. Since the Jul 23, 2026 v1.5.06 cron documented `@clerk/nextjs@7.5.12` (Jul 3, 2026), **Clerk shipped 16 stable releases across the 7.5.13 → 7.6.4 line** (Jul 6 → Jul 31, 2026). The two material ones:
+
+- **`@clerk/nextjs@7.6.0`** (Jul 23, 2026, npm-published at 2026-07-23T19:40:20Z) — adds the **`fapiUrl` option to Frontend API proxy helpers** ([PR #9223](https://github.com/clerk/javascript/pull/9223) by @thiskevinwang). Lets a `clerkMiddleware()` proxy route Clerk Frontend API requests at a custom Clerk Frontend API URL instead of the default `clerk.<instance>.com`. Useful for EU/regional deployments behind a custom proxy or for testing against a staging FAPI.
+- **`@clerk/nextjs@7.5.22`** (Jul 21, 2026, npm-published at 2026-07-21T22:30:00Z) — removes the redundant `https://*.client.protect.clerk.com` source from CSP headers generated by `clerkMiddleware()` ([PR #9207](https://github.com/clerk/javascript/pull/9207) by @mwickett). The host was no longer needed (the client-side Clerk.js does not fetch from `*.client.protect.clerk.com` in current versions), so leaving it in `Content-Security-Policy` was just CSP-bloat. If you maintain a strict `default-src`/`connect-src` CSP and `clerkMiddleware()` was previously adding this source, audit your `Content-Security-Policy` header — the source will disappear after upgrade and any code that relied on it being whitelisted may break.
+
+### Full 7.5.13 → 7.6.4 release train
+
+| Version | npm publish | Headline |
+|---|---|---|
+| `7.5.13` | 2026-07-06T10:39:33Z | Patch (no headline) |
+| `7.5.14` | 2026-07-07T22:21:56Z | Patch (no headline) |
+| `7.5.15` | 2026-07-09T05:00:23Z | Patch (no headline) |
+| `7.5.16` | 2026-07-09T22:13:50Z | Patch (no headline) |
+| `7.5.17` | 2026-07-10T23:48:58Z | Patch (no headline) |
+| `7.5.18` | 2026-07-14T07:47:45Z | Patch (no headline) |
+| `7.5.19` | 2026-07-15T21:33:59Z | Patch (no headline) |
+| `7.5.20` | 2026-07-16T20:04:30Z | Patch (no headline) |
+| `7.5.21` | 2026-07-21T15:11:48Z | Patch (no headline) |
+| `7.5.22` | 2026-07-21T22:30:00Z | **Removes redundant `*.client.protect.clerk.com` from `clerkMiddleware()` CSP header** (PR #9207 by @mwickett) |
+| `7.6.0` | 2026-07-23T19:40:20Z | **Adds `fapiUrl` option to Frontend API proxy helpers** (PR #9223 by @thiskevinwang) — bundle bumps `@clerk/backend@3.13.0`, `@clerk/shared@4.25.7`, `@clerk/react@6.12.7` |
+| `7.6.1` | 2026-07-24T18:53:14Z | Patch (no headline) |
+| `7.6.2` | 2026-07-27T21:41:37Z | Patch (no headline) |
+| `7.6.3` | 2026-07-29T18:32:19Z | Patch (no headline) |
+| `7.6.4` | 2026-07-31T13:57:03Z | Patch — bundle bumps `@clerk/backend@3.15.0`, `@clerk/shared@4.25.10`, `@clerk/react@6.12.10` |
+
+**Cadence observation:** Clerk's stable cadence is **~2-3 days per release** (16 stable releases in 28 days from Jul 3 to Jul 31). That's far faster than NextAuth's 3-month beta gap and matches Better Auth's weekly stable cadence. The v5 track (`@clerk/nextjs@latest-nextjs-v5`) hasn't shipped a new version since `5.7.6` (Apr 15, 2026) — that line is now in maintenance mode and the v7 line is the forward-looking recommendation.
+
+### `fapiUrl` proxy helper — the headline 7.6.0 addition
+
+The `fapiUrl` option lets `clerkMiddleware()` route Frontend API requests at a custom URL:
+
+```ts
+// proxy.ts (Next.js 16) or middleware.ts (Next.js 15)
+import { clerkMiddleware } from '@clerk/nextjs/server'
+
+export default clerkMiddleware((auth, req) => {
+  // ... your auth logic ...
+}, {
+  fapiUrl: 'https://clerk.acme-corp.eu',  // ← NEW in 7.6.0: custom FAPI base URL
+})
+```
+
+Use cases: EU/regional deployments behind a custom FAPI proxy, white-label deployments that proxy Clerk's FAPI through a corporate CDN, staging environments that point at a non-production Clerk instance.
+
+### When to use Clerk (July 2026) — refreshed
+
+- **B2C consumer apps at huge scale with social login** — Clerk's pre-built UI + social-provider breadth is the fastest path to a polished sign-in UX. The free tier to 10K MAU makes the cost-question deferrable until traction.
+- **B2B apps that need organizations + MFA + passkeys out of the box** — Clerk's Organizations + Roles + Permissions features ship pre-built; Better Auth has organizations too but Clerk's RBAC UI is more mature.
+- **Don't use Clerk if** you're optimizing for cost at scale (Better Auth is ~$50/mo at 100K MAU vs Clerk's ~$1,025/mo), need on-prem / air-gapped deployment (Better Auth is self-hosted), or need enterprise SAML/SCIM *today* (WorkOS).
+
+### Recommended version pin (July 2026)
+
+```bash
+# v7 stable — forward-looking
+npm install @clerk/nextjs@latest          # picks up 7.6.4
+
+# v5 stable — only if pinned to Next.js < 13
+npm install @clerk/nextjs@latest-nextjs-v5  # picks up 5.7.6 (Apr 15, 2026 — maintenance)
+```
+
+**Sources:**
+- [`@clerk/nextjs` GitHub release `7.6.4`](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.4) (Jul 31, 2026)
+- [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
+- [PR #9223 — `fapiUrl` option on Frontend API proxy helpers](https://github.com/clerk/javascript/pull/9223)
+- [PR #9207 — Remove redundant `client.protect.clerk.com` from `clerkMiddleware()` CSP](https://github.com/clerk/javascript/pull/9207)
+- [npm `@clerk/nextjs` package versions](https://www.npmjs.com/package/@clerk/nextjs) — confirms 7.6.4 is the live `latest` dist-tag pointer
+- [MakerKit — Better Auth vs Clerk vs NextAuth vs Supabase Auth (July 2026)](https://makerkit.dev/blog/tutorials/better-auth-vs-clerk) — independent comparison
 
 ## NextAuth.js v4 (Legacy) — Existing Projects Only
 
@@ -1012,9 +1151,22 @@ declare module 'next-auth' {
 - **Proxy bypass vulnerabilities** — Next.js 16.2.6 fixes multiple bypass vectors; always re-validate auth in route handlers, not just in `proxy.ts`
 - **`auth()` in proxy.ts** — in Next.js 16, `auth()` from NextAuth v5 is a function you call, not a middleware wrapper; use `await auth()` to get the session
 - **Mixing v4 and v5 patterns** — v4 uses `getServerSession(authOptions)`, v5 uses `auth()`; don't mix imports from both versions
+- **Pinning `next-auth@5.0.0-beta.31` (Apr 14, 2026)** — vulnerable to GHSA-xmf8-cvqr-rfgj (HIGH, CWE-20): failing-open auth checks (a provider error previously left `session` truthy so `if (session?.user)` style gates passed), malformed-Bearer `getToken()` exception → 500 instead of 401, cross-provider OAuth `state`/`nonce`/PKCE cookie confusion, and homoglyph `@` bypass via missing NFKC normalization. Bump to `5.0.0-beta.32` immediately.
+- **Pinning `next-auth@4.24.14` (Apr 14, 2026) or `@auth/core@<0.41.3`** — same `@auth/core` advisory applies; bump `next-auth` to `4.24.15` (or `5.0.0-beta.32` on v5). The v4 fix also pins `uuid@^11.1.1` to restore CommonJS compatibility on Node 18.x.
+- **Treating `if (await auth())` as a fail-closed auth check** (pre-`5.0.0-beta.32` v5 only) — when a provider threw during session resolution, the session was `Error`-shaped so the truthy-check passed and the user was routed into authenticated code paths. 5.0.0-beta.32 makes the session `null` on provider errors. Audit `if (session?.user)` and `if (!!session)` patterns in your codebase and replace with `if (session && session.user)` (or similar explicit-on-user checks).
+- **Catching `getToken()` exceptions** — `getToken()` no longer throws on malformed Bearer headers as of `@auth/core@0.41.3`; the `try/catch` block is dead code. Replace with an `if (!token)` guard so the route handler returns a clean 401 instead of an unhandled-exception 500.
+- **Comparing emails without NFKC normalization** — `@auth/core@0.41.3` normalizes email addresses to NFKC before validation; any allow-list, contact-merging, or password-reset code that compares emails must apply the same normalization or it'll silently mis-classify homoglyph-impostor accounts (Cyrillic `е` U+0435 vs Latin `e` U+0065) as legitimate.
+- **Relying on `*.client.protect.clerk.com` being whitelisted in `clerkMiddleware()`'s generated CSP** — `@clerk/nextjs@7.5.22` (Jul 21, 2026) removed this source from the `Content-Security-Policy` header. If your deployment was relying on the source being present (e.g. you copy-pasted Clerk's recommended CSP into your own config), audit your CSP and remove the now-unused source — leaving it in place is just bloat.
+- **Pinning `@clerk/nextjs@7.5.12` (Jul 3, 2026)** — missing 16 stable releases (7.5.13 → 7.6.4) including the `fapiUrl` proxy option (7.6.0), the `client.protect.clerk.com` CSP cleanup (7.5.22), and 14 other patches. Bump to `@clerk/nextjs@^7.6.4` to pick up the lot.
 
 **Sources:**
 - [NextAuth.js v5 docs](https://authjs.dev/reference.nextjs)
 - [NextAuth.js v4 docs](https://next-auth.js.org/getting-started/introduction)
 - [Next.js 16 upgrade guide — proxy](https://nextjs.org/docs/app/guides/upgrading/version-16)
 - [Next.js 16.2.6 security release](https://github.com/vercel/next.js/releases/tag/v16.2.6)
+- [NextAuth.js `5.0.0-beta.32` (Jul 20, 2026) — failing-open fix + `@auth/core@0.41.3` security backports](https://github.com/nextauthjs/next-auth/releases/tag/next-auth@5.0.0-beta.32)
+- [NextAuth.js `4.24.15` (Jul 20, 2026) — same-day security backport](https://github.com/nextauthjs/next-auth/releases/tag/next-auth@4.24.15)
+- [`@auth/core@0.41.3` (Jul 20, 2026) — shared core library security patch](https://github.com/nextauthjs/next-auth/releases/tag/@auth%2Fcore%400.41.3)
+- [GHSA-xmf8-cvqr-rfgj — Auth.js / next-auth advisory (HIGH, CWE-20)](https://github.com/advisories/GHSA-xmf8-cvqr-rfgj)
+- [`@clerk/nextjs@7.6.4` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.4)
+- [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)

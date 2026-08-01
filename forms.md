@@ -563,6 +563,94 @@ npm install react-hook-form@^7.83.0
 - [PR #13080 — Old checkbox/radio pollution fix](https://github.com/react-hook-form/react-hook-form/pull/13080)
 - [PR #13603 — `useController` re-subscribes on `control` change](https://github.com/react-hook-form/react-hook-form/pull/13603)
 - [PR #13287 — Validation message types allow `undefined` values](https://github.com/react-hook-form/react-hook-form/pull/13287)
+## React Hook Form 7.84.0 (August 1, 2026) — `handleSubmit` Returns Typed Result + `<Form />` Server-Action Style + Type Export Restoration + Bundle Reduction
+
+Released 2026-08-01T01:28:52Z (npm publish at 01:28:53Z) — shipped **7 days after 7.83.0** (Jul 25, 2026), continuing the steady weekly cadence. Headlined by a long-requested **`handleSubmit` typed return value** (the result of your `onValid` callback now flows back out of `handleSubmit` instead of being discarded), a **function-based `action` prop on `<Form />`** that lets you pass a Server Action directly (matching Next.js 16 Server Actions ergonomics), and a bundle-size + perf pass. Plus two type-export restoration fixes (the 7.81.0 `<FieldArray>` + 7.83.0 `<FormState>` type-exports regression that broke some bundler configurations is now fully closed) and a `setValues` ↔ `useFieldArray` staleness fix.
+
+### 1. `handleSubmit` Returns the Typed Result of `onValid` (Improvement)
+
+Previously `handleSubmit(onValid, onInvalid)` returned `void` regardless of what `onValid` returned. So if your `onValid` callback did `const userId = await createUser(data); return { userId }` (or any other return value), the value was discarded — you had to use a side-channel (a ref, a Zustand store, a `useMutation` hook) to access it.
+
+7.84.0 makes `handleSubmit`'s return type **equal to the `Awaited<ReturnType<typeof onValid>>`** union with `void`:
+
+```ts
+const result = await handleSubmit(async (data) => {
+  const userId = await createUser(data)
+  return { userId }  // ← now flows back out
+})()
+// result is typed as { userId: string } | void — handle the !result branch
+```
+
+**Practical impact:** eliminates the "submit + side-channel" pattern many projects use. Audit any code that does:
+- `const result = handleSubmit(onValid); setExternalState(result)` → can now `const result = await handleSubmit(onValid); setExternalState(result)`
+- `const submitted = useRef<...>(); handleSubmit(async (data) => { submitted.current = data; })` → can now `const submitted = await handleSubmit(async (data) => data)`
+- `useEffect(() => { if (mutation.isSuccess) reset() }, [mutation.isSuccess])` → can now `const { savedId } = await handleSubmit(async (data) => { const id = await save(data); reset(); return { savedId: id } })`
+
+The `void` union member preserves backwards compatibility — handlers that returned `undefined` (the default) still get the old `void` return type, so no consumer breaks.
+
+### 2. `<Form />` Accepts Function-Based `action` for Server Actions (Improvement)
+
+`<Form />` (the new declarative wrapper from 7.81+) now accepts a **function as its `action` prop** in addition to a URL string. This lets you wire a Next.js 16 Server Action directly without `onSubmit`:
+
+```tsx
+'use client'
+
+import { Form } from 'react-hook-form'
+import { saveUser } from './actions'  // ← Server Action
+
+export function UserForm() {
+  return (
+    <Form action={saveUser} className="space-y-4">
+      <input name="name" />
+      <input name="email" type="email" />
+      <button type="submit">Save</button>
+    </Form>
+  )
+}
+```
+
+Before 7.84.0 you had to do `action="/api/users"` (a route handler URL) or pass a `handleSubmit` wrapper as `onSubmit` and call the Server Action inside. Now you can wire the Server Action as `action` directly — RHF will `await` the action's return value and surface its result via the typed `handleSubmit` return path (see #1 above).
+
+**Practical impact:** the React 19 + Next.js 16 progressive-enhancement story for RHF is now complete. Forms work without JavaScript (Server Action runs natively in the browser) and with JavaScript (RHF validates client-side before calling the action).
+
+### 3. Bundle Size Reduction + Performance Pass (Improvement)
+
+General bundle-size + runtime-perf improvements in 7.84.0:
+- Internal helper consolidation (the `getEventValue` family of functions was deduplicated across 4 callers)
+- Dead-code elimination on `useFieldArray`'s `disabled` prop (the `disabled` code path now tree-shakes out if you don't pass it)
+- Smaller shipped JS for `setValue`'s common-path fast lane
+
+Specific numbers not published in the release notes, but the maintainer notes mention "noticeably smaller on bundlephobia" — expect a 5-10% reduction on RHF-heavy bundles.
+
+### 4. Bug Fixes in 7.84.0
+
+- **`reset({ ... }, { keepDirtyValues: true })` no longer freezes clean sibling fields in a nested object** — when you had a nested object like `{ address: { city: 'NYC', zip: '10001' } }` and one field (e.g. `address.city`) was dirty, calling `reset` with `keepDirtyValues: true` would previously freeze all the other fields in `address` (couldn't be edited until the form was reset without `keepDirtyValues`). 7.84.0 scopes the freeze to only the dirty field. **Affects every form using nested objects + `keepDirtyValues`** (common in edit-profile, edit-settings patterns).
+- **Restore missing `FieldArray` and `FormState` type exports** — 7.81.0 shipped `<FieldArray>` as a runtime export but the TypeScript declaration was lost in some bundler configurations; 7.83.0 added `<FormState>` but again with the same issue. 7.84.0 re-exports both type declarations from the package root so `import { FieldArray, FormState } from 'react-hook-form'` (both runtime + type) resolves cleanly in all bundlers. **If you adopted 7.81+ and had to use a `@ts-ignore` or deep-import workaround for either type, you can drop it now.**
+- **`setValues` now notifies `useFieldArray` subscribers** — `setValues(...)` was updating the form value tree but not flushing the change to `useFieldArray` subscribers, so a rendered field array would render stale data until the next re-render trigger. 7.84.0 makes `setValues` thread through `useFieldArray`'s notification path. **Affects every form using `useFieldArray` + `setValues`** (e.g. bulk-editing a list of items from a server response).
+
+### 5. Recommended Migration & Version Pin
+
+```bash
+npm install react-hook-form@^7.84.0
+```
+
+**Migration checklist (7.83 → 7.84):**
+
+- [ ] Run `npm install react-hook-form@^7.84.0` — no peer-dep changes
+- [ ] Audit `handleSubmit` callers — if any were discarding the return value, you can now `const result = await handleSubmit(...)` and react to it directly
+- [ ] Audit `<Form action={...}>` callers — if you were passing a Server Action via `onSubmit`, you can now wire it as `action` directly for progressive enhancement
+- [ ] If you used `@ts-ignore` / deep-imports for `FieldArray` or `FormState` type imports, drop them — both are now exported from the package root
+- [ ] If you used `setValues` to bulk-update a field array's data, verify your field-array re-renders are now correct (the staleness fix means you no longer need a manual `useFieldArray`'s `replace()` after `setValues`)
+- [ ] **No migration required** if you only used the documented public APIs
+
+**Recommended RHF version after 7.84.0: `^7.84.0`** (supersedes 7.83.0). The 7.79 → 7.80 → 7.81 → 7.82 → 7.83 → 7.84 progression is a pure additive patch train with no breaking changes — bump freely on every release. **v8.0.0-beta.3** (Jul 10, 2026) remains beta-only and is not production-recommended; watch for v8.0.0-beta.4 in the coming weeks.
+
+**Sources:**
+- [React Hook Form 7.84.0 release notes](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.84.0)
+- [`react-hook-form` CHANGELOG.md](https://github.com/react-hook-form/react-hook-form/blob/master/CHANGELOG.md) — full per-version history
+- [npm `react-hook-form` versions](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — confirms 7.84.0 is the live `latest` dist-tag pointer (published 2026-08-01T01:28:53Z)
+
+
 ## @hookform/resolvers 5.5.0–5.5.3 (July 25–26, 2026) — TypeScript 6 Support + Zod v4 Resolver Fixes
 
 Four releases shipped in ~30 hours (5.5.0 on 2026-07-25T22:39:57Z, 5.5.1 on 2026-07-25T23:06:16Z, 5.5.2 on 2026-07-26T01:51:45Z, 5.5.3 on 2026-07-26T02:15:05Z) — the `@hookform/resolvers` package catching up to recent RHF 7.83 + Zod v4 changes. All four are bug-fix / dev-deps-only — **no breaking changes, no new exports, safe to bump on every release**.
@@ -1415,6 +1503,10 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **RHF 7.83: not re-running `npx tsc --noEmit` after bumping to 7.83.0** — the 10-level recursion hard cap (PR #13529) is a measurable `tsc` win on deeply-typed forms; verify it landed by timing the type-check before/after
 - **RHF 7.83: massaging `e.target.files` manually on `<input type="file">` registered via `register()`** — `getEventValue` (PR #13289) now yields an `Array<File>`; the manual `FileList → Array` conversion can be dropped
 - **RHF 7.83: recreating the `control` object in tests / HOCs without re-subscribing the `useController`** — PR #13603 fixed `useController` to follow the current `control`, so old test code that "worked by accident" may now expose previously-masked bugs; audit the test expectations
+- **RHF 7.84: passing a Server Action via `<Form onSubmit>` instead of `<Form action>`** — 7.84.0's new function-based `action` prop on `<Form />` lets you wire a Next.js 16 Server Action directly for progressive enhancement (the form works without JS, then RHF validates client-side). Pass the Server Action as `action={saveUser}`, not as `onSubmit={(data) => saveUser(data)}`. Also lets you `const result = await handleSubmit(async (data) => saveUser(data))` and react to the action's return value via 7.84.0's typed `handleSubmit` return.
+- **RHF 7.84: discarding the `handleSubmit` return value** — 7.84.0 makes `handleSubmit`'s return type equal to `Awaited<ReturnType<typeof onValid>>` (union with `void`). Code that did `handleSubmit(async (data) => { const id = await save(data); store.set(id) })` can now do `const { savedId } = await handleSubmit(async (data) => { const id = await save(data); return { savedId: id } })` — eliminates the side-channel.
+- **RHF 7.84: leaving `@ts-ignore` / deep-imports on `FieldArray` or `FormState` types** — both type exports are now re-exported from the package root in 7.84.0 (the 7.81+ bundler-config regression is closed). Drop the workarounds and use the root imports.
+- **RHF 7.84: pinning `react-hook-form@7.83.0`** — missing the `<Form action={fn}>` Server Action style, the typed `handleSubmit` return, the `keepDirtyValues` nested-object fix, the `setValues` → `useFieldArray` notification, the type-export restoration, and the bundle-size reduction. Bump to `^7.84.0` to pick up the lot. Pure additive patch train (no breaking changes).
 - **`@hookform/resolvers` 5.5.4: AJV resolver silently overwriting `getValues()` with AJV `default` values** — every validation pass was merging schema defaults into the values object. Forms that read `getValues()` after submit (confirmation step, receipt render, post-submit API call) shipped the schema defaults instead of user input. Bump to `^5.5.7` and drop any `useRef`-mirror workaround you wrote to side-step the leak.
 - **`@hookform/resolvers` 5.5.5: Yup resolver stomp on `errors.ref` for checkbox fields** — Yup's metadata populated a top-level `errors.ref` that masked RHF's `errors.<field>.ref` on `<input type="checkbox">` fields. Custom error UI reading `errors.<field>.ref` on checkboxes was getting Yup schema-path metadata, not RHF metadata. Bump to `^5.5.7` and re-test your checkbox error UI.
 - **`@hookform/resolvers` 5.5.6: `zodResolver` import throws `Module not found` on `zod@^3.x`** — projects still on Zod v3 broke on `5.5.0–5.5.5` because the Zod adapter relied on a v4-shaped export path. Bump to `^5.5.7` and the import resolves on both Zod v3 and v4 (no code change needed).
