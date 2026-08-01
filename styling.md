@@ -1321,3 +1321,356 @@ export function ReadingProgress() {
 - [Tailwind Weekly: v4.3.1 highlights](https://tailwindweekly.com/issue-218/)
 - [Tailwind CSS v4.3 release notes](https://tailwindcss.com/blog/tailwindcss-v4-3)
 - [Tailwind CSS v4.2/v4.3 new features](https://app.daily.dev/posts/what-s-new-in-tailwind-css-v4-2-and-v4-3-oybkeyde7)
+
+## Tailwind v4 — `@reference` Directive (Library / Design-Token Import Without CSS Output)
+
+`@reference` is Tailwind v4's CSS-only equivalent of v3's `@tailwindcss/ui` or library token-imports: it pulls Tailwind's theme values (custom properties, design tokens) into the current stylesheet **without emitting any Tailwind output CSS**. The file you're writing stays pure CSS — no Tailwind classes generated, no utility duplication, just the token names available.
+
+```css
+/* In a library file or shared design-token stylesheet */
+@reference "tailwindcss";
+
+.my-button {
+  background: var(--color-brand-500);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.my-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+}
+```
+
+**When `@reference` shines:**
+
+1. **Component libraries** — write CSS that uses Tailwind's design tokens without forcing the consuming project to also have those tokens in their `@theme` block. Library defines tokens in `@theme`, consumer gets them via `@reference`.
+2. **CSS-only components** — pure CSS files (not Tailwind utility classes) that still want access to the theme. e.g. a `.css` file for a third-party widget that lives outside your `app/` tree.
+3. **Design-token sharing** — extract the design tokens from one Tailwind project and `@reference` them into another (e.g. a marketing site that shares tokens with the main app).
+4. **Static-only output** — generate a CSS file with zero Tailwind utility classes in it, just the token-derived styles. Useful for embedding in Web Components, Shadow DOM, or framework-agnostic CSS bundles.
+
+**How it differs from `@import "tailwindcss"`:**
+
+```css
+/* Full import — generates ALL Tailwind utilities + base + components */
+@import "tailwindcss";
+
+/* Reference — pulls theme values, generates NO Tailwind output */
+@reference "tailwindcss";
+```
+
+`@reference` is the read-only version: it gives you access to `--color-*`, `--spacing-*`, `--radius-*`, `--shadow-*`, etc. via `var()`, but doesn't add `bg-red-500`, `p-4`, `rounded-lg`, `shadow-md` to your output.
+
+**Path can be a package, a CSS file, or a theme module:**
+
+```css
+/* Reference the full Tailwind package (gets all built-in tokens) */
+@reference "tailwindcss";
+
+/* Reference a custom theme module file */
+@reference "./themes/brand.css";
+
+/* Reference multiple modules */
+@reference "tailwindcss";
+@reference "../../packages/ui/src/tokens.css";
+```
+
+**Pattern — design-system library that exposes tokens to consumers:**
+
+```css
+/* packages/ui/src/tokens.css (the library's design tokens) */
+@theme {
+  --color-brand-50: oklch(0.97 0.02 250);
+  --color-brand-500: oklch(0.55 0.18 250);
+  --color-brand-900: oklch(0.20 0.10 250);
+
+  --radius-brand: 0.75rem;
+  --shadow-brand-md: 0 4px 16px oklch(0.55 0.18 250 / 0.20);
+}
+
+/* packages/ui/src/components.css (library components, no Tailwind output) */
+@reference "./tokens.css";
+
+.ds-button {
+  background: var(--color-brand-500);
+  padding: var(--spacing-3) var(--spacing-5);
+  border-radius: var(--radius-brand);
+  box-shadow: var(--shadow-brand-md);
+}
+
+/* Consumer imports this in their project */
+@import "@acme/ui/components.css";
+/* Now .ds-button is styled, but the consumer's bundle has zero duplicated Tailwind utilities */
+```
+
+**Pattern — shadow DOM / web components:**
+
+```css
+/* web-component.css — the component's shadow DOM stylesheet */
+@reference "tailwindcss";
+
+:host {
+  display: block;
+  container-type: inline-size;
+  background: var(--color-surface);
+  color: var(--color-fg);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+}
+```
+
+The `@reference` brings tokens into the shadow DOM's stylesheet scope without polluting the main document with Tailwind's full utility set.
+
+**Pattern — marketing-site static export:**
+
+```css
+/* static.css — zero Tailwind output, just token-derived styles for a static site */
+@reference "tailwindcss";
+
+.hero { background: var(--color-brand-500); padding-block: var(--spacing-20); }
+.cta { background: var(--color-accent); color: var(--color-accent-fg); }
+```
+
+The output of `static.css` is ~500 bytes — only the literal declarations, no Tailwind reset, no utilities.
+
+**Gotchas:**
+- `@reference` must come **before any rules** that use the referenced tokens (it's import-like)
+- You can't reference tokens from inside `@layer base { }` blocks — they need to be at the top level
+- The referenced file's `@theme` block must be processed before your file is read — file ordering in your build pipeline matters
+- `@reference` is a **Tailwind v4-only** feature; no v3 equivalent. v3 users have to copy tokens manually or use the `@apply` workaround.
+
+**Sources:**
+- [Tailwind CSS v4 docs — `@reference` directive](https://tailwindcss.com/docs/functions-and-directives#reference-directive)
+- [Tailwind CSS v4 blog — CSS-first config](https://tailwindcss.com/blog/tailwindcss-v4#css-first-configuration)
+- [Tailwind CSS v4 — design tokens primer](https://tailwindcss.com/docs/theme)
+
+## Tailwind v4 — Named Container Queries (`@container/main` → `@md/main:grid-cols-3`)
+
+The `@container` utility creates a containment context, and `@sm:` / `@md:` / `@lg:` variants target the container's inline-size. But what if you have **two containers on the same page** — a sidebar that's 280px and a main area that's 720px — and want different layouts at the same `@md:` breakpoint in each?
+
+**Named containers** solve this. Add a name with `@container/<name>`, then target that specific container with `@<breakpoint>/<name>:`:
+
+```tsx
+// Two containers on the page
+<aside className="@container/sidebar">
+  {/* Responds to sidebar's size — even if main is bigger */}
+  <nav className="@sm/sidebar:flex-col @md/sidebar:grid-cols-2">
+    {sidebarItems.map(...)}
+  </nav>
+</aside>
+
+<main className="@container/main">
+  {/* Responds to main's size independently */}
+  <div className="@sm/main:grid-cols-2 @lg/main:grid-cols-4">
+    {mainContent.map(...)}
+  </div>
+</main>
+```
+
+The same `@md:` breakpoint resolves to different pixel widths depending on which container is the ancestor.
+
+**Shorthand — `@container` (no name) targets the nearest anonymous container:**
+
+```tsx
+{/* Both anonymous — the sidebar and main @container scopes independently */}
+<div className="@container">
+  <div className="@md:grid-cols-3">{/* only triggers when THIS @container hits md */}</div>
+</div>
+```
+
+**Multiple named containers in nested elements:**
+
+```tsx
+<article className="@container/article">
+  <div className="@container/comments">
+    <p className="@lg/article:text-2xl">              {/* big when article is wide */}
+      <span className="@md/comments:text-sm">        {/* small when comments are narrow */}
+        Comment text
+      </span>
+    </p>
+  </div>
+</article>
+```
+
+The `@md/comments:` only triggers when the **nearest `@container/comments`** ancestor hits the md threshold — even if the outer `@container/article` is already at lg size.
+
+**Practical use cases:**
+
+1. **Page sections with independent responsive behavior** — header, sidebar, main, footer each have their own container query scope. Header collapses at `@sm`, sidebar goes vertical at `@md`, main reflows at `@lg`.
+2. **Cards in a grid where the grid cell is the container** — every grid cell responds to its own width, not the page viewport. 3-up grid + 6-up grid in the same page, each card picks its own layout.
+3. **Nested layouts** — outer `@container/page`, inner `@container/sidebar`, inner-inner `@container/widget`. Each picks its own breakpoint scale.
+
+**Why named over anonymous in production code:**
+- **Predictability** — when refactoring markup, named containers are explicit about which scope you intended
+- **No ambiguity** — anonymous containers resolve to nearest ancestor, which can change unexpectedly when you wrap/unwrap a div
+- **DX** — named containers are self-documenting (`@container/comments` reads better than "some nearby `@container`")
+
+**Custom named breakpoints — combine named containers with custom breakpoint scales:**
+
+```css
+/* globals.css — add custom container breakpoints */
+@theme {
+  --container-3xs: 12rem;
+  --container-compact: 20rem;
+  --container-wide: 60rem;
+}
+```
+
+```tsx
+<div className="@container">
+  <div className="@compact:flex-row @wide:grid-cols-4">
+    {/* @compact = 20rem, @wide = 60rem */}
+  </div>
+</div>
+```
+
+Note: `--container-*` namespace (not `--breakpoint-*`) is the v4 convention for container-query breakpoints. Viewport breakpoints use `--breakpoint-*` and `@sm:` (no container prefix).
+
+**Audit recipe:**
+
+```bash
+# Find anonymous @container usages that might benefit from naming
+rg "@container[^/\s]" --type tsx --type ts
+
+# Find existing named containers
+rg "@container/[a-z]" --type tsx --type ts
+```
+
+**Sources:**
+- [Tailwind CSS docs — container queries](https://tailwindcss.com/docs/container-queries)
+- [Tailwind CSS v4 blog — container queries](https://tailwindcss.com/blog/tailwindcss-v4#container-queries)
+- [MDN — CSS Container Queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_container_queries)
+- [Smashing Magazine — CSS Container Queries For Design Systems](https://www.smashingmagazine.com/2023/05/css-container-queries-design-systems/)
+
+## Tailwind v4 — `@utility` Directive — Custom First-Class Utilities
+
+The `@utility` directive (already mentioned in the `tw-animate-css` / `shadow-elevated-*` examples above) lets you define **custom utilities** that work like first-class Tailwind classes — with arbitrary-value support, modifier compatibility, and theme participation. The pattern is for utilities you use in many places, that have a single CSS declaration.
+
+```css
+/* In your globals.css */
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Functional custom utility — accepts any value */
+@utility tab-* {
+  tab-size: --value(integer);
+}
+
+/* Functional with theme lookup */
+@utility bg-tint-* {
+  background: --value(--color-*);
+}
+```
+
+The first form (`@utility name { }`) creates a single-purpose utility. The second form (`@utility prefix-* { }`) creates a functional utility that accepts any value via `--value(integer)`, `--value(--color-*)`, etc.
+
+**Three `@utility` value resolvers:**
+
+| Resolver | What it does | Example |
+|----------|--------------|---------|
+| `--value(integer)` | Restricts to integers, supports `tab-4` | `@utility tab-* { tab-size: --value(integer); }` |
+| `--value(number)` | Accepts integers + decimals | `@utility opacity-* { opacity: --value([*]); }` |
+| `--value([*])` | Accepts any value, including arbitrary | `@utility m-* { margin: --value([*]); }` |
+| `--value(--color-*)` | Accepts any color from your `--color-*` theme | `@utility bg-* { background: --value(--color-*); }` |
+
+**Pattern — responsive custom utilities (combine `@utility` with variants):**
+
+```css
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+}
+```
+
+```tsx
+{/* @variant defaults, dark: variant, and breakpoints all work */}
+<div className="scrollbar-thin dark:scrollbar-none @md:scrollbar-auto">
+```
+
+The `@utility` directive creates real Tailwind variants — `hover:`, `focus:`, `dark:`, `@md:`, etc. all just work.
+
+**Pattern — variants INSIDE `@utility` (responsive selectors within the utility):**
+
+```css
+@utility scrollbar-auto {
+  scrollbar-width: auto;
+  @variant dark { scrollbar-width: thin; }
+  @variant hover { scrollbar-width: none; }
+}
+```
+
+The `@variant` directive inside `@utility` mirrors the utility's own variant API.
+
+**Pattern — nested selectors for compound utilities:**
+
+```css
+@utility button-base {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--spacing-4);
+  border-radius: var(--radius-md);
+
+  &:hover {
+    background: var(--color-brand-600);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+```
+
+Use as `<button className="button-base">`. The `&` resolves to `.button-base` at compile time.
+
+**Pattern — utilities that consume theme tokens:**
+
+```css
+@theme {
+  --shadow-elevated-sm: 0 2px 8px rgb(0 0 0 / 0.08);
+  --shadow-elevated-md: 0 4px 16px rgb(0 0 0 / 0.12);
+  --shadow-elevated-lg: 0 8px 32px rgb(0 0 0 / 0.15);
+}
+
+@utility shadow-elevated-* {
+  box-shadow: --value(--shadow-elevated-*);
+}
+```
+
+```tsx
+<div className="shadow-elevated-sm">small</div>
+<div className="shadow-elevated-md">medium</div>
+<div className="shadow-elevated-lg">large</div>
+```
+
+The functional form picks up tokens from your `@theme` namespace dynamically — no need to redeclare each variant.
+
+**When `@utility` is the right tool:**
+- A single CSS declaration you use in 10+ places
+- You want `dark:` / `@md:` / `hover:` to work automatically
+- The pattern is short enough to inline but you want to avoid magic numbers
+- You want to expose tokens to JS consumers via the standard `tailwind.config` introspection
+
+**When `@utility` is NOT the right tool:**
+- Multi-property layouts → use a `@layer components { }` rule or a shadcn component instead
+- Component-scoped styles → use CSS Modules or React component styles
+- One-off magic values → just use arbitrary values like `mt-[17px]`
+
+**Sources:**
+- [Tailwind CSS v4 docs — `@utility` directive](https://tailwindcss.com/docs/functions-and-directives#utility-directive)
+- [Tailwind CSS v4 — arbitrary values](https://tailwindcss.com/docs/adding-custom-styles#using-arbitrary-values)
+- [Tailwind CSS blog — Tailwind CSS v4.0](https://tailwindcss.com/blog/tailwindcss-v4#css-first-configuration)

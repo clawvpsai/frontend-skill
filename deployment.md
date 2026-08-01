@@ -1126,3 +1126,195 @@ The adapter interface handles these concerns:
 - [Next.js 16 release notes](https://nextjs.org/blog/next-16)
 - [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
 - [OpenNext adapter for Cloudflare](https://opennext.js.org/)
+
+## Next.js 16.3 Self-Hosting Additions (March 2026 docs refresh + 16.3.0-canary.105 deploy-relevant changes)
+
+The official Next.js self-hosting guide was last updated 2026-03-25 with new content that didn't make it into this skill at the time. Three additions are deployment-critical for any team running Next.js on its own infrastructure:
+
+### 1. Multi-Server Deployments — `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` is REQUIRED
+
+If you run more than one Next.js instance (load-balanced Node servers, blue/green, autoscaler with N>1, K8s deployment replicas, ECS service), **you must set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`** to a stable value across all instances. Otherwise Server Action IDs are encrypted with a per-instance ephemeral key generated at process start, and the fleet can't share action IDs — clicking a Server Action on instance A produces an opaque ID that instance B can't decrypt.
+
+```bash
+# Generate a stable key once (32-byte base64 — AES-256)
+openssl rand -base64 32
+
+# Set in deploy environment across ALL instances
+NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=kP...base64...
+```
+
+**Key requirements:**
+- Must be a base64-encoded value with a valid AES key length (16, 24, or 32 bytes → AES-128 / AES-192 / AES-256)
+- Next.js generates 32-byte keys by default
+- Rotate safely: deploy old-key + new-key both, drain traffic, then remove old-key (Server Action IDs are forward-compatible across keys)
+- Failing to set this on a multi-instance deploy silently breaks Server Actions in production — the error appears only when a user submits a form
+
+**Audit recipe** — find every deploy target that runs Next.js in production:
+
+```bash
+# Docker
+grep -REn "FROM node" Dockerfile docker-compose*.yml 2>/dev/null
+# K8s
+kubectl get deploy -A -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[*].env[?(@.name=="NEXT_SERVER_ACTIONS_ENCRYPTION_KEY")].value}{"\n"}{end}'
+# PM2
+grep -rE "NEXT_SERVER_ACTIONS" ecosystem.config.* 2>/dev/null
+# Generic .env files
+grep -rE "NEXT_SERVER_ACTIONS" .env* 2>/dev/null
+```
+
+A "0 matches" result on a multi-instance deploy = broken Server Actions waiting to happen.
+
+### 2. Docker Templates — Standalone / Export / Multi-Environment
+
+The Next.js monorepo ships three canonical Docker templates in [`examples/`](https://github.com/vercel/next.js/tree/canary/examples):
+
+| Template | `output:` mode | Use case |
+|----------|----------------|----------|
+| [`with-docker`](https://github.com/vercel/next.js/tree/canary/examples/with-docker) | `'standalone'` | **Default for production Node deploys.** Multi-stage Dockerfile that copies `.next/standalone/` + `.next/static/` + `public/` separately. Minimal image with only the production deps that the build trace detected. |
+| [`with-docker-export-output`](https://github.com/vercel/next.js/tree/canary/examples/with-docker-export-output) | `'export'` | **Fully static.** Generated HTML + assets served from nginx:alpine or any static host. No Node runtime. Useful for marketing pages, docs sites, landing pages that don't need Server Actions / RSC. |
+| [`with-docker-multi-env`](https://github.com/vercel/next.js/tree/canary/examples/with-docker-multi-env) | any | **Dev / staging / production** with different `ARG NODE_ENV` + per-env env-var file mounting. One Dockerfile, three compose overrides. |
+
+**When to pick `with-docker-export-output` over `with-docker`:**
+- App is a blog / docs / marketing site with no Server Actions, no RSC, no auth
+- Cold start time matters (nginx serves static HTML in <50ms vs Node cold start ~500ms-2s)
+- CDN-first architecture (push to S3+CloudFront / R2+Workers / Vercel static / Netlify)
+
+**When to pick `with-docker` (standalone):**
+- Server Actions, Route Handlers, RSC, ISR, dynamic rendering
+- Need streaming responses, Suspense, Cache Components
+- API routes / middleware / `proxy.ts`
+
+**When to pick `with-docker-multi-env`:**
+- Promote one image through dev → staging → production with different env vars at each stage
+- CI/CD builds the image once and tags per env rather than rebuilding
+- Avoid the "works on my machine" drift between env-specific Dockerfiles
+
+### 3. Streaming + nginx — Disable Buffering
+
+The Next.js App Router supports streaming responses (`<Suspense>` boundaries flush incrementally). If you're behind nginx or any reverse-proxy that buffers, **streaming is silently disabled** and TTFB regresses from ~50ms to "wait for the slowest Suspense boundary."
+
+```nginx
+# /etc/nginx/sites-available/my-app
+location / {
+    proxy_pass http://nextjs_backend;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+
+    # REQUIRED for streaming — disable proxy buffering
+    proxy_buffering off;
+    proxy_cache off;
+
+    # Long enough for slow Suspense boundaries (default 60s may be too short)
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+```
+
+**Audit recipe:**
+
+```bash
+grep -REn "proxy_buffering" /etc/nginx/sites-enabled/
+# Look for any site with proxy_buffering on; or proxy_buffering not set (default is on)
+```
+
+A "no matches" or all `proxy_buffering on;` results = streaming is being silently buffered.
+
+### 4. Cache Components works on Node self-host (not CDN-only)
+
+Cache Components (`cacheComponents: true` in `next.config.ts`) — the new PPR-aligned model in Next.js 16 — **works on `next start` (Node self-host) and inside Docker containers, not just on Vercel.** This is explicitly documented in the March 2026 self-hosting guide. If you skipped Cache Components because you assumed it was a Vercel-only feature, pick it up — partial prerendering with the static shell served from `.next/` + dynamic holes streamed from the Node process works on any host with no CDN dependency.
+
+### 5. 16.3.0-canary.105 — Turbopack Build Cache Default-ON (deployment-relevant)
+
+PR #96395 (sokra, merged 2026-07-31T17:24:41Z, shipped in `16.3.0-canary.105`) flipped `experimental.turbopackFileSystemCacheForBuild` from opt-in to **default-ON** for `next build` on Vercel and local. The cache persists to `.next/cache/turbopack/` and persists across CI runs (warm builds are 2.3×–5.5× faster, up to 30% on vercel.com-class apps).
+
+**Deployment impact:**
+
+- **Docker multi-stage builds** — the builder stage's `.next/cache/` is in the COPY layer. Either:
+  - (a) Add `RUN rm -rf .next/cache/turbopack` after the builder stage before COPY (default — clean build every container rebuild)
+  - (b) Mount a Docker `BuildKit` cache mount `--mount=type=cache,target=/app/.next/cache/turbopack` to persist across builds (recommended for CI)
+- **CI fairness comparisons** — if you're benchmarking webpack vs Turbopack, **delete `.next/` between runs** (or the warm cache will skew numbers)
+- **Disk pressure** — the cache can grow to several GB on large apps. Add `.next/cache/turbopack/` to `.dockerignore` if you don't want it in builder layer
+
+**Opt-out (rare):**
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForBuild: false,
+  },
+};
+```
+
+**Auto-OFF in non-Vercel CI:** the cache is automatically OFF when the env vars that Vercel sets (`VERCEL`, `VERCEL_ENV`, etc.) are absent. So your GitHub Actions / GitLab / Jenkins runs get a fresh build every time, while local `next build` and `vercel build` benefit from the cache.
+
+See `performance.md` for the full PR #96395 breakdown (default-detection logic + the `turbopackFileSystemCacheForBuildDefault()` switch + the four-state migration table).
+
+### 6. 16.3.0-canary.105 — `experimental.turbopackChunking` Config GA (deployment-relevant)
+
+PR #96398 (sampoder, merged 2026-07-31, shipped in `16.3.0-canary.105`) consolidates Turbopack chunking into a single new top-level config. The old `experimental.turbopack.chunkingHeuristics` + `experimental.turbopackGenerateComponentChunks` namespaces throw at config-eval time as of canary.105.
+
+**Why this is deployment-relevant:**
+- It controls **bundle structure** — how many chunks, how big, what gets grouped with what. Affects CDN cache hit rate, parallel request count, and TTFB.
+- Affects Web Worker code splitting (PR #96432 fix in the same canary).
+- Affects component chunks vs route chunks vs vendor chunks separation.
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackChunking: {
+      // Priority routing — which routes get their own dedicated chunks
+      firstPageLoadPriority: 0.7,
+      priorityRoutes: ['/', '/dashboard', '/pricing'],
+      priorityBoost: 0.3,
+
+      // Size thresholds
+      minChunkSize: 20000,
+      maxChunkCountPerGroup: 25,
+      maxMergeChunkSize: 250000,
+      minComponentChunkSize: 5000,
+
+      // Generated component chunks
+      generateComponentChunks: true,
+    },
+  },
+};
+```
+
+**Default values work for most apps.** Only tune if:
+- Your CDN cache hit rate is low (likely too many small chunks)
+- TTFB is high on first page load (likely too few parallel chunks)
+- Web Worker bundle isn't splitting correctly (likely `generateComponentChunks: false`)
+
+**Prerequisites:** Must upgrade to `next@16.3.0-canary.105` or later. Older configs throw:
+
+```
+Error: experimental.turbopack.chunkingHeuristics has been moved to experimental.turbopackChunking
+```
+
+**Migration recipe:**
+
+```bash
+# Find old config references
+rg "experimental\.turbopack\.chunkingHeuristics|experimental\.turbopackGenerateComponentChunks" next.config.*
+# Replace with experimental.turbopackChunking.{firstPageLoadPriority,priorityRoutes,priorityBoost,generateComponentChunks}
+```
+
+The `+9% Fresh Build / +8% Cached Build` regression noted in PR #96398's stats-bot comment is now live in npm — first builds after upgrading are slightly slower until the build cache warms.
+
+See `performance.md` for the full PR #96398 breakdown (4 heuristic knobs + 4 NEW size-thresholds + the 9-option config table).
+
+**Sources:**
+- [Next.js self-hosting guide (lastUpdated 2026-03-25)](https://nextjs.org/docs/app/guides/self-hosting)
+- [Next.js deploying guide](https://nextjs.org/docs/app/getting-started/deploying)
+- [`with-docker` standalone template](https://github.com/vercel/next.js/tree/canary/examples/with-docker)
+- [`with-docker-export-output` static template](https://github.com/vercel/next.js/tree/canary/examples/with-docker-export-output)
+- [`with-docker-multi-env` template](https://github.com/vercel/next.js/tree/canary/examples/with-docker-multi-env)
+- [Custom Next.js Cache Handler (Redis example)](https://github.com/vercel/next.js/tree/canary/examples/cache-handler-redis)
+- [PR #96395 — `Enable turbopackFileSystemCacheForBuild by default`](https://github.com/vercel/next.js/pull/96395)
+- [PR #96398 — `[turbopack] add experimental.turbopackChunking config`](https://github.com/vercel/next.js/pull/96398)
+- [PR #96432 — `[turbopack] Fix component chunks for workers`](https://github.com/vercel/next.js/pull/96432)
+- [Vercel — Next.js on Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs)
+- [Docker official Next.js guide](https://docs.docker.com/guides/nextjs)

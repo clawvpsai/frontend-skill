@@ -1216,3 +1216,192 @@ async function signOut() {
 - **v4 `subscribeWithSelector` in v5** — import from `zustand/middleware` explicitly in v5
 - **v4 test auto-act in v5** — wrap state updates in `act()` manually; v5 removed auto-wrapping
 - **Mutating state directly** — always use `set(state => ({ ... }))` or Immer middleware
+
+## Zustand v5 — `useShallow` for Shallow Selector Equality (v4.4+, still recommended in v5)
+
+**`useShallow`** is the canonical v5 solution for the "selector returns a new object/array each render → triggers re-render" problem. It does a **shallow equality check** on the selected output — perfect for selectors that return `{ a, b }` or `[item1, item2]` derived from the store.
+
+```tsx
+// Without useShallow — re-renders on EVERY store update because
+// `pick` returns a new object reference each time
+const { name, email } = useUserStore((s) => ({
+  name: s.user.name,
+  email: s.user.email,
+}))
+
+// With useShallow — only re-renders when name or email actually changes
+import { useShallow } from 'zustand/react/shallow'
+
+const { name, email } = useUserStore(
+  useShallow((s) => ({
+    name: s.user.name,
+    email: s.user.email,
+  }))
+)
+```
+
+**Why not `shallow` from `zustand/shallow` directly?** `shallow` is the equality function (good for `createWithEqualityFn`); `useShallow` wraps the selector hook so you don't need `createWithEqualityFn`. Use `useShallow` for hooks; use `shallow` + `createWithEqualityFn` only when you also need custom equality outside React.
+
+**When to use `useShallow`:**
+- Selector returns a new object or array each call (`{ ... }` or `[ ... ]`)
+- Selector picks 2+ fields from the store
+- Selector derives an array via `.filter()` / `.map()` / `.slice()`
+
+**When NOT to use `useShallow`:**
+- Selector returns a primitive (`s.count`, `s.userName`) — already reference-equal
+- Selector returns the entire store — no point comparing the whole thing
+- Selector needs deep equality (use `useStoreWithEqualityFn` with a deep-equal lib)
+
+```tsx
+// Pagination selector — re-derives an array each render
+const page = useItemsStore(
+  useShallow((s) => s.items.slice(s.page * 10, s.page * 10 + 10))
+)
+```
+
+**Pattern: `useShallow` for the multi-field form, plain selector for the action:**
+
+```tsx
+// Data via useShallow
+const { values, errors, isDirty } = useFormStore(
+  useShallow((s) => ({ values: s.values, errors: s.errors, isDirty: s.isDirty }))
+)
+
+// Actions via plain selector — function reference is stable across renders
+const setField = useFormStore((s) => s.setField)
+const reset = useFormStore((s) => s.reset)
+```
+
+`useShallow` lives at `zustand/react/shallow` in v5. In v4 it was at `zustand/shallow` (the same module) — keep the explicit `/react/` path for forward-compat with future v5 reorganisations.
+
+**Sources:**
+- [Zustand v5 docs — useShallow](https://zustand.docs.pmnd.rs/hooks/use-shallow)
+- [Zustand recipe — selecting multiple state slices](https://github.com/pmndrs/zustand#selecting-multiple-state-slices)
+
+## Zustand v5 — `unstable_ssrSafe` Middleware (Added 5.0.9, November 30, 2025)
+
+`unstable_ssrSafe` is an **experimental** middleware specifically for Next.js App Router + RSC + Zustand stores that hold per-request state (auth user, request-scoped feature flags, request-id-scoped analytics queue). The default Zustand `create()` keeps store state on the module's global scope, which is shared across all requests on a Node server — a single-user store works, but a request-scoped store leaks data across users.
+
+```tsx
+// lib/stores/use-request-user.ts
+import { create } from 'zustand'
+import { unstable_ssrSafe } from 'zustand/middleware'
+
+export const useRequestUserStore = create(
+  unstable_ssrSafe((set) => ({
+    userId: null,
+    setUser: (id: string) => set({ userId: id }),
+  }))
+)
+```
+
+**What `unstable_ssrSafe` does:**
+- Wraps the store creation so each SSR request gets its own snapshot
+- Hydrates the client store from the server snapshot without cross-request bleed
+- Keeps the underlying module-singleton storage, but scopes reads to the current request via React's `cache()` semantics
+- Is a no-op on the client after hydration (each browser tab already has its own module instance)
+
+**Why it's `unstable_`:** the API may change before stable; the team is iterating on the SSR-hydration boundary.
+
+**When to use:**
+- You're using Next.js App Router with RSC (any 13.0+ project)
+- Your store holds **per-request** data (the current user, request-id, CSRF token, request-scoped feature flag)
+- You have **multiple users hitting the same Node process** (production, multi-tenant SaaS)
+
+**When NOT to use:**
+- Your store is purely client-side (no SSR) — default `create()` is fine
+- Your store holds global config (theme, locale) — single source of truth is desired
+- You're on Pages Router — different SSR model, simpler patterns apply
+
+**Audit recipe:**
+
+```bash
+# Find Zustand stores in your codebase
+rg "create\(\(" --type ts --type tsx -l
+
+# Identify stores that hold per-request data without unstable_ssrSafe
+rg -B 1 -A 3 "user|currentUser|session|requestId|csrfToken" stores/
+```
+
+If a store holds `currentUser` / `requestId` / etc. and you have multi-tenant deploy, **add `unstable_ssrSafe` or migrate to a per-request store pattern**.
+
+**Current adoption:** as of v5.0.9 (Nov 30, 2025) the middleware is `unstable_` prefixed. Watch the changelog for stable promotion; subscribe to the [Zustand discussion #2740](https://github.com/pmndrs/zustand/discussions/2740) where the SSR-safe API design is being debated.
+
+**Sources:**
+- [Zustand v5.0.9 release notes](https://github.com/pmndrs/zustand/releases/tag/v5.0.9)
+- [Zustand discussion #2740 — SSR-safe API design](https://github.com/pmndrs/zustand/discussions/2740)
+- [Zustand recipes — SSR + Next.js App Router](https://zustand.docs.pmnd.rs/guides/nextjs)
+
+## TanStack Query v5 — `placeholderData: keepPreviousData` for Paginated UI (v5.66+)
+
+The biggest UX win in TanStack Query v5 for paginated lists: `placeholderData: keepPreviousData` (replaces the deprecated `keepPreviousData: true` top-level option from v4). While the next page is loading, the previous page's data stays rendered — **no skeleton flash**, no scroll position jump, no "Loading..." flicker.
+
+```tsx
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
+
+function useArticles(page: number) {
+  return useQuery({
+    queryKey: ['articles', page],
+    queryFn: () => fetchArticles(page),
+    placeholderData: keepPreviousData,
+    // v5.66+ also supports the function form for derived data:
+    // placeholderData: (prev) => prev,
+    staleTime: 30_000,
+  })
+}
+
+function ArticleList() {
+  const [page, setPage] = useState(1)
+  const { data, isFetching, isPlaceholderData } = useArticles(page)
+
+  return (
+    <div>
+      {data?.articles.map((a) => <ArticleCard key={a.id} article={a} />)}
+
+      <button onClick={() => setPage((p) => p - 1)} disabled={page === 1}>
+        Previous
+      </button>
+      <button
+        onClick={() => setPage((p) => p + 1)}
+        // Disable while next-page data is still loading
+        disabled={isPlaceholderData}
+      >
+        Next
+        {isFetching && <Spinner />}
+      </button>
+    </div>
+  )
+}
+```
+
+**What you get:**
+- `data` keeps returning the previous page's data while the new page loads
+- `isPlaceholderData` is `true` while showing previous data (use to disable the next button to prevent rapid-fire clicks)
+- `isFetching` is `true` during the actual fetch (use to show a small spinner inline)
+- Scroll position preserved (no re-layout)
+- No empty-state flash
+
+**When to use:**
+- Pagination (next/previous page)
+- Tab switching with stale-while-revalidate
+- Filter changes that re-fetch but should keep the previous filter's data visible
+
+**When NOT to use:**
+- Fresh data is critical (show a skeleton instead so users see "loading")
+- The new query has different shape (use `enabled: false` until you're ready)
+- Initial load (no previous data to keep)
+
+**v4 → v5 migration note:** in v4 the option was a top-level `keepPreviousData: true`; in v5 it's `placeholderData: keepPreviousData` (re-exported from the package root). The function form `placeholderData: (prev) => prev` is the new "manual" equivalent — same semantics, more explicit.
+
+**Audit recipe:**
+
+```bash
+# Find v4-style usage that won't work in v5
+rg "keepPreviousData:\s*true" --type ts --type tsx
+# These need to become `placeholderData: keepPreviousData`
+```
+
+**Sources:**
+- [TanStack Query v5 docs — Pagination](https://tanstack.com/query/v5/docs/framework/react/guides/paginated-queries)
+- [TanStack Query v5 — placeholderData](https://tanstack.com/query/v5/docs/framework/react/reference/useQuery#placeholderdata)
+- [TanStack Query v5 migration guide — keepPreviousData](https://tanstack.com/query/v5/docs/framework/react/guides/migrating-to-react-query-v5#removed-keeppreviousdata-top-level-option)
