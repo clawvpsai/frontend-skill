@@ -2068,7 +2068,8 @@ If you find patterns matching these in your own codebase, the fix is the canonic
 - **App users today**: zero observable change in dev (flag off) or production (DEV-only). The warning won't fire unless you explicitly opt into the flag.
 - **Library authors**: nothing to ship yet — this is purely a fiber-internal warning machinery PR. The flag default will move at Meta's discretion.
 - **Tooling vendors** (React DevTools, framework adapters): take note of the two new exports — `hasPotentialUseWarnings()` (for future observability integration) + `clearUseWarnings()` (for test isolation).
-- **Type vendors** ([Next.js PR #96419](https://github.com/vercel/next.js/pull/96419), merged 2026-07-31T15:29:57Z — see `performance.md` canary.105-ahead section): `@types/react` 19.2.17 → 19.2.18 + `@types/react-dom` 19.2.3 → 19.2.4 ship `ReactDOM.browser()` types (from PR #37143, the previous canary), making it usable from vanilla-TS without awaiting the next minor stable. **The new `use()` warning types do NOT require an `@types/react` bump** (the warning is a runtime DEV check, not a TS type).
+- **Type vendors** ([Next.js PR #96419](https://github.com/vercel/next.js/pull/96419), merged 2026-07-31T15:29:57Z — **now SHIPPED in `next@16.3.0-canary.105`**, see `performance.md` canary.105 SHIPPED section): `@types/react` 19.2.17 → 19.2.18 + `@types/react-dom` 19.2.3 → 19.2.4 ship `ReactDOM.browser()` types (from PR #37143, the previous canary), making it usable from vanilla-TS without awaiting the next minor stable. **The new `use()` warning types do NOT require an `@types/react` bump** (the warning is a runtime DEV check, not a TS type).
+- **Next.js vendor** ([Next.js PR #96434](https://github.com/vercel/next.js/pull/96434), merged 2026-07-31T19:27:35Z — **now SHIPPED in `next@16.3.0-canary.105`**): the 6th React vendor bump in 11 days. Next.js's vendored React is now `19.3.0-canary-cbb046ab-20260731` — which means the `enableConditionalUseWarning` flag is now accessible inside Next.js's bundled React. If you maintain a custom Next.js fork that flips Meta's React feature flags, you can now enable the conditional-`use()` warning in your fork via `enableConditionalUseWarning = true` in `packages/shared/ReactFeatureFlags.js`. Default Next.js users see no behavior change — the flag stays OFF until Meta flips it upstream.
 
 ### Timing — why v1.5.10 missed this
 
@@ -2082,7 +2083,61 @@ If you find patterns matching these in your own codebase, the fix is the canonic
   - v1.5.10 missed `cbb046ab` by 4h47min
 - The recurrence rate is now 4/4 — i.e. every recent React canary bump has fallen inside the 6h cron window. The pattern confirms: **React canary bumps happen on a 20-72h cadence, and any individual 6h cron cycle is ~95% likely to capture the bump eventually (within 1-2 cycles)**.
 
+### React main branch: 2 NEW commits since `cbb046ab` (August 1, 2026) — forward-looking only
+
+The v1.5.12 cron (06:03Z Aug 1) finds **2 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** (which was tagged 2026-07-31T14:24:10Z, ~16h before this cron). The next React canary cut hasn't happened yet — expect it within 12-48h on the React team's cadence (the team tends to cut canaries within 24h of landing 2+ commits on main). Both PRs are documented here as forward-looking notes so you can prepare before the canary cut arrives.
+
+#### PR #37063 — `[Fiber] Collect Host Singleton children of Fragments` (eps1lon, merged 2026-07-31T19:20:21Z)
+
+Revisits the decision to **exclude Host Singletons when collecting/traversing Fragment descendants for Fragment instance methods**. Host Singletons were specifically excluded in [react/react PR #32465](https://github.com/react/react/pull/32465) (discussion [r1987663388](https://github.com/react/react/pull/32465#discussion_r1987663388)). However, this leads to errors when calling `dispatchEvent` on empty singletons (e.g. `<body>`) as children of Fragment instances where `dispatchEvent` is called.
+
+From a type perspective, it's safe to start collecting `HostSingleton` in addition to `HostComponent`. Both have an `Instance` in their `stateNode`. Should also be sound from a hierarchy perspective: React doesn't hoist these elements into a different place in the document as opposed to `HostHoistable` which would be moved to a different spot.
+
+**Practical impact today: zero observable change** (PR is on `main` but not yet in any canary cut). Once the next React canary ships:
+- Fixes a real bug where `dispatchEvent` calls on empty singletons inside Fragments were failing (e.g. `<><body /></>` where you try to call `.dispatchEvent()` on the body would have failed pre-this-PR).
+- Library authors that use Fragment-instance methods to walk DOM singletons (analytics libraries, accessibility helpers) will see their calls start working again.
+
+**Audit recipe (after the canary cut):**
+
+```bash
+# Confirm the PR landed in your installed react@canary:
+grep -r 'collectHostSingletons\|HostSingleton.*collect' node_modules/react-dom/cjs/react-dom.development.js
+# → should show the new HostSingleton collection in Fragment descendant walk
+```
+
+#### PR #37154 — `[Flight] Add 'pending_weak' to Flight thenable protocol` (acdlite, merged 2026-07-31T17:22:31Z)
+
+Added behind a new experimental flag **`enableFlightWeakThenables`**. Adds a new thenable status to the Flight protocol: **`'pending_weak'`**.
+
+Unlike a regular pending thenable, a weak thenable does **not** block the stream from closing. If it settles while the stream is still open, its value is emitted like a normal pending thenable. Otherwise its reference is left unfulfilled and on the client it stays forever pending, **without erroring**, even when the connection closes. It's up to the client to handle the unresolved promise in an appropriate way.
+
+**Motivating use case** (per the PR body) — encoding metadata about a Flight stream into the response itself. For example, a framework might want to track whether a page varies by search params. It could represent this in the response as a `Promise<boolean>` that resolves to `true` as soon as the component being rendered in the stream accesses search params. If the thenable never resolves by the time the stream closes, then the client knows that no search params were ever accessed.
+
+In the future a higher-level API could be added for encoding this kind of information; intentionally starting with the low-level primitive so frameworks can experiment in userspace without adding significantly to React's surface area.
+
+Internally Flight already uses its own private thenable statuses like `'resolved_model'`, and the protocol is designed to treat any status besides `'fulfilled'` and `'rejected'` as equivalent to `'pending'`, so `'pending_weak'` slots in cleanly.
+
+**Practical impact today: zero observable change** (flag off; PR is on `main` but not yet in any canary cut). Once the flag flips to ON in a future canary:
+- **Framework authors** can start encoding stream metadata via weak thenables (search-params-tracking, locale-tracking, viewport-size-tracking, etc.).
+- **App authors** won't see anything unless their framework opts into the new primitive.
+- **No new public APIs** (the change is purely a Flight protocol extension + an internal feature flag).
+
+**Audit recipe (after the canary cut):**
+
+```bash
+# Confirm the PR landed in your installed react@canary:
+grep -r 'enableFlightWeakThenables\|pending_weak' node_modules/react-server-dom-webpack/cjs/react-server-dom-webpack.development.js
+# → should show the new flag + the 'pending_weak' status handling
+```
+
 ### Sources
+
+- [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified 2 NEW commits after `cbb046ab` at 2026-07-31T19:20:21Z (main-branch head is now `3a717e4243`)
+- [React PR #37063 — `[Fiber] Collect Host Singleton children of Fragments`](https://github.com/facebook/react/pull/37063) — by eps1lon, merged 2026-07-31T19:20:21Z, fixes `dispatchEvent` calls on empty singletons inside Fragments
+- [React PR #37154 — `[Flight] Add 'pending_weak' to Flight thenable protocol`](https://github.com/facebook/react/pull/37154) — by acdlite, merged 2026-07-31T17:22:31Z, adds the new thenable status behind `enableFlightWeakThenables`
+- [react/react PR #32465 (the original Host Singleton exclusion discussion)](https://github.com/react/react/pull/32465) — context for why PR #37063 reverts that decision
+- [Next.js PR #96434 — `Upgrade React from 0f42eac2-20260730 to cbb046ab-20260731`](https://github.com/vercel/next.js/pull/96434) — the Next.js vendor bump that brings PR #37104's conditional-`use()` warning machinery into Next's bundled React (now SHIPPED in `16.3.0-canary.105`)
+
 
 - [React canary `19.3.0-canary-cbb046ab-20260731` GitHub compare (`0f42eac2...cbb046ab`)](https://github.com/facebook/react/compare/0f42eac2...cbb046ab) — 1 commit
 - [React PR #37104 — `[Fiber] Warn for Conditional Use of use() Based on Cache`](https://github.com/facebook/react/pull/37104) — author hoxyq, merged 2026-07-31T14:24:10Z, cherry-pick of [react/react PR #34030](https://github.com/react/react/pull/34030)

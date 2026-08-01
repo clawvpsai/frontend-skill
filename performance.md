@@ -3089,21 +3089,29 @@ If you see a reduction in the chunk count or in the total bytes of `chunks/*.js`
 - [React canary `19.3.0-canary-0f42eac2-20260730` GitHub compare (`6cb4322d...0f42eac2`)](https://github.com/facebook/react/compare/6cb4322d...0f42eac2) — the 4 upstream commits brought in by PR #96402
 
 
-## 16.3 canary.105-ahead — `turbopackFileSystemCacheForBuild` Default-On for Production Builds + `@types/react` Bump for `ReactDOM.browser()` Types + Cache Components PPR Not-Found Resume Fix + Unhandled-Rejection Logging Consolidation + App Shell Stale-Time Docs (5 NEW PRs, July 31, 2026)
+## 16.3 canary.105 SHIPPED — Turbopack `experimental.turbopackChunking` Config (NEW) + `turbopackFileSystemCacheForBuild` Default-On + Cache Components PPR Not-Found Resume Fix + `isHeadPartial` Fix + Unhandled-Rejection Logging Consolidation + App Shell Stale-Time Docs + Component-Chunks-for-Workers Fix + React `cbb046ab` Vendor Bump (15 commits, July 31, 2026)
 
-The v1.5.10 cron captured the canary-branch as **2 commits ahead of canary.104** (PR #96398 turbopackChunking consolidation + PR #96400 isHeadPartial fix); this v1.5.11 cron (18:05Z July 31) finds the canary-branch **7 commits ahead of canary.104** — **5 NEW commits since v1.5.10** at 12:03Z, all material. canary.105 itself is still not published (`next@canary` is still `16.3.0-canary.104` in npm; the canary-branch has the canary.105 content but Vercel hasn't shipped it to npm yet — expected within 6-18h on the 24h cadence).
+**`next@16.3.0-canary.105` SHIPPED at 2026-07-31T23:57:13Z** (GitHub release tag `v16.3.0-canary.105` published by `next-js-bot`; npm `dist-tag.canary` moved at the same time; canary-branch head commit `a8dcd2562f — v16.3.0-canary.105`; commit range `38f0cde...a8dcd25` = **15 commits**). The v1.5.10/v1.5.11 cycles both captured the canary-branch as "7 commits ahead of canary.104, canary.105 itself not yet npm-published"; the v1.5.12 cycle (this cron, 06:03Z Aug 1) finds **all 7 canary-branch-ahead-of-canary.104 PRs SHIPPED**, plus 8 NEW commits inside the canary.105 window that v1.5.11 captured only as the canary-branch-ahead feed — **5 NEW material PRs v1.5.11 missed** (PR #96432, PR #96434, PR #96437, PR #96428 test-only, PR #96438 + PR #96442 + PR #96359 CI) + 1 canary-tag commit.
 
-The 7 canary-branch-ahead-of-canary.104 commits, in chronological merge order:
+The 15 commits vs canary.104, in chronological merge order:
 
-1. `e3d634e0` — **PR #96400** `Fix isHeadPartial when hydrating from a static fallback shell` (Andrew Clark, acdlite, merged 2026-07-31T04:37:16Z) — **already documented in v1.5.10 canary.105-ahead section**
-2. `b4e3fecc` — **PR #96398** `[turbopack] add experimental.turbopackChunking config` (sampoder, merged 2026-07-31T06:37:37Z) — **already documented in v1.5.10 (the headlines section)**
-3. `6f7ed2ec` — **PR #96312** `docs: document the App Shell stale time threshold for cached content` (icyJoseph, merged 2026-07-31T14:15:10Z) — **NEW in v1.5.11 (subsection below)**
-4. `be7048ef` — **PR #96419** `Update @types/react and @types/react-dom to latest` (eps1lon, merged 2026-07-31T15:29:58Z) — **NEW in v1.5.11 (subsection below)**
-5. `9bfaf63e` — **PR #96390** `Fix adapter outputs for not-found routes when used with cache components` (Zack Tanner, ztanner, merged 2026-07-31T15:30:58Z) — **NEW in v1.5.11 (subsection below)**
-6. `7612eaed` — **PR #95999** `Consolidate unhandled rejection logging into a single listener` (eps1lon, merged 2026-07-31T15:36:41Z) — **NEW in v1.5.11 (subsection below)**
-7. `6523a33f` — **PR #96395** `Enable turbopackFileSystemCacheForBuild by default` (Tobias Koppers, sokra, merged 2026-07-31T17:24:41Z) — **NEW in v1.5.11 (subsection below)**
+1. `e3d634e0` — **PR #96400** `Fix isHeadPartial when hydrating from a static fallback shell` (Andrew Clark / acdlite, merged 2026-07-31T04:37:16Z) — **SHIPPED in `16.3.0-canary.105`** (was "canary-branch ahead" in v1.5.10/v1.5.11)
+2. `b4e3fecc` — **PR #96398** `[turbopack] add experimental.turbopackChunking config` (sampoder, merged 2026-07-31T06:37:37Z) — **SHIPPED in `16.3.0-canary.105`** (documented above in the headlines + Common Mistakes section)
+3. `6f7ed2ec` — **PR #96312** `docs: document the App Shell stale time threshold for cached content` (icyJoseph, merged 2026-07-31T14:15:10Z) — **SHIPPED in `16.3.0-canary.105`**
+4. `be7048ef` — **PR #96419** `Update @types/react and @types/react-dom to latest` (eps1lon, merged 2026-07-31T15:29:58Z) — **SHIPPED in `16.3.0-canary.105`**
+5. `9bfaf63e` — **PR #96390** `Fix adapter outputs for not-found routes when used with cache components` (Zack Tanner / ztanner, merged 2026-07-31T15:30:58Z) — **SHIPPED in `16.3.0-canary.105`**
+6. `7612eaed` — **PR #95999** `Consolidate unhandled rejection logging into a single listener` (eps1lon, merged 2026-07-31T15:36:41Z) — **SHIPPED in `16.3.0-canary.105`**
+7. `6523a33f` — **PR #96395** `Enable turbopackFileSystemCacheForBuild by default` (Tobias Koppers / sokra, merged 2026-07-31T17:24:41Z) — **SHIPPED in `16.3.0-canary.105`**
+8. `a2d55862` — **PR #96432** `[turbopack] Fix component chunks for workers` (sampoder, merged 2026-07-31T18:12:23Z) — **NEW in v1.5.12 — SHIPPED in `16.3.0-canary.105`** (subsection below)
+9. `f5c81a82` — **PR #96434** `Upgrade React from 0f42eac2-20260730 to cbb046ab-20260731` (vercel-release-bot, merged 2026-07-31T19:27:35Z) — **NEW in v1.5.12 — SHIPPED in `16.3.0-canary.105`** (subsection below)
+10. `dc358f45` — **PR #96438** `[ci] Run new/changed deploy tests asap` (CI-only) — non-material
+11. `e89118a0` — **PR #96442** `[react-sync] Enable auto-merge on PRs` (CI-only) — non-material
+12. `fd6f11ba` — **PR #96437** `[turbopack] Introduce documentation on experimental.turbopackChunking` (docs for PR #96398's new config)
+13. `43916339` — **PR #96359** `Add automated code review workflow` (CI-only) — non-material
+14. `f7f2036e` — **PR #96428** `test: stabilize after() deploy revalidation checks` (test-only) — non-material
+15. `a8dcd256` — `v16.3.0-canary.105` version-tag commit (no code changes)
 
-This section covers the 5 NEW (i.e. 3-7 above). The headlines across all 5 in one paragraph: **the biggest user-facing change is PR #96395 flipping `turbopackFileSystemCacheForBuild` to default-ON for `next build`** (every local + Vercel build now uses the warm filesystem cache by default — ~30-60% speedup on warm builds); **#96419** bumps `@types/react` to 19.2.18 + `@types/react-dom` to 19.2.4 so vanilla-TS users can now consume `ReactDOM.browser()` from React canary `0f42eac2` immediately (no need to wait for the next minor stable); **#96390** makes `not-found.tsx` work correctly with Cache Components + PPR (a `not-found.tsx` that suspends now renders its dynamic content when deployed, instead of being treated as a complete static 404); **#95999** collapses 3 redundant `unhandledRejection` loggers into 1 (`Symbol.for`-keyed shared listener); **#96312** is a docs PR that adds the 5-minute `stale`-time floor to all 5 App Shell docs pages, locking in a previously-implicit behavior into documentation.
+This section's sub-sections cover the **5 NEW material PRs v1.5.11 missed** (PRs #96432 + #96434 + the 3 smaller ones above the headline fold). The headlines across all 15 commits: **the biggest user-facing change is PR #96395 flipping `turbopackFileSystemCacheForBuild` to default-ON for `next build`** (every local + Vercel build now uses the warm filesystem cache by default — ~5-30% speedup on warm builds, opt-out via `experimental.turbopackFileSystemCacheForBuild: false`); **#96398** introduces the new top-level `experimental.turbopackChunking` config (9 options, replaces the old `turbopack.chunkingHeuristics` + `turbopackGenerateComponentChunks` namespaces which now throw at config-eval time); **#96419** bumps `@types/react` to 19.2.18 + `@types/react-dom` to 19.2.4 so vanilla-TS users can now consume `ReactDOM.browser()` from React canary `0f42eac2` immediately (no need to wait for the next minor stable); **#96434** vendor-bumps the React canary `cbb046ab-20260731` (with #37104's conditional `use()` warning machinery) into Next.js's bundled React; **#96390** makes `not-found.tsx` work correctly with Cache Components + PPR + adapters (a `not-found.tsx` that suspends now renders its dynamic content when deployed, instead of being treated as a complete static 404); **#96400** fixes `isHeadPartial` in CDN-served fallback shells; **#95999** collapses 3 redundant `unhandledRejection` loggers into 1 (`Symbol.for`-keyed shared listener); **#96312** is a docs PR that adds the 5-minute `stale`-time floor to all 5 App Shell docs pages, locking in a previously-implicit behavior into documentation; **#96432** fixes the worker-chunk regression introduced by PR #95261 (`module_chunks` made chunks stop being plain path strings, breaking Web Worker code-chunk resolution). The `turbopackChunking` config is now GA in npm-published canary.105 — old `experimental.turbopack.chunkingHeuristics` + `experimental.turbopackGenerateComponentChunks` namespaces throw at config-eval time with explicit migration errors (per the `config.ts` throws quoted in the canary.104-AHEAD section above). The +9% Fresh Build + +8% Cached Build regression documented in PR #96398's stats-bot comment is now live in npm.
 
 ### PR #96395 — `Enable turbopackFileSystemCacheForBuild by default` (sokra, merged 2026-07-31T17:24:41Z) — **THE BIGGEST BEHAVIORAL CHANGE OF THIS CRON**
 
@@ -3337,24 +3345,117 @@ Closes Linear [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exc
 - **No breaking changes for users on `next@canary.104`** — the only behavior change is the filesystem-cache default-on (and that one is opt-out-able).
 - **No new public APIs, no new config flags** (other than the existing opt-out for #96395).
 
+## 16.3 canary.106-ahead — Fix Hybrid Pages/App Router `not-found` Rendering with Adapters + Warn that `experimental.useCache` is Deprecated (2 NEW PRs, August 1, 2026)
+
+The v1.5.12 cron (06:03Z Aug 1) finds **2 NEW commits ahead of canary.105** (canary-branch head `ccd47cfe53` at 2026-08-01T00:26:11Z). The canary.105 release tag was published **17 minutes AFTER PR #96392 had already landed** in the canary-branch — so PR #96392 didn't make it into npm-published canary.105 and users hitting this issue must wait for canary.106. PR #96448 landed at the canary-branch tip itself, ~28 minutes after the canary.105 version-tag commit was made.
+
+### PR #96392 — `Fix hybrid Pages/App Router not-found rendering with adapters` (Zack Tanner / ztanner, merged 2026-07-31T23:40:38Z, 17 minutes BEFORE canary.105 was published)
+
+The PR landed at 23:40:38Z but the canary.105 version-tag commit `a8dcd2562f` was made at 23:35:12Z. So the user-facing canary.105 npm-published at 23:57:13Z contains the canary.104→canary.105 range that **excluded this PR** (it landed at `893121b887` 5min25s AFTER `a8dcd2562f` was tagged). Users on `next@16.3.0-canary.105` who hit the cross-router not-found bug must wait for `next@16.3.0-canary.106` (expected in 6-18h).
+
+**The bug:** When Pages Router and App Router routes coexist, a Pages Router route that returns `notFound` will internally hand rendering to the App Router not-found page. Next.js [prefers the App Router `/_not-found` entry for 404 responses](https://github.com/vercel/next.js/blob/5f5e4773bbb54f19697063ea093e8d89ca7d081a/packages/next/src/server/base-server.ts#L2965-L2980) before falling back to a Pages Router `/404` page. **When deployed via an adapter**, this means the build would have attempted to resume the Pages entry, which wouldn't contain the relevant prerendered shell or postponed state. If the not-found page suspends, its response cannot be resumed using the metadata associated with the Pages Router output.
+
+**The fix:** For adapter requests, mark the handoff with an **empty postponed state**. This uses the existing resume protocol to perform a complete, non-cacheable dynamic render. `next start` continues to use the normal PPR path, where it can load and resume the App Router not-found output directly.
+
+**Trade-off:** This trades **PPR shell reuse for correctness only during this cross-router not-found handoff**. Longer term, adapters should have an explicit contract for cross-output handoffs so they can select and resume the App Router not-found output normally, without necessarily declaring the pages router output PPR-capable. The change also documents the empty postponed-state contract and adds deployment regression coverage.
+
+**Verification (from the PR body):**
+
+- Added an end-to-end test that verifies a Pages Router `notFound()` resolution properly transitions to App Router `/_not-found` rendering on adapter deployments.
+- The test covers both the explicit `notFound()` return and the implicit case (throwing `NEXT_NOT_FOUND`).
+- Adapter regression coverage added to ensure future adapter changes don't reintroduce the bug.
+
+**Practical impact:**
+
+- **If you're on `next@16.3.0-canary.105` and using an adapter** (e.g. `@vercel/next`, Cloudflare adapter, Netlify adapter, Express custom adapter, etc.) with **both Pages Router and App Router routes** and either route returns `notFound()`, you may have hit the bug pre-this-PR and will still hit it on canary.105. **Wait for canary.106.**
+- **If you're using `next start` directly** (or Vercel's managed hosting — which doesn't use the adapter path for default deployments), you are unaffected — the normal PPR path continues to work.
+- **No new API, no config flag, no codemod** — pure build-time fix.
+- **Future direction:** adapters should expose a `modifyConfig` hook for the cross-output handoff contract (the PR body explicitly notes this as a follow-up).
+
+**Audit recipe:**
+
+```bash
+# Verify you're on canary.106+ if you depend on this fix:
+npm ls next  # should show 16.3.0-canary.106 or later
+
+# If you're on canary.105 and need this fix:
+# Option A: wait for canary.106 (expected 6-18h on the 24h cadence)
+# Option B: pin to canary.107 or later (once available)
+# Option C: workaround — move the cross-router not-found handling to a single router
+#   (i.e. don't mix Pages + App Router for not-found scenarios that hit adapters)
+```
+
+### PR #96448 — `Warn that experimental.useCache is deprecated` (unstubbable, merged 2026-08-01T00:26:11Z)
+
+This PR is **small in code but huge in ergonomics** — it surfaces a deprecation warning that's been hidden in JSDoc since [PR #92316](https://github.com/vercel/next.js/pull/92316).
+
+**Background:** The `experimental.useCache` option has carried a `@deprecated` JSDoc annotation since PR #92316, but nothing surfaced that at runtime, so users had no signal to migrate unless their editor happened to show the annotation.
+
+**The fix (per PR body):**
+
+> This change logs a warning whenever the option is set explicitly, pointing at the top-level `cacheComponents` option instead. When `cacheComponents` is already enabled the option is redundant, so the message says it can be removed; otherwise it asks the user to switch.
+
+**The bigger change — `experimental.useCache` disabling is now rejected when `cacheComponents` is enabled:**
+
+> Disabling the option while `cacheComponents` is enabled is now rejected outright. That combination is contradictory: it turns off the very directive Cache Components is built around, and the resulting compile error asks the user to enable `cacheComponents`, which they already have on. Throwing here matches how `cachedNavigations` and `partialPrefetching` reject configurations that require `cacheComponents`.
+
+**Why `assignDefaultsAndValidate` (not `checkDeprecations`)?**
+
+> The checks live in `assignDefaultsAndValidate` rather than alongside the other deprecations in `checkDeprecations`, because the latter runs before `enforceExperimentalFeatures` and would therefore not see a `cacheComponents` value that was enabled through the environment. A defined `experimental.useCache` value is what identifies an explicit user setting, since the option is otherwise backfilled from `cacheComponents` immediately below the new checks.
+
+**Practical impact:**
+
+- **If you have `experimental.useCache: true` set in your `next.config.ts`** — you'll now see a runtime warning on `next dev` / `next build` / `next start` telling you to switch to `cacheComponents: true` (or remove the line entirely if `cacheComponents` is already on).
+- **If you have `experimental.useCache: false` AND `cacheComponents: true`** — you'll now get a **compile error** (not a warning) that says "you're disabling the very directive Cache Components is built around; remove the `useCache: false` line". This is a **deliberate breaking change** for any project that's been relying on the contradiction; the fix is to remove the `useCache: false` line.
+- **If you have neither set** — nothing changes (the option is backfilled from `cacheComponents`).
+- **Migration path is mechanical:**
+  ```diff
+  // next.config.ts
+  const config = {
+    experimental: {
+  -   useCache: true,
+  +   cacheComponents: true,  // top-level now
+    }
+  }
+  ```
+
+**Audit recipe:**
+
+```bash
+# Find projects with the deprecated option:
+rg -n 'experimental.*useCache' next.config.*
+
+# Find projects with the contradictory config (useCache: false + cacheComponents: true):
+rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
+
+# If you find a contradiction, the fix is to remove the useCache: false line:
+# - next.config.ts:
+#   experimental: {
+#     cacheComponents: true,
+#   - useCache: false,    // ← remove this
+#   }
+```
+
+### Practical impact summary for canary.106
+
+- **`next@16.3.0-canary.105` users** (just-shipped, 23h after v1.5.11 captured it as canary-branch-ahead) get:
+  - **All 7 previously-canary-branch-ahead PRs now live in npm** — the new `experimental.turbopackChunking` config GA (replaces old chunkingHeuristics + turbopackGenerateComponentChunks), `turbopackFileSystemCacheForBuild` default-on, `not-found.tsx` Cache Components fix, `isHeadPartial` fix, unhandled-rejection logging consolidation, App Shell stale-time docs, Component-Chunks-for-Workers fix (PR #96432), React `cbb046ab` vendor bump (PR #96434).
+  - **Type-vendor bump** — `@types/react@19.2.18` + `@types/react-dom@19.2.4` ship `ReactDOM.browser()` types in vanilla-TS.
+- **`next@16.3.0-canary.106` users (when it ships)** will additionally get:
+  - **Hybrid Pages/App Router not-found rendering fix** (PR #96392) — important for adapter-deployed projects with mixed routers.
+  - **Runtime warning + compile-error for `experimental.useCache` deprecation** (PR #96448) — migration signal to `cacheComponents`; remove `useCache: false` if `cacheComponents` is on.
+- **No breaking changes for users on `next@canary.104`** — the only behavior changes in canary.105 are the filesystem-cache default-on (opt-out-able) and the `experimental.turbopackChunking` config-eval throw (opt-in-able by migrating your config).
+- **No new public APIs, no new config flags** (other than the existing opt-out for #96395 + the existing `turbopackChunking` config for #96398 + the existing opt-out for #96419's bundled-deps bump).
+
 ### Sources
 
-- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (7 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the 7-commit inventory
-- [Next.js PR #96395 — `Enable turbopackFileSystemCacheForBuild by default`](https://github.com/vercel/next.js/pull/96395) — by [sokra](https://github.com/sokra), merged 2026-07-31T17:24:41Z, **the headline material change**
-- [Next.js PR #96395 files diff](https://github.com/vercel/next.js/pull/96395/files) — 4 files (2 docs + 1 config-shared + 1 new e2e test)
-- [Next.js PR #96419 — `Update @types/react and @types/react-dom to latest`](https://github.com/vercel/next.js/pull/96419) — by [eps1lon](https://github.com/eps1lon), merged 2026-07-31T15:29:58Z
-- [Next.js PR #96419 files diff](https://github.com/vercel/next.js/pull/96419/files) — 3 files, `package.json` + `test/minimum-release-age-exclude.json` + `pnpm-lock.yaml`
-- [Next.js PR #96390 — `Fix adapter outputs for not-found routes when used with cache components`](https://github.com/vercel/next.js/pull/96390) — by [Zack Tanner](https://github.com/ztanner), merged 2026-07-31T15:30:58Z, closes companion PR [#96399](https://github.com/vercel/next.js/pull/96399)
-- [Next.js PR #96390 files diff](https://github.com/vercel/next.js/pull/96390/files) — 9 files, +101/-13
-- [Next.js PR #95999 — `Consolidate unhandled rejection logging into a single listener`](https://github.com/vercel/next.js/pull/95999) — by [eps1lon](https://github.com/eps1lon), merged 2026-07-31T15:36:41Z, +227/-98
-- [Next.js PR #95999 files diff](https://github.com/vercel/next.js/pull/95999/files) — 8 files, includes the new `registerUnhandledRejectionListener` + `isUnhandledRejectionListenerRegistered` exports
-- [Next.js PR #96312 — `docs: document the App Shell stale time threshold for cached content`](https://github.com/vercel/next.js/pull/96312) — by [icyJoseph](https://github.com/icyJoseph), merged 2026-07-31T14:15:10Z, closes [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exclude-stale-5-minutes-caches)
-- [Next.js PR #96312 files diff](https://github.com/vercel/next.js/pull/96312/files) — 5 files, +13/-4
-- [@types/react@19.2.18 release](https://www.npmjs.com/package/@types/react/v/19.2.18) — published 2026-07-30T21:54:03Z
-- [@types/react-dom@19.2.4 release](https://www.npmjs.com/package/@types/react-dom/v/19.2.4) — published 2026-07-30T21:53:05Z
-- [Next.js issue #77997 — unhandled rejection crash-prevention requirement](https://github.com/vercel/next.js/issues/77997) — the must-exist constraint that motivates keeping the runtime handler even after PR #95999's consolidation
-- [Next.js docs: `turbopackFileSystemCache` API reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache) — updated version table for v16.3.0
-- [Next.js docs: `cacheLife` API reference](https://nextjs.org/docs/app/api-reference/functions/cacheLife) — updated "Prerendering behavior" subsection
+- [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (2 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the 2-commit inventory (PR #96392 + PR #96448)
+- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (17 commits — 15 in canary.105 + 2 ahead of canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the cumulative view
+- [**Next.js PR #96392** — `Fix hybrid Pages/App Router not-found rendering with adapters`](https://github.com/vercel/next.js/pull/96392) — by [Zack Tanner](https://github.com/ztanner), merged 2026-07-31T23:40:38Z, **landed 17min BEFORE canary.105 was published** — not in npm-published canary.105, wait for canary.106
+- [Next.js base-server.ts lines 2965-2980 — App Router not-found preference logic](https://github.com/vercel/next.js/blob/5f5e4773bbb54f19697063ea093e8d89ca7d081a/packages/next/src/server/base-server.ts#L2965-L2980) — the existing cross-router preference that this PR overrides for adapter requests
+- [**Next.js PR #96448** — `Warn that experimental.useCache is deprecated`](https://github.com/vercel/next.js/pull/96448) — by [unstubbable](https://github.com/unstubbable), merged 2026-08-01T00:26:11Z, the warning + compile-error for the deprecated `useCache` option
+- [Next.js PR #92316 — original `experimental.useCache` `@deprecated` JSDoc annotation](https://github.com/vercel/next.js/pull/92316) — the hidden deprecation that PR #96448 surfaces
+- [Next.js `cacheComponents` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the top-level config that replaces `experimental.useCache`
 
 
 
@@ -3384,3 +3485,5 @@ Closes Linear [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exc
 - **Conditional `use(promise)` patterns that cache the value and only call `use()` on cache miss** — as of `react@19.3.0-canary-cbb046ab-20260731` (PR #37104, hoxyq, merged 2026-07-31T14:24:10Z), a new DEV-only warning fires when you suspend via `use()` on render N but don't `use()` the same promise on render N+1 (the resolved render). The warning is gated behind the `enableConditionalUseWarning` feature flag (currently OFF in `react@canary`; will likely flip to ON in a future canary once Meta measures the noise floor). The fix is always-`use()`-the-promise — see the matching section in `components.md` for the canonical anti-pattern + rewrite + audit recipe (`rg -n 'cache\.value\s*===\s*undefined' --type ts --type tsx`).
 - **Triple-logged unhandled rejections in `next dev` or `next start` on canary.104-** — fixed by PR #95999 (eps1lon, merged 2026-07-31T15:36:41Z). Pre-#95999, a single `unhandledRejection` was logged by 3 independent listeners (runtime crash-prevention + router server + dev server) in 3 different formats. Post-#95999 (canary.105+), the runtime handler stays (must-exist per issue #77997), and the router + dev server check-then-register a single shared listener via `Symbol.for` on `globalThis`. If you're debugging "why am I seeing this error 3 times?", upgrade to canary.105+.
 - **Dynamic `not-found.tsx` content not rendering in deployed environments on canary.104-** — fixed by PR #96390 (Zack Tanner, merged 2026-07-31T15:30:58Z). Pre-#96390, any `not-found.tsx` that used `headers()` / `cookies()` / dynamic `use cache: private` would be served as a static `404.html` shell at deploy time (omitted from adapter outputs entirely), with the dynamic content never appearing. Post-#96390 (canary.105+), the build correctly distinguishes "fully static not-found → emit 404.html" from "PPR not-found → emit dynamic resume chain with PARTIALLY_STATIC metadata". Audit recipe: `ls .next/server/pages/404.html` (should NOT exist for dynamic not-found) + `grep PARTIALLY_STATIC .next/server/app/not-found.body` (should exist for dynamic not-found).
+- **Hybrid Pages Router + App Router `not-found` rendering fails on adapter deployments on canary.105-** — fixed by PR #96392 (Zack Tanner, merged 2026-07-31T23:40:38Z). Pre-#96392, when Pages Router and App Router routes coexist and a Pages route returns `notFound()`, the handoff to App Router `/_not-found` would attempt to resume the Pages entry (which doesn't contain the relevant prerendered shell or postponed state) — the dynamic not-found content silently failed to render. **Critical timing detail:** PR #96392 landed in the canary-branch at 23:40:38Z, but the canary.105 version-tag commit `a8dcd2562f` was made at 23:35:12Z — so PR #96392 is **NOT in the npm-published `16.3.0-canary.105`** and users on canary.105 must wait for `16.3.0-canary.106`. `next start` users (or Vercel-hosted) are unaffected — the bug only manifests through the adapter path. Audit recipe: `npm ls next` (must show `>=16.3.0-canary.106` if you depend on this fix).
+- **Ignoring the new `experimental.useCache` deprecation warning that PR #96448 surfaces (canary.106+)** — the `experimental.useCache` option has carried a `@deprecated` JSDoc annotation since PR #92316 but nothing surfaced that at runtime. PR #96448 (unstubbable, merged 2026-08-01T00:26:11Z) **logs a warning** whenever `experimental.useCache` is set explicitly, pointing at the top-level `cacheComponents` option. Worse, **disabling the option while `cacheComponents` is enabled is now rejected outright** as a compile error (because that combination is contradictory — it turns off the very directive Cache Components is built around, and the resulting error asks the user to enable `cacheComponents` which they already have on). Throwing matches how `cachedNavigations` and `partialPrefetching` already reject configs that require `cacheComponents`. Migration: remove `experimental.useCache` from your `next.config.ts`; if `cacheComponents: true`, the `useCache` option is backfilled automatically and is redundant; if you have `experimental.useCache: false` AND `cacheComponents: true`, simply remove the `useCache: false` line. Audit recipe: `rg -n 'experimental.*useCache' next.config.*` to find projects with the deprecated option set; `rg -B2 -A4 'useCache.*false' next.config.*` to find the contradictory config that will now throw at config-eval.
