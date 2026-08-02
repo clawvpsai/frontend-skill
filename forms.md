@@ -826,6 +826,74 @@ npm install @hookform/resolvers@^5.6.0
 - [PR #869 — Zod resolver drops special root field names fix](https://github.com/react-hook-form/resolvers/issues/869)
 - [commit `b011a5f` — all-resolvers generalization](https://github.com/react-hook-form/resolvers/commit/b011a5f3f793dba475b143cca34859997cdfb161)
 
+## @hookform/resolvers 5.7.0 (August 2, 2026) — Vine v4 Resolver Support + `vine.create({})` Syntax
+
+`@hookform/resolvers@5.7.0` SHIPPED at 2026-08-02T05:57:55Z — **just 4 minutes before this cron started** — adding **first-class support for VineJS v4** via [PR #867](https://github.com/react-hook-form/resolvers/pull/867) (`feat: support vine v4`, commit [`4cfba18`](https://github.com/react-hook-form/resolvers/commit/4cfba18117e8b76bde326a54103340590c867a21), merged 2026-08-02T05:53:13Z; 1 commit, +72/-90 across `vine/package.json` + `vine/src/vine.ts` + `vine/src/__tests__/*` + `README.md`). **Before this release `forms.md` had zero mention of Vine at all** — the `@hookform/resolvers/vine` subpath module existed in earlier versions but its peer-dep was capped at `@vinejs/vine ^2.0.0 || ^3.0.0`, leaving anyone on Vine v4 with an `ERESOLVE` install failure or a runtime "no overload matches this call" type error. 5.7.0 unblocks the v4 line + aligns the resolver with Vine v4's new schema construction API.
+
+### 1. The change — Vine v4 peer-dep expansion + new `vine.create({})` schema syntax
+
+**Two material changes shipped in the single 1-commit PR:**
+
+**(a) Peer-dep expansion.** `@hookform/resolvers/vine/package.json` now declares `@vinejs/vine: "^2.0.0 || ^3.0.0 || ^4.0.0"` (was `^2.0.0 || ^3.0.0` only). Projects on Vine v4 can now `npm install @hookform/resolvers @vinejs/vine@^4.0.0` cleanly without `--legacy-peer-deps` or a custom override.
+
+**(b) New schema construction syntax.** Vine v4.2.0 (referenced in the PR body) introduced a `vine.create({...})` shorthand that replaces the previous `vine.compile(vine.object({...}))` pattern. The PR updates:
+- **`vine/src/__tests__/__fixtures__/data.ts`** — test fixtures now use `vine.create({ username: vine.string().regex(...).minLength(3).maxLength(30), password: vine.string()...confirmed({ as: 'repeatPassword' }), ... })` instead of the old `vine.compile(vine.object({...}))` wrapping.
+- **`README.md`** — the Quickstart example for Vine was rewritten from the old `vine.compile(vine.object({ username: ..., password: ... }))` form to `vine.create({ username: ..., password: ... })`.
+- **`vine/src/vine.ts`** — the resolver itself was unchanged in core logic; only the type signature was tightened to `VineValidator<ConstructableSchema<Input, Output, Output>, any>` so the new `vine.create({...})` return type is accepted without TS narrowing complaints. The null-prototype-object guard for `Object.prototype` field-name handling from 5.5.8 / 5.6.0 carries over unchanged (the fix is at the package-wide error-formatting layer, not per-resolver).
+
+**Practical impact:**
+
+- **Anyone on `@vinejs/vine@^4.x` was previously blocked** — the resolver's old peer-dep cap (`^2 || ^3`) would refuse to install alongside Vine 4. The workaround was either pinning to Vine 3, using `--legacy-peer-deps`, or hand-writing a custom `Resolver` wrapper around `vine.validate()`. 5.7.0 makes all three unnecessary.
+- **Anyone on Vine v2/v3 who upgrades to 5.7.0 has zero behavior change** — the resolver still works with the legacy `vine.compile(vine.object({...}))` pattern; the v4 syntax is additive.
+- **Anyone migrating Vine v2/v3 → v4 alongside this bump gets the new `vine.create({...})` syntax recommended** — it removes one level of wrapping per schema declaration and matches the pattern shown in the official Vine v4 docs.
+
+**Quick code example (new 5.7.0 / Vine v4 pattern):**
+
+```ts
+// Before (Vine v2/v3 + pre-5.7.0)
+import vine from '@vinejs/vine'
+import { vineResolver } from '@hookform/resolvers/vine'
+
+const schema = vine.compile(
+  vine.object({
+    username: vine.string().minLength(1),
+    password: vine.string().minLength(8),
+  }),
+)
+
+// After (Vine v4 + @hookform/resolvers 5.7.0+)
+import vine from '@vinejs/vine'
+import { vineResolver } from '@hookform/resolvers/vine'
+
+const schema = vine.create({
+  username: vine.string().minLength(1),
+  password: vine.string().minLength(8),
+})
+
+useForm({ resolver: vineResolver(schema) })
+```
+
+### 2. Recommended Version Pin (Updated)
+
+```bash
+npm install @hookform/resolvers@^5.7.0
+```
+
+> Pin moved up from `^5.6.0` (the v1.5.14 recommendation) to `^5.7.0` to capture the Vine v4 peer-dep expansion + the `vine.create({})` schema-syntax alignment. **Pure additive** for projects not using Vine — zero behavior change. For projects on `@vinejs/vine@^4.x`, the bump **unblocks the install** (was failing pre-5.7.0).
+
+**Migration checklist (5.6.0 → 5.7.0):**
+- [ ] `npm install @hookform/resolvers@^5.7.0` — peer-dep change is additive only (`@vinejs/vine` peer now includes `^4.0.0` alongside `^2`/`^3`)
+- [ ] If you were stuck on `@vinejs/vine@^3.x` because `@hookform/resolvers` capped the peer at `^2 || ^3`, bump both to `@vinejs/vine@^4.x` + `@hookform/resolvers@^5.7.0` together — `vine.create({...})` is the recommended v4 schema syntax
+- [ ] If migrating Vine v3 → v4 in the same bump, rewrite `vine.compile(vine.object({...}))` → `vine.create({...})` (one-time per-schema mechanical change)
+- [ ] **No migration required** for the >99% of forms that don't use Vine — zero observable change
+- [ ] Vine v4 users: drop any `--legacy-peer-deps` install flag you were using to force the resolver install (no longer needed)
+
+**Sources:**
+- [@hookform/resolvers v5.7.0 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.7.0)
+- [PR #867 — feat: support vine v4](https://github.com/react-hook-form/resolvers/pull/867)
+- [commit `4cfba18` — Vine v4 peer-dep + fixture + README updates](https://github.com/react-hook-form/resolvers/commit/4cfba18117e8b76bde326a54103340590c867a21)
+- [VineJS v4.2.0 release notes (introduced `vine.create({})` syntax)](https://github.com/vinejs/vine/releases/tag/v4.2.0)
+
 ## Basic Setup
 
 ```bash
@@ -1563,5 +1631,6 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **`@hookform/resolvers` 5.5.5: Yup resolver stomp on `errors.ref` for checkbox fields** — Yup's metadata populated a top-level `errors.ref` that masked RHF's `errors.<field>.ref` on `<input type="checkbox">` fields. Custom error UI reading `errors.<field>.ref` on checkboxes was getting Yup schema-path metadata, not RHF metadata. Bump to `^5.5.7` and re-test your checkbox error UI.
 - **`@hookform/resolvers` 5.5.6: `zodResolver` import throws `Module not found` on `zod@^3.x`** — projects still on Zod v3 broke on `5.5.0–5.5.5` because the Zod adapter relied on a v4-shaped export path. Bump to `^5.5.7` and the import resolves on both Zod v3 and v4 (no code change needed).
 - **`@hookform/resolvers` 5.5.7: `npm install` ERESOLVE with `valibot` already installed** — the 5.5.4–5.5.6 peer range was too tight to coexist with `valibot`. Bump to `^5.5.7` (or pin the older `@hookform/resolvers` version with `--legacy-peer-deps` if you can't bump yet).
-- **`@hookform/resolvers` 5.5.8 / 5.6.0: silently dropping validation errors on `Object.prototype` field names** — Zod resolver (5.5.8) + every resolver in the package (5.6.0) was iterating the error tree and dropping any error whose root field-path matched `__proto__` / `constructor` / `prototype` / `hasOwnProperty` / `toString` / `valueOf` / `length`. Forms using any of those as a root-level schema key submitted with no visible error and an empty `form.formState.errors`. Bump to `^5.6.0` to restore the errors. Audit recipe: `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):' schemas/ src/ --type ts --type tsx` — any root-level schema key matching an `Object.prototype` property was silently dropping its errors pre-5.6.0.
+- **`@hookform/resolvers` 5.5.8 / 5.6.0: silently dropping validation errors on `Object.prototype` field names** — Zod resolver (5.5.8) + every resolver in the package (5.6.0) was iterating the error tree and dropping any error whose root field-path matched `__proto__` / `constructor` / `prototype` / `hasOwnProperty` / `toString` / `valueOf` / `length`. Forms using any of those as a root-level schema key submitted with no visible error and an empty `form.formState.errors`. Bump to `^5.7.0` (which includes the 5.6.0 all-resolvers generalization) to restore the errors. Audit recipe: `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):' schemas/ src/ --type ts --type tsx` — any root-level schema key matching an `Object.prototype` property was silently dropping its errors pre-5.6.0.
 - **`@hookform/resolvers` 5.6.0: relying on the silent-drop behavior as a "feature"** — pre-5.6.0, the Zod (and per-resolver) security hardening intentionally dropped errors on `Object.prototype` field names to prevent prototype pollution. If you had a custom error renderer that masked the missing errors with a UI fallback (rare), bumping to 5.6.0 surfaces them — drop the fallback after the bump.
+- **`@hookform/resolvers` 5.7.0: missing Vine v4 support + old `vine.compile(vine.object({...}))` syntax** — pre-5.7.0, the `@hookform/resolvers/vine` peer-dep was capped at `@vinejs/vine ^2 || ^3` so projects on Vine v4 failed with `ERESOLVE` (or were force-installed with `--legacy-peer-deps`). 5.7.0 expands the peer to `^2 || ^3 || ^4` and aligns the resolver with Vine v4's new `vine.create({...})` schema-construction shorthand (replaces `vine.compile(vine.object({...}))` — one less level of wrapping per schema). Bump to `^5.7.0` to drop `--legacy-peer-deps` and to use the v4-recommended `vine.create({...})` syntax in new code. Existing Vine v2/v3 forms work unchanged with 5.7.0 (the old `vine.compile(vine.object({...}))` pattern still resolves). Audit recipe: `rg -n "@vinejs/vine" package.json` to confirm Vine major — anything `^4.x` needs `^5.7.0` of `@hookform/resolvers` to install cleanly.
