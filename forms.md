@@ -774,6 +774,58 @@ npm install @hookform/resolvers@^5.5.7
 - [PR #864 — Zod v3 module-not-found import fix](https://github.com/react-hook-form/resolvers/issues/864)
 - [PR #865 — valibot ERESOLVE peer-dep fix](https://github.com/react-hook-form/resolvers/issues/865)
 
+## @hookform/resolvers 5.5.8 + 5.6.0 (August 1, 2026) — Zod Resolver Drops Special Root Field Errors + All-Resolvers Generalization
+
+Two releases shipped on the same day (5.5.8 at 2026-08-01T08:48:55Z, 5.6.0 at 2026-08-01T09:13:32Z — only 25 minutes apart). Both are about the **same underlying behavior**: Zod (and now all resolvers) was silently swallowing validation errors that targeted field names with special meaning in JavaScript / JSON-pointer notation — like `'__proto__'`, `'constructor'`, `'prototype'`, `'length'`, or `'hasOwnProperty'`. These are field-name choices a developer might make for a config-style form (`settings = { __proto__: {...} }`, `meta = { constructor: ... }`) or a CSS-property-shaped schema (`styles = { length: '100%' }`). Pre-5.5.8, Zod's resolver dropped those errors silently — the user submitted the form with no visible error, but `form.formState.errors` was empty even though Zod internally had validation failures. 5.5.8 fixes Zod specifically; 5.6.0 (the new minor) generalizes the fix to every resolver (Yup, AJV, Valibot, Joi, Superstruct, Typanion, etc.).
+
+### 1. `5.5.8` — Zod Resolver Drops Validation Errors for Special Root Field Names ([PR #869](https://github.com/react-hook-form/resolvers/issues/869), commit [`2f28787`](https://github.com/react-hook-form/resolvers/commit/2f287871f4d3184892cba1ac1a0c570a4e1cf8f5))
+
+The Zod resolver was iterating the resolved error tree and dropping any error whose **field-path root** matched a property name in `Object.prototype` (`__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `toString`, `valueOf`, etc.). The intent was a security hardening — stop a poisoned Zod error tree from polluting `form.formState.errors.__proto__` and corrupting the prototype chain — but it was applied too broadly: **legitimate errors targeting any of those field names got silently dropped**. If your Zod schema had `z.object({ __proto__: z.string(), ... })` and validation failed on `__proto__`, the form would not show any error.
+
+**Practical impact:** any Zod-schema form that uses object keys matching `Object.prototype` properties. Common in real-world code:
+- **Config-style forms**: `{ __proto__: z.object({...}) }`, `{ constructor: z.literal('MyClass') }` — JavaScript engine quirks + JSON-pointer tooling historically required special handling for these names.
+- **CSS / DOM-keyed forms**: `{ length: z.number(), tagName: z.string() }` — fields whose names overlap with HTML element properties.
+- **Form-library escape-hatch fields**: `{ hasOwnProperty: z.boolean(), toString: z.string() }` — any custom field-name that overlaps with `Object.prototype`.
+
+**Audit:** `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):\s*z\.' schemas/ src/` — if your Zod schemas use any of these as a **root-level** object key (not a deeply-nested key — only the top level is affected), you were silently losing validation errors on those fields. After bumping to 5.5.8+, errors on those fields flow through to `form.formState.errors` correctly.
+
+### 2. `5.6.0` — Improve All Resolvers: Drops Validation Errors for Special Root Field Names ([commit `b011a5f`](https://github.com/react-hook-form/resolvers/commit/b011a5f3f793dba475b143cca34859997cdfb161))
+
+Generalizes the 5.5.8 Zod-specific fix to **every resolver in the package**: Yup, AJV, Valibot, Joi, Superstruct, Typanion, Vest, and the Typebox resolver all get the same special-name handling. The fix is now applied uniformly at the package's error-formatting layer rather than per-resolver.
+
+**Why this is a MINOR (5.6.0) and not another PATCH (5.5.9):** the patch would only touch Zod, but the same security hardening applies equally to every other resolver. Bumping to a minor signals that the new behavior — "validation errors are NOT dropped for special root field names" — is the new contract across the whole package, not just for Zod. This is a **deliberate breaking change for any project that relied on the previous "errors silently dropped on these names" behavior** (rare in practice — the silent-drop was almost always a bug, not a feature — but worth noting for projects with custom error-rendering code that may have masked the missing errors with a UI-level fallback).
+
+**Practical impact by resolver:**
+- **Yup** — same fix; projects using `yup.object({ __proto__: ... })` get the dropped-error restoration.
+- **AJV** — same fix; AJV JSON Schemas with `"properties": { "__proto__": {...} }` get the dropped-error restoration.
+- **Valibot** — same fix; `v.object({ __proto__: ... })` gets the dropped-error restoration.
+- **Joi, Superstruct, Typanion, Vest, Typebox** — same fix; all resolvers in the package adopt the new error-handling layer.
+- **Any resolver-based form using `__proto__` / `constructor` / etc. as a root field name** was silently dropping errors pre-5.6.0. Bump to 5.6.0 to restore them.
+
+**Audit (any resolver):** `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):' schemas/ src/ --type ts --type tsx` — any root-level field name that matches an `Object.prototype` property is affected. Bump to 5.6.0 to get the fix across all resolvers.
+
+**Workaround before 5.6.0:** wrap the resolver to manually re-walk the error tree and re-emit any errors targeting special names (e.g. `customResolver = (schema) => async (values, ctx, opts) => { const result = await zodResolver(schema)(values, ctx, opts); /* custom recovery */ }`). After the bump, drop the wrapper.
+
+### 3. Recommended Version Pin (Updated)
+
+```bash
+npm install @hookform/resolvers@^5.6.0
+```
+
+> Pin moved up from `^5.5.7` (the previous cron's recommendation) to `^5.6.0` to capture the Zod-only fix (5.5.8) + the all-resolvers generalization (5.6.0) in a single bump. Pure additive for projects not using `Object.prototype` field names — **zero behavior change** for the 99% case. For the 1% that use those names, the bump **restores silently-dropped errors** (a fix, not a break).
+
+**Migration checklist (5.5.7 → 5.6.0):**
+- [ ] `npm install @hookform/resolvers@^5.6.0` — no peer-dep churn on the project's own deps; the fix is internal to the package's error-formatting layer
+- [ ] If you wrote a custom resolver wrapper to recover `Object.prototype` field errors (rare — most projects didn't notice the silent drop), drop the wrapper after the bump
+- [ ] If you used any field-name matching `Object.prototype` properties (`__proto__`, `constructor`, `prototype`, `hasOwnProperty`, `toString`, `valueOf`, `length`, etc.) as a **root-level** schema field, verify your form now shows validation errors on those fields after the bump (it was silently dropping them pre-5.5.8 / 5.6.0)
+- [ ] **No migration required** for the 99% of forms that use ordinary field names — zero observable change
+
+**Sources:**
+- [@hookform/resolvers v5.5.8 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.5.8)
+- [@hookform/resolvers v5.6.0 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.6.0)
+- [PR #869 — Zod resolver drops special root field names fix](https://github.com/react-hook-form/resolvers/issues/869)
+- [commit `b011a5f` — all-resolvers generalization](https://github.com/react-hook-form/resolvers/commit/b011a5f3f793dba475b143cca34859997cdfb161)
+
 ## Basic Setup
 
 ```bash
@@ -1511,3 +1563,5 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **`@hookform/resolvers` 5.5.5: Yup resolver stomp on `errors.ref` for checkbox fields** — Yup's metadata populated a top-level `errors.ref` that masked RHF's `errors.<field>.ref` on `<input type="checkbox">` fields. Custom error UI reading `errors.<field>.ref` on checkboxes was getting Yup schema-path metadata, not RHF metadata. Bump to `^5.5.7` and re-test your checkbox error UI.
 - **`@hookform/resolvers` 5.5.6: `zodResolver` import throws `Module not found` on `zod@^3.x`** — projects still on Zod v3 broke on `5.5.0–5.5.5` because the Zod adapter relied on a v4-shaped export path. Bump to `^5.5.7` and the import resolves on both Zod v3 and v4 (no code change needed).
 - **`@hookform/resolvers` 5.5.7: `npm install` ERESOLVE with `valibot` already installed** — the 5.5.4–5.5.6 peer range was too tight to coexist with `valibot`. Bump to `^5.5.7` (or pin the older `@hookform/resolvers` version with `--legacy-peer-deps` if you can't bump yet).
+- **`@hookform/resolvers` 5.5.8 / 5.6.0: silently dropping validation errors on `Object.prototype` field names** — Zod resolver (5.5.8) + every resolver in the package (5.6.0) was iterating the error tree and dropping any error whose root field-path matched `__proto__` / `constructor` / `prototype` / `hasOwnProperty` / `toString` / `valueOf` / `length`. Forms using any of those as a root-level schema key submitted with no visible error and an empty `form.formState.errors`. Bump to `^5.6.0` to restore the errors. Audit recipe: `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):' schemas/ src/ --type ts --type tsx` — any root-level schema key matching an `Object.prototype` property was silently dropping its errors pre-5.6.0.
+- **`@hookform/resolvers` 5.6.0: relying on the silent-drop behavior as a "feature"** — pre-5.6.0, the Zod (and per-resolver) security hardening intentionally dropped errors on `Object.prototype` field names to prevent prototype pollution. If you had a custom error renderer that masked the missing errors with a UI fallback (rare), bumping to 5.6.0 surfaces them — drop the fallback after the bump.
