@@ -894,6 +894,85 @@ npm install @hookform/resolvers@^5.7.0
 - [commit `4cfba18` — Vine v4 peer-dep + fixture + README updates](https://github.com/react-hook-form/resolvers/commit/4cfba18117e8b76bde326a54103340590c867a21)
 - [VineJS v4.2.0 release notes (introduced `vine.create({})` syntax)](https://github.com/vinejs/vine/releases/tag/v4.2.0)
 
+## @hookform/resolvers 5.7.1 (August 2, 2026) — `ata-validator` Subpath Peer-Dep Bump `^0.7.0` → `^1.2.0`
+
+`@hookform/resolvers@5.7.1` SHIPPED at **2026-08-02T06:14:53Z** — **just 13 minutes after the v1.5.15 cron committed** at 06:02Z. The v1.5.15 description documented `^5.7.0` as the recommended pin (capturing the Vine v4 support from earlier the same morning); that pin is now stale by one patch. 5.7.1 is a **single-commit PATCH release** — `fix: ata-validator peer dependency version` ([issue #871](https://github.com/react-hook-form/resolvers/issues/871), commit [`827f20b`](https://github.com/react-hook-form/resolvers/commit/827f20bd97a4618d75162e54fe9ba2419fd4e50a), merged 2026-08-02T06:08:14Z, 3 files / +18/-12 lines) — bumping the peer-dep in the `@hookform/resolvers/ata-validator` subpath module from `"ata-validator": "^0.7.0"` to `"ata-validator": "^1.2.0"` and updating the workspace `bun.lock` to match. **No new resolver, no new helper, no source-code change in any subpath module — the only diff is the peer-dep string + the lockfile**.
+
+### 1. The change — peer-dep catch-up to `ata-validator` 1.x
+
+The `@hookform/resolvers/ata-validator/package.json` peer-dependencies block now reads:
+
+```diff
+   "peerDependencies": {
+     "react-hook-form": "^7.55.0",
+     "@hookform/resolvers": "^2.0.0",
+-    "ata-validator": "^0.7.0"
++    "ata-validator": "^1.2.0"
+   }
+```
+
+The accompanying `bun.lock` bumps the workspace dev-dep `ata-validator: ^0.7.3` → `^1.2.0` and pulls in the new **platform-native** companion packages published alongside ata-validator 1.x:
+
+| New native companion | Platform | Shape |
+|---|---|---|
+| `@ata-validator/native-darwin-arm64` | macOS Apple Silicon | NAPI binary |
+| `@ata-validator/native-linux-arm64-gnu` | Linux ARM64 glibc | NAPI binary |
+| `@ata-validator/native-linux-arm64-musl` | Linux ARM64 musl | NAPI binary |
+| `@ata-validator/native-linux-x64-gnu` | Linux x64 glibc | NAPI binary |
+| `@ata-validator/native-linux-x64-musl` | Linux x64 musl | NAPI binary |
+| `@ata-validator/native-win32-x64` | Windows x64 | NAPI binary |
+
+`ata-validator` ships as a **hybrid JS + native** package starting with 1.0.0 (released 2026-07-15T21:12:27Z; current latest 1.2.2 published 2026-07-26T19:30:11Z). The 1.0 bump was a major-version jump because the native addon shape, the internal NAPI surface, and the install-time platform-detection logic all changed — the previous `^0.7.0` peer cap silently blocked anyone who'd already migrated to the 1.x line. The same shape problem hit 5.5.7's valibot peer relaxation (covered earlier in `forms.md`) and 5.5.4's AJV `default`-values stomp — `ata-validator` joins the same pattern of "resolver's peer cap drifts behind the validator library's own major-version line".
+
+**Practical impact:**
+
+- **Anyone on `ata-validator@^1.x` was previously blocked from installing `@hookform/resolvers/ata-validator`** — npm's peer-dep resolver sees `^0.7.0` as a *narrower* range than the already-installed `^1.2.0` (no `0.x` overlap with `1.x`), so `npm install` would either fail with `ERESOLVE` or succeed only with `--legacy-peer-deps`. 5.7.1 unblocks the install.
+- **Anyone still on `ata-validator@^0.7.x`** is unaffected by the *content* of the change (the resolver still works against the `^0.7.x` API surface, which is what was tested up to 5.7.0), but the new `^1.2.0` peer cap means upgrading `@hookform/resolvers` to 5.7.1 without bumping `ata-validator` first will trigger a *new* `ERESOLVE` (the reverse-direction failure). The safe path is `npm install ata-validator@^1.2.0 @hookform/resolvers@^5.7.1` together, or stay on 5.7.0 if you're committed to the 0.x line.
+- **Anyone not using `@hookform/resolvers/ata-validator`** has zero behavior change. The peer-dep string lives only in that subpath's `package.json` — the rest of the package's 30+ resolvers are unaffected.
+- **Anyone using the new platform-native addons in ata-validator 1.x** (`@ata-validator/native-*`): the resolver works against the public `ata-validator` API surface, which 1.x guarantees; the native addons are an internal implementation detail of the validator library and don't change the resolver's contract.
+
+### 2. Recommended Version Pin (Updated)
+
+```bash
+npm install @hookform/resolvers@^5.7.1
+```
+
+> Pin moved up from `^5.7.0` (the v1.5.15 recommendation, set 13 minutes before 5.7.1 shipped) to `^5.7.1` to capture the `ata-validator` 1.x peer-dep alignment. **Pure additive PATCH** for projects not using the `ata-validator` subpath — zero behavior change. For projects on `ata-validator@^1.x`, the bump **unblocks the install** (was failing pre-5.7.1 with `ERESOLVE`). For projects on `ata-validator@^0.7.x`, the bump **forces** the 1.x migration in one step (or stay on 5.7.0 to defer).
+
+**Migration checklist (5.7.0 → 5.7.1):**
+
+- [ ] `npm install @hookform/resolvers@^5.7.1` — PATCH release, peer-dep change is additive only for projects that need it
+- [ ] **If you use `@hookform/resolvers/ata-validator`** AND are on `ata-validator@^1.x`: bump resolves the `ERESOLVE` you were seeing — drop `--legacy-peer-deps`
+- [ ] **If you use `@hookform/resolvers/ata-validator`** AND are still on `ata-validator@^0.7.x`: bumping to 5.7.1 alone will surface a *new* `ERESOLVE` (the reverse-direction failure) — bump `ata-validator` to `^1.2.0` in the same install, or stay on 5.7.0
+- [ ] **If you don't use `@hookform/resolvers/ata-validator`** (the >99.9% case): no migration needed, just pick up the patch on the next install
+- [ ] Verify with `npm ls ata-validator` — should resolve to `^1.2.x` (1.2.0 / 1.2.1 / 1.2.2) on any project that bumped to 5.7.1
+
+### 3. Audit recipe
+
+```bash
+# Check if any project actually uses the ata-validator subpath
+rg -n "from '@hookform/resolvers/ata-validator'" --type ts --type tsx src/ app/
+# → if zero results, you can skip the 5.7.1 peer-dep change entirely (no behavior change for you)
+
+# Check current ata-validator version in your tree
+npm ls ata-validator 2>/dev/null
+# → if "1.x" → 5.7.1 unblocks your install (was ERESOLVE-ing before)
+# → if "0.7.x" → 5.7.1 forces a bump; consider staying on 5.7.0 or bumping both together
+
+# Confirm the peer-dep string landed in your installed copy
+cat node_modules/@hookform/resolvers/ata-validator/package.json | jq .peerDependencies
+# → expect: { "react-hook-form": "^7.55.0", "@hookform/resolvers": "^2.0.0", "ata-validator": "^1.2.0" }
+```
+
+**Sources:**
+
+- [@hookform/resolvers v5.7.1 release notes](https://github.com/react-hook-form/resolvers/releases/tag/v5.7.1)
+- [Issue #871 — ata-validator peer dependency version](https://github.com/react-hook-form/resolvers/issues/871)
+- [commit `827f20b` — ata-validator peer-dep bump](https://github.com/react-hook-form/resolvers/commit/827f20bd97a4618d75162e54fe9ba2419fd4e50a)
+- [ata-validator on npm (1.0.0 released Jul 15, 2026 — major version bump introducing the NAPI native addons)](https://www.npmjs.com/package/ata-validator)
+- [@ata-validator/native-darwin-arm64@1.2.2 (and the 5 other platform-native companions) on npm](https://www.npmjs.com/package/@ata-validator/native-darwin-arm64)
+
+
 ## Basic Setup
 
 ```bash
@@ -1634,3 +1713,4 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **`@hookform/resolvers` 5.5.8 / 5.6.0: silently dropping validation errors on `Object.prototype` field names** — Zod resolver (5.5.8) + every resolver in the package (5.6.0) was iterating the error tree and dropping any error whose root field-path matched `__proto__` / `constructor` / `prototype` / `hasOwnProperty` / `toString` / `valueOf` / `length`. Forms using any of those as a root-level schema key submitted with no visible error and an empty `form.formState.errors`. Bump to `^5.7.0` (which includes the 5.6.0 all-resolvers generalization) to restore the errors. Audit recipe: `rg -n '(__proto__|constructor|prototype|hasOwnProperty|toString|valueOf):' schemas/ src/ --type ts --type tsx` — any root-level schema key matching an `Object.prototype` property was silently dropping its errors pre-5.6.0.
 - **`@hookform/resolvers` 5.6.0: relying on the silent-drop behavior as a "feature"** — pre-5.6.0, the Zod (and per-resolver) security hardening intentionally dropped errors on `Object.prototype` field names to prevent prototype pollution. If you had a custom error renderer that masked the missing errors with a UI fallback (rare), bumping to 5.6.0 surfaces them — drop the fallback after the bump.
 - **`@hookform/resolvers` 5.7.0: missing Vine v4 support + old `vine.compile(vine.object({...}))` syntax** — pre-5.7.0, the `@hookform/resolvers/vine` peer-dep was capped at `@vinejs/vine ^2 || ^3` so projects on Vine v4 failed with `ERESOLVE` (or were force-installed with `--legacy-peer-deps`). 5.7.0 expands the peer to `^2 || ^3 || ^4` and aligns the resolver with Vine v4's new `vine.create({...})` schema-construction shorthand (replaces `vine.compile(vine.object({...}))` — one less level of wrapping per schema). Bump to `^5.7.0` to drop `--legacy-peer-deps` and to use the v4-recommended `vine.create({...})` syntax in new code. Existing Vine v2/v3 forms work unchanged with 5.7.0 (the old `vine.compile(vine.object({...}))` pattern still resolves). Audit recipe: `rg -n "@vinejs/vine" package.json` to confirm Vine major — anything `^4.x` needs `^5.7.0` of `@hookform/resolvers` to install cleanly.
+- **`@hookform/resolvers` 5.7.1: missing ata-validator 1.x peer-dep — pre-5.7.1 `@hookform/resolvers/ata-validator` peer-dep was capped at `ata-validator ^0.7.0`, so projects on the native-`ata-validator@^1.x` line (1.0.0 shipped 2026-07-15, current 1.2.2) failed with `ERESOLVE` or installed with `--legacy-peer-deps`. 5.7.1 updates the peer to `ata-validator ^1.2.0` to match. Bump to `^5.7.1` (or `^5.7.0` to defer the 1.x migration) — the peer-dep change is in the `@hookform/resolvers/ata-validator` subpath only, so projects not using that subpath see zero behavior change. Audit recipe: `rg -n "from '@hookform/resolvers/ata-validator'" src/ app/` — if zero hits, skip the bump entirely.
