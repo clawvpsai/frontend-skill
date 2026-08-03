@@ -1659,6 +1659,173 @@ For each match, the input the user is typing into should remain focused after ev
 **Source:** [PR #96113 — `[fragment-scroll] Stop blurring on navigations`](https://github.com/vercel/next.js/pull/96113) · Joseph · merged 2026-07-29T23:13:36Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z) · closes issue [#96050](https://github.com/vercel/next.js/issues/96050).
 
 
+## Fix App Router `scroll-padding-top` Respected on Client Navigations — PR #96308 (canary.108-ahead, [DavidIlie](https://github.com/DavidIlie), merged 2026-08-03T15:00:14Z, npm-published in `next@16.3.0-canary.108` when it ships)
+
+The next canary release (canary.108, expected to npm-publish within hours on the 24h cadence) ships a sticky-header scroll-position fix. **The bug**: when an App Router navigation targeted an element that was partially obscured by a sticky `<header>` (the most common nav-bar pattern — `<header className="sticky top-0 z-50 h-16">`), Next.js would treat the element as "in the visible viewport" and skip the scroll-to-element step. The user clicked a TOC link or `#anchor` URL, and the destination landed behind the sticky header instead of below it.
+
+**Why this matters** — browsers natively respect `html { scroll-padding-top: ... }` for anchor-link scrolling, but Next.js's client-side `<Link>` / `router.push` scroll-to-element logic was using the **raw viewport geometry** (top of viewport = y=0) instead of the **padding-aware viewport geometry** (top of usable area = `scroll-padding-top`). The fix unifies both code paths (legacy element handler + Fragment-ref handler from PR #96342) to use the padding-aware boundary.
+
+**The fix (PR #96308 by DavidIlie, +71/-8 in `packages/next/src/client/components/layout-router.tsx`):**
+
+```ts
+// New helper added by PR #96308
+function getScrollPaddingTopInPixels(
+  htmlElement: HTMLElement,
+  viewportHeight: number
+): number {
+  const scrollPaddingTop = getComputedStyle(htmlElement).scrollPaddingTop
+  const value = Number.parseFloat(scrollPaddingTop)
+
+  if (!Number.isFinite(value) || value < 0) {
+    return 0
+  }
+
+  if (scrollPaddingTop.endsWith('px')) {
+    return value
+  }
+
+  if (scrollPaddingTop.endsWith('%')) {
+    return (value / 100) * viewportHeight
+  }
+
+  return 0
+}
+```
+
+The `getScrollTargetState()` rewrite uses `getScrollPaddingTopInPixels()` as the lower boundary instead of `0`. The lookup is **lazy** — only fires for candidate elements with client rects, so empty Fragments (no rects) and hash navigations (no scroll needed) skip it. For a real route-scroll target, the resolved value is cached locally and reused by the second geometry check after `scrollTop = 0`. **No work added to scroll events or renders** — the style/layout update was already required by the existing handler.
+
+**E2E coverage** (`test/e2e/app-dir/router-autoscroll/router-autoscroll.test.ts`, +38/-0):
+
+```ts
+it.each(['100px', '50%'])(
+  'should scroll when the page top is obscured by scroll padding (%s)',
+  async (scrollPaddingTop) => {
+    const browser = await next.browser('/10/100/100/1000...')
+    await setScrollPaddingTop(browser, scrollPaddingTop)
+    // → expects the router to scroll past the padding boundary
+  }
+)
+```
+
+The `setScrollPaddingTop` helper avoids mutating `document.documentElement.style` (which React owns and validates during client navigations) and instead uses `document.adoptedStyleSheets` — a subtle test infra detail worth knowing if you write similar App Router tests.
+
+**Practical impact:**
+
+- **Every App Router project with a sticky header** — pre-#96308, scroll-to-element would silently fail when the destination was partially obscured. Post-#96308, the scroll correctly accounts for the padding. **Set `scroll-padding-top` on your `<html>` to the height of your sticky header to get the fix immediately:**
+  ```css
+  /* globals.css */
+  html { scroll-padding-top: 4rem; }  /* match your sticky-header height */
+  ```
+- **TOC + sticky-header patterns** (docs sites, blog sites with reading-progress bars) — TOC links that target anchor IDs now correctly scroll past the sticky header.
+- **Projects WITHOUT a sticky header** — no impact (default `scroll-padding-top: 0` means padding-aware boundary == viewport boundary).
+- **Composes with PR #96342 (canary.103)** — the empty-Fragment scroll-ownership fix. PR #96308 only changes the visible-region boundary for *real* scroll targets; empty Fragments still return `NoClientRects` and skip the geometry check.
+- **Dev mode + production both affected** — bug reproduces in both.
+
+**Audit recipe:**
+
+```bash
+# 1. Are you using a sticky header?
+rg -n "sticky|fixed.*top-0" app/ src/ components/ 2>/dev/null | head -5
+# 2. Do you have scroll-padding-top set?
+rg -n "scroll-padding-top" app/globals.css app/globals.scss src/index.css 2>/dev/null
+# 3. Have you seen "scroll-to-element ends up behind the sticky header" reports?
+# If 1=yes + 2=NO -> add scroll-padding-top: <header-height> to globals.css + bump to canary.108
+# If 1=yes + 2=YES -> bump to canary.108 (the fix is already working)
+# If 1=NO -> no impact, skip
+```
+
+**No new public APIs**, no new config flags, no codemod. Will ship in `next@16.3.0-canary.108` (expected within hours on the 24h cadence).
+
+**Source:** [PR #96308 — `Fix App Router scroll padding visibility`](https://github.com/vercel/next.js/pull/96308) · DavidIlie · merged 2026-08-03T15:00:14Z · canary-branch ahead of canary.107 (will ship in canary.108 when published).
+
+---
+
+## Fix Double-Fragment Hash Concatenation on Same-Pathname `<Link>` Clicks — PR #93132 (canary.108-ahead, [icyJoseph](https://github.com/icyJoseph), merged 2026-08-03T16:21:06Z, npm-published in `next@16.3.0-canary.108` when it ships)
+
+The next canary release (canary.108) also ships a long-standing hash-navigation bug fix. **The bug** (regression introduced in Next.js 16.2.0): navigating from `/abc#foo` to `/abc#bar` via `<Link href="/abc#bar">` would leave the URL bar at `/abc#foo#bar` — the router was appending the new hash to the existing one instead of replacing it. The bug also manifested when navigating back and forth between `/abc` (no hash) and `/abc#FragmentName` — sometimes the hash got duplicated.
+
+**Reproduction (from the issue #93126 body):**
+
+1. Start the application (`npm run dev`)
+2. Click a button that calls `router.push('/abc#FragmentDynamic')` (route becomes `/abc#FragmentDynamic`)
+3. Click another button that calls `router.push('/abc#DifferentFragment')` (route becomes `/abc#FragmentDynamic#DifferentFragment` ← wrong; should be just `/abc#DifferentFragment`)
+
+**Why this matters** — affects every App Router project using `<Link>` for in-page anchor navigation: TOC links, "back to top" links, accordion section anchors, skip-to-section links, footnote links, internal cross-references in long-form content. The bug **silently corrupts** the URL bar (and therefore `window.location.hash`, shareable URLs, browser Back/Forward history, etc.).
+
+**The fix (PR #93132 by icyJoseph, +3/-1 in `packages/next/src/client/components/segment-cache/navigation.ts`):**
+
+```diff
+ async function navigateToUnknownRoute(
+   ...
+   createHrefFromUrl(
+     canonicalUrl,
+-    metadataVaryPath,
+-    couldBeIntercepted,
+-    createHrefFromUrl(canonicalUrl),
++    metadataVaryPath,
++    couldBeIntercepted,
++    // Store a hashless canonical URL: the entry is shared across hashes, and
++    // a later same-route hash nav appends `url.hash` to it.
++    createHrefFromUrl(canonicalUrl, false),
+     supportsPerSegmentPrefetching,
+     false
+   )
+ )
+```
+
+The single-line change is `createHrefFromUrl(canonicalUrl, false)` (the `false` arg = "don't include the hash") — the segment cache entry stores the canonical URL **without the hash**, so when a same-pathname hash navigation happens, the router appends `url.hash` to the existing (hashless) canonical URL — producing `/abc#bar` instead of `/abc#foo#bar`.
+
+PR #93132 **does NOT slice an existing hash from the URL** like the related PR #93855 did — it prevents the bad entry from being stored in the first place. The PR author notes: *"It is plausible that dropping the hash from the segment cache is not desired though"* — i.e. if your app relies on hash-as-state for some internal bookkeeping, this PR could be a behavior change. In practice, no real-world use case has surfaced.
+
+**E2E coverage** (`test/e2e/app-dir/navigation/navigation.test.ts`, +23/-0):
+
+```ts
+describe('cross-pathname Link then same-pathname hash change', () => {
+  const startPath = '/hash-cross-path-push'
+  const destinationPath = '/hash-cross-path-push/destination'
+
+  it('should replace (not concatenate) the hash when <Link> triggers the same-pathname hash change', async () => {
+    const browser = await next.browser(startPath)
+    await browser.elementByCss('#link-to-target-foo').click()
+    await retry(() =>
+      expect(browser.url()).resolves.toEqual(next.url + destinationPath + '#foo')
+    )
+    await browser.elementByCss('#link-to-target-baz').click()
+    await retry(() =>
+      expect(browser.url()).resolves.toEqual(next.url + destinationPath + '#baz')
+    )
+  })
+})
+```
+
+Plus three new test fixture pages (`app/hash-cross-path-push/page.js`, `app/hash-cross-path-push/destination/page.js`, `app/hash-cross-path-push/client-component.js`).
+
+**Practical impact:**
+
+- **Every App Router project using `<Link href="/same-path#different-hash">`** — TOC links, "back to top" links, accordion section anchors, skip-to-section links — all previously affected. Post-#93132, the URL bar shows the correct single hash.
+- **Every project using `router.push('/page#section')` for client-side navigation** — same fix.
+- **React `useRouter().hash` / `window.location.hash` readers** — no impact (the URL bar is updated correctly; readers see the correct hash).
+- **Hash-based routing libraries** (rare in App Router — the App Router uses pathnames for routing, not hashes) — verify your library doesn't depend on the buggy concatenation behavior.
+- **Started in 16.2.0** (July 2026) — users on Next.js 16.1.6 didn't see this. Users on 16.2.x → canary.107 do see it.
+- **Dev mode + production both affected** — bug is deterministic.
+
+**Migration**: no code change required. Just upgrade to canary.108 (when published).
+
+**Audit recipe:**
+
+```bash
+# 1. Are you using <Link href="/same-path#different-hash">?
+rg -n 'href="/[^"]*#' app/ src/ components/ 2>/dev/null | head -10
+# 2. Are you using router.push('/path#hash')?
+rg -n 'router\.push\(['"'"'"][^'"'"'"]+#' app/ src/ 2>/dev/null | head -10
+# 3. Have you seen user reports about "/abc#foo#bar" appearing in URL bars?
+# If 1=YES or 2=YES -> you would have hit the bug on 16.2.0+, want canary.108
+```
+
+**No new public APIs**, no new config flags, no codemod.
+
+**Source:** [PR #93132 — `fix: double fragment on navigation`](https://github.com/vercel/next.js/pull/93132) · icyJoseph · merged 2026-08-03T16:21:06Z · canary-branch ahead of canary.107 (will ship in canary.108 when published) · closes issues [#93126](https://github.com/vercel/next.js/issues/93126) + [#95551](https://github.com/vercel/next.js/issues/95551).
+
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
@@ -1669,3 +1836,5 @@ For each match, the input the user is typing into should remain focused after ev
 - **Inlining heavy layouts** with `experimental.prefetchInlining` — defeats layout dedup. Only enable when most routes have small segments.
 - **Enabling `experimental.cachedNavigations`** for real-time data — you'll show stale data. Skip for trading/chat/monitoring.
 - **Catching `<Error>` from a Server Component in a Client `error.tsx`** — works, but the error boundary must be a Client Component. The boundary also re-renders the static shell, so use it sparingly.
+- **Sticky-header `<Link>` scroll-to-element ends up behind the header (16.2.0 → canary.107) — FIXED in canary.108-ahead by PR #96308** — DavidIlie, merged 2026-08-03T15:00:14Z, will ship in `next@16.3.0-canary.108`. The bug: when a `<Link>` or `router.push` scrolled to an element partially obscured by a sticky `<header>`, the router skipped the scroll because it treated the element as "in the visible viewport" (using raw viewport geometry instead of `scroll-padding-top`-aware geometry). The fix adds a `getScrollPaddingTopInPixels()` helper to `packages/next/src/client/components/layout-router.tsx` that resolves the root `scroll-padding-top` lazily (only for real scroll targets with client rects) and uses it as the lower boundary. **To take advantage**: set `html { scroll-padding-top: <header-height> }` in `globals.css` + bump to `next@16.3.0-canary.108+` when published. Audit recipe: `rg -n "sticky|fixed.*top-0" app/ src/ components/` to find sticky-header usage; `rg -n "scroll-padding-top" app/globals.css` to check if you've already set the padding. See the new `## Fix App Router scroll-padding-top Respected on Client Navigations — PR #96308` section above.
+- **Same-pathname `<Link href="/path#different-hash">` concatenates hashes in the URL bar (16.2.0 → canary.107) — FIXED in canary.108-ahead by PR #93132** — icyJoseph, merged 2026-08-03T16:21:06Z, will ship in `next@16.3.0-canary.108`. The bug (regression introduced in Next.js 16.2.0): navigating from `/abc#foo` to `/abc#bar` left the URL at `/abc#foo#bar` (the segment cache stored the hashed canonical URL, so the new hash appended to the existing one). The fix: store a hashless canonical URL in the segment cache entry via `createHrefFromUrl(canonicalUrl, false)`, so same-pathname hash changes replace rather than concatenate. Audit recipe: `rg -n 'href="/[^"]*#' app/ src/ components/` to find `<Link>` usages with hash + same-pathname; `rg -n 'router\.push\([\'"][^\'"]+#' app/ src/` to find `router.push` with hash patterns. If you've seen user reports about "/abc#foo#bar" appearing in URL bars — that's the bug. Migration: bump to canary.108+ when published — no code changes required. Closes issues #93126 + #95551. See the new `## Fix Double-Fragment Hash Concatenation on Same-Pathname <Link> Clicks — PR #93132` section above.

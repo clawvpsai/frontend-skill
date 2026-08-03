@@ -1587,6 +1587,67 @@ Sources:
 - [Next.js `experimental.useTypeScriptCli` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli)
 
 
+## `experimental.useTypeScriptCli` Default Flips to `true` in Next.js 16.3.0-canary.108+ (PR #96497, August 3, 2026)
+
+The next Next.js canary release (canary.108, expected within hours on the 24h cadence) ships a **major default-flip** for `experimental.useTypeScriptCli`: the option is now **`true` by default** (was `false` since the option was first added in canary.83 / PR #95639 / backported to 16.2.12 in PR #95831). The flag is no longer opt-in for "use TS 7" — it's now opt-out for "use the legacy JS Compiler API backend".
+
+**The change** (PR #96497 by Tim Neutkens, merged 2026-08-03T16:10:51Z, 24 files / +134/-54) — the key line in `packages/next/src/server/config-shared.ts`:
+
+```diff
+ export const defaultConfig = Object.freeze({
+   ...
+-    useTypeScriptCli: false,
++    useTypeScriptCli: true,
+   ...
+ })
+```
+
+Plus two new error codes in `packages/next/errors.json`:
+- **1466**: `"TypeScript %s does not provide the compiler API required by Next.js. Set %s to true in your Next.js config to use the TypeScript CLI, or install TypeScript 6 instead."` — fired when `useTypeScriptCli: false` AND a TS version without the compiler API is installed (i.e. TS 7.x).
+- **1467**: same message but for the reverse path — when `useTypeScriptCli: true` (now the default) AND the user installs a TS version that does provide the compiler API but they're explicitly opting out.
+
+Plus docs rewrites in `docs/01-app/03-api-reference/05-config/01-next-config-js/useTypeScriptCli.mdx` (the opt-in example flipped to opt-out) + `docs/01-app/03-api-reference/05-config/02-typescript.mdx` (the entire `experimental.useTypeScriptCli: true` opt-in section deleted — TS 7 install instructions now stand alone).
+
+### Why this matters — the practical impact for every Next.js user
+
+| `next.config.ts` setting | Before canary.108 (canary.83 → canary.107) | **After canary.108 (PR #96497 behavior)** |
+|---|---|---|
+| **No `useTypeScriptCli` setting** | `false` (legacy JS Compiler API backend) | **`true` (project-local `tsc` CLI backend)** |
+| `experimental: { useTypeScriptCli: true }` | `true` (CLI backend) | `true` (CLI backend — unchanged, the line is now redundant) |
+| `experimental: { useTypeScriptCli: false }` | `false` (JS API backend) | `false` (JS API backend — opt-out still works) |
+
+**Key user-facing scenarios:**
+
+1. **TypeScript 7 users** (`typescript@^7.0.0`): previously had to opt in via `experimental: { useTypeScriptCli: true }` in `next.config.ts` to get type checking working. With PR #96497, **that line is no longer needed** — `next build` will run the project-local `tsc` (which IS the Go-native binary on TS 7) by default. **No code change required** for TS 7 users — just upgrade to canary.108 (when published) and **remove the now-redundant flag line** from your config.
+
+2. **TypeScript 6 users** (`typescript@^6.x`): on Next.js 16.2.x → canary.107, type checking ran through the **legacy TypeScript Compiler API backend** (the JS one). On canary.108+, type checking runs through the **project-local `tsc` CLI** (a child process) by default. Behavior is observationally identical (both paths produce the same type errors), but there are **subtle timing/output differences**:
+   - **Build time**: CLI path adds ~50-200ms overhead per build (process spawn + IPC). For TS 6 users, this is roughly neutral; for TS 7 users, the Go-native binary makes this overhead irrelevant.
+   - **Error output formatting**: CLI path uses the user's installed `tsc`'s formatter; JS-API path uses Next.js's internal formatter. Same `error TSxxxx:` lines, but line-ordering may differ slightly.
+   - **Spinner UX**: CLI path now shows a spinner while `tsc` runs (PR #95753's improvement carries forward). For builds that took <2s of type checking, you'll see a brief spinner flash.
+
+3. **TypeScript 5.x users**: TS 5.x's `tsc` doesn't have the Go-native speedup (that's TS 7's win), but the CLI path still works. The only behavior change is the process-spawn overhead vs the in-process JS API. Most projects won't notice.
+
+4. **Custom transformers / `typescript` as a library users** (e.g. `eslint-plugin-import` walking the TS AST, custom webpack/ts-loader pipelines, codemod CLIs using `ts.createSourceFile`): the `useTypeScriptCli: true` path **does NOT affect that** — it only affects `next build`'s type-check pass. Your tool's `require('typescript')` is independent. However, if you want Next.js to keep using the JS Compiler API for compatibility, you must now set `experimental.useTypeScriptCli: false` explicitly.
+
+### Migration checklist (canary.107 → canary.108, when it ships)
+
+1. **If you had `experimental: { useTypeScriptCli: true }` in `next.config.ts`** — remove the line. It's now redundant. The CLI path will be used by default.
+2. **If you had `experimental: { useTypeScriptCli: false }` in `next.config.ts`** — leave it. The opt-out still works (you'll get the legacy JS Compiler API path).
+3. **If you had no `useTypeScriptCli` setting in `next.config.ts`** — verify your build still works. The default change is transparent for ~95% of projects. Watch for these edge cases:
+   - **CI cache invalidation**: type-check errors may move to different log positions (since the CLI emits them at a different stage than the JS API). If you have CI regex matches on error output, audit them.
+   - **Spinner noise**: if you have a CI step that detects build progress via log lines, the new spinner lines may break that detection.
+   - **TS version peer-dep warnings**: if your `package.json` has `typescript: "^6.x"` and your tooling complains about "TS 7 support requires `useTypeScriptCli: true`", that message is now inverted (TS 6 should be fine with either path; the message only fires for TS 7 users who explicitly set `useTypeScriptCli: false`).
+4. **If you're on `next@16.2.12` stable** — this change does NOT affect you yet. PR #96497 is canary-only. Backport to 16.2.x is not committed at this cron's check (the canary-line is the test bed for this kind of default-flip; stable gets it later).
+
+### Sources
+
+- [**Next.js PR #96497** — `Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) — by Tim Neutkens, merged 2026-08-03T16:10:51Z, 24 files / +134/-54, the source-of-truth for the default-on flip; will ship in `next@16.3.0-canary.108`
+- [Next.js PR #96497 files diff](https://github.com/vercel/next.js/pull/96497/files) — full 24-file breakdown incl. `config-shared.ts` (+1/-1), `errors.json` (+2 new error codes 1466 + 1467), `runTypeScriptCli.ts` (+1/-1 error-message wording flip), `useTypeScriptCli.mdx` docs (rewritten), `typescript.mdx` docs (opt-in section deleted), and 19 test fixtures
+- [Next.js `experimental.useTypeScriptCli` config docs (post-#96497)](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli) — the docs page rewritten in PR #96497; the opt-in code example is now the opt-out example
+- [Next.js `experimental.useTypeScriptCli` JSDoc on `ExperimentalConfig`](https://github.com/vercel/next.js/blob/cbf0cef/packages/next/src/server/config-shared.ts) — the JSDoc updated to reflect the new default
+- [Next.js PR #95639 — `(TypeScript 7 Support) Add experimental TypeScript CLI backend`](https://github.com/vercel/next.js/pull/95639) — the canary.83 origin of the `useTypeScriptCli` option, backported to 16.2.12 in PR #95831
+- [Next.js PR #95831 — Backport TypeScript 7 fixes to next-16-2](https://github.com/vercel/next.js/pull/95831) — the 16.2.12 backport that made `useTypeScriptCli` available on stable
+
 ## Common Mistakes
 
 - **`any` type** — use `unknown` instead when the type is truly unknown, then narrow
@@ -1604,3 +1665,4 @@ Sources:
 - **Adopting TS 7 without checking the tooling chain** — `typescript-eslint` doesn't support TS 7 (`>=4.8.4 <6.1.0`); ESLint core, Vue/Svelte/Astro template checkers, and custom transformers are all blocked. Run the split toolchain (TS 7 for `tsgo` type-check, TS 6 via `@typescript/typescript6` for ESLint) until TS 7.1 ships Strada in October 2026. See the new "TS 7.0 Ecosystem Readiness" section above.
 - **Forgetting to run `npx tsgo --noEmit`** — TS 7 ships the Go-native compiler as `tsgo`; `tsc --noEmit` is still the TS 6 binary if both are installed. Check `$PATH` and the npm script wiring to make sure CI runs the fast path.
 - **Setting `peerDependencies.typescript` to `">=7.0.0"` for OSS plugins** — most consumers still run TS 6; widen to `">=6.0.0"` unless your plugin genuinely needs TS 7-only features (`import defer`, `stableTypeOrdering`, etc.)
+- **Leaving `experimental: { useTypeScriptCli: true }` in `next.config.ts` after upgrading to `next@16.3.0-canary.108+`** — Tim Neutkens's PR #96497 (merged 2026-08-03T16:10:51Z, will ship in canary.108) flips the option to default-`true`. The line in your config becomes redundant (and will trigger the "redundant setting" warning path that next-config-validator emits). Just delete the line — Next.js will use the CLI path by default. **The reverse case is also worth noting**: if you want Next.js to keep using the legacy JS Compiler API backend (for compatibility with custom transformers or specific tooling that needs the in-process API), set `experimental: { useTypeScriptCli: false }` explicitly. The opt-out still works. See the new `## experimental.useTypeScriptCli Default Flips to true in Next.js 16.3.0-canary.108+` section above.

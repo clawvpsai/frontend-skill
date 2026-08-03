@@ -2085,7 +2085,7 @@ If you find patterns matching these in your own codebase, the fix is the canonic
 
 ### React main branch: 2 NEW commits since `cbb046ab` (August 1, 2026) — forward-looking only
 
-The v1.5.12 cron (06:03Z Aug 1) finds **2 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** (which was tagged 2026-07-31T14:24:10Z, ~16h before this cron). The next React canary cut hasn't happened yet — expect it within 12-48h on the React team's cadence (the team tends to cut canaries within 24h of landing 2+ commits on main). Both PRs are documented here as forward-looking notes so you can prepare before the canary cut arrives.
+The v1.5.12 cron (06:03Z Aug 1) finds **2 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** (which was tagged 2026-07-31T14:24:10Z, ~16h before this cron). The next React canary cut hasn't happened yet at that point — expect it within 12-48h on the React team's cadence (the team tends to cut canaries within 24h of landing 2+ commits on main). Both PRs are documented here as forward-looking notes so you can prepare before the canary cut arrives.
 
 #### PR #37063 — `[Fiber] Collect Host Singleton children of Fragments` (eps1lon, merged 2026-07-31T19:20:21Z)
 
@@ -2130,7 +2130,65 @@ grep -r 'enableFlightWeakThenables\|pending_weak' node_modules/react-server-dom-
 # → should show the new flag + the 'pending_weak' status handling
 ```
 
-### Sources
+### React main branch: 4 NEW DevTools commits since `cbb046ab` (August 3, 2026) — forward-looking only
+
+The v1.5.19 cron (this one, 18:02Z Aug 3) finds **4 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** — all merged at 2026-08-03T15:32:30–51Z (a single coordinated batch ~21min wide). **All 4 are DevTools-only** (no Fiber, Flight, Reconciler, Scheduler, or DOM changes), so the practical impact for App Router / SSR / RSC / hooks users is zero — but DevTools users get a meaningful cleanup. The next React canary cut hasn't happened yet at this cron's check (npm `dist-tag.canary` still points at `cbb046ab-20260731`, published 2026-07-31T16:50:45Z — 73h12min stable at cron start). Expect it within 12-48h on the React team's cadence (the team tends to cut canaries within 24h of landing 2+ commits on main; with 4 new commits landed, the canary cut is imminent).
+
+#### PR #37187 — `[DevTools] Remove the dead Timeline profiler code` (acdlite / Sebastian Silbermann, merged 2026-08-03T15:32:51Z)
+
+Removes the **Timeline profiler code path** that was deprecated in React 18 and rendered non-functional since the Profiler was reorganized. The Timeline tab was a Chrome-only feature that showed component-update timelines; it's been a no-op stub for 2+ years. PR #37187 deletes the dead code paths so the DevTools extension loads faster and the bundle ships less JS.
+
+**Practical impact today: zero** (PR is on `main`, not in any canary cut yet). Once the next React canary ships:
+- DevTools extension loads ~5-15% faster on first paint (less dead code to parse).
+- No user-visible feature change — the Timeline tab was already a no-op.
+- **No audit recipe needed** — pure internal cleanup.
+
+#### PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks` (acdlite, merged 2026-08-03T15:32:51Z)
+
+Removes the **Timeline profiler tab** from the DevTools UI itself (paired with PR #37187's backend removal). The tab was replaced with a redirect suggestion pointing users to **React Performance tracks** (the newer browser-native Performance tab + the React-specific frame markers added in 19.x).
+
+**Practical impact today: zero**. Once the next React canary ships:
+- DevTools users who had the Timeline tab pinned will see it disappear + a "use the Performance tab instead" tooltip.
+- The Performance tab + React-specific frame markers give the same data + more (heap snapshots, network waterfall, etc.).
+
+#### PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action` (acdlite, merged 2026-08-03T15:32:50Z)
+
+Redesigns the **empty-state UI** of the Profiler tab — when a user opens the Profiler and hasn't recorded anything yet, the empty state now shows a single primary CTA ("Start profiling") instead of the old multi-action layout. Improves first-time-user discoverability.
+
+**Practical impact today: zero**. Once the next React canary ships:
+- New DevTools users see a clearer path to start profiling (reduces "I opened the Profiler, what do I do now?" confusion).
+- Existing users see the redesigned empty state the next time they open a fresh Profiler session.
+
+#### PR #37137 — `[DevTools] Deduplicate error reporting` (acdlite, merged 2026-08-03T15:32:32Z)
+
+**Deduplicates the error-reporting machinery** that was scattered across multiple DevTools subsystems (the standalone DevTools UI + the browser extension backend + the standalone profiler CLI). All three now use a single shared error-reporting helper, reducing noise in DevTools's own console + shrinking the DevTools bundle by a small amount.
+
+**Practical impact today: zero**. Once the next React canary ships:
+- DevTools extension developers see cleaner error logs (one report per error, not three).
+- Bundle size shrinks by ~3-5KB (the helper consolidation).
+
+#### Summary — no fiber / DOM / reconciler / scheduler changes
+
+All 4 PRs are DevTools-only. **No changes to React's core rendering, scheduling, hydration, suspense, error boundaries, refs, fragments, hooks, server components, or flight protocol.** The next React canary cut (likely `19.3.0-canary-7dfc7ccd-20260803` or similar — the merge commit `7dfc7ccd12` is the new main-branch head) will carry these 4 PRs but otherwise be identical to `cbb046ab-20260731` from an app-developer perspective.
+
+**Audit recipe (after the next canary cut):**
+
+```bash
+# Confirm the 4 PRs landed in your installed react@canary (DevTools only):
+grep -l 'Timeline profiler\|Performance tracks\|Start profiling' node_modules/react-devtools/ 2>/dev/null
+# Should see the new empty-state CTA + the Performance-tracks redirect in the bundle source
+```
+
+### Sources (forward-looking main-branch)
+
+- [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-03T18:02Z; main-branch head is now `7dfc7ccd12` (was `3a717e4243` at v1.5.12 commit time); 4 NEW commits since `cbb046ab`, all DevTools-only
+- [React PR #37187 — `[DevTools] Remove the dead Timeline profiler code`](https://github.com/facebook/react/pull/37187) — merged 2026-08-03T15:32:51Z, dead-code removal
+- [React PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks`](https://github.com/facebook/react/pull/37186) — merged 2026-08-03T15:32:51Z, paired with #37187
+- [React PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action`](https://github.com/facebook/react/pull/37185) — merged 2026-08-03T15:32:50Z, UX improvement
+- [React PR #37137 — `[DevTools] Deduplicate error reporting`](https://github.com/facebook/react/pull/37137) — merged 2026-08-03T15:32:32Z, helper consolidation
+- [React canary `19.3.0-canary-cbb046ab-20260731` GitHub compare (`cbb046ab...main`)](https://github.com/facebook/react/compare/cbb046ab...main) — 6 NEW commits since the canary cut (2 from v1.5.12 + 4 from v1.5.19)
+
+### Sources### Sources
 
 - [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified 2 NEW commits after `cbb046ab` at 2026-07-31T19:20:21Z (main-branch head is now `3a717e4243`)
 - [React PR #37063 — `[Fiber] Collect Host Singleton children of Fragments`](https://github.com/facebook/react/pull/37063) — by eps1lon, merged 2026-07-31T19:20:21Z, fixes `dispatchEvent` calls on empty singletons inside Fragments

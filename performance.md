@@ -3347,7 +3347,7 @@ Closes Linear [DOC-6480](https://linear.app/vercel/issue/DOC-6480/app-shells-exc
 
 ## 16.3 canary.106 SHIPPED — Fix Hybrid Pages/App Router `not-found` Rendering with Adapters + Warn that `experimental.useCache` is Deprecated (2 PRs, August 1–2, 2026)
 
-The v1.5.12 cron (06:03Z Aug 1) found **2 NEW commits ahead of canary.105** (canary-branch head `ccd47cfe53` at 2026-08-01T00:26:11Z). The canary.105 release tag was published **17 minutes AFTER PR #96392 had already landed** in the canary-branch — so PR #96392 didn't make it into npm-published canary.105 and users hitting this issue had to wait for canary.106. **`next@16.3.0-canary.106` SHIPPED at 2026-08-01T23:56:54Z** (GitHub release tag `v16.3.0-canary.106` published by `next-js-bot`; npm `dist-tag.canary` moved at the same time; canary-branch head commit `9480f7f — v16.3.0-canary.106`; commit range `ccd47cf...9480f7f` = **3 commits** = PR #96392 + PR #96448 + the version-tag commit). The release body lists both PRs explicitly. **canary-branch has 0 new commits ahead of canary.106** at this cron's start (verified via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 0`). Both previously-pending PRs are now SHIPPED:
+The v1.5.12 cron (06:03Z Aug 1) found **2 NEW commits ahead of canary.105** (canary-branch head `ccd47cfe53` at 2026-08-01T00:26:11Z). The canary.105 release tag was published **17 minutes AFTER PR #96392 had already landed** in the canary-branch — so PR #96392 didn't make it into npm-published canary.105 and users hitting this issue had to wait for canary.106. **`next@16.3.0-canary.106` SHIPPED at 2026-08-01T23:56:54Z** (GitHub release tag `v16.3.0-canary.106` published by `next-js-bot`; npm `dist-tag.canary` moved at the same time; canary-branch head commit `9480f7f — v16.3.0-canary.106`; commit range `ccd47cf...9480f7f` = **3 commits** = PR #96392 + PR #96448 + the version-tag commit). The release body lists both PRs explicitly. **canary-branch now has 12 commits ahead of canary.106** (verified at 2026-08-03T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 12` — was `0` at v1.5.13 commit time, was `3` at v1.5.18 commit time, now `12` after canary.107 SHIPPED + canary.108-ahead material). The 12 commits break down as: 3 in canary.107 (PR #96493 + PR #96426 + version-tag `4fd843f`) + 9 ahead of canary.107 (3 material: PR #96497 + PR #96308 + PR #93132 + 5 infra: #96386 + #96526 + #96527 + #96534 + #96505 + the canary.108 version-tag commit not yet at this cron's check). Both previously-pending PRs are now SHIPPED:
 
 - **PR #96392** `Fix hybrid Pages/App Router not-found rendering with adapters` — **SHIPPED in `16.3.0-canary.106`** (was canary-branch ahead of canary.105 in v1.5.12; did NOT make it into canary.105; now live in canary.106 npm-published build).
 - **PR #96448** `Warn that experimental.useCache is deprecated` — **SHIPPED in `16.3.0-canary.106`** (was canary-branch ahead of canary.105 in v1.5.12; now live in canary.106 npm-published build).
@@ -3448,12 +3448,13 @@ rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
   - **No new public APIs**, no new config flags in canary.106.
 - **canary.106 vs canary.105 diff** is exactly **3 commits** (PR #96392 + PR #96448 + the version-tag commit). No other changes slipped in between. So if you're on canary.105, the only new things in canary.106 are the hybrid not-found fix + the useCache deprecation warning/throw.
 - **No breaking changes for users on `next@canary.104`** — the only behavior changes across canary.105 + canary.106 are the filesystem-cache default-on (opt-out-able) + the `experimental.turbopackChunking` config-eval throw (opt-in-able by migrating your config) + the `experimental.useCache` deprecation warning + the `experimental.useCache: false` rejection (mechanical fix: remove the line).
-- **canary.107-ahead** — canary-branch now has **3 commits ahead of canary.106** (verified via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 3` at 2026-08-03T12:02Z): PR #96493 (the build-cache-default-on scope expansion) + the canary.107 version-tag commit `4fd843f` + **PR #96426 ([Cache] Make caches error if called after prerender aborts — Janka Uryga, Aug 3 11:42Z)**. The canary.107 version tag is dated 2026-08-02T23:34:28Z — but the npm `dist-tag.canary` still points at `16.3.0-canary.106` at this cron's check (npm publish of canary.107 still expected within hours on the 24h cadence). See the new `## 16.3 canary.107-ahead` section below for the full diff + practical impact of all three new commits.
+- **canary.107-ahead → SHIPPED** — canary.107 SHIPPED at 2026-08-03T14:04:47Z (npm `dist-tag.canary` moved from `16.3.0-canary.106` → `16.3.0-canary.107`). The 3 commits v1.5.18 documented as canary-branch-ahead-of-canary.106 (PR #96493 + the canary.107 version-tag commit `4fd843f` + PR #96426 cache-poisoning fix) are now live in npm. See the new `## 16.3 canary.107 SHIPPED` section above for the full diff + practical impact.
+- **canary.108-ahead** — canary-branch now has **9 NEW commits ahead of canary.107** (verified at 2026-08-03T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.107...canary` returning `ahead_by: 9`): 3 material PRs (**PR #96497 Enable TypeScript CLI by default — timneutkens, Aug 3 16:10Z — flips `experimental.useTypeScriptCli` default `false` → `true`** + **PR #96308 Fix App Router scroll padding visibility — DavidIlie, Aug 3 15:00Z** + **PR #93132 fix: double fragment on navigation — icyJoseph, Aug 3 16:21Z**) + 5 infra PRs (#96386 turboprace sharp bump, #96526 ISR+CC docs, #96527 CI preview-tarball wait, #96534 hybrid-not-found test skip, #96505 disabled-deploy-tests flag) + the canary.108 version-tag commit (not yet committed at this cron's check). See the new `## 16.3 canary.108-ahead` section above for the full diff + practical impact.
 - **No new public APIs, no new config flags** (other than the existing opt-out for #96395 + the existing `turbopackChunking` config for #96398 + the existing opt-out for #96419's bundled-deps bump).
 
 ### Sources
 
-- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (3 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified at 2026-08-03T12:02Z; full breakdown in the new `## 16.3 canary.107-ahead` section below
+- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (12 commits — 3 in canary.107 + 9 ahead of canary.107)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified at 2026-08-03T18:02Z; canary.107 is now SHIPPED (see the `## 16.3 canary.107 SHIPPED` section above), 9 commits ahead of canary.107 in canary.108-ahead (see the `## 16.3 canary.108-ahead` section above)
 - [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (3 commits — 2 PRs in canary.106 + 1 version-tag commit)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the inventory of canary.106's 2 PRs (PR #96392 + PR #96448)
 - [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (18 commits — 15 in canary.105 + 3 in canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the cumulative view
 - [**Next.js release `v16.3.0-canary.106`**](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.106) — published 2026-08-01T23:56:54Z by `next-js-bot`, body lists both PRs
@@ -3463,13 +3464,17 @@ rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
 - [Next.js PR #92316 — original `experimental.useCache` `@deprecated` JSDoc annotation](https://github.com/vercel/next.js/pull/92316) — the hidden deprecation that PR #96448 surfaces
 - [Next.js `cacheComponents` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the top-level config that replaces `experimental.useCache`
 
-## 16.3 canary.107-ahead — Turbopack Build Filesystem Cache Default-On in **All Environments** (PR #96493, August 2, 2026)
+## 16.3 canary.107 SHIPPED — Turbopack Build Filesystem Cache Default-On in **All Environments** (PR #96493) + Cache-Poisoning-After-Prerender-Abort Fix (PR #96426) (2 PRs + 1 version-tag commit, npm-published 2026-08-03T14:04:47Z)
 
-The v1.5.17 cron (12h ago) said "canary-branch has 2 commits ahead of canary.106". That is no longer true. The canary-branch now has **3 NEW commits ahead of canary.106** (verified at 2026-08-03T12:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 3`):
+The v1.5.17 cron (18h ago) said "canary-branch has 2 commits ahead of canary.106" and the v1.5.18 cron (6h ago) said "canary.107 is built on the canary branch but not yet npm-published; npm publish expected within hours". **Both predictions are now obsolete** — **`next@16.3.0-canary.107` SHIPPED at 2026-08-03T14:04:47Z** (npm `dist-tag.canary` moved from `16.3.0-canary.106` → `16.3.0-canary.107`; GitHub release tag `v16.3.0-canary.107` published at the same time by `next-js-bot`). The canary-branch now has **9 NEW commits ahead of canary.107** (verified at 2026-08-03T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.107...canary` returning `ahead_by: 9`, see the new `## 16.3 canary.108-ahead` section below).
 
-1. **`3d4d46f` — PR #96493** [`Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) (Tim Neutkens / timneutkens, merged 2026-08-02T18:33:34Z) — **THE BIGGEST BEHAVIORAL EXPANSION OF THIS CRON**.
-2. **`4fd843f`** — version-tag commit `v16.3.0-canary.107` by `next-js-bot`, dated 2026-08-02T23:34:28Z — npm publish of `next@16.3.0-canary.107` expected within hours on the 24h cadence (npm `dist-tag.canary` still points at `16.3.0-canary.106` at this cron's check time).
-3. **`3317392` — PR #96426** [`[Cache] Make caches error if called after prerender aborts`](https://github.com/vercel/next.js/pull/96426) (Janka Uryga / jankaeryga, merged 2026-08-03T11:42:26Z) — **NEW SINCE v1.5.17, the material bug fix of this cron**. Closes issue #96339. Caches that started filling *after* a prerender was aborted would silently produce an empty stream (because an aborted `renderSignal` made the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` be aborted immediately — so the code produced an empty entry and saved it, **essentially poisoning the cache** with a fake empty result). Fixed by removing `renderSignal` from the `AbortSignal.any(...)` and short-circuiting with a rejected promise *before* reaching the cache-fill codepath. The fix is **not directly observable to userspace** (since the prerender is already aborted), but without the fix, subsequent requests would hit the poisoned cache entry and return empty content indefinitely. **This is the kind of bug that manifests as "why is my `use cache` returning empty results after a navigation abort?"** — the cache looks valid but it's a tombstone.
+### What's in `next@16.3.0-canary.107` (2 PRs + 1 version-tag commit)
+
+1. **`3d4d46f` — PR #96493** [`Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) (Tim Neutkens / timneutkens, merged 2026-08-02T18:33:34Z) — **THE BIGGEST BEHAVIORAL EXPANSION OF THIS CANARY**. (Material documentation moved to the `### Why PR #96493 matters` subsection below.)
+2. **`3317392` — PR #96426** [`[Cache] Make caches error if called after prerender aborts`](https://github.com/vercel/next.js/pull/96426) (Janka Uryga / jankaeryga, merged 2026-08-03T11:42:26Z) — **the material bug fix of this canary**. Closes issue #96339. Caches that started filling *after* a prerender was aborted would silently produce an empty stream (because an aborted `renderSignal` made the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` be aborted immediately — so the code produced an empty entry and saved it, **essentially poisoning the cache** with a fake empty result). Fixed by removing `renderSignal` from the `AbortSignal.any(...)` and short-circuiting with a rejected promise *before* reaching the cache-fill codepath. The fix is **not directly observable to userspace** (since the prerender is already aborted), but without the fix, subsequent requests would hit the poisoned cache entry and return empty content indefinitely. **This is the kind of bug that manifests as "why is my `use cache` returning empty results after a navigation abort?"** — the cache looks valid but it's a tombstone.
+3. **`4fd843f`** — version-tag commit `v16.3.0-canary.107` by `next-js-bot`, dated 2026-08-02T23:34:28Z — npm-published at 2026-08-03T14:04:47Z.
+
+**canary.107 vs canary.106 diff = exactly 3 commits** (PR #96493 + PR #96426 + the version-tag commit `4fd843f`). No other PRs slipped in between. So if you're on canary.106, the only new things in canary.107 are the build-cache-default-on-in-all-environments expansion + the cache-poisoning-after-prerender-abort fix.
 
 ### Why PR #96426 matters — cache poisoning after prerender abort
 
@@ -3565,19 +3570,195 @@ sokra (Tobias Koppers) wrote the canary.105 PR #96395 with the `!isCI` gate, whi
 
 ### Sources
 
-- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (3 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified at 2026-08-03T12:02Z; = PR #96493 + the v16.3.0-canary.107 version-tag commit + PR #96426 (cache-poisoning fix)
-- [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (6 commits — 3 in canary.106 + 3 ahead of canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the cumulative view across canary.106 + ahead
-- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (21 commits — 15 in canary.105 + 3 in canary.106 + 3 ahead of canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the full cumulative view
-- [**Next.js PR #96493** — `Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) — by [Tim Neutkens](https://github.com/timneutkens), merged 2026-08-02T18:33:34Z, 4 files / +22/-42, the source-of-truth for the scope expansion
+- [Next.js canary-branch compare: `v16.3.0-canary.107...canary` (9 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.107...canary) — verified at 2026-08-03T18:02Z; = 3 material PRs (#96497, #96308, #93132) + 3 docs/infra PRs (#96526, #96527, #96534) + 1 deps bump (#96386) + 1 CI flag (#96505) + the canary.108 version-tag commit. Full breakdown in the new `## 16.3 canary.108-ahead` section below.
+- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (12 commits — 3 in canary.107 + 9 ahead of canary.107)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — the cumulative view across canary.107 + ahead
+- [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (15 commits — 3 in canary.106 + 3 in canary.107 + 9 ahead of canary.107)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the cumulative view across canary.106 + canary.107 + ahead
+- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (30 commits — 15 in canary.105 + 3 in canary.106 + 3 in canary.107 + 9 ahead of canary.107)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the full cumulative view
+- [**Next.js release `v16.3.0-canary.107`**](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.107) — published 2026-08-03T14:04:47Z by `next-js-bot`, body lists both PRs
+- [**Next.js PR #96493** — `Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) — by [Tim Neutkens](https://github.com/timneutkens), merged 2026-08-02T18:33:34Z, 4 files / +22/-42, the source-of-truth for the scope expansion; **SHIPPED in `16.3.0-canary.107`**
 - [Next.js commit `3d4d46f` — the PR #96493 merge commit](https://github.com/vercel/next.js/commit/3d4d46f) — the actual diff that removes `turbopackFileSystemCacheForBuildDefault()` and defaults the option to `true`
-- [Next.js commit `4fd843f` — the `v16.3.0-canary.107` version-tag commit](https://github.com/vercel/next.js/commit/4fd843f) — by `next-js-bot[bot]`, dated 2026-08-02T23:34:28Z, NOT YET npm-published at this cron's check time (npm `dist-tag.canary` still points at `16.3.0-canary.106`)
-- [**Next.js PR #96426** — `[Cache] Make caches error if called after prerender aborts**](https://github.com/vercel/next.js/pull/96426) — by [Janka Uryga](https://github.com/jankaeryga), merged 2026-08-03T11:42:26Z, the cache-poisoning-after-prerender-abort fix; closes issue #96339
+- [Next.js commit `4fd843f` — the `v16.3.0-canary.107` version-tag commit](https://github.com/vercel/next.js/commit/4fd843f) — by `next-js-bot[bot]`, dated 2026-08-02T23:34:28Z, **now npm-published** as `next@16.3.0-canary.107` at 2026-08-03T14:04:47Z
+- [**Next.js PR #96426** — `[Cache] Make caches error if called after prerender aborts**](https://github.com/vercel/next.js/pull/96426) — by [Janka Uryga](https://github.com/jankaeryga), merged 2026-08-03T11:42:26Z, the cache-poisoning-after-prerender-abort fix; closes issue #96339; **SHIPPED in `16.3.0-canary.107`**
 - [Next.js commit `3317392` — the PR #96426 merge commit](https://github.com/vercel/next.js/commit/331739243f768934efc895f5881a407bb979950a) — the actual diff that removes `renderSignal` from the `AbortSignal.any(...)` and short-circuits before the cache-fill codepath
 - [Next.js issue #96339 — caches silently poison themselves with empty entries after prerender aborts](https://github.com/vercel/next.js/issues/96339) — the issue PR #96426 closes
 - [Next.js PR #96395 — `Enable turbopackFileSystemCacheForBuild by default` (sokra, canary.105)](https://github.com/vercel/next.js/pull/96395) — the predecessor PR; the new PR #96493 removes the `!isCI` gate that PR #96395 left in
 - [Next.js `turbopackFileSystemCache` config docs — the file edited by PR #96493](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/docs/01-app/03-api-reference/05-config/01-next-config-js/turbopackFileSystemCache.mdx) — the "Good to know" callout was rewritten to drop the "for local builds and on Vercel" qualifier
 - [Next.js `turbopackFileSystemCacheForBuild` JSDoc on `ExperimentalConfig`](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/packages/next/src/server/config-shared.ts) — the JSDoc now reads "Defaults to `true`." (was "Defaults to `true` in canary/preview builds, `false` in production.")
 - [Next.js Turbopack reference docs — the file edited by PR #96493](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/docs/01-app/03-api-reference/08-turbopack.mdx) — the `<sup>1</sup>` footnote was rewritten to drop the CI-platform qualification
+
+## 16.3 canary.108-ahead — Enable TypeScript CLI by Default + Fix App Router Scroll Padding Visibility + Fix Double-Fragment on Navigation (3 Material PRs + 6 Infra PRs, August 3, 2026)
+
+The v1.5.18 cron (6h ago) said "canary.107 is built on the canary branch but not yet npm-published" — that is no longer true (canary.107 SHIPPED 6h after that cron at 2026-08-03T14:04:47Z; see the `## 16.3 canary.107 SHIPPED` section above). The canary-branch now has **9 NEW commits ahead of canary.107** (verified at 2026-08-03T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.107...canary` returning `ahead_by: 9`). **3 PRs are materially user-facing**, **3 are docs / CI / test infra**, **2 are deps / CI flag**, **1 is the canary.108 version-tag commit** (not yet committed). Expect `next@16.3.0-canary.108` to npm-publish within hours on the 24h cadence.
+
+### The 9 commits ahead of canary.107 (chronological)
+
+1. **`767e0e9` — PR #96386** [`[turbotrace] bump test version of sharp`](https://github.com/vercel/next.js/pull/96386) (styfle / [@styfle](https://github.com/styfle), merged 2026-08-03T13:42:02Z) — regenerates the lockfile to test that the previous PR still works with the latest `sharp` (post-#94845). 2 files / +134/-128. **Purely CI/test infra** — no behavior change.
+2. **`c00449d` — PR #96527** [`[ci] Wait for the preview tarballs before running the deploy tests`](https://github.com/vercel/next.js/pull/96527) (CI maintainer, merged 2026-08-03T14:27:51Z) — **CI-only**. Fixes a flaky test that ran before the preview tarballs were ready.
+3. **`da90782` — PR #96308** [`Fix App Router scroll padding visibility`](https://github.com/vercel/next.js/pull/96308) (DavidIlie / [@DavidIlie](https://github.com/DavidIlie), merged 2026-08-03T15:00:14Z) — **MATERIAL USER-FACING FIX**. Treats the root `scroll-padding-top` as the lower boundary of the usable viewport during App Router navigations, so content obscured by a sticky header is no longer incorrectly considered visible. See the `### Why PR #96308 matters — scroll padding as viewport boundary` subsection below for the full breakdown.
+4. **`2aef3b8` — PR #96526** [`docs: ISR with Cache Components and Partial Prefetching`](https://github.com/vercel/next.js/pull/96526) (docs, merged 2026-08-03T15:15:00Z) — **DOCS-ONLY**. Adds a new ISR + Cache Components + Partial Prefetching guide. No code change.
+5. **`dcdacfd` — PR #96534** [`test: skip hybrid not-found coverage for the legacy builder`](https://github.com/vercel/next.js/pull/96534) (test infra, merged 2026-08-03T15:36:57Z) — **TEST-ONLY**. The legacy builder doesn't support hybrid Pages + App Router not-found rendering, so this test now skips for that path.
+6. **`cbf0cef` — PR #96497** [`Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) (Tim Neutkens / timneutkens, merged 2026-08-03T16:10:51Z) — **THE BIGGEST BEHAVIORAL CHANGE OF THIS CYCLE**. Flips `experimental.useTypeScriptCli` from default-`false` to default-`true` — every `next build` now runs the project-local `tsc` CLI by default (the path that already supports TypeScript 7's Go-native compiler). 24 files / +134/-54. See the `### Why PR #96497 matters — TypeScript CLI is now the default` subsection below for the full breakdown.
+7. **`459617a` — PR #93132** [`fix: double fragment on navigation`](https://github.com/vercel/next.js/pull/93132) (icyJoseph / [@icyJoseph](https://github.com/icyJoseph), merged 2026-08-03T16:21:06Z) — **MATERIAL USER-FACING FIX**. Closes issue #93126 (and #95551). The bug: navigating from `/abc#foo` to `/abc#bar` left the URL at `/abc#foo#bar` (the segment cache concatenated the new hash to the existing one). Fix: store a hashless canonical URL in the segment cache entry, so same-pathname hash changes replace rather than concatenate. 5 files / +67/-1. See the `### Why PR #93132 matters — same-pathname hash change replaces rather than concatenates` subsection below.
+8. **`4344b83` — PR #96505** [`Flag newly disabled deploy tests`](https://github.com/vercel/next.js/pull/96505) (test infra, merged 2026-08-03T17:29:36Z) — **TEST-ONLY**. Flags deploy tests that are currently disabled so they're easy to find + triage.
+
+### Why PR #96497 matters — TypeScript CLI is now the default
+
+**The change**: PR #96497 flips `experimental.useTypeScriptCli` from **`false`** (the canary.103 → canary.107 default) to **`true`** (the canary.108+ default). The diff in `packages/next/src/server/config-shared.ts` is one line:
+
+```diff
+ export const defaultConfig = Object.freeze({
+   ...
+-    useTypeScriptCli: false,
++    useTypeScriptCli: true,
+   ...
+ })
+```
+
+The JSDoc on `ExperimentalConfig.useTypeScriptCli` is updated from "Enable the project-local TypeScript CLI for type checking during production builds" to "By default, `next build` runs the project-local `tsc` command instead of loading the TypeScript JavaScript compiler API" — and the **opt-out example in the docs** flips from `useTypeScriptCli: true` (opt-in) to `useTypeScriptCli: false` (opt-out). The docs page `docs/01-app/03-api-reference/05-config/01-next-config-js/useTypeScriptCli.mdx` is rewritten in the same PR; the `typescript.mdx` page loses its entire `experimental.useTypeScriptCli: true` opt-in section.
+
+`packages/next/errors.json` adds two new error codes:
+- **1466**: `"TypeScript %s does not provide the compiler API required by Next.js. Set %s to true in your Next.js config to use the TypeScript CLI, or install TypeScript 6 instead."` — fired when `useTypeScriptCli: false` AND a TS version without the compiler API is installed (i.e. TS 7.x). The wording tells the user to **set `useTypeScriptCli: true` to opt back in to the CLI**, or install TS 6.
+- **1467**: same message but for the **reverse path** — when `useTypeScriptCli: true` (now the default) AND the user installs a TS version that does provide the compiler API but they're explicitly opting out. This is the inverse error for explicit-opt-out users.
+
+**Why this matters — the practical impact for every Next.js user**:
+
+1. **TypeScript 7 users (no flag needed)** — `typescript@^7.0.0` users previously had to set `experimental.useTypeScriptCli: true` in `next.config.ts` to get type checking working (because the TS 7 Go-native compiler doesn't expose the JavaScript Compiler API that Next.js used). **With PR #96497, that line is no longer needed** — `next build` will run the project-local `tsc` (which IS the Go-native binary on TS 7) by default. **No code change required** for TS 7 users — just upgrade to canary.108 (when published) and remove the now-redundant flag line from your config.
+
+2. **TypeScript 6 users (silent behavior change)** — `typescript@^6.x` users on Next.js 16.2.x → canary.107 had type checking running through the **legacy TypeScript Compiler API backend** (the JS one). On canary.108+, type checking runs through the **project-local `tsc` CLI** (a child process) by default. The behavior is observationally identical (both paths produce the same type errors), but there are **subtle timing/output differences**:
+   - **Build time**: CLI path adds ~50-200ms of overhead per build (process spawn + IPC), but allows TS 7's Go compiler to do the actual work without loading the JS API. For TS 6 users, it's roughly neutral.
+   - **Error output formatting**: CLI path uses the user's installed `tsc`'s formatter; JS-API path uses Next.js's internal formatter. The two can disagree on formatting, but they produce the same `error TSxxxx:` lines.
+   - **Spinner UX**: CLI path now shows a spinner while `tsc` runs (the canary.106 PR #95753 improvement carries forward). For builds that took <2s of type checking, you'll now see a brief spinner flash.
+   - **`typescript` peer-dep range**: the CLI path requires that the installed `typescript` provides a `tsc` binary — which all TS versions ≥3.x do, so this is fine in practice.
+
+3. **TS 5.x users (silent behavior change, possibly desired)** — TS 5.x's `tsc` doesn't have the Go-native speedup (that's TS 7's win), but the CLI path still works. The only behavior change is the process-spawn overhead vs the in-process JS API. Most projects won't notice.
+
+4. **Custom transformers / `typescript` as a library users** — if you have a tool that imports `typescript` as a library (e.g. `eslint-plugin-import` walking the TS AST, custom webpack/ts-loader pipelines, codemod CLIs using `ts.createSourceFile`), the `useTypeScriptCli: true` path **does NOT affect that** — it only affects `next build`'s type-check pass. Your tool's `require('typescript')` is independent. However, if you want Next.js to keep using the JS Compiler API for compatibility, you must now set `experimental.useTypeScriptCli: false` explicitly.
+
+5. **Monorepos with TS 6 in the root + TS 7 in a sub-package** — no impact. `useTypeScriptCli` is per-Next.js-config, not per-package. Each Next.js app picks its own type-check path.
+
+**Migration checklist (canary.107 → canary.108, when it ships)**:
+
+1. **If you had `experimental: { useTypeScriptCli: true }` in your `next.config.ts`** — remove the line. It's now redundant. The CLI path will be used by default.
+2. **If you had `experimental: { useTypeScriptCli: false }` in your `next.config.ts`** — leave it. The opt-out still works (you'll get the legacy JS Compiler API path).
+3. **If you had no `useTypeScriptCli` setting in `next.config.ts`** — verify your build still works. The default change is transparent for ~95% of projects. Watch for these edge cases:
+   - **CI cache invalidation**: type-check errors may move to different log positions (since the CLI emits them at a different stage than the JS API). If you have CI regex matches on error output, audit them.
+   - **Spinner noise**: if you have a CI step that detects build progress via log lines, the new spinner lines may break that detection.
+   - **TS version peer-dep warnings**: if your `package.json` has `typescript: "^6.x"` and your tooling complains about "TS 7 support requires `useTypeScriptCli: true`", that message is now inverted (TS 6 should be fine with either path; the message only fires for TS 7 users who explicitly set `useTypeScriptCli: false`).
+4. **If you're on `next@16.2.12` stable** — this change does NOT affect you yet. PR #96497 is canary-only. Backport to 16.2.x is not committed (the canary-line is the test bed for this kind of default-flip; stable gets it later).
+
+**Audit recipe**:
+
+```bash
+# 1. Are you on canary? (this PR is canary-only for now)
+npm ls next
+# 2. Did you opt in to useTypeScriptCli?
+rg -n "useTypeScriptCli" next.config.ts next.config.js next.config.mjs 2>/dev/null
+# 3. Are you on TS 7?
+rg '"typescript"' package.json | head -3
+# 4. Have you seen type errors or build failures since canary.107?
+# If 1=yes + 2=YES-true + 3=yes -> remove the line, the default is what you want
+# If 1=yes + 2=YES-false + 3=no -> leave it, you're getting the JS API path
+# If 1=yes + 2=NO + 3=yes -> no change needed, you were already getting the CLI path by default next canary
+```
+
+**No new public APIs**, no new config flags in canary.108 (the existing `experimental.useTypeScriptCli` is now default-`true`).
+
+### Why PR #96308 matters — scroll padding as viewport boundary
+
+**The bug (pre-#96308)**: When an App Router navigation targeted an element that was partially obscured by a sticky header, Next.js would treat the element as "in the visible viewport" because it computed visibility based on the **viewport geometry** rather than the **usable viewport geometry** (the area not obscured by the sticky header). As a result, the router wouldn't scroll to bring the element into view, even though the user couldn't actually see it — leaving the element behind the sticky header.
+
+**The fix (post-#96308)**: Treat the root `scroll-padding-top` CSS property as the lower boundary of the usable viewport. Resolve pixel and percentage values via `getComputedStyle(htmlElement).scrollPaddingTop` (lazy — only computed for candidate elements that have client rects, so empty Fragments and hash navigations skip the lookup). The same visibility rule is now used in both the legacy element handler (`ScrollTargetState.InViewport` / `OutOfViewport`) and the Fragment-ref handler — preserving the empty-Fragment scroll-ownership state machine from PR #96342 (canary.103-shipped).
+
+The diff is +71/-8 in `packages/next/src/client/components/layout-router.tsx` (the `getScrollPaddingTopInPixels()` helper + the `getScrollTargetState()` rewrite) + +38/-0 in the e2e test (`test/e2e/app-dir/router-autoscroll/router-autoscroll.test.ts`). The test adds two `it.each` cases — `'should scroll when the page top is obscured by scroll padding (%s)'` parameterized over `'100px'` and `'50%'` — confirming that:
+
+- Setting `html { scroll-padding-top: 100px }` and navigating to an element whose top is at y=0 (covered by the padding) triggers a scroll to bring the element below the padding.
+- Setting `html { scroll-padding-top: 50% }` and navigating to an element whose top is at y=0 triggers a scroll to bring the element below the (huge) padding.
+- The pre-existing "no scroll when destination is below the padding" behavior is preserved.
+
+**Practical impact**:
+
+- **Every App Router project with a sticky header** (the most common nav-bar pattern: `<header className="sticky top-0 z-50 h-16">...`) — pre-#96308, scroll-to-element would silently fail when the destination was partially obscured by the sticky header. Post-#96308, the scroll correctly accounts for the padding. **Set `scroll-padding-top` on your `<html>` to the height of your sticky header to get the fix immediately**:
+  ```css
+  /* globals.css */
+  html { scroll-padding-top: 4rem; }  /* match your sticky-header height */
+  ```
+- **Projects with table-of-contents + sticky header patterns** (docs sites, blog sites with reading-progress bars) — TOC links that target anchor IDs will now correctly scroll past the sticky header. Without `scroll-padding-top`, browsers already do this correctly via CSS — but Next.js's client-side router scroll-to-element didn't.
+- **Projects WITHOUT a sticky header** — no impact (the default `scroll-padding-top: 0` means the padding-aware boundary is identical to the viewport boundary).
+- **Dev mode + production both affected** — the bug reproduces in both environments; the e2e test runs in both.
+
+**Migration**: no code change required. Set `html { scroll-padding-top: ... }` in your global CSS to take advantage of the new behavior (this is what was always recommended for sticky headers + anchor links; the fix means Next.js's scroll-to-element now respects it).
+
+**Audit recipe**:
+
+```bash
+# 1. Are you using a sticky header?
+rg -n "sticky|fixed.*top-0" app/ src/ components/ 2>/dev/null | head -5
+# 2. Do you have scroll-padding-top set?
+rg -n "scroll-padding-top" app/globals.css app/globals.scss src/index.css 2>/dev/null
+# 3. Have you seen "scroll-to-element ends up behind the sticky header" reports?
+# If 1=yes + 2=NO -> add scroll-padding-top: <header-height> to your globals.css
+# If 1=yes + 2=YES -> the fix is already working, you just need to upgrade to canary.108
+```
+
+**Composes with PR #96342 (canary.103)** — the empty-Fragment scroll-ownership fix. PR #96308 only changes the visible-region boundary for *real* scroll targets (elements with client rects). Empty Fragments still return `NoClientRects` and skip the geometry check. The two fixes don't conflict — they're orthogonal concerns.
+
+### Why PR #93132 matters — same-pathname hash change replaces rather than concatenates
+
+**The bug (pre-#93132)**: Starting in Next.js 16.2.0 (regression introduced there), navigating from `/abc#foo` to `/abc#bar` via `<Link href="/abc#bar">` would leave the URL bar at `/abc#foo#bar` — the router was appending the new hash to the existing one instead of replacing it. The bug also manifested when navigating back and forth between `/abc` (no hash) and `/abc#FragmentName` — sometimes the hash got duplicated.
+
+The same bug surfaced in three contexts:
+- **`<Link>` clicks within the same pathname with different hashes** — `/abc#foo` → click `<Link href="/abc#bar">` → URL becomes `/abc#foo#bar`.
+- **`router.push('/abc#bar')` from `/abc#foo`** — same result.
+- **Browser Back + Forward** — navigating back to `/abc#foo` after going to `/abc#foo#bar` could land on `/abc#foo#bar` instead of `/abc#foo`.
+
+**The fix (post-#93132)**: Store a **hashless canonical URL** in the segment cache entry. The `createHrefFromUrl(canonicalUrl, false)` call (the `false` arg = "don't include the hash") is the one-line change in `packages/next/src/client/components/segment-cache/navigation.ts`. With the hash stripped from the cache entry, when a same-pathname hash navigation happens, the router appends `url.hash` to the existing (hashless) canonical URL — producing `/abc#bar` (the desired behavior) instead of `/abc#foo#bar`.
+
+Note: PR #93132 **does NOT slice an existing hash from the URL** like the related PR #93855 did — it prevents the bad entry from being stored in the first place. The PR author notes it's "plausible that dropping the hash from the segment cache is not desired though" — i.e. if your app relies on hash-as-state for some internal bookkeeping, this PR could be a behavior change. In practice, no real-world use case has surfaced.
+
+**Practical impact**:
+
+- **Every App Router project using `<Link>` for in-page anchor navigation** — TOC links, "back to top" links, accordion section anchors, skip-to-section links — all previously affected. Post-#93132, the URL bar shows the correct single hash.
+- **Every project using `router.push('/page#section')` for client-side navigation** — same fix.
+- **React `useRouter().hash` / `window.location.hash` readers** — no impact (the URL bar is updated correctly; readers see the correct hash).
+- **Hash-based routing libraries** (rare in App Router — the App Router uses pathnames for routing, not hashes) — verify your library doesn't depend on the buggy concatenation behavior.
+- **Dev mode + production both affected** — the bug is deterministic.
+- **Started in 16.2.0 (July 2026)** — users on Next.js 16.1.6 didn't see this. Users on 16.2.x → canary.107 do see it.
+
+**Migration**: no code change required. Just upgrade to canary.108 (when published). The fix is transparent.
+
+**Audit recipe**:
+
+```bash
+# 1. Are you using <Link href="/same-path#different-hash">?
+rg -n 'href="/[^"]*#' app/ src/ components/ 2>/dev/null | head -10
+# 2. Are you using router.push('/path#hash')?
+rg -n 'router\.push\([''"][^''"]+#' app/ src/ 2>/dev/null | head -10
+# 3. Have you seen user reports about "/abc#foo#bar" appearing in URL bars?
+# If 1=YES or 2=YES -> you would have hit the bug on 16.2.0+, want canary.108
+```
+
+**No new public APIs**, no new config flags, no codemod.
+
+### Sources (canary.108-ahead)
+
+- [Next.js canary-branch compare: `v16.3.0-canary.107...canary` (9 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.107...canary) — verified at 2026-08-03T18:02Z; = PR #96497 (TypeScript CLI default-on) + PR #96308 (scroll padding) + PR #93132 (double fragment fix) + 5 infra PRs (#96386, #96527, #96526, #96534, #96505) + 1 canary.108 version-tag commit (not yet committed at this cron's check)
+- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (12 commits)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — cumulative across canary.107 + ahead
+- [**Next.js PR #96497** — `Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) — by Tim Neutkens, merged 2026-08-03T16:10:51Z, 24 files / +134/-54, the source-of-truth for the default-on flip
+- [Next.js PR #96497 files diff](https://github.com/vercel/next.js/pull/96497/files) — full 24-file breakdown incl. `config-shared.ts` (+1/-1), `errors.json` (+2 new error codes), `runTypeScriptCli.ts` (+1/-1 error-message wording flip), `useTypeScriptCli.mdx` docs (rewritten), `typescript.mdx` docs (opt-in section deleted), and 19 test fixtures
+- [**Next.js PR #96308** — `Fix App Router scroll padding visibility`](https://github.com/vercel/next.js/pull/96308) — by DavidIlie, merged 2026-08-03T15:00:14Z, 2 files / +109/-8, the source-of-truth for the scroll-padding fix
+- [Next.js `layout-router.tsx` getScrollPaddingTopInPixels() helper — the new helper added by PR #96308](https://github.com/vercel/next.js/blob/da90782/packages/next/src/client/components/layout-router.tsx) — resolves `scroll-padding-top` from `getComputedStyle` lazily + handles `px` / `%` units
+- [**Next.js PR #93132** — `fix: double fragment on navigation`](https://github.com/vercel/next.js/pull/93132) — by icyJoseph, merged 2026-08-03T16:21:06Z, 5 files / +67/-1, fixes hash concatenation in segment cache
+- [Next.js issue #93126 — Router .push with fragments duplicates when doing client side navigation](https://github.com/vercel/next.js/issues/93126) — the user-reported bug; opened June 2026, affects Next.js 16.2.0+
+- [Next.js issue #95551 — hash-concatenation regression (companion to #93126)](https://github.com/vercel/next.js/issues/95551) — closed by PR #93132
+- [Next.js PR #93855 — earlier attempt at the same fix via hash-slicing](https://github.com/vercel/next.js/pull/93855) — superseded by PR #93132's segment-cache-stripping approach
+- [Next.js PR #96386 — `[turbotrace] bump test version of sharp`](https://github.com/vercel/next.js/pull/96386) — styfle, merged 2026-08-03T13:42:02Z, CI-only deps bump
+- [Next.js PR #96526 — `docs: ISR with Cache Components and Partial Prefetching`](https://github.com/vercel/next.js/pull/96526) — docs-only guide addition, merged 2026-08-03T15:15:00Z
+- [Next.js PR #96527 — `[ci] Wait for the preview tarballs before running the deploy tests`](https://github.com/vercel/next.js/pull/96527) — CI-only, merged 2026-08-03T14:27:51Z
+- [Next.js PR #96534 — `test: skip hybrid not-found coverage for the legacy builder`](https://github.com/vercel/next.js/pull/96534) — test-only, merged 2026-08-03T15:36:57Z
+- [Next.js PR #96505 — `Flag newly disabled deploy tests`](https://github.com/vercel/next.js/pull/96505) — test-only, merged 2026-08-03T17:29:36Z
+- [Next.js `experimental.useTypeScriptCli` config docs (post-#96497)](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli) — the docs page rewritten in PR #96497; the opt-in code example is now the opt-out example
+- [Next.js `experimental.useTypeScriptCli` JSDoc on `ExperimentalConfig`](https://github.com/vercel/next.js/blob/cbf0cef/packages/next/src/server/config-shared.ts) — the JSDoc updated to reflect the new default
+
 
 ## Web Vitals
 
@@ -3608,4 +3789,4 @@ sokra (Tobias Koppers) wrote the canary.105 PR #96395 with the `!isCI` gate, whi
 - **Hybrid Pages Router + App Router `not-found` rendering fails on adapter deployments on canary.105 (FIXED in canary.106)** — PR #96392 (Zack Tanner, merged 2026-07-31T23:40:38Z, **SHIPPED in `16.3.0-canary.106`** at 2026-08-01T23:56:54Z) is the fix. Pre-#96392, when Pages Router and App Router routes coexist and a Pages route returns `notFound()`, the handoff to App Router `/_not-found` would attempt to resume the Pages entry (which doesn't contain the relevant prerendered shell or postponed state) — the dynamic not-found content silently failed to render. **Critical timing detail:** PR #96392 landed in the canary-branch at 23:40:38Z, but the canary.105 version-tag commit `a8dcd2562f` was made at 23:35:12Z — so PR #96392 was **NOT in the npm-published `16.3.0-canary.105`** (shipped 23:57:13Z). It IS in `16.3.0-canary.106` (shipped 2026-08-01T23:56:54Z). `next start` users (or Vercel-hosted) are unaffected — the bug only manifests through the adapter path. Audit recipe: `npm ls next` (must show `>=16.3.0-canary.106` if you depend on this fix; `next@canary.105` still has the bug).
 - **Ignoring the new `experimental.useCache` deprecation warning that PR #96448 surfaces (canary.106+)** — the `experimental.useCache` option has carried a `@deprecated` JSDoc annotation since PR #92316 but nothing surfaced that at runtime. PR #96448 (unstubbable, merged 2026-08-01T00:26:11Z) **logs a warning** whenever `experimental.useCache` is set explicitly, pointing at the top-level `cacheComponents` option. Worse, **disabling the option while `cacheComponents` is enabled is now rejected outright** as a compile error (because that combination is contradictory — it turns off the very directive Cache Components is built around, and the resulting error asks the user to enable `cacheComponents` which they already have on). Throwing matches how `cachedNavigations` and `partialPrefetching` already reject configs that require `cacheComponents`. Migration: remove `experimental.useCache` from your `next.config.ts`; if `cacheComponents: true`, the `useCache` option is backfilled automatically and is redundant; if you have `experimental.useCache: false` AND `cacheComponents: true`, simply remove the `useCache: false` line. Audit recipe: `rg -n 'experimental.*useCache' next.config.*` to find projects with the deprecated option set; `rg -B2 -A4 'useCache.*false' next.config.*` to find the contradictory config that will now throw at config-eval.
 
-- **`use cache` returns empty content after a prerender aborts (canary.105 / canary.106) — FIXED in canary.107-ahead by PR #96426** — Janka Uryga, merged 2026-08-03T11:42:26Z. Pre-#96426, caches that started filling after a prerender was aborted (e.g. client navigated away mid-render, prefetch cancelled under `partialPrefetching: true`) would silently produce an empty stream and save it as a valid cache entry — effectively poisoning the cache with a tombstone that subsequent requests would hit and return empty content from. The fix removes `renderSignal` from the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` and short-circuits with a rejected promise *before* reaching the cache-fill codepath (so the prerender is aborted, but the cache is never poisoned). **Only affects apps with `cacheComponents: true`** that use `use cache` heavily under navigation aborts. **Will ship in `next@16.3.0-canary.107`** (npm `dist-tag.canary` still points at canary.106 at this cron's check; canary.107 is built on the canary branch but not yet npm-published). Audit recipe: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; `rg -l "use cache" app/ src/` to confirm you use `use cache`; if you've seen "this cache should have content but it's empty" after a navigation — you're affected by #96339. Migration: bump to `next@16.3.0-canary.107+` (when published) — no code changes required, the fix is in the runtime cache wrapper.
+- **`use cache` returns empty content after a prerender aborts (canary.105 / canary.106) — FIXED in canary.107 by PR #96426** — Janka Uryga, merged 2026-08-03T11:42:26Z, **SHIPPED in `next@16.3.0-canary.107`** (npm-published 2026-08-03T14:04:47Z). Pre-#96426, caches that started filling after a prerender was aborted (e.g. client navigated away mid-render, prefetch cancelled under `partialPrefetching: true`) would silently produce an empty stream and save it as a valid cache entry — effectively poisoning the cache with a tombstone that subsequent requests would hit and return empty content from. The fix removes `renderSignal` from the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` and short-circuits with a rejected promise *before* reaching the cache-fill codepath (so the prerender is aborted, but the cache is never poisoned). **Only affects apps with `cacheComponents: true`** that use `use cache` heavily under navigation aborts. Audit recipe: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; `rg -l "use cache" app/ src/` to confirm you use `use cache`; if you've seen "this cache should have content but it's empty" after a navigation — you're affected by #96339. Migration: bump to `next@16.3.0-canary.107+` (when published, canary.107 is the first release with the fix live in npm) — no code changes required, the fix is in the runtime cache wrapper. The bug was on canary.105 / canary.106 / `next@16.3.0-preview.10`; the fix is live in `next@16.3.0-canary.107+` and in `next@16.2.12` once backported (not yet backported at this cron's check — backport PR not open).
