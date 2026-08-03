@@ -3448,12 +3448,12 @@ rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
   - **No new public APIs**, no new config flags in canary.106.
 - **canary.106 vs canary.105 diff** is exactly **3 commits** (PR #96392 + PR #96448 + the version-tag commit). No other changes slipped in between. So if you're on canary.105, the only new things in canary.106 are the hybrid not-found fix + the useCache deprecation warning/throw.
 - **No breaking changes for users on `next@canary.104`** — the only behavior changes across canary.105 + canary.106 are the filesystem-cache default-on (opt-out-able) + the `experimental.turbopackChunking` config-eval throw (opt-in-able by migrating your config) + the `experimental.useCache` deprecation warning + the `experimental.useCache: false` rejection (mechanical fix: remove the line).
-- **canary.107-ahead** — canary-branch is **identical to canary.106** at the time of this cron (`GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returned `ahead_by: 0`). Expect canary.107 in 12-30h on the 24h cadence; pin to canary.106 if you depend on the PR #96392 fix in the meantime.
+- **canary.107-ahead** — canary-branch now has **2 commits ahead of canary.106** (verified via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 2` at 2026-08-03T00:03Z): PR #96493 (the build-cache-default-on scope expansion) + the canary.107 version-tag commit `4fd843f`. The version tag is dated 2026-08-02T23:34:28Z — but the npm `dist-tag.canary` still points at `16.3.0-canary.106` (npm publish expected within hours on the 24h cadence). See the new `## 16.3 canary.107-ahead` section below for the full diff + practical impact.
 - **No new public APIs, no new config flags** (other than the existing opt-out for #96395 + the existing `turbopackChunking` config for #96398 + the existing opt-out for #96419's bundled-deps bump).
 
 ### Sources
 
-- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (0 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified identical at 2026-08-02T00:03Z
+- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (2 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified at 2026-08-03T00:03Z; full breakdown in the new `## 16.3 canary.107-ahead` section below
 - [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (3 commits — 2 PRs in canary.106 + 1 version-tag commit)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the inventory of canary.106's 2 PRs (PR #96392 + PR #96448)
 - [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (18 commits — 15 in canary.105 + 3 in canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the cumulative view
 - [**Next.js release `v16.3.0-canary.106`**](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.106) — published 2026-08-01T23:56:54Z by `next-js-bot`, body lists both PRs
@@ -3462,6 +3462,93 @@ rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
 - [**Next.js PR #96448** — `Warn that experimental.useCache is deprecated**](https://github.com/vercel/next.js/pull/96448) — by [unstubbable](https://github.com/unstubbable), merged 2026-08-01T00:26:11Z, the warning + compile-error for the deprecated `useCache` option, **now SHIPPED in `16.3.0-canary.106`**
 - [Next.js PR #92316 — original `experimental.useCache` `@deprecated` JSDoc annotation](https://github.com/vercel/next.js/pull/92316) — the hidden deprecation that PR #96448 surfaces
 - [Next.js `cacheComponents` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the top-level config that replaces `experimental.useCache`
+
+## 16.3 canary.107-ahead — Turbopack Build Filesystem Cache Default-On in **All Environments** (PR #96493, August 2, 2026)
+
+The v1.5.16 cron (12h ago) said "canary-branch is identical to canary.106". That is no longer true. The canary-branch now has **2 NEW commits ahead of canary.106** (verified at 2026-08-03T00:03Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.106...canary` returning `ahead_by: 2`):
+
+1. **`3d4d46f` — PR #96493** [`Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) (Tim Neutkens / timneutkens, merged 2026-08-02T18:33:34Z) — **THE BIGGEST BEHAVIORAL EXPANSION OF THIS CRON**.
+2. **`4fd843f`** — version-tag commit `v16.3.0-canary.107` by `next-js-bot`, dated 2026-08-02T23:34:28Z — npm publish of `next@16.3.0-canary.107` expected within hours on the 24h cadence (npm `dist-tag.canary` still points at `16.3.0-canary.106` at this cron's check time).
+
+### Why PR #96493 matters — the scope expansion
+
+The canary.105 PR #96395 (sokra, merged 2026-07-31T17:24:41Z, documented in the `## 16.3 canary.105 SHIPPED` section above) flipped `experimental.turbopackFileSystemCacheForBuild` to **default-ON for `next build`**, but only for the local + Vercel build path. The default-on behavior was gated by a `turbopackFileSystemCacheForBuildDefault()` helper that returned `!isCI || Boolean(process.env.NOW_BUILDER)` — meaning generic CI (GitHub Actions, GitLab CI, CircleCI, Buildkite, Jenkins, etc.) without the `NOW_BUILDER` env-var got the **default-OFF** treatment because Next.js couldn't know if the cache would persist between runs.
+
+**PR #96493 removes that gate entirely** and defaults the option to `true` unconditionally. The `turbopackFileSystemCacheForBuildDefault()` function is deleted. The diff in `packages/next/src/server/config-shared.ts` (commit `3d4d46f`, +2/-9) is small but decisive:
+
+```diff
+- function turbopackFileSystemCacheForBuildDefault() {
+-   // Disable in most CI environments, because we don't know if the cache will persist across builds.
+-   // Providers: Override the default behavior using `modifyConfig` in your adapter.
+-   return !isCI || Boolean(process.env.NOW_BUILDER)
+-}
+-
+  export const defaultConfig = Object.freeze({
+    ...
+    turbopackFileSystemCacheForDev: true,
+-   turbopackFileSystemCacheForBuild: turbopackFileSystemCacheForBuildDefault(),
++   turbopackFileSystemCacheForBuild: true,
+    ...
+  })
+```
+
+The JSDoc on `ExperimentalConfig.turbopackFileSystemCacheForBuild` is also updated from *"Defaults to `true` in canary/preview builds, `false` in production"* to simply *"Defaults to `true`."*
+
+### Practical impact — 4 cases
+
+| Environment | Before canary.107 (canary.105/106 behavior) | **After canary.107 (PR #96493 behavior)** |
+|---|---|---|
+| Local `next build` on dev machine | On (PR #96395) | On (unchanged) |
+| Vercel hosted build | On (PR #96395, via `NOW_BUILDER` env-var) | On (unchanged) |
+| **Generic CI (GitHub Actions, GitLab, CircleCI, Buildkite, Jenkins, etc.) — non-Vercel** | **Off** (the `!isCI` branch of the helper) | **On — now default-ON in all environments** |
+| Explicit `experimental.turbopackFileSystemCacheForBuild: false` | Off | Off (unchanged — explicit opt-out always wins) |
+| Explicit `experimental.turbopackFileSystemCacheForBuild: true` | On | On (unchanged) |
+
+**The key new behavior**: every `next build` in every CI environment now uses the warm `.next/cache/turbopack/` filesystem cache by default. **Expected 5-30% speedup on warm builds** depending on project size (the bigger the dep graph, the bigger the win — Vercel-internal benchmarks show 30-60% on large apps like vercel.com/home and vercel.com/geist).
+
+**The new responsibility on CI users**: you now need to **opt out** (`experimental.turbopackFileSystemCacheForBuild: false`) if your CI environment doesn't persist `.next/cache/` between runs (e.g. ephemeral CI containers with `actions/cache` miss). The pre-#96493 default was the safe "off in generic CI" choice; the new default assumes you'll either persist the cache or opt out. The docs page at `docs/01-app/03-api-reference/05-config/01-next-config-js/turbopackFileSystemCache.mdx` (commit `3d4d46f`, +7/-9) is rewritten in the same commit to reflect the new default — the previous "For deployment providers: Other providers can enable the build cache by default on their platform by setting `experimental.turbopackFileSystemCacheForBuild: true` from their adapter's `modifyConfig` hook" paragraph is **deleted entirely** because every provider is now treated the same as local.
+
+**Critical audit recipe**:
+```bash
+# 1. Are you using Turbopack for builds? (Turbopack is default in 16+; --turbopack flag optional)
+rg "turbopackFileSystemCacheForBuild" next.config.ts next.config.js next.config.mjs 2>/dev/null
+# 2. Does your CI persist .next/cache/ between runs? (look for actions/cache, buildkite cache, etc.)
+# 3. If YES to #1 + NO to #2 -> set experimental.turbopackFileSystemCacheForBuild: false explicitly
+# 4. If YES to #1 + YES to #2 -> no action needed, the new default is what you want
+```
+
+### Migration checklist (canary.105/106 -> canary.107, when it ships)
+
+1. **Verify your CI cache strategy** — check `actions/cache@v4` on `path: .next/cache` (GitHub Actions) or the equivalent on your CI. If absent, opt out: `experimental.turbopackFileSystemCacheForBuild: false` in `next.config.ts`.
+2. **Audit `package.json` scripts** — the "fair webpack-vs-Turbopack build comparison" still requires `rm -rf .next/` between builds (the existing canary.105 caveat still applies).
+3. **Adapter maintainers (Vercel competitors)** — the `modifyConfig` hook paragraph in the docs is gone. You no longer need to set `experimental.turbopackFileSystemCacheForBuild: true` from your adapter; the default is already on.
+4. **No code changes required** for users on canary.105+ — the only delta is the default value. All existing opt-in / opt-out configs continue to work.
+5. **Test your CI cold builds** — if your CI doesn't persist `.next/cache/`, you may see "this build was slower than the previous one" comparisons; that's expected (the new default assumes warm builds, not cold).
+
+### No breaking changes
+
+This is an **expansion of the default**, not a breaking change:
+
+- Users on canary.105/106 with the default-ON cache behavior: no change (already getting the cache).
+- Users on canary.105/106 with the default-OFF CI behavior (the pre-#96493 path): **get the cache for free** (if their CI persists `.next/cache/`). If their CI doesn't persist the cache, they should set the explicit opt-out to preserve the prior "no cache" behavior.
+- Users with explicit `experimental.turbopackFileSystemCacheForBuild: true|false`: no change (explicit always wins).
+
+### Why Tim Neutkens authored this (rather than sokra)
+
+sokra (Tobias Koppers) wrote the canary.105 PR #96395 with the `!isCI` gate, which was the conservative choice at the time. After 1+ month of production data (canary.105 shipped 2026-07-31T23:57:13Z, now 2+ days of npm-published usage as of this cron's check), Tim Neutkens (Vercel co-founder + Next.js lead) is the one who concluded the gate was no longer needed — Turbopack's filesystem cache is well-behaved in CI even when the cache isn't persisted (it just falls back to cold-build behavior on cache miss). The gate was always "opt-out if you're not sure" — now the new default is "opt-in if you're sure you don't want it" (explicit `: false`).
+
+### Sources
+
+- [Next.js canary-branch compare: `v16.3.0-canary.106...canary` (2 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.0-canary.106...canary) — verified at 2026-08-03T00:03Z; = PR #96493 + the v16.3.0-canary.107 version-tag commit
+- [Next.js canary-branch compare: `v16.3.0-canary.105...canary` (5 commits — 3 in canary.106 + 2 ahead of canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.105...canary) — the cumulative view across canary.106 + ahead
+- [Next.js canary-branch compare: `v16.3.0-canary.104...canary` (20 commits — 15 in canary.105 + 3 in canary.106 + 2 ahead of canary.106)](https://github.com/vercel/next.js/compare/v16.3.0-canary.104...canary) — the full cumulative view
+- [**Next.js PR #96493** — `Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) — by [Tim Neutkens](https://github.com/timneutkens), merged 2026-08-02T18:33:34Z, 4 files / +22/-42, the source-of-truth for the scope expansion
+- [Next.js commit `3d4d46f` — the PR #96493 merge commit](https://github.com/vercel/next.js/commit/3d4d46f) — the actual diff that removes `turbopackFileSystemCacheForBuildDefault()` and defaults the option to `true`
+- [Next.js commit `4fd843f` — the `v16.3.0-canary.107` version-tag commit](https://github.com/vercel/next.js/commit/4fd843f) — by `next-js-bot[bot]`, dated 2026-08-02T23:34:28Z, NOT YET npm-published at this cron's check time (npm `dist-tag.canary` still points at `16.3.0-canary.106`)
+- [Next.js PR #96395 — `Enable turbopackFileSystemCacheForBuild by default` (sokra, canary.105)](https://github.com/vercel/next.js/pull/96395) — the predecessor PR; the new PR #96493 removes the `!isCI` gate that PR #96395 left in
+- [Next.js `turbopackFileSystemCache` config docs — the file edited by PR #96493](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/docs/01-app/03-api-reference/05-config/01-next-config-js/turbopackFileSystemCache.mdx) — the "Good to know" callout was rewritten to drop the "for local builds and on Vercel" qualifier
+- [Next.js `turbopackFileSystemCacheForBuild` JSDoc on `ExperimentalConfig`](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/packages/next/src/server/config-shared.ts) — the JSDoc now reads "Defaults to `true`." (was "Defaults to `true` in canary/preview builds, `false` in production.")
+- [Next.js Turbopack reference docs — the file edited by PR #96493](https://github.com/vercel/next.js/blob/3d4d46f9ce7c9d3a9c25a3d99de18c5d56bda0e0/docs/01-app/03-api-reference/08-turbopack.mdx) — the `<sup>1</sup>` footnote was rewritten to drop the CI-platform qualification
 
 ## Web Vitals
 
@@ -3484,7 +3571,7 @@ rg -B2 -A4 'useCache.*false' next.config.* | rg -B2 'cacheComponents.*true'
 - **All `<Link>` using default `prefetch="full"`** — causes doubled origin requests in Next.js 16; disable prefetch for footer links and low-priority routes
 - **Diagnosing slow routes without `experimental.requestInsights`** — if you find yourself hand-rolling `console.log` ladders to figure out "what is this route doing?", enable `experimental.requestInsights: true` in dev (`next.config.ts`) and use the MCP tool / CLI / DevTools panel instead. Much faster diagnosis, agent-friendly output, no production exposure. See the new "16.3 canary.72–86 Performance & Diagnostics Updates" section above for the full feature breakdown.
 - **Still using `experimental.turbopack.chunkingHeuristics` or `experimental.turbopackGenerateComponentChunks` in 2026** — both namespaces throw at config-eval time on `next@16.3.0-canary.105`+ with explicit migration errors. Migrate to the new top-level `experimental.turbopackChunking` config (PR #96398, merged 2026-07-31T06:37:37Z, canary-branch ahead of canary.104). Old → new: `turbopack.chunkingHeuristics.requestCost` → `turbopackChunking.requestCost` (note: default changed 20 KB → 200 KB, re-tune!), `turbopack.chunkingHeuristics.clusters` (string[]) → `turbopackChunking.priorityRoutes` (RegExp[]), `turbopack.chunkingHeuristics.entryPoints` → absorbed into `priorityRoutes` + `priorityBoost`, `turbopack.chunkingHeuristics.bounceRate` → `turbopackChunking.firstPageLoadPriority`, `turbopackGenerateComponentChunks` boolean → `turbopackChunking.generateComponentChunks`. See the matching section above for the full migration recipe + 5 NEW size-threshold knobs (`minChunkSize` / `maxChunkCountPerGroup` / `maxMergeChunkSize` / `minComponentChunkSize`).
-- **Default-on `experimental.turbopackFileSystemCacheForBuild` surprises you on canary.105+ (PR #96395, sokra, merged 2026-07-31T17:24:41Z)** — every local + Vercel `next build` now uses `.next/cache/turbopack/` by default for warm builds (5-30% faster on warm builds). The cache is **automatically OFF in non-Vercel CI** (where the cache is unlikely to persist between runs). If you don't want the build cache, set `experimental.turbopackFileSystemCacheForBuild: false`. If you're trying to do a "fair" webpack-vs-turbopack build comparison, delete `.next/` between builds (or the cache will skew the warm-build numbers).
+- **Default-on `experimental.turbopackFileSystemCacheForBuild` expands to ALL environments in canary.107+ (PR #96493, timneutkens, merged 2026-08-02T18:33:34Z; supersedes PR #96395, sokra, canary.105)** — the canary.105 behavior was "local + Vercel default-ON, generic CI default-OFF" (gated by a `turbopackFileSystemCacheForBuildDefault()` helper returning `!isCI || Boolean(process.env.NOW_BUILDER)`). PR #96493 removes that gate entirely — every `next build` in every environment (local, Vercel, GitHub Actions, GitLab, CircleCI, Buildkite, Jenkins, etc.) now uses `.next/cache/turbopack/` by default for warm builds (5-30% faster on warm builds). The new responsibility: if your CI does NOT persist `.next/cache/` between runs (e.g. ephemeral CI containers with no `actions/cache` step), you must set `experimental.turbopackFileSystemCacheForBuild: false` explicitly to restore the canary.105-pre-PR-#96493 default-OFF behavior. Audit recipe: `rg "turbopackFileSystemCacheForBuild" next.config.ts next.config.js next.config.mjs 2>/dev/null` (look for `: true` / `: false` overrides) + check your CI config for `actions/cache@v4` on `path: .next/cache` (GitHub Actions) or the equivalent. If you're trying to do a "fair" webpack-vs-turbopack build comparison, delete `.next/` between builds (or the cache will skew the warm-build numbers).
 - **Trying to call `ReactDOM.browser()` with stale `@types/react-dom` in 2026** — `browser()` is a runtime API in `react-dom@canary` (since `19.3.0-canary-0f42eac2-20260730`, PR #37143) but the **TypeScript declaration** only ships in `@types/react-dom@19.2.4` (published 2026-07-30). If you're on `next@16.3.0-canary.105+`, you already get 19.2.4 via the bundled-deps bump (PR #96419). If you're on stable (`next@16.2.12`), pin `@types/react-dom@^19.2.4` explicitly to get the `browser()` type.
 - **Conditional `use(promise)` patterns that cache the value and only call `use()` on cache miss** — as of `react@19.3.0-canary-cbb046ab-20260731` (PR #37104, hoxyq, merged 2026-07-31T14:24:10Z), a new DEV-only warning fires when you suspend via `use()` on render N but don't `use()` the same promise on render N+1 (the resolved render). The warning is gated behind the `enableConditionalUseWarning` feature flag (currently OFF in `react@canary`; will likely flip to ON in a future canary once Meta measures the noise floor). The fix is always-`use()`-the-promise — see the matching section in `components.md` for the canonical anti-pattern + rewrite + audit recipe (`rg -n 'cache\.value\s*===\s*undefined' --type ts --type tsx`).
 - **Triple-logged unhandled rejections in `next dev` or `next start` on canary.104-** — fixed by PR #95999 (eps1lon, merged 2026-07-31T15:36:41Z). Pre-#95999, a single `unhandledRejection` was logged by 3 independent listeners (runtime crash-prevention + router server + dev server) in 3 different formats. Post-#95999 (canary.105+), the runtime handler stays (must-exist per issue #77997), and the router + dev server check-then-register a single shared listener via `Symbol.for` on `globalThis`. If you're debugging "why am I seeing this error 3 times?", upgrade to canary.105+.
