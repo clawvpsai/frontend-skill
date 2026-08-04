@@ -1405,3 +1405,56 @@ rg "keepPreviousData:\s*true" --type ts --type tsx
 - [TanStack Query v5 docs — Pagination](https://tanstack.com/query/v5/docs/framework/react/guides/paginated-queries)
 - [TanStack Query v5 — placeholderData](https://tanstack.com/query/v5/docs/framework/react/reference/useQuery#placeholderdata)
 - [TanStack Query v5 migration guide — keepPreviousData](https://tanstack.com/query/v5/docs/framework/react/guides/migrating-to-react-query-v5#removed-keeppreviousdata-top-level-option)
+
+## TanStack Query v5 — 5.101.3 + 5.101.4 Patch Train (July 21, 2026)
+
+The skill currently documents **`@tanstack/react-query@5.101.2`** (Jun 27, 2026 — the CSP-window.__nonce__ devtools fix). Two patches have shipped since:
+
+- **`@tanstack/react-query@5.101.3`** — npm-published 2026-07-20. Patch dependency bump on `@tanstack/query-core@5.101.3` (commit `7e3c822` — internal cleanup of the mutation observer + a small number of internal-only type tightenings). **Zero observable behavior change** for app developers.
+- **`@tanstack/react-query@5.101.4`** — npm-published 2026-07-21 ([npm version history](https://www.npmjs.com/package/@tanstack/react-query)). Patch dependency bump on `@tanstack/query-core@5.101.4`. **Zero observable behavior change** for app developers. **However**: the wider release-2026-07-21 tag also bumps the Angular (`@tanstack/angular-query-experimental`), Preact, Solid, Vue, ESLint, and persist-client packages to the 5.101.4 line in lockstep.
+
+**Both are pure dep bumps** — no new APIs, no bug fixes, no security fixes, no docs changes. But the **cadence observation matters**: 5.101.0 → 5.101.4 across **~6 weeks** (June 8 → July 21, 2026) = **5 versions in 43 days**. TanStack's publish cadence is "weekly-or-better" right now. Recommended pin: `^5.101.4` (which gives you 5.101.x patch upgrades automatically) or `~5.101.4` (which pins the patch version and lets you opt into new minor releases).
+
+### What 5.101.4 actually changes vs the skill's documented 5.101.2 baseline
+
+If you pin `@tanstack/react-query@5.101.2` today and ignore 5.101.3/4:
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| Missing the 5.101.3 internal-cleanup no-op | None | No action — the cleanup was internal-only |
+| Missing the 5.101.4 internal-cleanup no-op | None | No action |
+| Missing the implicit Angular + Preact + Solid + Vue + persist-client 5.101.4 lockstep upgrade | Low | The framework-specific adapters (Angular experimental, Preact, Solid, Vue 5) all bumped to 5.101.4 in the same release train. If you mix versions across adapters in a monorepo, you'll get peer-dep warnings but no runtime breakage. |
+
+**Audit recipe:**
+
+```bash
+# Confirm your installed version
+npm ls @tanstack/react-query @tanstack/query-core @tanstack/react-query-devtools
+
+# If any of these resolve to 5.101.2 and others to 5.101.3+/4, that's expected
+# (the lockstep release bumped them all to 5.101.4 — pure dep refresh)
+
+# Find any direct deps on @tanstack/query-core (rare — usually via @tanstack/react-query)
+rg -n '"@tanstack/query-core"' package.json package-lock.json | head -5
+```
+
+**Decision: bump or hold?**
+
+- **Bump to `^5.101.4`** if you want the latest-stable dist-tag. Pure dep refresh, no observable change.
+- **Hold at `5.101.2`** if you've validated your app against the 5.101.2 devtools-CSP fix and don't care about the dep refreshes. The 6-week gap doesn't expose you to anything material.
+- **Pin to `~5.101.4`** for monorepos where other packages may pull in TanStack from various places.
+
+### Audit context for production
+
+The biggest "user-observable" change in the 5.101.x line remains the **5.101.2 devtools `setupStyleSheet` `window.__nonce__` CSP fix** (PR #10736 — documented in this skill above as the `styleNonce` recommendation). 5.101.3 and 5.101.4 added zero new "user-observable" changes — they're pure dep-refresh patches.
+
+If you migrated to `styleNonce={yourNonce}` on `<ReactQueryDevtools>` after the 5.101.2 fix, that fix is still in 5.101.3/4 unchanged. You don't need to re-test.
+
+**Sources:**
+- [TanStack Query GitHub release `release-2026-07-21-1305`](https://github.com/TanStack/query/releases/tag/release-2026-07-21-1305) — full multi-package publish event bumping 17 packages to 5.101.4 in lockstep
+- [`@tanstack/react-query` CHANGELOG.md](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md) — confirms 5.101.3 + 5.101.4 as pure `@tanstack/query-core` dep bumps
+- [`@tanstack/react-query` npm version history](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms 5.101.3 published 13 days ago + 5.101.4 published 12 days ago (as of 2026-08-04) + 6.9M+ weekly downloads on 5.101.4 (vs only 424K on 5.101.3 one day later — the lockstep release reached the long-tail install base fast)
+- [TanStack Query release notes index](https://tanstack.com/blog)
+- [`@tanstack/query-core@5.101.4` Sonatype analysis](https://guide.sonatype.com/component/npm/%40tanstack%2Fquery-core/5.101.4) — confirms zero known vulnerabilities
+- [Releasebot — Tanstack Query updates](https://releasebot.io/updates/tanstack/query)
+- [TanStack Query v5 docs](https://tanstack.com/query/v5/docs/framework/react/overview)

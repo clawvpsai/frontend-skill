@@ -1170,3 +1170,114 @@ declare module 'next-auth' {
 - [GHSA-xmf8-cvqr-rfgj — Auth.js / next-auth advisory (HIGH, CWE-20)](https://github.com/advisories/GHSA-xmf8-cvqr-rfgj)
 - [`@clerk/nextjs@7.6.4` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.4)
 - [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
+
+## Better Auth 1.7.0-rc.2 (July 22, 2026) — Account-Identity Remodel + SCIM Decoupling + SAML Node 20+ + Proxy Header Hardening
+
+The skill currently documents `1.7.0-rc.1` (Jul 2, 2026 — the Yandex OAuth + DB migration reliability release) as the latest Better Auth RC. **`1.7.0-rc.2` shipped 2026-07-22** ([GitHub release](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.2)) and is the BIGGEST auth-content change in Better Auth since 1.7.0-rc.0 — substantial breaking changes to the account-identity data model + SCIM/SAML/Proxy behavior. The full 1.7 stable is still pending.
+
+**DO NOT upgrade to 1.7.0-rc.2 in production yet** — wait for 1.7.0 stable. The `1.7.0-rc.2` upgrade guide is at [better-auth.com/docs/guides/1-7-upgrade-guide](https://better-auth.com/docs/guides/1-7-upgrade-guide) and the upgrade CLI is `npx @better-auth/cli@rc upgrade` (the CLI is itself on the `rc` dist-tag, separate from the 1.6 stable CLI).
+
+### Breaking changes in 1.7.0-rc.2 — the canonical migration table
+
+| Area | Breaking change | Migration impact |
+|---|---|---|
+| **Account identity** | `Account.accountId` renamed → `Account.providerAccountId` (PR #9950) | All custom code that joined on `account.accountId` (auth handler custom callbacks, migration scripts, RLS policies) must use the new column name. Database column rename required for the migration to zero-downtime land. |
+| **Account identity** | `Account.issuer` is now a required column | New field on the `Account` model. Add the column via the 1.7 CLI's `npx @better-auth/cli@rc upgrade` (auto-generates the SQL migration) — manual DDL for projects with strict migration review processes. |
+| **Account identity** | Credential accounts use `local:credential` and the linked user's stable `id` as their provider identity | The "magic" providerId for credential accounts is now the literal string `local:credential` (not a synthetic hash). Any custom code that branched on `account.providerId === 'credential'` now must branch on `account.providerId === 'local:credential'`. Audit recipe: `rg -n 'providerId.*===.*credential' src/ app/`. |
+| **Account identity** | Account-specific APIs select the local `Account.id` through `accountId`; token and provider-profile APIs can instead select the signed account cookie with `useAccountCookie: true` | New `useAccountCookie: true` flag for `api.getSession` / `authClient.signOut` etc. to switch to the cookie-based identity selector. Default (and recommended) is to pass `accountId` explicitly. |
+| **SCIM** | `feat(scim)!: decouple provisioning from the organization plugin` (PR #10390) | **HUGE breaking change**. SCIM provisioning is no longer driven by the `organization` plugin. Replaces the previous SCIM configuration, client APIs, database schema, and organization-backed Group model. Existing SCIM installations **cannot migrate provisioning state in place** — must follow the SCIM cutover in the 1.7 upgrade guide incl. **full directory reprovisioning** before resuming traffic. |
+| **SCIM** | SCIM connections now require `organizationId`, add a `providerKey` column, and drop the old `userId` column | Old DB column `scimConnection.userId` is gone. Manual DB backfill required. |
+| **SCIM** | `defaultSCIM` option becomes `staticProviders`, `trustedDomains` is removed, provider IDs are namespaced per organization | Rename `defaultSCIM: [...]` → `staticProviders: [...]` in the better-auth config. Drop any `trustedDomains` lines. |
+| **SAML** | `samlConfig.issuer` now identifies the **service provider** (was the IdP); new required `idpMetadata.entityID` for manual configs | Review all SAML configs. The IdP's entity ID needs to be moved to `idpMetadata.entityID`; the SP's entity ID goes in `samlConfig.issuer`. |
+| **SAML** | SAML now requires Node 20+ | Bump Node runtime to >= 20.0.0 if stuck on 18.x. Next.js 16 projects are fine (Node 20+). |
+| **SAML** | SAML Single Logout accepts only `http` and `https` URLs | Custom SSO-initiated-logout with non-URL tokens (`urn:` etc.) is now rejected. Hardening fix. |
+| **SAML** | SAML validates audience, destination, and bearer recipient | Existing relaxed-mode SAML configs that skipped audience/destination validation will now reject inbound SAML responses. Audit recipe: search IdP metadata for `audienceOverride` or your IdP provider's "allow any audience" setting. |
+| **Proxy** | Multi-host `allowedHosts` no longer trusts forwarded headers by default | **Critical change for multi-tenant SaaS behind a load balancer**. Pre-1.7.0-rc.2, a multi-host deployment using `x-forwarded-host` worked transparently. Post-rc.2, it breaks with `Host "..." is not in the allowed hosts list` OR resolves to the wrong origin and breaks callbacks and cookies. **Fix**: explicitly list each allowed host in `trustedHosts` (NOT via forwarded headers). |
+| **Captcha** | Captcha path wildcard `/sign-in/*` now also matches `/sign-in/email-otp` | Previously exempt: email-OTP sign-in now also requires `x-captcha-response` for clients. Gating this makes email-OTP sign-in return `400 MISSING_RESPONSE` for clients that do not send `x-captcha-response`. **Audit recipe**: if you have `/sign-in/*` captcha routes, double-check your email-OTP path also sends the captcha token. |
+| **OAuth (server-side)** | Server-side OAuth requests refuse redirects | A regression guard: server-side OAuth flows (MCP server → 3rd-party IdP) no longer follow redirects to attacker-controlled hosts. Hardening fix — no action required. |
+| **2FA** | Two-factor account lockout adds schema fields + cap on wrong codes | Two new fields on the `user` (or dedicated) table. Auto-migrate via the upgrade CLI. The cap means an attacker can't burn through TOTP codes indefinitely — after N tries, the user is locked out. |
+| **Forwarded proxy headers** | Forwarded proxy headers are not trusted by default | Companion to the proxy change above. With `x-forwarded-host` not trusted, you must set `trustedHosts` explicitly. |
+
+### New features in 1.7.0-rc.2 (non-breaking)
+
+- **Refresh-token retries for native and public clients** — RFC 6749 §6 retry logic now baked into the OAuth refresh helper.
+- **OAuth provider extension surface** — third-party OAuth provider plugins can now register custom claims/transformations via a stable API.
+- **Client ID Metadata Documents (CIMD)** — RFC 7591 dynamic client registration via metadata URL. Useful for AI-agent scenarios where the client_id is dynamic.
+- **Self-service registration for machine clients** — service-to-service OAuth without manual admin pre-approval.
+- **Per-request login options for providers** — different OIDC providers can have different `prompt`, `max_age`, etc. per call site.
+- **Certificate and signed-assertion login** — enterprise SSO with X.509 / SAML assertion forwarding (replaces password for zero-trust deployments).
+- **SCIM groups** — new tables: `scimGroup`, `scimGroupMember`, `scimGroupRole`, `scimGroupRoleGrant` (no manual migration; auto-migrate via the upgrade CLI).
+- **OpenID SSO on Cloudflare Workers** — yes, Better Auth now supports Cloudflare Workers as the SSE/SSO backend.
+- **Public-key session verification** + **`hydrateSession`** — verify a JWT-style session without a DB roundtrip.
+- **`i18n`** — auth-error messages + email templates now i18n-aware via a new `i18n` config block.
+- **`create-admin`** — a new CLI command / API to create the first admin in a brand-new tenant without manual SQL.
+
+### Behavior changes (non-breaking but impactful)
+
+| Change | Practical impact |
+|---|---|
+| **`max_age` is enforced** | Pre-1.7.0-rc.2, the OAuth `max_age` parameter was a hint; post-rc.2, it's enforced. SSO providers that don't refresh their sessions within `max_age` now force re-auth. |
+| **Granted scopes are preserved across logins** | Previously, re-auth with the same provider reset scopes to the default list. Now the granted scopes from the first consent are kept. UX win; no action required. |
+| **Provider profile sync respects `input: false`** | Profile fields marked `input: false` (server-managed) no longer get clobbered by inbound profile updates from the IdP. |
+| **Google hosted-domain checks apply to One Tap** | `googleOneTap` now also enforces `hd` (hosted domain) for Google Workspace customers. |
+| **SSO verifies every listed domain** | Multi-domain SSO (e.g., `acme.com` + `acme.io`) now verifies ALL listed domains on the inbound assertion; pre-rc.2 it verified just the first. Hardening fix. |
+| **SCIM honors `active` attribute** | Deactivating a SCIM user (via SCIM `PATCH` setting `active: false`) actually deactivates them. Pre-rc.2, the `active` attribute was logged but ignored. |
+| **SCIM scopes deletes to the SCIM account** | SCIM-initiated deletes only remove the local Better Auth account linkage, not the global user record. Avoids the pre-rc.2 issue where a SCIM delete orphaned the user. |
+| **SCIM rejects duplicate-email updates** | Hardening: a SCIM `PUT`/`PATCH` that tries to set a user's email to one already used by another user is rejected with 409. |
+| **Magic-link and email-OTP sign-in can clear unproven credentials** | If a user signs in via magic link but they previously had an unverified email+password credential, the unverified credential is cleared. |
+| **Two-factor challenges cap wrong codes** | After N wrong TOTP codes (default 5), the user is locked out for a cooldown period. |
+| **Stop logging SCIM user filter values when listing users** ([PR #10087](https://github.com/better-auth/better-auth/pull/10087)) | Privacy hardening: SCIM list filters no longer appear in application logs. |
+| **SCIM bearer token constant-time comparison** | PR fixes a timing side channel that could help an attacker recover a valid SCIM bearer token. Hardening fix — no action. |
+| **`generateSCIMToken` rejects `providerId` values that collide with built-in account providers** ([PR #9579](https://github.com/better-auth/better-auth/pull/9579)) | Defensive: prevents SCIM tokens from authenticating against unintended built-in accounts. |
+
+### What's NOT in 1.7 yet (deferred)
+
+- **Stable MCP (`@better-auth/mcp`)** — MCP moves OUT of core into its own package but is still labeled RC. Production MCP deployments should wait for the stable `@better-auth/mcp` release.
+- **Native mobile app plugins** — not shipping in 1.7 stable; deferred to 1.8 (Oct-Nov 2026 per the public roadmap).
+
+### Audit + migration recipe for 1.7.0-rc.2
+
+```bash
+# 1. Confirm your installed Better Auth version (must be 1.6.x or 1.7.0-rc.x for an upgrade)
+npm ls better-auth
+
+# 2. Spot-check for code that touches the renamed Account.accountId
+rg -n '\.accountId\b' src/ app/ db/ --type ts --type tsx
+
+# 3. Spot-check for credential-account branching on providerId
+rg -n 'providerId.*===.*[\"\']credential[\"\']' src/ app/ --type ts --type tsx
+# If hits, change to local:credential
+
+# 4. Spot-check for SAML configs
+rg -n 'samlConfig|defaultSCIM|trustedDomains' better-auth.config.* lib/auth.* 2>/dev/null
+
+# 5. Spot-check for proxy / trust-host / forwarded-host reliance
+rg -n 'x-forwarded-host|trustHost|allowedHosts' middleware.* proxy.* next.config.* 2>/dev/null
+
+# 6. Spot-check for captcha-gated email-OTP sign-in
+rg -n 'sign-in/email-otp|emailOtp|emailOTP' src/ app/
+
+# 7. Find the upgrade plan in advance
+cat package.json | jq '.dependencies["better-auth"], .dependencies["@better-auth/core"], .dependencies["@better-auth/cli"]'
+# All three should move to the rc dist-tag in lockstep:
+# "better-auth": "1.7.0-rc.2"
+# "@better-auth/core": "1.7.0-rc.2"
+# "@better-auth/cli": "3.0.0-rc.2"   # the CLI is on a different version line
+```
+
+The official upgrade CLI: `npx @better-auth/cli@rc upgrade` — **not** the `latest` tag, which still resolves to the 1.6.x CLI (so its generated schema would be 1.6-shaped). Document full upgrade audit on a branch, run the migration locally against a snapshot of prod data, and only cut over after observing the dev/staging SCIM cutover for 48h.
+
+**Sources:**
+- [GitHub release `v1.7.0-rc.2` (Jul 22, 2026)](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.2)
+- [Upgrading to Better Auth 1.7 — official guide](https://better-auth.com/docs/guides/1-7-upgrade-guide)
+- [Better Auth Discussion #10250 — 1.7.0 RC feedback thread](https://github.com/better-auth/better-auth/discussions/10250)
+- [Better Auth Blog — 1.7 RC announcement](https://better-auth.com/blog/1-7-rc)
+- [PR #10390 — `feat(scim)!: decouple provisioning from the organization plugin`](https://github.com/better-auth/better-auth/pull/10390)
+- [PR #10242 — `Fixed SCIM write operations to be properly scoped and honor the 'active' attribute`](https://github.com/better-auth/better-auth/pull/10242)
+- [PR #10087 — `Stopped logging SCIM user filter values when listing users`](https://github.com/better-auth/better-auth/pull/10087)
+- [PR #9941 — `Fixed signed OAuth redirect parameters canonicalization`](https://github.com/better-auth/better-auth/pull/9941)
+- [PR #9579 — `generateSCIMToken rejects providerId values that collide with built-in account providers`](https://github.com/better-auth/better-auth/pull/9579)
+- [Releasebot summary for `better-auth@1.7.0-rc.2`](https://releasebot.io/updates/better-auth/betterauth)
+- [newreleases.io entry for `better-auth@1.7.0-rc.2`](https://newreleases.io/project/npm/better-auth/release/1.7.0-rc.2)
+- [`@clerk/nextjs@7.6.4` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.4)
+- [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)

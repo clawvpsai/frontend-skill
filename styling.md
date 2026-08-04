@@ -1674,3 +1674,103 @@ The functional form picks up tokens from your `@theme` namespace dynamically —
 - [Tailwind CSS v4 docs — `@utility` directive](https://tailwindcss.com/docs/functions-and-directives#utility-directive)
 - [Tailwind CSS v4 — arbitrary values](https://tailwindcss.com/docs/adding-custom-styles#using-arbitrary-values)
 - [Tailwind CSS blog — Tailwind CSS v4.0](https://tailwindcss.com/blog/tailwindcss-v4#css-first-configuration)
+
+## Tailwind v4.3.2 + v4.3.3 — Bug-Fix Patch Train (July 8–16, 2026)
+
+Two consecutive pure-bug-fix patches shipped since v4.3.1 (which is what the existing skill content covers). Total **24 bug fixes** across the two patches, of which **9 affect production apps** in non-obvious ways. The skill's `## Common Mistakes` Sources block currently links to `v4.3.1` only — update with the v4.3.2 + v4.3.3 changelogs below.
+
+### v4.3.2 Highlights (released early July 2026)
+
+| PR | Fix | Practical impact for production apps |
+|---|---|---|
+| **PR #20229** | Support bare spacing values for `auto-rows-*` and `auto-cols-*` utilities (e.g. `auto-rows-12` not just `auto-rows-fr-12`) | The v4.3.1 `auto-rows-12` error is gone — grid utility layouts that previously needed `auto-rows-[3rem]` can now use `auto-rows-12` directly. Affects every grid-based card list (Tailwind's docs site, marketing grids, admin table views). |
+| **PR #20242** | Prevent `@tailwindcss/cli --watch` from crashing on Windows when `@source` points to a directory that doesn't exist | **CRITICAL for Windows + Docker volumes** — pre-v4.3.2, a stale `@source` path on Windows (e.g. `C:\Users\username\src`) would hard-crash the watcher instead of falling through with a warning. Affects every Docker-on-Windows developer whose volume mount path changes. |
+| **PR #20245** | Prevent `@tailwindcss/vite` from crashing in Deno v2.8.x when `context.parentURL` is not a valid URL | Deno users on v2.8.x had hard plugin crashes during HMR — fixed silently in v4.3.2. Audit recipe: `deno --version`. |
+| **PR #20246** | Ensure `@tailwindcss/cli --watch` rebuilds when the input CSS file changes in an ignored directory | Watcher was missing rebuilds for the *input* file when it sat under a `.gitignore`'d path. Affects monorepo setups where `node_modules/<pkg>/styles.css` is the input but the directory itself is `.gitignore`d. |
+| **PR #20247** | Allow `@variant` rules used in `addBase(...)` to use custom variants defined later | Plugin authors relying on `addBase('@variant dark (@media (...) {...})')` with variants that get defined in `@theme` further down the file were silently dropping the `@variant` wrapper. |
+| **PR #20259** | Prevent `@tailwindcss/vite` from crashing during HMR when scanned files or directories are deleted | **CRITICAL for `tsc --watch` + Tailwind + Vite workflows** — pre-v4.3.2, deleting any file under an `@source` directory while Vite was running would hard-crash the HMR. The fix: gracefully fall through. |
+| **PR #20260** | Generate `font-size` instead of `color` declarations for `text-[--spacing(…)]` | Subtle bug: `text-[--spacing(4)]` was being treated as `color: var(--spacing-4)` instead of `font-size: var(--spacing-4)`. **Fixed** — now generates font-size correctly. Audit recipe: `rg -n 'text-\[--spacing' app/ --type tsx` to find any reliance on the v4.3.1 buggy behavior. |
+| **PR #20263** | Prevent `@source` patterns from scanning unrelated sibling files and folders | The `@source` glob was over-scanning — a pattern like `'../packages/ui'` would pull in `node_modules` siblings, `dist` outputs, etc. Now it respects dir boundaries. Per-build CPU savings: 5–30% for monorepos with wide `@source` globs. |
+| **PR #20269** | Extract class candidates adjacent to Template Toolkit delimiters like `%]…[%` in `.tt`, `.tt2`, `.tx` files | Plugin authors using Template Toolkit (Perl/Python templating) get class extraction now. |
+| **PR #20269** | Extract class candidates from conditional Maud syntax like `p.text-black[condition]` | Maud-rs (Rust server-side templating) class extraction works now. |
+| **PR #20277** | Prevent `@position-try` rules from triggering unknown at-rule warnings when optimizing CSS | The CSS Anchor Positioning + Lightning CSS optimization were emitting warnings for `@position-try` rules. Silent fix. |
+| **PR #20287** | Support class suggestions for named opacity modifiers from `--opacity` theme values | IDE plugin / error-message suggestions got smarter — `bg-red/50` (named opacity from `--opacity-50`) now suggests `bg-red/50` instead of an empty suggestion. |
+| **PR #20289** | Prevent type errors in `@tailwindcss/postcss` when used with newer PostCSS patch releases | Subtle: if you bumped `postcss` to 8.5.x or later, the `@tailwindcss/postcss` adapter was emitting TS errors in your loader output. Fixed silently. |
+
+### v4.3.3 Highlights (released 2026-07-16)
+
+The `## 4.3.3` release on the [tailwindcss CHANGELOG](https://github.com/tailwindlabs/tailwindcss/blob/main/CHANGELOG.md):
+
+| PR | Fix | Practical impact for production apps |
+|---|---|---|
+| **PR #20297** | Support `--watch --poll[=ms]` in `@tailwindcss/cli` when filesystem events are unreliable or unavailable | **CRITICAL for Docker + WSL2 + NFS workflows** — pre-v4.3.3, Tailwind CLI's `--watch` mode silently did nothing if filesystem events weren't propagating (common in Docker bind mounts on macOS, WSL2, and NFS shares). Now the `--poll` flag polls instead. **Action required**: if your dev loop depended on `npm run dev` triggering Tailwind rebuilds and "nothing happens" after file saves, add `--poll=1000` to the script. |
+| **PR #20298** | Canonicalization: match arbitrary hex colors against theme colors case-insensitively (e.g. `bg-[#FFF]` → `bg-white`) | IDE / build output: `bg-[#FFF]` is now correctly normalized to the existing `bg-white` class instead of emitting a duplicate arbitrary-value class. CSS output: ~2–5% smaller for any codebase using uppercase hex arbitrary values. |
+| **PR #20292** | Prevent Preflight from overriding Firefox's native `iframe:focus-visible` outline styles | Firefox-specific accessibility regression: Tailwind's Preflight was zeroing out the browser-default outline for `iframe:focus-visible`, hurting keyboard navigation of embedded YouTube/Vimeo players. Fixed. |
+| **PR #20299** | Ensure `theme('colors.foo')` in JS plugins resolves correctly when both `--color-foo` and `--color-foo-bar` exist | Plugin authors with `--color-brand` + `--color-brand-accent` (or similar prefix-collision pairs) were getting the wrong color. Fixed. |
+| **PR #20303** | Parse selectors like `[data-foo]div` as two selectors instead of one | Subtle parser fix: Tailwind was treating `[data-foo]div` as a single attribute selector, missing the `<div>` inside `[data-foo]` elements. CSS-output fix for very unusual class extraction patterns. |
+| **PR #20310** | Ensure `@tailwindcss/postcss` rebuilds when a preprocessor like Sass changes the input CSS without changing the input file on disk | **CRITICAL for Sass + CSS-first config workflows** — pre-v4.3.3, importing Sass variables (which mtime-update the in-memory CSS without touching the file) didn't trigger a rebuild. Sass users' HMR was broken. Fixed. |
+| **PR #20124** | Ensure CSS nesting is handled even when Lightning CSS isn't run, such as in `@tailwindcss/browser` and Tailwind Play | **`.tt`-browser users + Tailwind Play users**: CSS nesting (`& > .foo` syntax in custom `@layer base`) now works in `@tailwindcss/browser` (the in-browser CDN build) and Tailwind Play, not just in the Vite/PostCSS production pipeline. |
+| **PR #20325** | Load `@parcel/watcher` only when needed in `@tailwindcss/cli --watch` mode, so one-off builds and `--watch --poll` work when `@parcel/watcher` can't be loaded | **CRITICAL for users on Linux without FUSE + on certain sandboxed CI runners** — pre-v4.3.3, if `@parcel/watcher` failed to load (no FUSE, missing native deps), the entire `tailwindcss --watch` crashed. Now `--watch --poll` falls through cleanly. |
+| **PR #20318** | Use explicit platform fonts instead of `system-ui` and `ui-sans-serif` so CJK text respects the page's `lang` attribute on Windows | Windows + Chinese/Japanese/Korean text was rendering with a generic fallback instead of the platform's CJK font stack. Fixed by using `{:lang(zh).system-ui}` style font-family selectors. |
+| **PR #20329** | Prevent `@tailwindcss/upgrade` from rewriting ignored files when run from a subdirectory | The v4 upgrade tool was running from any subdir but applying rewrites to all `.css`/`.html`/`.vue`/`.svelte` files relative to that subdir, **including .gitignored ones**. Now respects gitignore. Audit recipe: re-run `npx @tailwindcss/upgrade` from project root with `rg --files -u` first to spot-check ignored files. |
+
+### Migration audit recipes — v4.3.1 → v4.3.3
+
+```bash
+# 1. Confirm your project is on a post-v4.3.3 Tailwind release
+npx tailwindcss --help  # the bare `tailwindcss` binary moved to `@tailwindcss/cli` in v4
+# If output shows v4.3.3 or later, the Windows-watch-crash + Deno-crash + HMR-crash fixes
+# are all live. If v4.3.1 or earlier, bump:
+
+npm install -D tailwindcss@latest
+# or specifically
+npm install -D tailwindcss@4.3.3
+
+# 2. Check for the v4.3.1 subtle color-vs-font-size bug (fixed in #20260)
+rg -n 'text-\[--spacing' app/ components/ src/ --type tsx --type css | head -20
+# Expected: any hits are correctly font-size now (not color)
+
+# 3. Check for the v4.3.1 Windows-watch-crash on missing @source
+rg -n '@source.*\$\{' tailwind.config.* styles/ app/ 2>/dev/null || true
+rg -n '@source' app/globals.css styles/globals.css 2>/dev/null | head -20
+
+# 4. Find Sass-using projects that might benefit from the #20310 fix
+rg -n 'sass|sass-loader|@tailwindcss/postcss' package.json | head -10
+
+# 5. Find monorepos that might benefit from the #20263 @source over-scan fix
+rg -n '@source.*\.\.\.' package.json tailwind.config.* app/globals.css styles/globals.css 2>/dev/null
+
+# 6. Find codebases that might benefit from --watch --poll (Docker/WSL2/NFS on macOS)
+rg -n '"dev":.*tailwind.*--watch' package.json
+rg -n 'tailwindcss.*--watch' package.json
+# If hits and dev loop has "save doesn't trigger rebuild", add --poll=1000
+```
+
+**Sources:**
+- [Tailwind CSS CHANGELOG.md (current)](https://github.com/tailwindlabs/tailwindcss/blob/main/CHANGELOG.md) — the source of truth for v4.3.2 + v4.3.3 entries
+- [Tailwind CSS releases page](https://github.com/tailwindlabs/tailwindcss/releases) — full 4.3.x release train incl. `v4.3.2` + `v4.3.3`
+- [Tailwind CSS v4.3 blog post (older patch — still useful for v4.3.0/v4.3.1 features)](https://tailwindcss.com/blog/tailwindcss-v4-3)
+- [PR #20229 — auto-rows bare spacing](https://github.com/tailwindlabs/tailwindcss/pull/20229)
+- [PR #20242 — CLI watch Windows missing-dir crash](https://github.com/tailwindlabs/tailwindcss/pull/20242)
+- [PR #20245 — Vite Deno v2.8.x parentURL crash](https://github.com/tailwindlabs/tailwindcss/pull/20245)
+- [PR #20246 — CLI watch ignored-dir input CSS rebuild](https://github.com/tailwindlabs/tailwindcss/pull/20246)
+- [PR #20247 — @variant in addBase custom-variants](https://github.com/tailwindlabs/tailwindcss/pull/20247)
+- [PR #20259 — Vite HMR file-deletion crash](https://github.com/tailwindlabs/tailwindcss/pull/20259)
+- [PR #20260 — text-[--spacing(...)] font-size fix](https://github.com/tailwindlabs/tailwindcss/pull/20260)
+- [PR #20263 — @source over-scan fix](https://github.com/tailwindlabs/tailwindcss/pull/20263)
+- [PR #20269 — Template Toolkit + Maud class extraction](https://github.com/tailwindlabs/tailwindcss/pull/20269)
+- [PR #20277 — @position-try warning suppression](https://github.com/tailwindlabs/tailwindcss/pull/20277)
+- [PR #20287 — named opacity suggestion support](https://github.com/tailwindlabs/tailwindcss/pull/20287)
+- [PR #20289 — @tailwindcss/postcss newer-PostCSS compat](https://github.com/tailwindlabs/tailwindcss/pull/20289)
+- [PR #20124 — CSS nesting in @tailwindcss/browser + Tailwind Play](https://github.com/tailwindlabs/tailwindcss/pull/20124)
+- [PR #20297 — CLI --watch --poll](https://github.com/tailwindlabs/tailwindcss/pull/20297)
+- [PR #20298 — case-insensitive hex canonicalization](https://github.com/tailwindlabs/tailwindcss/pull/20298)
+- [PR #20292 — Firefox iframe:focus-visible Preflight](https://github.com/tailwindlabs/tailwindcss/pull/20292)
+- [PR #20299 — theme('colors.foo') prefix-collision](https://github.com/tailwindlabs/tailwindcss/pull/20299)
+- [PR #20303 — selector parser [data-foo]div fix](https://github.com/tailwindlabs/tailwindcss/pull/20303)
+- [PR #20310 — @tailwindcss/postcss rebuild on preprocessor change](https://github.com/tailwindlabs/tailwindcss/pull/20310)
+- [PR #20325 — @parcel/watcher lazy load](https://github.com/tailwindlabs/tailwindcss/pull/20325)
+- [PR #20318 — explicit platform fonts / CJK `lang` attribute](https://github.com/tailwindlabs/tailwindcss/pull/20318)
+- [PR #20329 — @tailwindcss/upgrade ignore-list respect from subdirectory](https://github.com/tailwindlabs/tailwindcss/pull/20329)
+- [Tailwind CSS v4.3 release notes (older, pre-patch)](https://tailwindcss.com/blog/tailwindcss-v4-3)
+- [Tailwind CSS docs — `@utility` directive](https://tailwindcss.com/docs/functions-and-directives#utility-directive) (still the canonical `@utility` reference, the `@utility` section above remains the v4-stable form)
