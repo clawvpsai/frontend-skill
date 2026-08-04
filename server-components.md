@@ -1142,6 +1142,126 @@ export function CreatePostForm() {
 - **`use()` for Context without `'use client'`** — this only works in Client Components; always add `'use client'` when consuming Context with `use()`
 - **`use cache` surviving deploys without explicit invalidation** — cache persists across deployments; add deploy-time invalidation if fresh data is needed immediately after deploy
 
+## `revalidateTag` vs `updateTag` — The Canonical Decision Matrix (Next.js 16.3 STABLE, August 3, 2026)
+
+`next@16.3.0` STABLE ships `updateTag` from `next/cache` as a first-class API alongside the now-stable two-argument `revalidateTag(tag, profile)`. The two functions invalidate cached data by tag but **serve different invalidation models** — picking the wrong one causes stale UI (background refresh) or unnecessary blocking (immediate refresh). This is the canonical decision matrix; premature `updateTag` everywhere is a common mistake, and so is using `revalidateTag('x', 'max')` from a Server Action that needs read-your-own-writes.
+
+**The rule of thumb:**
+
+| Location | Use | Why |
+| --- | --- | --- |
+| **Server Action** (mutated from a `<form action>` / `<button formAction>` after a user gesture) | **`updateTag(tag)`** | Server Actions are event-driven — the user just clicked something and expects the UI to show the change. `updateTag` is **read-your-own-writes**: it expires the tag *and* blocks the next render until fresh data is fetched. The route that called the action immediately re-renders with the new data; no stale-data flash. |
+| **Route Handler** (POST/DELETE/PATCH from a fetcher, a webhook, a cron, an external API call) | **`revalidateTag(tag, profile)`** | Route Handlers are external — the caller doesn't see the action's response. `revalidateTag` is **stale-while-revalidate**: the tag is marked stale, the next request that reads via `'use cache'` blocks the fresh fetch, and the cached entry is replaced in the background. Recommended profile: `'max'` (the largest `cacheLife` profile you have). |
+| **Server Action that should NOT refresh the current route's UI** (e.g., background cleanup, audit log write) | **`revalidateTag(tag, 'max')`** | `updateTag` would force a re-render of the current route even though the user shouldn't see the side effect. Use `revalidateTag` with the lightweight SWR profile — the data is fresh on the next navigation, but the current page doesn't re-render pointlessly. |
+
+**The two-argument `revalidateTag` signature is now stable** (was experimental in 16.2; promoted to stable in 16.3.0 STABLE). The single-argument `revalidateTag('posts')` form is **deprecated** — TypeScript enforces the two-argument form (the signature `revalidateTag(tag: string, profile: string | { expire?: number }): void` throws if the second argument is missing under `strict` mode in 16.3+). The `profile` argument accepts either a string (the name of a configured `cacheLife` profile like `'max'`, `'hours'`, `'minutes'`, `'days'`, `'seconds'`) or an inline `{ expire: number }` object that overrides the expiry directly.
+
+**`updateTag` signature is intentionally minimal** — `updateTag(tag: string): void`. It takes a single tag (no profile — the semantics are "expire NOW", profile is irrelevant). It can only be called **inside a Server Action** (Next.js 16.3 throws at runtime if you call it from a Route Handler, Client Component, or Proxy). The function invalidates cache entries for the tag AND invalidates the affected routes in the full route cache as read-your-own-writes — but only the route the Server Action was called from immediately re-renders with fresh data. Other routes that reference the same tag re-render on their next navigation.
+
+**The canonical patterns:**
+
+```tsx
+// app/actions.ts — Server Action with read-your-own-writes
+'use server'
+
+import { updateTag } from 'next/cache'
+
+export async function createPost(formData: FormData) {
+  await db.post.create({ data: parse(formData) })
+  updateTag('posts') // ✅ Server Action → updateTag
+  // The page that called this action re-renders with the new post visible immediately.
+}
+```
+
+```tsx
+// app/api/posts/route.ts — Route Handler with stale-while-revalidate
+import { revalidateTag } from 'next/cache'
+
+export async function POST(req: Request) {
+  await db.post.create({ data: await req.json() })
+  revalidateTag('posts', 'max') // ✅ Route Handler → revalidateTag with profile
+  // Next request to any route that uses 'use cache' with cacheTag('posts')
+  // triggers a SWR refresh — stale is served while fresh is fetched in background.
+}
+```
+
+```tsx
+// app/actions.ts — Server Action that does NOT need to re-render the UI
+'use server'
+
+import { revalidateTag } from 'next/cache'
+
+export async function auditLogWrite(entry: AuditEntry) {
+  await db.audit.insert(entry)
+  revalidateTag('audit', 'max') // ✅ Server Action → revalidateTag (not updateTag)
+  // The 'audit' tag is marked stale, but we don't want to re-render the user's
+  // current page just because the audit log got a new entry. The next page
+  // navigation that reads 'audit' will see fresh data.
+}
+```
+
+**The antipatterns (with concrete audit recipes):**
+
+```tsx
+// ❌ ANTI-PATTERN 1: revalidateTag in Server Action (loses read-your-own-writes)
+'use server'
+export async function createPost(formData: FormData) {
+  await db.post.create({ data: parse(formData) })
+  revalidateTag('posts', 'max') // ❌ Stale data is served until next navigation
+  // The user just clicked "Create Post" and expects to see it. With revalidateTag,
+  // the current page still shows the old list (the cache is stale, not expired).
+}
+```
+
+```tsx
+// ❌ ANTI-PATTERN 2: updateTag in Route Handler (throws at runtime)
+import { updateTag } from 'next/cache'
+
+export async function POST(req: Request) {
+  await db.post.create({ data: await req.json() })
+  updateTag('posts') // ❌ Throws: updateTag can only be called from within a Server Action
+}
+```
+
+```tsx
+// ❌ ANTI-PATTERN 3: Single-argument revalidateTag (deprecated, throws under strict TS)
+export async function createPost() {
+  revalidateTag('posts') // ❌ Deprecated. Add a profile: revalidateTag('posts', 'max')
+}
+```
+
+**Audit recipe — find Server Actions that should use `updateTag` but are using `revalidateTag`:**
+
+```bash
+# Find all Server Actions in the app that mutate and invalidate
+rg -l "use server" --type ts --type tsx app/ | \
+  xargs rg -l "revalidateTag" | \
+  xargs rg -B1 -A1 "revalidateTag" | \
+  rg -v "max|expire|profile"  # Flags any revalidateTag call without a profile arg
+```
+
+For each match, decide: if the action is invoked from a `<form action>` after a user gesture and the user expects to see the change, switch to `updateTag`. If the action is a background audit / cleanup / out-of-band write, keep `revalidateTag` with `'max'`.
+
+**Why the split exists (architectural rationale):** `updateTag` was introduced in Next.js 16.2 because the old model conflated "invalidate the cache" with "force the current route to re-render right now" — and those two operations have different semantics. The router-level re-render in `updateTag` is what enables read-your-own-writes; `revalidateTag` only invalidates the cache entry, so the current route (if it has the tag's data already in props or a cached component) continues to render the stale value until the next signal (navigation, refresh, or revalidatePath). Splitting them lets the framework optimize: `revalidateTag(tag, 'max')` doesn't need to touch the router at all — it's a pure cache-control operation. `updateTag` triggers a router-level update that resolves the promise, re-renders the current route, and replaces the affected cache entries.
+
+**Practical impact by Next.js tag:**
+
+- **Apps on `next@16.3.0` STABLE (August 3, 2026):** `revalidateTag(tag, profile)` is the **only** supported form (the single-argument form throws under `strict` and is deprecated regardless). `updateTag` is first-class in `next/cache`. Codemod available: `npx @next/codemod@latest update-tag-2-arg` (if you have a large existing codebase, run this to convert single-arg `revalidateTag` calls to `revalidateTag(tag, 'max')`).
+- **Apps on `next@16.2.x`:** `revalidateTag(tag, profile)` is **experimental** (works but logs a warning). `updateTag` is **not available** — fall back to `revalidateTag(tag, 'max')` for SWR or `revalidateTag(tag, { expire: 0 })` for read-your-own-writes (the inline object form is the v16.2 equivalent of `updateTag`).
+- **Apps on `next@15.x`:** `revalidateTag(tag)` is the only supported form. Upgrade to 16.3+ to get the better split.
+
+**When to use `revalidatePath` instead of either:** if the cache key is **a path** (not a tag), use `revalidatePath('/blog')` — it's a different function in the same `next/cache` module, and the two-arg form is the same. The `revalidatePath` / `revalidateTag` / `updatePath` / `updateTag` quartet is the canonical Next.js 16.3 invalidation API.
+
+**Sources:**
+
+- [Next.js `updateTag` API reference](https://nextjs.org/docs/app/api-reference/functions/updateTag) — single-arg signature, Server Actions only, read-your-own-writes semantics
+- [Next.js `revalidateTag` API reference](https://nextjs.org/docs/app/api-reference/functions/revalidateTag) — two-arg required signature, profile-stamped SWR, Server Actions + Route Handlers
+- [Next.js Caching — `use cache` directive](https://nextjs.org/docs/app/api-reference/directives/use-cache) — `cacheTag` + `cacheLife` + the `use cache` boundary
+- [Next.js 16 release notes — Cache Components](https://nextjs.org/blog/next-16) — `updateTag` introduced as the canonical read-your-own-writes invalidation API
+- [GitHub Discussion #84805 — `updateTag` vs `revalidateTag`](https://github.com/vercel/next.js/discussions/84805) — community-curated decision matrix, the source of the "server action → updateTag, route handler → revalidateTag" heuristic
+- [Dev.to — `revalidateTag` & `updateTag` in Next.js (12-part series)](https://dev.to/peterlidee/revalidatetag-updatetag-in-nextjs-4j8b) — practical walkthroughs of the SWR vs RYOW trade-off
+- [Next.js Cache Components Migration Guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components) — `updateTag` + `revalidateTag` + `use cache` + `cacheTag` patterns
+
 ## Cache Components — 16.3 Canary Hardening (canary.72–78, June 30–July 4, 2026)
 
 Eight material PRs landed in 16.3 canary.72 → canary.78 that refine how `'use cache'`, `cacheLife()`, and instant validation behave. They are not breaking changes for normal usage, but they remove silent footguns and tighten the type surface:

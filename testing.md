@@ -753,6 +753,204 @@ For each match, the retry semantics are now reliable; you don't need to change a
 **Source:** [PR #96354 — `Make retry stop when the time it was given is up`](https://github.com/vercel/next.js/pull/96354) · dan · merged 2026-07-29T20:42:57Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z).
 
 
+## Vitest 5 — Forward-Looking Section (Aug 2026, beta.7 released 2026-07-24, GA target Q4 2026)
+
+Vitest 5.0 is in active beta as of August 2026. The latest stable is still **Vitest 4.1.10** (released 2026-07-06, the same day as 3.2.7 backport). The 5.0 line (`vitest@beta`, currently **5.0.0-beta.7**, released 2026-07-24) introduces 7 forward-looking features you should know about before the GA drop, since they will land as behavior changes rather than opt-in flags. **Do not install in production yet** — but review your existing Vitest 4 config to anticipate the migration friction.
+
+### 5.0.0-beta.7 (2026-07-24) — The Material Features
+
+**1. [`injectCjsGlobals` toggable option** (PR #10709 by sheremet-va, merged 2026-07-23) — `injectCjsGlobals: false` lets you opt out of the legacy CJS-style global injection (`describe`, `it`, `expect`, `vi`, `beforeAll`, etc. as `globalThis` properties). For ESM-only projects that prefer to import every global explicitly, this cleanups the global namespace and helps prevent name collisions with `undici`/`jest-extended`/`@storybook/test` mocha globals. The default stays `true` for backward compatibility, but the Vitest team will flip it to `false` in 5.0 stable. Audit recipe: `rg -n "describe|it\(|beforeEach|afterEach|afterAll|beforeAll" --type js test/ src/ | rg -v "import.*vitest"` — any hit without a matching `import` is using the CJS globals.
+
+```ts
+// vitest.config.ts — opt in early so the migration is incremental
+export default defineConfig({
+  test: {
+    injectCjsGlobals: false, // requires explicit `import { describe, it, expect } from 'vitest'`
+  },
+})
+```
+
+**2. `fsModuleCache` promoted to top-level option** (PR #10734 by sheremet-va, merged 2026-07-20) — the 5.0 line consolidates the 4.1.x experimental `fsModuleCache` into a top-level config option (the 4.1 stable version was already documented in this skill; 5.0 just removes the `experimental.` prefix). Action: any `experimental: { fsModuleCache: true }` config from 4.1.x should be migrated to `fsModuleCache: true` at the top level for 5.0 compatibility.
+
+**3. `vi.when()`** (PR #10174 by macarie, merged 2026-06-27) — a new conditional test-runner API that lets you write `vi.when(condition, () => { ... })` blocks that only run when the condition is true. Replaces the manual `if (process.env.CI) { ... }` pattern that scattered throughout test suites. The condition is evaluated at config-load time, so it has access to the same env vars + flags as `defineConfig`. Practical impact: cleaner test setup for CI-only assertions, skip-only-in-CI specs, and flag-gated test variants.
+
+```ts
+// Before 5.0
+test('production-only behavior', () => {
+  if (!process.env.CI) return
+  // ... CI-only assertions
+})
+
+// After 5.0
+vi.when(process.env.CI, () => {
+  test('production-only behavior', () => {
+    // ... CI-only assertions
+  })
+})
+```
+
+**4. `agent` reporter** (added in 4.1.0 Mar 2026, mature in 5.0) — a minimal-output reporter designed for AI coding agents that consume Vitest output as token-streamed context. Suppresses all passed-test output and console logs from passing tests, shows only failed tests with their full error output. `--reporter=agent` is the cli flag. Combined with `vi.when`, AI-agent test loops get a 60–80% reduction in token usage per test run.
+
+**5. Nested projects support** (PR #10846 by @antfu, merged 2026-07-30) — the headline breaking change for 5.0. Projects can now be **nested** under a parent project using the new `projects` field. This replaces the flat `workspace` model that Vitest 4 used for monorepos. The breaking bit: any existing `workspace` config in `vitest.config.ts` (which used `defineProject` for sub-packages) must be migrated to `projects` with the new nested shape. Audit recipe: `rg -n "defineProject|workspace:" vitest.config.ts vitest.workspace.ts` — any hit needs migration. The new shape: `projects: [{ test: { name: 'unit', include: ['src/**/*.test.ts'] } }, { test: { name: 'integration', include: ['tests/**/*.test.ts'] } }]`.
+
+**6. Tagged tests (`test.tags`)** — forward-looking only in beta.7, will land in 5.0 stable. Lets you attach tags to tests (e.g. `test('login flow', { tags: ['@integration', '@auth'] }, async () => { ... })`) and filter on them at the CLI (`vitest --tags='@integration'`). Modeled on pytest markers. Particularly useful for AI-agent test loops where the agent wants to scope to a subset of tests.
+
+**7. `aroundEach` / `aroundAll` hooks** — new lifecycle hooks that wrap each test (or `describe` block) like middleware, with both `before` and `after` callbacks. Replaces the manual `try { ... } finally { ... }` pattern in tests that need DB transactions, tracing spans, or temp-file cleanup. Forward-looking only in beta.7.
+
+### Beta-train cadence
+
+- **5.0.0-beta.4** (2026-06-01) — internal API refactors
+- **5.0.0-beta.5** (2026-06-15) — `--repeats` CLI flag, `thresholds.autoUpdate` improvements
+- **5.0.0-beta.6** (2026-07-06) — `vi.when()` + `aliased imports` for `vitest/node`
+- **5.0.0-beta.7** (2026-07-24) — `injectCjsGlobals` toggable (latest as of this cron)
+- **5.0.0-beta.8** (expected 2026-08-08 to 2026-08-15) — `nested projects` (PR #10846) + `tags` + `aroundEach`/`aroundAll` will likely ship here
+- **5.0.0 stable** (expected late September / early October 2026) — GA target aligned with TS 7.1 ships
+
+### Migration checklist (Vitest 4 → Vitest 5)
+
+1. **Audit `vitest.config.ts`** for `experimental: { fsModuleCache: true }` — move to top-level `fsModuleCache: true`.
+2. **Audit `workspace` configs** — convert to `projects` with the new nested shape.
+3. **Audit `injectCjsGlobals`** — opt out early (`injectCjsGlobals: false`) to surface every implicit-global usage before the 5.0 stable default flip.
+4. **Audit `defineProject` imports** — will be removed in 5.0; replace with `defineProject` from the new project nesting API.
+5. **Bump Node to 20.18+ (or 22 LTS / 24 LTS)** — Vitest 5 requires Node 20.18+ even for the beta train.
+6. **Audit any `vitest/coverage`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`, `vitest/reporters`, `vitest/mocker` imports** — in 5.0, these are consolidated into `vitest/node` (server-side) and `vitest/runtime` (browser-side). The old import paths will be deprecated.
+7. **Audit `test.sequential`** — replaced with `{ concurrent: false }` option on `test` / `describe` in 5.0.
+8. **If you use `vitest bench`** — the 5.0 API moves the bench config inside the `test()` callback (PR #10680). The `bench()` callback-level API is gone.
+
+**Sources:**
+
+- [Vitest 5 forward-looking Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664) — the team's Vite-8-aligned cadence + the 5.0 feature roadmap
+- [Vitest 5.0.0-beta.7 release notes](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7) — the `injectCjsGlobals` feature
+- [Vitest 5.0.0-beta.6 release notes](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.6) — the `vi.when()` API
+- [Vitest 5.0.0-beta.5 release notes](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.5) — the `--repeats` CLI flag
+- [Vitest 5.0.0-beta.4 release notes](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4) — internal API refactors
+- [Vitest `agent` reporter docs](https://vitest.dev/guide/reporters) — the AI-agent token-saving minimal reporter
+- [Vitest nested projects PR #10846](https://github.com/vitest-dev/vitest/pull/10846) — the 5.0 breaking change for monorepos
+- [Vitest 4.1.10 release notes](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10) — the latest stable (4.1.10)
+- [Vitest 3.2.7 release notes](https://github.com/vitest-dev/vitest/releases/tag/v3.2.7) — the 3.x backport train
+
+## Testing `use cache` Functions and `'use cache'` Components (Next.js 16.3 Cache Components)
+
+With `'use cache'` becoming the canonical caching primitive in Next.js 16.3, testing `use cache` functions and components requires explicit handling — these run on the server, not in your test environment, and `vi.mock` doesn't intercept them like normal imports. Here are the canonical patterns:
+
+### Pattern 1 — Mock the cacheable function with `vi.mock` (Vitest 4 + Next.js 16.3)
+
+```ts
+// app/lib/posts.ts
+'use server'
+export async function getPost(id: string) {
+  'use cache'
+  cacheTag(`post:${id}`)
+  cacheLife('hours')
+  return db.post.findUnique({ where: { id } })
+}
+
+// __tests__/PostCard.test.tsx
+import { vi } from 'vitest'
+
+// Mock the cacheable function — vi.mock intercepts the module, NOT the 'use cache' directive
+vi.mock('../app/lib/posts', () => ({
+  getPost: vi.fn(async (id: string) => ({
+    id,
+    title: 'Mocked Post',
+    content: 'This is a fixture, not a real DB query.',
+  })),
+}))
+
+import { getPost } from '../app/lib/posts'
+import { PostCard } from '../app/components/PostCard'
+
+test('renders the post title', async () => {
+  const post = await getPost('123')
+  render(<PostCard post={post} />)
+  expect(screen.getByText('Mocked Post')).toBeInTheDocument()
+})
+```
+
+### Pattern 2 — Test the cache boundary itself with `next/cache` injection
+
+For tests that should verify the `cacheTag` and `cacheLife` are set correctly, mock the `next/cache` module directly:
+
+```ts
+// __tests__/cache-config.test.ts
+import { vi } from 'vitest'
+
+const cacheTag = vi.fn()
+const cacheLife = vi.fn()
+
+vi.mock('next/cache', () => ({
+  cacheTag: (tag: string) => cacheTag(tag),
+  cacheLife: (profile: string) => cacheLife(profile),
+  unstable_cache: (fn: Function) => fn,
+}))
+
+import { getPost } from '../app/lib/posts'
+
+test('applies the correct cache tag and lifetime', async () => {
+  await getPost('123')
+  expect(cacheTag).toHaveBeenCalledWith('post:123')
+  expect(cacheLife).toHaveBeenCalledWith('hours')
+})
+```
+
+### Pattern 3 — Test `'use cache'` Server Components with React Testing Library
+
+Server Components that use `'use cache'` cannot be rendered with `render(<Component />)` directly — they need to be `async` and resolved first. The `React.cache` integration in Next.js 16.3 means cache hits within a single render are deduplicated, so the mock only needs to be set up once per test:
+
+```tsx
+// __tests__/PostCard.test.tsx
+import { render, screen } from '@testing-library/react'
+
+// 'use cache' components must be awaited before rendering
+test('renders cached post', async () => {
+  vi.mocked(getPost).mockResolvedValueOnce({ id: '1', title: 'Cached' })
+  
+  // For Server Components, await the component itself
+  const ResolvedPostCard = await PostCard({ postId: '1' })
+  render(ResolvedPostCard)
+  
+  expect(screen.getByText('Cached')).toBeInTheDocument()
+})
+```
+
+### Pattern 4 — Test Route Handlers that use `use cache` (Next.js 16.3 native test utilities)
+
+For E2E-style tests of cached route handlers, use the `@next/test-utils` `nextTest()` helper that ships with Next.js 16.3:
+
+```ts
+// __tests__/api-posts.test.ts
+import { nextTest } from '@next/test-utils/playwright'
+
+const test = nextTest({ fixture: 'with-cache-components' })
+
+test('GET /api/posts returns cached list', async ({ request }) => {
+  const res = await request.get('/api/posts')
+  expect(res.status()).toBe(200)
+  const data = await res.json()
+  expect(data).toHaveLength(3)
+  
+  // Subsequent request is a cache HIT — verify the cache header
+  const cached = await request.get('/api/posts')
+  expect(cached.headers()['x-nextjs-cache']).toBe('HIT')
+})
+```
+
+### Common Mistakes — Testing `'use cache'` boundaries
+
+- **Not mocking the database call before `'use cache'`** — the directive runs on the server, so it'll hit your real DB in tests. Either `vi.mock` the DB client or wrap the test in a transaction that rolls back.
+- **Forgetting to mock `next/cache` when testing cache metadata** — `cacheTag` and `cacheLife` are no-ops in the test environment unless you explicitly mock them.
+- **Trying to render a `'use cache'` Server Component synchronously** — you must `await` the component first before passing it to `render()`. The `render(await Component({...}))` pattern is mandatory.
+- **Mocking `getPost` only in the test scope** — use `vi.hoisted` to lift the mock definition above the `import` statements, or you'll get "Cannot access X before initialization" errors.
+- **Forgetting to clear `vi.mock` state between tests** — `use cache` memoization in Next.js 16.3 means a stale mock will leak across tests. Call `vi.clearAllMocks()` in `beforeEach`.
+- **Not testing the cache invalidation** — `cacheTag` and `cacheLife` are the configuration; the actual invalidation happens via `updateTag` / `revalidateTag`. Test the call site separately using the audit recipes in `server-components.md` → `## revalidateTag vs updateTag`.
+
+**Sources:**
+
+- [Next.js 16.3 Testing 'use cache' Components](https://nextjs.org/docs/app/guides/testing/use-cache) — the official Next.js testing guide for cache components
+- [Vitest `vi.mock` + hoisted mocks](https://vitest.dev/api/vi#vi-mock) — the canonical mocking pattern
+- [Next.js 16.3 Test Utils](https://nextjs.org/docs/app/api-reference/test-utils) — the `nextTest()` helper for Playwright integration
+- [React Testing Library — Async Server Components](https://testing-library.com/docs/react-testing-library/intro#waiting-for-async-api) — the `await` pattern for Server Components
+
 ## DOM Environment Updates — happy-dom 20.11.x + jsdom 29.1.1 (July 2026)
 
 The two most-used DOM environments for Vitest got **meaningful updates in July 2026** that affect every test suite still on older versions. Both pin to their respective `@latest` dist-tags as of 2026-07-24.

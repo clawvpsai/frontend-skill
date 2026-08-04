@@ -374,6 +374,114 @@ npm install -D tailwindcss @tailwindcss/vite
 - `noUncheckedIndexedAccess` — arrays/objects return `T | undefined` on index access
 - `exactOptionalPropertyTypes` — `?:` vs `!:` semantics are strict
 
+## TypeScript 7.0 STABLE — Go-Native Compiler, 10× Faster Type-Checking (July 8, 2026)
+
+`typescript@7.0.0` STABLE shipped on **2026-07-08** (npm `dist-tag.latest` moved from `6.0.x` to `7.0.0`), completing the 15-month **Project Corsa** rewrite that ports the TypeScript compiler from JavaScript-on-Node to native Go. The release shipped under the `@typescript/native-preview` package during betas (April 2026) and graduated to the `typescript` package on stable — **`npm install -D typescript` now installs the Go-native compiler**.
+
+**The headline benchmarks** (Microsoft's official numbers + Vercel/VS Code team reproductions):
+
+| Build | TypeScript 6 (Node) | TypeScript 7.0 (Go) | Speedup |
+| --- | --- | --- | --- |
+| Visual Studio Code full build | ~125s | ~10s | **~12×** |
+| Bloomberg production monorepo (mid-size) | ~60s | ~5s | **~12×** |
+| TypeScript's own compiler test suite (20K files) | ~13min | ~70s | **~11×** |
+| Linear's Notion-typed API client | ~8s | ~0.8s | **~10×** |
+| Average consumer project (Vercel-tracked) | ~25s | ~2.5s | **~8–10×** |
+
+The single-thread baseline is the existing `tsc` on the same hardware; the Go native build is also single-threaded by default but ships **explicit parallelism flags** (`--checkers N` for type-checking parallelism, `--builders N` for project-reference parallelism; `--singleThreaded` to opt out for debugging).
+
+**The new defaults in 7.0** (graduated from 6.0's strict mode):
+
+- `strict: true` is now the default (was `false` in 5.x, hard-warn in 6.x)
+- `module: "esnext"` is the default (was `commonjs` in 5.x, `esnext` opt-in in 6.x)
+- `target` defaults to the current stable ES version (was `es5` in 5.x for years)
+- `noUncheckedSideEffectImports: true` is the default
+- `stableTypeOrdering: true` is the default and **not configurable**
+- `rootDir` defaults to `./` (was project-detected)
+- `types` defaults to `[]` (was `["node"]` in many presets)
+- `target: es5`, `moduleResolution: node`, `baseUrl` are **removed** — they were deprecated in 6.0 and now throw
+
+**The breaking changes that catch teams off-guard** (per the 7.0 upgrade guide):
+
+1. **`strict: true` is implicit** — pre-7.0 code that relied on `strict: false` will now refuse to compile against implicit any, strict-null-checks, and the rest of the strict family. The fix: either audit the codebase to be strict-clean (recommended) or explicitly set `strict: false` in `tsconfig.json` (not recommended — you'll miss real bugs).
+2. **`module: esnext` requires native ESM** — code that used `require()` in `.ts` files breaks because the new default is ESM. The fix: either switch to `import` (recommended) or pin `module: "commonjs"` and run `tsc` with `--module commonjs` explicitly.
+3. **`types: []` removes implicit `@types/node` and `@types/*` discovery** — projects that relied on `tsc` auto-including `@types/node` will see `Cannot find name 'process'` / `Cannot find name 'Buffer'`. The fix: explicitly add `"types": ["node"]` to `tsconfig.json` (or `"types": ["node", "jest"]` if you also need `@types/jest`).
+4. **`target: es5` is removed** — projects that targeted ES5 (for legacy IE support) must now target `es2018` minimum. The fix: bump `target` to `es2018` or higher (or use a `tsconfig.json` override for the legacy chunks).
+5. **`moduleResolution: node` is removed** — projects using CommonJS-style resolution must migrate to `moduleResolution: "bundler"` (the new default for code that runs through Vite/webpack/turbopack), `moduleResolution: "node16"`, or `moduleResolution: "nodenext"`.
+
+**The decision matrix for upgrading from 5.x or 6.x:**
+
+| Tool | Status in 7.0 | Blocker? | Recommended action |
+| --- | --- | --- | --- |
+| `tsc` + `tsserver` (CLI + VS Code) | ✅ Fully supported | No | `npm install -D typescript@7` — done |
+| Next.js (16.2.12+ / 16.3+ via `experimental.useTypeScriptCli`) | ✅ Fully supported | No | Set `experimental.useTypeScriptCli: true` or rely on the canary.108+ default |
+| `tsc` build scripts in CI | ✅ Fully supported | No | Bump the `typescript` version; expect 8–12× faster CI |
+| `typescript-eslint` (with `parserOptions.project`) | ⚠️ Needs stable API | **Yes — until 7.1** | Keep TypeScript 6.0 for ESLint via the `@typescript/typescript6` shim; run `tsc` builds with 7.0 in parallel |
+| `ts-morph` (programmatic AST manipulation) | ⚠️ Needs stable API | **Yes — until 7.1** | Keep TypeScript 6.0 for the tools that depend on the programmatic API |
+| Custom transformers (e.g. `pathsPlugin`, `ts-jest` transformer) | ⚠️ Needs stable API | **Yes — until 7.1** | Pin TypeScript 6.0 for the transformer; document the constraint |
+| **Vue / Svelte / Astro template type-checkers** (Volar, vue-tsc, svelte-check) | ⚠️ Needs stable API | **Yes — until 7.1** | These framework teams maintain their own template type-checkers that depend on the TypeScript compiler API. Volar-aligned teams (Vue, Svelte, Astro) have publicly committed to 7.0.x compat but cannot adopt the Go-native compiler until 7.1 ships the stable API. Pin `typescript@^6.0` for these projects. |
+| Plain JS / Babel projects (no `tsc`) | ✅ N/A | No | No change — TypeScript-version doesn't affect the build pipeline |
+
+**The pragmatic upgrade path for a typical Next.js app:**
+
+```bash
+# 1. Add to package.json
+npm install -D typescript@7
+
+# 2. Update tsconfig.json
+cat tsconfig.json
+# If you see "strict": false, audit the code for strict-clean and either fix or set strict: true
+# If you see "module": "commonjs", change to "module": "esnext"
+# If you see "target": "es" (any 5-era target), bump to "target": "es2022" minimum
+
+# 3. For Next.js 16.3+: flip the experimental flag
+# next.config.ts (Next.js 16.2.12+)
+experimental: { useTypeScriptCli: true }
+# Next.js 16.3.0-canary.108+: flag defaults to true
+
+# 4. For CI: update Node to 20.18+ (Node 18 ended support for the Go-native compiler in 7.0)
+
+# 5. If you use eslint:
+npm install -D @typescript/typescript6  # Pin for the ESLint tooling
+# Then in .eslintrc.json or eslint.config.js, point typescript-eslint at the 6.0 shim
+```
+
+**The 7.1 timeline** (per Microsoft's "3–4 months after 7.0" commitment, announced in the 7.0 stable blog post on 2026-07-08): **TypeScript 7.1 is expected to ship around October 2026** with the stable programmatic API. Once 7.1 ships, `typescript-eslint`, `ts-morph`, Volar, vue-tsc, svelte-check, and Astro's type-checker can all migrate to the Go-native compiler and the 6.0 shim can be retired. The 7.1 daily-cut train (`typescript@next`) is currently in maintenance-idle state (9+ consecutive no-content rebuilds as of August 2026), reflecting the team's "wait for new feature work" posture between 7.0 ship and 7.1 work.
+
+**What is NOT in 7.0 (deferred to 7.1):**
+
+- The stable programmatic API (Corsa API) — required for `typescript-eslint`, `ts-morph`, Volar, vue-tsc, svelte-check
+- The official "Corsa Language Server Protocol" (LSP) — lets any editor with LSP support use the Go-native TS server (no VS Code monopoly)
+- New language features — the team explicitly said "no new feature work for 7.0; the port was the focus"
+- Ergonomic improvements — `satisfies` operator enhancements, better type narrowing, etc. → 7.1 / 7.2
+
+**The "What HIGH Actually Means for Teams" audit recipe:**
+
+```bash
+# Find every typescript dependency in your monorepo
+rg -n ""typescript"|"@typescript/" package.json apps/*/package.json packages/*/package.json 2>/dev/null
+
+# Find every hardcoded target/module that's now invalid
+rg -n "target.*es5|moduleResolution.*node|baseUrl" tsconfig*.json apps/*/tsconfig*.json packages/*/tsconfig*.json
+
+# Find every typescript-eslint dependency (needs the 6.0 shim)
+rg -n "typescript-eslint|@typescript-eslint" package.json
+
+# Find every @types/node that you forgot to declare (the "types": [] default broke it)
+rg -l "Cannot find name 'process'|Cannot find name 'Buffer'" tsconfig*.json
+```
+
+**Sources:**
+
+- [TypeScript 7.0 stable announcement (devblogs.microsoft.com)](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — the 7.0 stable blog post, 8–12× speedup numbers, the new defaults
+- [TypeScript 7.0 Beta announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-beta/) — the pre-stable walkthrough, the `tsgo` naming, the Corsa API timeline
+- [Visual Studio Magazine — TypeScript 7.0 RC breakdown](https://visualstudiomagazine.com/articles/2026/07/08/typescript-7-arrives-to-rock-vs-code-with-go-powered-speed.aspx) — the `--checkers` / `--builders` parallel flags, the `@typescript/typescript6` shim explanation
+- [TechTimes — TypeScript 7 Now Stable: 10× Faster Builds, But Not for Vue or Svelte Yet](https://www.techtimes.com/articles/320049/20260710/typescript-7-now-stable-10-faster-builds-not-vue-svelte-yet.htm) — the framework-team decision matrix, the 7.1 timeline
+- [DigitalApplied — TypeScript 7.0 RC upgrade guide](https://www.digitalapplied.com/blog/typescript-7-0-rc-go-native-compiler-2026-upgrade-guide) — the breaking-config-changes walkthrough, the 7.1 API gap
+- [VS Code blog — Iterating Faster with TS 7](https://code.visualstudio.com/blogs/2026/06/26/iterating-faster-with-ts-7) — the 125s → 10s benchmark, the LSP migration plan
+- [TypeScript 7.0 GitHub release](https://github.com/microsoft/TypeScript/releases/tag/v7.0.0) — the release notes, the bundled `@typescript/typescript6` shim
+- [Next.js `experimental.useTypeScriptCli` config](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli) — the 16.2.12+ flag, the 16.3.0-canary.108+ default-ON behavior
+
 ## TypeScript 7 Integration (July 25, 2026 — next@16.2.12 / next@15.5.22 / next@16.3.0-canary.97)
 
 Next.js now ships **explicit TypeScript 7 handling** on every supported line. The behavior differs by branch:
