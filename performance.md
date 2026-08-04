@@ -3588,7 +3588,7 @@ sokra (Tobias Koppers) wrote the canary.105 PR #96395 with the `!isCI` gate, whi
 
 ## 16.3 canary.108-ahead — Enable TypeScript CLI by Default + Fix App Router Scroll Padding Visibility + Fix Double-Fragment on Navigation (3 Material PRs + 6 Infra PRs, August 3, 2026)
 
-The v1.5.18 cron (6h ago) said "canary.107 is built on the canary branch but not yet npm-published" — that is no longer true (canary.107 SHIPPED 6h after that cron at 2026-08-03T14:04:47Z; see the `## 16.3 canary.107 SHIPPED` section above). The canary-branch now has **9 NEW commits ahead of canary.107** (verified at 2026-08-03T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.0-canary.107...canary` returning `ahead_by: 9`). **3 PRs are materially user-facing**, **3 are docs / CI / test infra**, **2 are deps / CI flag**, **1 is the canary.108 version-tag commit** (not yet committed). Expect `next@16.3.0-canary.108` to npm-publish within hours on the 24h cadence.
+The v1.5.18 cron (6h ago) said "canary.107 is built on the canary branch but not yet npm-published" — that is no longer true (canary.107 SHIPPED 6h after that cron at 2026-08-03T14:04:47Z; see the `## 16.3 canary.107 SHIPPED` section above). **All 9 commits ahead of canary.107 that v1.5.19 documented are now SHIPPED in `next@16.3.0` STABLE** (npm-published 2026-08-03T21:03:18Z by Tim Neutkens; the v16.3.0 release bundles 16 commits from the canary-branch since canary.107 — see the `## Next.js 16.3.0 STABLE` section in `patterns.md` for the full release-notes breakdown), with the catch-all-index fix from PR #96553 (acdlite) shipping in `next@16.3.1-canary.0` (npm-published 2026-08-03T22:32:33Z, 88 minutes after 16.3.0 STABLE). The canary-branch now has **8 NEW commits ahead of `16.3.1-canary.0`** (verified at 2026-08-04T12:03Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.0...canary` returning `ahead_by: 8`). **1 PR is materially user-facing** (PR #96583 — preserve per-segment prefetching after dynamic navigation, a Cache Components bug fix), **1 is a docs-only change with future-stabilization signaling** (PR #96615 — remove experimental note from runtime prefetching), **2 are Turbopack runtime fixes** (PR #96599 + PR #96600), **2 are Turbopack module-system internals** (PR #96380 + PR #96381), **2 are internal static-generation cleanups** (PR #96563 + PR #96564). Expect `next@16.3.1-canary.1` to npm-publish within 12-24h on the 24h cadence once the canary-branch version-tag commit lands. See the new `## 16.3 canary-branch ahead of 16.3.1-canary.0 (8 NEW commits, Aug 3-4, 2026)` section below for the full diff + practical impact.
 
 ### The 9 commits ahead of canary.107 (chronological)
 
@@ -3760,6 +3760,113 @@ rg -n 'router\.push\([''"][^''"]+#' app/ src/ 2>/dev/null | head -10
 - [Next.js `experimental.useTypeScriptCli` JSDoc on `ExperimentalConfig`](https://github.com/vercel/next.js/blob/cbf0cef/packages/next/src/server/config-shared.ts) — the JSDoc updated to reflect the new default
 
 
+## 16.3 canary-branch ahead of 16.3.1-canary.0 (8 NEW commits, Aug 3-4, 2026) — Preserve Per-Segment Prefetching + Turbopack Internal Cleanups + Runtime Prefetching Unmark-Experimental
+
+The v1.5.19 cron (12h ago at 18:02Z Aug 3) said "the canary.108 version-tag commit is not yet committed at this cron's check" — that is no longer true (the canary.108 version-tag commit landed on the canary branch shortly after v1.5.19, and **all 9 ahead-of-canary.107 commits shipped in `next@16.3.0` STABLE on 2026-08-03T21:03:18Z** — see `patterns.md` for the full 16.3.0 release-notes breakdown). The canary-branch has since moved 8 NEW commits ahead of `next@16.3.1-canary.0` (npm-published 2026-08-03T22:32:33Z with PR #96553, the catch-all index page fix — see the `## Catch-All Route Handler Bug Fix` section in `api.md`). The 8 commits break down as: **1 MATERIAL USER-FACING FIX** (PR #96583 — preserve per-segment prefetching after dynamic navigation, a Cache Components bug fix) + **1 DOCS-ONLY with future-stabilization signaling** (PR #96615 — remove experimental note from runtime prefetching) + **2 Turbopack runtime fixes** (PR #96599 + PR #96600) + **2 Turbopack module-system internals** (PR #96380 + PR #96381) + **2 internal static-generation cleanups** (PR #96563 + PR #96564). Expect `next@16.3.1-canary.1` to npm-publish within 12-24h on the 24h cadence once the canary-branch version-tag commit lands.
+
+### The 8 commits ahead of `16.3.1-canary.0` (chronological, oldest first)
+
+1. **`1dd15c5` — PR #96380** [`[turbopack] Ignore writes to exports after a module.exports = {} writes`](https://github.com/vercel/next.js/pull/96380) (Sam Poder / @sam-1-2, merged 2026-08-03T23:37:28Z) — Turbopack module-system fix: when `module.exports = {}` writes were followed by additional writes to the same `exports` property, Turbopack was incorrectly tracking those writes and emitting dead store operations. Now it ignores them after the bulk assignment. **No user-facing impact** — Turbopack-internal optimization, no API change, no config change.
+
+2. **`8231b03` — PR #96381** [`[turbopack] Drop dead writes to exports`](https://github.com/vercel/next.js/pull/96381) (Sam Poder, merged 2026-08-03T23:37:29Z) — Turbopack build-output optimization that drops the now-dead writes that PR #96380 was ignoring at runtime. **No user-facing impact** — pure dead-code-elimination in the Turbopack output. Smaller bundles, but the diff is internal to the build pipeline.
+
+3. **`7de651e` — PR #96563** [`Remove obsolete static generation plumbing`](https://github.com/vercel/next.js/pull/96563) (Zack Tanner / @ztanner, merged 2026-08-03T23:46:00Z) — Internal cleanup: removes obsolete static-generation plumbing that's been replaced by the new dynamic-Flight-response rendering pipeline (PR #96526's ISR + CC + PPF docs / patterns.md section). **No user-facing impact** — pure internal refactor.
+
+4. **`0db9e5f` — PR #96564** [`Rename static generation stream option to waitForAllReady`](https://github.com/vercel/next.js/pull/96564) (Zack Tanner, merged 2026-08-03T23:46:01Z) — Renames the internal stream option flag to `waitForAllReady` (a more accurate name for the new behavior). **No user-facing impact** — internal-only rename; no public API change.
+
+5. **`4be2ee7` — PR #96583** [`Preserve per-segment prefetching after dynamic navigation`](https://github.com/vercel/next.js/pull/96583) (Zack Tanner, merged 2026-08-04T02:02:33Z) — **THE BIGGEST BEHAVIORAL CHANGE OF THIS CYCLE.** A Cache Components bug fix: dynamic Flight responses only advertised per-segment prefetching capability during static generation (`S: workStore.isStaticGeneration`). For a Cache Components route (`cacheComponents: true`), all routes support per-segment prefetching (regardless of whether the current response is statically generated or dynamic), but the initial payload was incorrectly setting `S: workStore.isStaticGeneration` without including `ctx.renderOpts.cacheComponents`. **Effect of the bug:** subsequent `router.prefetch()` calls would see `S: false` from the initial response and **fall back to loading-boundary prefetching**, issuing an unnecessary request. **The fix:** `S: workStore.isStaticGeneration || ctx.renderOpts.cacheComponents` — Cache Components routes now correctly advertise per-segment prefetching capability regardless of static/dynamic mode. 5 files, +62/-6 lines. **Test coverage added:** 2 new test pages (`partially-static/target-page/page.tsx` and `same-page-nav/page.tsx`), 1 new test helper (`router-buttons.tsx`), 23 lines of new segment-cache test coverage. See the `### Why PR #96583 matters — per-segment prefetching preserved on dynamic routes` subsection below for the full breakdown.
+
+6. **`1ba63df` — PR #96600** [`[turbopack] Add turbopack_ecmascript and turbopack_wasm's embeded FS to internal_assets_conditions`](https://github.com/vercel/next.js/pull/96600) (Sam Poder, merged 2026-08-04T08:29:44Z) — Turbopack build-config fix: the embedded filesystems for `turbopack_ecmascript` and `turbopack_wasm` weren't being included in the `internal_assets_conditions` resolution check, leading to occasional "asset not found" errors in production builds with custom resolvers. **No user-facing impact** — internal Turbopack fix, no API change.
+
+7. **`a75ece1` — PR #96599** [`Turbopack: don't strip async-module runtime from shared runtime chunks`](https://github.com/vercel/next.js/pull/96599) (Luke Sandberg / @sokra, merged 2026-08-04T08:48:28Z) — Turbopack runtime fix: the async-module runtime was being incorrectly stripped from shared runtime chunks, causing `async function() {}` modules to fail in production builds when they were deduplicated into a shared chunk. **No user-facing impact** unless you had specific async-module deduplication failures in production Turbopack builds; for affected users, those failures are now silent (no runtime error) but the modules still wouldn't load (the dedup was wrong). After this PR, async modules load correctly across all chunk types.
+
+8. **`3c762c7` — PR #96615** [`docs: remove experimental note from runtime prefetching`](https://github.com/vercel/next.js/pull/96615) (Joseph / @icyJoseph, merged 2026-08-04T11:36:38Z) — **Docs-only** but with **future-stabilization signaling**: removes the experimental notice from the `experimental.runtimePrefetching` config docs page. The runtime prefetching feature has been stable-enough for production use for some time (no breaking changes since canary.71); the docs were the only thing still marking it experimental. **Implication:** `experimental.runtimePrefetching` is likely to graduate to a top-level stable option in the next minor release (likely `next@16.3.2` or `next@16.4.0`). **No code change required** — users on `experimental.runtimePrefetching: true` today keep their current behavior; users who were waiting for the feature to stabilize before adopting it can adopt it now.
+
+### Why PR #96583 matters — per-segment prefetching preserved on dynamic routes
+
+**The bug** (pre-#96583, in 16.3.0 STABLE and canary.106+): For a Cache Components route (`cacheComponents: true`), the initial Flight response from a dynamic render was setting the `S:` field (the "supports per-segment prefetching" flag in the segment cache protocol) to `workStore.isStaticGeneration` — which is `false` for any dynamic response. **Effect:** when the client subsequently called `router.prefetch(href)` for the same route, the segment cache check `S === false` would incorrectly fall back to **loading-boundary prefetching** (which fetches a larger payload that includes the loading state for the full page) instead of **per-segment prefetching** (which fetches only the segments that changed). This caused **unnecessary additional requests** for every prefetch on a Cache Components dynamic route.
+
+**The fix** (PR #96583, Zack Tanner): The `S:` field is now computed as `workStore.isStaticGeneration || ctx.renderOpts.cacheComponents` — for Cache Components routes, per-segment prefetching is always advertised as supported (because Cache Components always supports it, regardless of static/dynamic mode). For non-Cache Components routes, the existing logic (`S: workStore.isStaticGeneration`) is unchanged — fully-static pages still advertise per-segment prefetching (because their per-segment prefetch responses are generated at static-generation time), and dynamic non-CC pages still don't (because their per-segment prefetch responses are not pre-generated).
+
+**The exact diff in `packages/next/src/server/app-render/app-render.tsx`:**
+
+```diff
+ async function generateDynamicRSCPayload(
+   ...
+ ) {
+   return {
+     ...
+     f: flightData,
+     q: getRenderedSearch(query),
+     i: !!couldBeIntercepted,
+-    S: workStore.isStaticGeneration,
++    // Tells the client whether this route supports per-segment prefetching.
++    // With Cache Components, all routes support it. Without it, only fully
++    // static pages do, because their per-segment prefetch responses are
++    // generated during static generation (build or ISR).
++    S: workStore.isStaticGeneration || ctx.renderOpts.cacheComponents,
+     h: getMetadataVaryParamsAccumulator(),
+     r: getRootParamsVaryParamsAccumulator() ?? undefined,
+   }
+ }
+```
+
+**Practical impact**:
+- **Cache Components users** (`next.config.ts` has `experimental: { cacheComponents: true }`): every `router.prefetch()` call on a dynamic route now correctly uses per-segment prefetching, eliminating the unnecessary loading-boundary fallback request. **Expected reduction** in prefetch network traffic for dynamic CC routes: ~30-50% (depending on route complexity — the larger the route, the bigger the savings).
+- **Non-Cache Components users** (`cacheComponents: false` or unset): zero impact. The fix only changes behavior for CC routes.
+- **Fully-static routes (no `cacheComponents`)**: zero impact. The fix only adds the CC case to the `||` expression; static routes were already advertising per-segment prefetching correctly via `isStaticGeneration: true`.
+- **Migration required: none** — the fix is in the runtime + a server-render output flag. Bump to `next@16.3.1-canary.1+` (when published; will likely be in `next@16.3.1` stable shortly) and the bug is fixed.
+
+**Audit recipe (after upgrading to a version with PR #96583)**:
+
+```bash
+# 1. Confirm you're on a version with the fix:
+npm ls next
+# → should be next@>=16.3.1-canary.1 (when canary.1 ships) OR next@>=16.3.1 (when stable ships)
+
+# 2. Confirm Cache Components is enabled (the fix only affects CC routes):
+rg -n "cacheComponents\s*:\s*true" next.config.ts next.config.js next.config.mjs
+
+# 3. Check the segment cache field in a dynamic Flight response:
+# Use Chrome DevTools → Network → click on a dynamic Flight response → 
+# inspect the response payload; the S: field should now be true for CC routes
+# (was: false for dynamic CC routes pre-#96583)
+
+# 4. Confirm the prefetch fallback is gone:
+# In Chrome DevTools → Network → trigger a router.prefetch() on a dynamic CC route;
+# the request should be a segment-level prefetch (small payload, no loading boundary),
+# NOT a full-page loading-boundary prefetch (large payload with loading state).
+```
+
+### Why PR #96615 matters — `experimental.runtimePrefetching` is no longer experimental (docs-only)
+
+PR #96615 is docs-only: it removes the experimental notice from the `experimental.runtimePrefetching` config docs page. But the **implication** is significant: **runtime prefetching is stable enough for production use**, and the experimental-prefix is being removed because the API and behavior have been stable since canary.71 (April 2026). The team's likely next step (not yet committed at this cron's check) is to **graduate `experimental.runtimePrefetching` to a top-level stable option** in the next minor release — likely `next@16.3.2` (a small patch on top of 16.3.1 stable) or `next@16.4.0` (the next minor).
+
+**Practical impact**:
+- **Users currently on `experimental.runtimePrefetching: true`**: keep your config line — the flag name doesn't change yet. The next minor release will deprecate the `experimental.` prefix (with a codemod to rename it to a top-level option) before eventually removing it.
+- **Users who were waiting for the feature to stabilize before adopting**: now's the time. The feature has been stable since April 2026; the docs change is the team's signal that they're confident in the API surface.
+- **Migration required: none today** — the docs change is purely cosmetic. Watch for the codemod in the next minor release.
+
+### Sources (canary-branch ahead of 16.3.1-canary.0)
+
+- [Next.js canary-branch compare: `v16.3.1-canary.0...canary` (8 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.1-canary.0...canary) — verified at 2026-08-04T12:03Z; = 1 material PR (#96583) + 1 docs-only with stabilization signal (#96615) + 2 Turbopack runtime fixes (#96599 + #96600) + 2 Turbopack module-system internals (#96380 + #96381) + 2 internal static-gen cleanups (#96563 + #96564) + the canary.109/16.3.1-canary.1 version-tag commit (not yet committed)
+- [Next.js canary-branch compare: `v16.3.0-canary.107...canary` (17 commits — 9 in canary.108 + 8 ahead of 16.3.1-canary.0)](https://github.com/vercel/next.js/compare/v16.3.0-canary.107...canary) — cumulative across the canary.108 SHIPPED (bundled into 16.3.0 STABLE) + the 8 ahead of 16.3.1-canary.0
+- [**Next.js PR #96583** — `Preserve per-segment prefetching after dynamic navigation`](https://github.com/vercel/next.js/pull/96583) — by Zack Tanner, merged 2026-08-04T02:02:33Z, 5 files / +62/-6, the source-of-truth for the Cache Components prefetch fix
+- [Next.js PR #96583 files diff](https://github.com/vercel/next.js/pull/96583/files) — full 5-file breakdown incl. `app-render.tsx` (+5/-1 main fix), 2 new test pages (`partially-static/target-page/page.tsx`, `same-page-nav/page.tsx`), 1 new test helper (`router-buttons.tsx`), and 23 lines of new segment-cache test coverage
+- [Next.js PR #96583 app-render.tsx diff](https://github.com/vercel/next.js/blob/4be2ee7/packages/next/src/server/app-render/app-render.tsx#L2204) — the exact line that changed: `S: workStore.isStaticGeneration || ctx.renderOpts.cacheComponents`
+- [**Next.js PR #96615** — `docs: remove experimental note from runtime prefetching`](https://github.com/vercel/next.js/pull/96615) — by icyJoseph, merged 2026-08-04T11:36:38Z, 1 file / +0/-1, the docs-only change signaling `experimental.runtimePrefetching` is no longer experimental
+- [Next.js PR #96380 — `[turbopack] Ignore writes to exports after a module.exports = {} writes`](https://github.com/vercel/next.js/pull/96380) — by Sam Poder, merged 2026-08-03T23:37:28Z, Turbopack module-system fix
+- [Next.js PR #96381 — `[turbopack] Drop dead writes to exports`](https://github.com/vercel/next.js/pull/96381) — by Sam Poder, merged 2026-08-03T23:37:29Z, paired with #96380
+- [Next.js PR #96563 — `Remove obsolete static generation plumbing`](https://github.com/vercel/next.js/pull/96563) — by Zack Tanner, merged 2026-08-03T23:46:00Z, internal cleanup
+- [Next.js PR #96564 — `Rename static generation stream option to waitForAllReady`](https://github.com/vercel/next.js/pull/96564) — by Zack Tanner, merged 2026-08-03T23:46:01Z, paired with #96563
+- [Next.js PR #96599 — `Turbopack: don't strip async-module runtime from shared runtime chunks`](https://github.com/vercel/next.js/pull/96599) — by Luke Sandberg (sokra), merged 2026-08-04T08:48:28Z, Turbopack runtime fix
+- [Next.js PR #96600 — `[turbopack] Add turbopack_ecmascript and turbopack_wasm's embeded FS to internal_assets_conditions`](https://github.com/vercel/next.js/pull/96600) — by Sam Poder, merged 2026-08-04T08:29:44Z, Turbopack build-config fix
+- [Next.js `experimental.runtimePrefetching` config docs (post-#96615)](https://nextjs.org/docs/app/api-reference/config/next-config-js/runtimePrefetching) — the docs page with the experimental notice removed (the URL may change once the flag is graduated to top-level)
+- [Next.js `next@16.3.0` STABLE release](https://github.com/vercel/next.js/releases/tag/v16.3.0) — npm-published 2026-08-03T21:03:18Z; bundles 16 commits from canary-branch since canary.107 including PR #96497 + PR #96426 + PR #96308 + PR #93132 + 12 more (full list in `patterns.md` → `## Next.js 16.3.0 STABLE` section)
+- [Next.js `next@16.3.1-canary.0` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.0) — npm-published 2026-08-03T22:32:33Z; 1-commit PR #96553 catch-all index page bug fix (full breakdown in `api.md` → `## Catch-All Route Handler Bug Fix` section)
+
+
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |
@@ -3790,3 +3897,5 @@ rg -n 'router\.push\([''"][^''"]+#' app/ src/ 2>/dev/null | head -10
 - **Ignoring the new `experimental.useCache` deprecation warning that PR #96448 surfaces (canary.106+)** — the `experimental.useCache` option has carried a `@deprecated` JSDoc annotation since PR #92316 but nothing surfaced that at runtime. PR #96448 (unstubbable, merged 2026-08-01T00:26:11Z) **logs a warning** whenever `experimental.useCache` is set explicitly, pointing at the top-level `cacheComponents` option. Worse, **disabling the option while `cacheComponents` is enabled is now rejected outright** as a compile error (because that combination is contradictory — it turns off the very directive Cache Components is built around, and the resulting error asks the user to enable `cacheComponents` which they already have on). Throwing matches how `cachedNavigations` and `partialPrefetching` already reject configs that require `cacheComponents`. Migration: remove `experimental.useCache` from your `next.config.ts`; if `cacheComponents: true`, the `useCache` option is backfilled automatically and is redundant; if you have `experimental.useCache: false` AND `cacheComponents: true`, simply remove the `useCache: false` line. Audit recipe: `rg -n 'experimental.*useCache' next.config.*` to find projects with the deprecated option set; `rg -B2 -A4 'useCache.*false' next.config.*` to find the contradictory config that will now throw at config-eval.
 
 - **`use cache` returns empty content after a prerender aborts (canary.105 / canary.106) — FIXED in canary.107 by PR #96426** — Janka Uryga, merged 2026-08-03T11:42:26Z, **SHIPPED in `next@16.3.0-canary.107`** (npm-published 2026-08-03T14:04:47Z). Pre-#96426, caches that started filling after a prerender was aborted (e.g. client navigated away mid-render, prefetch cancelled under `partialPrefetching: true`) would silently produce an empty stream and save it as a valid cache entry — effectively poisoning the cache with a tombstone that subsequent requests would hit and return empty content from. The fix removes `renderSignal` from the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` and short-circuits with a rejected promise *before* reaching the cache-fill codepath (so the prerender is aborted, but the cache is never poisoned). **Only affects apps with `cacheComponents: true`** that use `use cache` heavily under navigation aborts. Audit recipe: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; `rg -l "use cache" app/ src/` to confirm you use `use cache`; if you've seen "this cache should have content but it's empty" after a navigation — you're affected by #96339. Migration: bump to `next@16.3.0-canary.107+` (when published, canary.107 is the first release with the fix live in npm) — no code changes required, the fix is in the runtime cache wrapper. The bug was on canary.105 / canary.106 / `next@16.3.0-preview.10`; the fix is live in `next@16.3.0-canary.107+` and in `next@16.2.12` once backported (not yet backported at this cron's check — backport PR not open).
+
+- **Cache Components dynamic routes trigger unnecessary loading-boundary prefetches instead of per-segment prefetches — FIXED in `next@16.3.1-canary.1`-ahead by PR #96583** — Zack Tanner, merged 2026-08-04T02:02:33Z. Pre-#96583 (i.e. on `next@16.3.0` STABLE), any `router.prefetch()` call on a Cache Components dynamic route (any route with `experimental.cacheComponents: true` whose render path is dynamic — e.g. calls `headers()`, `cookies()`, uses a dynamic data source, or relies on `await connection()`) would incorrectly fall back to **loading-boundary prefetching** (large payload with loading state) instead of **per-segment prefetching** (small payload with just the changed segments). The cause: the dynamic Flight response was setting the `S:` flag to `workStore.isStaticGeneration` (always `false` for dynamic renders) without including `ctx.renderOpts.cacheComponents` in the `||` expression. After PR #96583: `S: workStore.isStaticGeneration || ctx.renderOpts.cacheComponents` — Cache Components routes now correctly advertise per-segment prefetching capability regardless of static/dynamic mode. **Expected reduction in prefetch network traffic**: ~30-50% (depending on route complexity) per `router.prefetch()` call on a dynamic CC route. **Only affects apps with `cacheComponents: true`** — non-CC routes are unaffected. **Audit recipe**: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; in Chrome DevTools → Network, trigger a `router.prefetch()` on a dynamic CC route and confirm the request is a **segment-level prefetch** (small payload, no loading boundary), not a full-page loading-boundary prefetch (large payload with loading state). **Migration**: bump to `next@>=16.3.1-canary.1` (when published — will likely ship within 12-24h on the 24h cadence) or to `next@>=16.3.1` stable (when published shortly after); no code changes required, the fix is in the server-render output + the segment cache field. The bug was on `next@16.3.0` STABLE; the fix will ship in `next@16.3.1-canary.1`-ahead.

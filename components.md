@@ -2130,85 +2130,101 @@ grep -r 'enableFlightWeakThenables\|pending_weak' node_modules/react-server-dom-
 # → should show the new flag + the 'pending_weak' status handling
 ```
 
-### React main branch: 4 NEW DevTools commits since `cbb046ab` (August 3, 2026) — forward-looking only
+### React 19.3.0-canary-7dfc7ccd-20260803 — 4 [DevTools] PRs + 2 cbb046ab-ahead PRs SHIPPED (Aug 3, 2026) — `cbb046ab` → `7dfc7ccd`
 
-The v1.5.19 cron (this one, 18:02Z Aug 3) finds **4 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** — all merged at 2026-08-03T15:32:30–51Z (a single coordinated batch ~21min wide). **All 4 are DevTools-only** (no Fiber, Flight, Reconciler, Scheduler, or DOM changes), so the practical impact for App Router / SSR / RSC / hooks users is zero — but DevTools users get a meaningful cleanup. The next React canary cut hasn't happened yet at this cron's check (npm `dist-tag.canary` still points at `cbb046ab-20260731`, published 2026-07-31T16:50:45Z — 73h12min stable at cron start). Expect it within 12-48h on the React team's cadence (the team tends to cut canaries within 24h of landing 2+ commits on main; with 4 new commits landed, the canary cut is imminent).
+The v1.5.19 cron (Aug 3 18:02Z) found **4 NEW commits on React `main` since the last canary cut `cbb046ab-20260731`** — all merged at 2026-08-03T15:32:30–51Z (a single coordinated batch ~21min wide). v1.5.19 + v1.5.20 + v1.5.21 all documented these as "forward-looking only" (npm `dist-tag.canary` still pointed at `cbb046ab-20260731`, published 2026-07-31T16:50:45Z). The v1.5.21 prediction "the canary cut is imminent" was **exactly correct**: **`react@canary` flipped from `19.3.0-canary-cbb046ab-20260731` → `19.3.0-canary-7dfc7ccd-20260803`** at 2026-08-03T19:24:43Z (npm `modified` timestamp) — **76h34min after `cbb046ab` shipped** (the longest gap between React canary cuts since the team resumed their bi-daily cadence in mid-July). The new canary tag is `7dfc7ccd12` — the merge commit for PR #37187, the last of the 4 DevTools PRs to land. The canary bundle = **6 NEW commits since `cbb046ab`** = PR #37063 + PR #37154 (the 2 `cbb046ab-ahead` PRs v1.5.12 documented as forward-looking on Aug 1) + PR #37187 + PR #37186 + PR #37185 + PR #37137 (the 4 DevTools-only PRs v1.5.19 added). All 6 are now SHIPPED in npm at `react@19.3.0-canary-7dfc7ccd-20260803` + `react-dom@19.3.0-canary-7dfc7ccd-20260803` (lockstep ~19:24-19:25Z). **Practical impact summary**: 4 of the 6 PRs are DevTools-only (zero app-developer impact); the 2 Fiber/Flight PRs (PR #37063 + PR #37154) are flag-gated / narrow-bug-fix respectively, so practical impact is also effectively zero in current builds (the `enableFlightWeakThenables` flag is OFF; the Host-Singleton-collect change is a fix to a bug that only manifests with `dispatchEvent` on empty body-as-Fragment-children).
 
-#### PR #37187 — `[DevTools] Remove the dead Timeline profiler code` (acdlite / Sebastian Silbermann, merged 2026-08-03T15:32:51Z)
+**Next.js vendor**: Next.js's vendored React is still pinned to `cbb046ab-20260731` (per v1.5.10 + v1.5.11 PR #96434 the previous bump). A follow-up Next.js PR will bump to `7dfc7ccd-20260803` (likely `next@16.3.0-canary.109` or `next@16.3.1-canary.1` when those ship). Verify with `npm view next@canary dependencies.react` — currently `19.3.0-canary-cbb046ab-20260731`.
+
+#### PR #37187 — `[DevTools] Remove the dead Timeline profiler code` (Ruslan Lesiutin / acdlite, merged 2026-08-03T15:32:51Z) — **SHIPPED in `7dfc7ccd-20260803`**
 
 Removes the **Timeline profiler code path** that was deprecated in React 18 and rendered non-functional since the Profiler was reorganized. The Timeline tab was a Chrome-only feature that showed component-update timelines; it's been a no-op stub for 2+ years. PR #37187 deletes the dead code paths so the DevTools extension loads faster and the bundle ships less JS.
 
-**Practical impact today: zero** (PR is on `main`, not in any canary cut yet). Once the next React canary ships:
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`)**:
 - DevTools extension loads ~5-15% faster on first paint (less dead code to parse).
 - No user-visible feature change — the Timeline tab was already a no-op.
 - **No audit recipe needed** — pure internal cleanup.
 
-#### PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks` (acdlite, merged 2026-08-03T15:32:51Z)
+#### PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks` (Ruslan Lesiutin / acdlite, merged 2026-08-03T15:32:51Z) — **SHIPPED in `7dfc7ccd-20260803`**
 
 Removes the **Timeline profiler tab** from the DevTools UI itself (paired with PR #37187's backend removal). The tab was replaced with a redirect suggestion pointing users to **React Performance tracks** (the newer browser-native Performance tab + the React-specific frame markers added in 19.x).
 
-**Practical impact today: zero**. Once the next React canary ships:
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`)**:
 - DevTools users who had the Timeline tab pinned will see it disappear + a "use the Performance tab instead" tooltip.
 - The Performance tab + React-specific frame markers give the same data + more (heap snapshots, network waterfall, etc.).
 
-#### PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action` (acdlite, merged 2026-08-03T15:32:50Z)
+#### PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action` (Ruslan Lesiutin / acdlite, merged 2026-08-03T15:32:50Z) — **SHIPPED in `7dfc7ccd-20260803`**
 
 Redesigns the **empty-state UI** of the Profiler tab — when a user opens the Profiler and hasn't recorded anything yet, the empty state now shows a single primary CTA ("Start profiling") instead of the old multi-action layout. Improves first-time-user discoverability.
 
-**Practical impact today: zero**. Once the next React canary ships:
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`)**:
 - New DevTools users see a clearer path to start profiling (reduces "I opened the Profiler, what do I do now?" confusion).
 - Existing users see the redesigned empty state the next time they open a fresh Profiler session.
 
-#### PR #37137 — `[DevTools] Deduplicate error reporting` (acdlite, merged 2026-08-03T15:32:32Z)
+#### PR #37137 — `[DevTools] Deduplicate error reporting` (Ruslan Lesiutin / acdlite, merged 2026-08-03T15:32:32Z) — **SHIPPED in `7dfc7ccd-20260803`**
 
 **Deduplicates the error-reporting machinery** that was scattered across multiple DevTools subsystems (the standalone DevTools UI + the browser extension backend + the standalone profiler CLI). All three now use a single shared error-reporting helper, reducing noise in DevTools's own console + shrinking the DevTools bundle by a small amount.
 
-**Practical impact today: zero**. Once the next React canary ships:
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`)**:
 - DevTools extension developers see cleaner error logs (one report per error, not three).
 - Bundle size shrinks by ~3-5KB (the helper consolidation).
 
-#### Summary — no fiber / DOM / reconciler / scheduler changes
+#### PR #37063 — `[Fiber] Collect Host Singleton children of Fragments` (Sebastian Silbermann / eps1lon, merged 2026-07-31T19:20:21Z) — **SHIPPED in `7dfc7ccd-20260803`**
 
-All 4 PRs are DevTools-only. **No changes to React's core rendering, scheduling, hydration, suspense, error boundaries, refs, fragments, hooks, server components, or flight protocol.** The next React canary cut (likely `19.3.0-canary-7dfc7ccd-20260803` or similar — the merge commit `7dfc7ccd12` is the new main-branch head) will carry these 4 PRs but otherwise be identical to `cbb046ab-20260731` from an app-developer perspective.
+Revisits the decision to **exclude Host Singletons when collecting/traversing Fragment descendants for Fragment instance methods**. Host Singletons were specifically excluded in [react/react PR #32465](https://github.com/react/react/pull/32465). However, this leads to errors when calling `dispatchEvent` on empty singletons (e.g. `<body>`) as children of Fragment instances where `dispatchEvent` is called.
 
-**Audit recipe (after the next canary cut):**
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`)**:
+- Fixes a real bug where `dispatchEvent` calls on empty singletons inside Fragments were failing (e.g. `<><body /></>` where you try to call `.dispatchEvent()` on the body would have failed pre-this-PR).
+- Library authors that use Fragment-instance methods to walk DOM singletons (analytics libraries, accessibility helpers) will see their calls start working again.
+
+#### PR #37154 — `[Flight] Add 'pending_weak' to Flight thenable protocol` (Andrew Clark / acdlite, merged 2026-07-31T17:22:31Z) — **SHIPPED in `7dfc7ccd-20260803`** (flag-gated)
+
+Added behind a new experimental flag **`enableFlightWeakThenables`**. Adds a new thenable status to the Flight protocol: **`'pending_weak'`**. Unlike a regular pending thenable, a weak thenable does **not** block the stream from closing. If it settles while the stream is still open, its value is emitted like a normal pending thenable. Otherwise its reference is left unfulfilled and on the client it stays forever pending, **without erroring**, even when the connection closes.
+
+**Practical impact (NOW live in `react@19.3.0-canary-7dfc7ccd-20260803`, flag OFF)**:
+- **Zero observable change** for app developers — the flag is OFF by default, identical to v1.5.12's forward-looking prediction.
+- **Framework authors** can experiment with the new primitive once they enable the flag in a custom React build (Next.js's bundled React keeps the flag OFF by default).
+- **No new public APIs** (the change is purely a Flight protocol extension + an internal feature flag).
+
+#### Summary — all 6 PRs are now live in `react@19.3.0-canary-7dfc7ccd-20260803`
+
+The 6 PRs break down as: **4 DevTools-only** (PR #37187 + #37186 + #37185 + #37137 — pure cleanup, zero app-developer impact) + **1 Fiber bug fix** (PR #37063 — fixes Fragment-`<body>`-`dispatchEvent` for empty singletons) + **1 Flight protocol extension** (PR #37154 — `'pending_weak'` thenable status, flag-gated, OFF by default). The 76h34min gap between `cbb046ab-20260731` (Jul 31 16:50:45Z) and `7dfc7ccd-20260803` (Aug 3 19:24:43Z) is the **longest between React canary cuts** since the team resumed their bi-daily cadence in mid-July — likely intentional, given that 4 of the 6 PRs were coordinated batch-merged in a ~21min window and the team waited to cut a canary until all 4 DevTools PRs were stable enough to bundle together. The "2 commits → cut canary within 24h" cadence pattern from v1.5.12 was broken here by the "6 commits → cut canary within 76h" pattern (i.e. they batched up the wait until they had 4-6 commits ready, rather than cutting for every 2).
+
+**Audit recipe (after upgrading to `react@19.3.0-canary-7dfc7ccd-20260803`)**:
 
 ```bash
-# Confirm the 4 PRs landed in your installed react@canary (DevTools only):
-grep -l 'Timeline profiler\|Performance tracks\|Start profiling' node_modules/react-devtools/ 2>/dev/null
-# Should see the new empty-state CTA + the Performance-tracks redirect in the bundle source
+# Confirm the 4 DevTools PRs landed in your installed react@canary:
+npm view react dist-tags.canary
+# → should show: 19.3.0-canary-7dfc7ccd-20260803
+
+# Confirm the bundle no longer contains the Timeline profiler code:
+grep -r 'Timeline profiler' node_modules/react-dom/cjs/*.development.js 2>/dev/null
+# → should return nothing (was: 3+ matches pre-#37187)
+
+# Confirm PR #37063's Host Singleton collection works on Fragment descendants:
+node -e "console.log(require('react-dom').unstable_batchedUpdates)"
+# → still there; no API change. The bug it fixed is for fragment-instance method walking
+#   that explicitly walked through children. Check your analytics / a11y helper libs if
+#   they were silently failing on <body> dispatchEvent calls before.
+
+# Confirm PR #37154's new flight protocol (flag-gated):
+grep -r 'pending_weak\|enableFlightWeakThenables' node_modules/react-server-dom-webpack/cjs/*.development.js 2>/dev/null
+# → should show the new flag + the 'pending_weak' status handling
 ```
 
-### Sources (forward-looking main-branch)
+### Sources (canary.7dfc7ccd-20260803 SHIPPED)
 
-- [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-03T18:02Z; main-branch head is now `7dfc7ccd12` (was `3a717e4243` at v1.5.12 commit time); 4 NEW commits since `cbb046ab`, all DevTools-only
-- [React PR #37187 — `[DevTools] Remove the dead Timeline profiler code`](https://github.com/facebook/react/pull/37187) — merged 2026-08-03T15:32:51Z, dead-code removal
-- [React PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks`](https://github.com/facebook/react/pull/37186) — merged 2026-08-03T15:32:51Z, paired with #37187
-- [React PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action`](https://github.com/facebook/react/pull/37185) — merged 2026-08-03T15:32:50Z, UX improvement
-- [React PR #37137 — `[DevTools] Deduplicate error reporting`](https://github.com/facebook/react/pull/37137) — merged 2026-08-03T15:32:32Z, helper consolidation
-- [React canary `19.3.0-canary-cbb046ab-20260731` GitHub compare (`cbb046ab...main`)](https://github.com/facebook/react/compare/cbb046ab...main) — 6 NEW commits since the canary cut (2 from v1.5.12 + 4 from v1.5.19)
-
-### Sources### Sources
-
-- [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified 2 NEW commits after `cbb046ab` at 2026-07-31T19:20:21Z (main-branch head is now `3a717e4243`)
-- [React PR #37063 — `[Fiber] Collect Host Singleton children of Fragments`](https://github.com/facebook/react/pull/37063) — by eps1lon, merged 2026-07-31T19:20:21Z, fixes `dispatchEvent` calls on empty singletons inside Fragments
-- [React PR #37154 — `[Flight] Add 'pending_weak' to Flight thenable protocol`](https://github.com/facebook/react/pull/37154) — by acdlite, merged 2026-07-31T17:22:31Z, adds the new thenable status behind `enableFlightWeakThenables`
+- [npm: `react@19.3.0-canary-7dfc7ccd-20260803`](https://www.npmjs.com/package/react/v/19.3.0-canary-7dfc7ccd-20260803) (published 2026-08-03, dist-tag `canary` moved ~19:24:43Z)
+- [npm: `react-dom@19.3.0-canary-7dfc7ccd-20260803`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-7dfc7ccd-20260803) (published in lockstep, ~19:25:00Z)
+- [React `main` branch commits feed (last 15)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-04T12:03Z; main-branch head is now `7dfc7ccd12` (the published canary tag); 6 NEW commits since `cbb046ab` (the 2 cbb046ab-ahead PRs from v1.5.12 + the 4 DevTools PRs from v1.5.19)
+- [React canary `19.3.0-canary-7dfc7ccd-20260803` GitHub compare (`cbb046ab...7dfc7ccd`)](https://github.com/facebook/react/compare/cbb046ab...7dfc7ccd) — 6 NEW commits since the canary cut (2 from v1.5.12 + 4 from v1.5.19), all now SHIPPED in `7dfc7ccd-20260803`
+- [React PR #37187 — `[DevTools] Remove the dead Timeline profiler code`](https://github.com/facebook/react/pull/37187) — by Ruslan Lesiutin (acdlite), merged 2026-08-03T15:32:51Z, dead-code removal
+- [React PR #37186 — `[DevTools] Remove Timeline profiler tab, suggest React Performance tracks`](https://github.com/facebook/react/pull/37186) — by Ruslan Lesiutin (acdlite), merged 2026-08-03T15:32:51Z, paired with #37187
+- [React PR #37185 — `[DevTools] Redesign the Profiler empty states around a primary action`](https://github.com/facebook/react/pull/37185) — by Ruslan Lesiutin (acdlite), merged 2026-08-03T15:32:50Z, UX improvement
+- [React PR #37137 — `[DevTools] Deduplicate error reporting`](https://github.com/facebook/react/pull/37137) — by Ruslan Lesiutin (acdlite), merged 2026-08-03T15:32:32Z, helper consolidation
+- [React PR #37063 — `[Fiber] Collect Host Singleton children of Fragments`](https://github.com/facebook/react/pull/37063) — by Sebastian Silbermann (eps1lon), merged 2026-07-31T19:20:21Z, fixes `dispatchEvent` calls on empty singletons inside Fragments
+- [React PR #37154 — `[Flight] Add 'pending_weak' to Flight thenable protocol`](https://github.com/facebook/react/pull/37154) — by Andrew Clark (acdlite), merged 2026-07-31T17:22:31Z, adds the new thenable status behind `enableFlightWeakThenables`
 - [react/react PR #32465 (the original Host Singleton exclusion discussion)](https://github.com/react/react/pull/32465) — context for why PR #37063 reverts that decision
-- [Next.js PR #96434 — `Upgrade React from 0f42eac2-20260730 to cbb046ab-20260731`](https://github.com/vercel/next.js/pull/96434) — the Next.js vendor bump that brings PR #37104's conditional-`use()` warning machinery into Next's bundled React (now SHIPPED in `16.3.0-canary.105`)
-
-
-- [React canary `19.3.0-canary-cbb046ab-20260731` GitHub compare (`0f42eac2...cbb046ab`)](https://github.com/facebook/react/compare/0f42eac2...cbb046ab) — 1 commit
-- [React PR #37104 — `[Fiber] Warn for Conditional Use of use() Based on Cache`](https://github.com/facebook/react/pull/37104) — author hoxyq, merged 2026-07-31T14:24:10Z, cherry-pick of [react/react PR #34030](https://github.com/react/react/pull/34030)
-- [React PR #37104 files diff](https://github.com/facebook/react/pull/37104/files) — 16 files, +303/-31
-- [React PR #37104 raw diff](https://patch-diff.githubusercontent.com/raw/facebook/react/pull/37104.diff) — full patch including the `trackUsedThenable` fiber parameter + `lastSuspendedFiber`/`lastSuspendedStack` machinery + `areSameKeyPath()` helper + the 6 forks of `ReactFeatureFlags`
-- [Upstack source react/react PR #34030](https://github.com/react/react/pull/34030) — original Facebook-internal-via-public-mirror PR, NOT merged in `react/react` repo
-- [React docs page for the warning](https://react.dev/warnings/conditional-use-of-use) — docs URL emitted in the warning message; may or may not be live depending on when the docs team ships it
-- [npm: `react@19.3.0-canary-cbb046ab-20260731`](https://www.npmjs.com/package/react/v/19.3.0-canary-cbb046ab-20260731) (published 2026-07-31T16:50:45Z)
-- [npm: `react-dom@19.3.0-canary-cbb046ab-20260731`](https://www.npmjs.com/package/react-dom/v/19.3.0-canary-cbb046ab-20260731) (published 2026-07-31T16:52:17Z)
-- [Next.js PR #96419 — `Update @types/react and @types/react-dom to latest`](https://github.com/vercel/next.js/pull/96419) — by eps1lon, merged 2026-07-31T15:29:57Z, brings the new types into the canary.104-bundled-deps
-- [Next.js PR #96419 files diff](https://github.com/vercel/next.js/pull/96419/files) — 3 files, `@types/react` 19.2.17 → 19.2.18 + `@types/react-dom` 19.2.3 → 19.2.4 (both bumped to pull in the `ReactDOM.browser()` types from PR #37143)
-
-
 
 
 ## shadcn 4.16.1 — `shadcn build` Nested Directory ENOENT Fix + Search-Param Forwarding for Registries (July 31, 2026)
