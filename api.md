@@ -1114,3 +1114,147 @@ curl -i -X POST http://localhost:3000/your-action-endpoint   -H "Content-Type: a
 - **Empty `generateStaticParams` under `cacheComponents: true`** — raises `empty-generate-static-params` build error. Either return ≥1 placeholder param, drop `cacheComponents`, or set `dynamic = 'force-dynamic'`. See the new "`generateStaticParams` + Route Handlers + Cache Components" section above.
 - **`generateStaticParams` returning the wrong shape (canary.95, PR #95968)** — raises error 1450 if it returns anything that isn't an array, or 1451 if any item in the array isn't a plain object. Common silent mistakes: returning a single object `return { slug: 'x' }` instead of an array, returning a plain array of strings `return ['x', 'y']`, returning `null` or `undefined`. The `{}` empty-object case still passes (the documented "all paths at runtime" pattern). See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.
 - **`output: 'export'` + missing/empty/incomplete `generateStaticParams` (canary.95, PR #95969)** — raises error 1452/1453 (no export on a dynamic route), 1454 (empty array for static export), or 1455 (a params object is missing a dynamic segment value, e.g. for `/blog/[year]/[slug]` returning `{ year: '2026' }` without `slug`). These fire only under `output: 'export'`; the non-export modes still allow `[]` as "all paths at runtime". Fix: export `generateStaticParams` from every dynamic route AND make sure the combined parent + child params cover every dynamic segment. See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.
+
+## ISR + Cache Components + Partial Prefetching Route Handler Pattern (PR #96526, icyJoseph — docs only, ships in 16.3.0)
+
+The canonical 16.3.0 architecture for content-heavy API routes: ISR-style time-based caching (`'use cache' + cacheLife`) + the new cacheComponents PPR model + Partial Prefetching for SPA-style instant navigation. PR #96526 (icyJoseph, merged 2026-08-03T15:15:01Z, docs only) is the new authoritative guide.
+
+**Route Handler equivalent of the page-level ISR pattern:**
+
+```ts
+// app/api/posts/[id]/route.ts
+import { cacheLife, cacheTag } from 'next/cache'
+import { NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+
+async function getPost(id: string) {
+  'use cache'
+  cacheLife('hours')           // ISR: revalidate every hour
+  cacheTag(`post:${id}`)       // tag for fine-grained invalidation via updateTag()/revalidateTag()
+
+  return db.post.findUnique({ where: { id } })
+}
+
+export async function GET(
+  _req: Request,
+  ctx: RouteContext<'/api/posts/[id]'>
+) {
+  const { id } = await ctx.params
+  const post = await getPost(id)
+
+  if (!post) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  return NextResponse.json(post)
+}
+
+// app/api/posts/revalidate/route.ts — manual revalidation via Server Action
+'use server'
+import { revalidateTag } from 'next/cache'
+
+export async function POST(req: Request) {
+  const { id } = await req.json()
+  revalidateTag(`post:${id}`, 'hours')  // SWR revalidation: serve stale, refetch in background
+  return Response.json({ ok: true })
+}
+```
+
+**`next.config.ts` for the full combo:**
+```ts
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  experimental: {
+    partialPrefetching: true,   // SPA-style prefetch for client-side navigations
+  },
+}
+```
+
+**When to use this pattern in API routes:**
+- ✅ Content APIs (blog posts, product catalogs, docs) — hour-scale freshness with instant shell prefetch
+- ✅ Public read-only endpoints where the data changes occasionally and stale-while-revalidate is acceptable
+- ❌ User-specific data APIs (use `dynamic = 'force-dynamic'` to skip caching)
+- ❌ Real-time data (use `cacheLife('seconds')` but know App Shell excludes the `seconds` profile per PR #95833)
+
+**Common mistakes:**
+- Wrapping a `POST` / `PUT` / `DELETE` handler in `'use cache'` — only `GET` benefits from caching; mutations should NOT be cached
+- Forgetting `cacheTag` — without tags you can only revalidate via path (`revalidatePath`), not via the more granular tag-based invalidation
+- Using `cacheLife('seconds')` on shell-eligible data — the 5-minute `stale` floor excludes `seconds` from App Shells (PR #95833)
+
+**Sources:** [PR #96526 — `docs: ISR with Cache Components and Partial Prefetching`](https://github.com/vercel/next.js/pull/96526) · icyJoseph · merged 2026-08-03T15:15:01Z · **shipped in `16.3.0` stable**.
+
+## Cache-Poisoning Prevention Pattern (PR #96426, jankaeryga — fixed in 16.3.0)
+
+A 16.3.0 fix that every API route handler using `'use cache'` benefits from automatically:
+
+```ts
+// app/api/feed/route.ts — pre-16.3.0 (buggy under cacheComponents)
+async function getFeed() {
+  'use cache'
+  cacheLife('minutes')
+
+  const res = await fetch('https://api.example.com/feed', {
+    signal: cacheSignal().signal  // ← the cache is associated with this signal
+  })
+  return res.json()
+}
+
+export async function GET() {
+  const data = await getFeed()  // pre-16.3.0: if aborted, saves empty entry
+  return Response.json(data)    // every subsequent user sees []
+}
+```
+
+In 16.3.0+, the same code now **errors instead of saving an empty entry** when a prerender is aborted mid-fill. The fix is invisible to correct code; it only changes the behavior of the broken path.
+
+**Defensive pattern if you're stuck on pre-16.3.0:**
+```ts
+async function getFeed() {
+  'use cache'
+  cacheLife('minutes')
+
+  try {
+    const res = await fetch('https://api.example.com/feed', {
+      signal: cacheSignal().signal
+    })
+    if (!res.ok) throw new Error(`Feed fetch failed: ${res.status}`)
+    return res.json()
+  } catch (err) {
+    // Don't save partial/empty data to the cache
+    if (err.name === 'AbortError') throw err  // signal-aborted — don't cache
+    throw err
+  }
+}
+```
+
+**Sources:** [PR #96426 — `[Cache] Make caches error if called after prerender aborts`](https://github.com/vercel/next.js/pull/96426) · jankaeryga · merged 2026-08-03T11:42:26Z · **shipped in `16.3.0` stable** · closes [#96339](https://github.com/vercel/next.js/issues/96339).
+
+## Catch-All Route Handler Bug Fix (PR #96553, acdlite — ships in 16.3.1-canary.0)
+
+A bug introduced in 16.3.0 that ships fixed in the first canary of 16.3.1: catch-all route handlers (`app/api/[...path]/route.ts`) were serving the index (`path = []`) for every URL matching the base path.
+
+```ts
+// app/api/[...path]/route.ts — pre-16.3.1-canary.0 (buggy under 16.3.0)
+export async function GET(
+  _req: Request,
+  ctx: RouteContext<'/api/[...path]'>
+) {
+  const { path } = await ctx.params
+  // GET /api/anything → ctx.params.path = ['anything']  ✅
+  // 16.3.0 BUG: GET /api/anything → ctx.params.path = [] ❌ (index handler)
+}
+```
+
+**Audit recipe (if you're on 16.3.0):**
+```bash
+# Find catch-all API routes that may have been affected
+rg -l "\[\.\.\." app/api/
+
+# Test in dev:
+curl http://localhost:3000/api/anything-here
+# Pre-16.3.1-canary.0: returns the index response (path=[])
+# 16.3.1-canary.0+:     returns the proper dynamic response (path=['anything-here'])
+```
+
+**Sources:** [PR #96553 — `Fix catch-all index page being served for every other slug`](https://github.com/vercel/next.js/pull/96553) · acdlite · merged 2026-08-03T21:49:27Z · **shipped in `16.3.1-canary.0`** (npm-published 2026-08-03T22:32:33Z).
+

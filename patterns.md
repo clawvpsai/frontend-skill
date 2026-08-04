@@ -2746,3 +2746,226 @@ The View Transitions API is supported in Chrome 111+, Edge 111+, and Safari 18.2
 - **`<ViewTransition>` missing `name` prop** — without a `name` prop, React doesn't know which elements should transition together; always use `name` for cross-page or state-change animations
 - **View Transitions in SSR without hydration guard** — `document.startViewTransition()` throws in SSR/Server Components; only call it inside event handlers or in Client Components, never during server render
 - **`useEffectEvent` as a dependency shortcut** — `useEffectEvent` is for extracting non-reactive logic from Effects; do NOT use it to silence the dependency linter when you should be adding proper dependencies; this hides bugs; instead, only extract logic that genuinely doesn't need to trigger re-runs
+
+## Next.js 16.3.0 STABLE — TypeScript 7 + Cache Components + Partial Prefetching + Cache Poisoning Fix (August 3, 2026)
+
+The 7-day-old `patterns.md` was missing the headline gap: **`next@latest` is now `16.3.0` STABLE**, released at npm-published 2026-08-03T21:03:18Z by Tim Neutkens. `npm view next dist-tags.latest` returned `16.2.12` until Aug 3 and now returns `16.3.0`. The version bundles the 16 commits that landed between `canary.107` and `v16.3.0`, including the three material PRs that drove the canary.108 cycle.
+
+**Practical impact — the four flagship 16.3 patterns every agent must know:**
+
+### Pattern: TypeScript CLI is now the default — no flag, no `next.config.ts` line (PR #96497, timneutkens)
+
+The single biggest behavior change in 16.3.0 is invisible: every `next build` now runs the project-local `tsc` CLI by default. No `experimental.useTypeScriptCli: true` line is required. **TypeScript 7 (Go-native compiler) works out of the box** — the old `## Enable TypeScript 7` opt-in recipe in the docs is obsolete.
+
+```ts
+// next.config.ts — pre-16.3.0 (TypeScript 7 opt-in):
+const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: true,   // ✅ required pre-16.3.0
+  },
+}
+
+// next.config.ts — 16.3.0+ (TS 7 default-on):
+const nextConfig: NextConfig = {
+  // No experimental.useTypeScriptCli needed. TS 7 / TS 6 / TS 5.x all work.
+  // TS 7 users: just upgrade to ^7.0.0 — Next.js uses your installed tsc binary.
+}
+```
+
+If you must keep the legacy JS Compiler API path (custom transformers, monorepo with a shared TypeScript instance that Next.js shouldn't reset), opt out explicitly:
+
+```ts
+const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: false,  // ✅ use the legacy JS API path
+  },
+}
+```
+
+**Common mistakes:**
+- Leaving the old `useTypeScriptCli: true` line in `next.config.ts` after upgrading — delete it (it's redundant).
+- Pinning `typescript@^6.x` for Next.js 16.3+ when TS 7 is supported natively — bump to `^7.0.0`.
+- Forgetting to delete the `// @ts-ignore` workaround that was needed pre-TS 7 — clean up.
+
+**Sources:** [PR #96497 — `Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) · timneutkens · merged 2026-08-03T16:10:51Z · **shipped in `16.3.0` stable** (npm-published 2026-08-03T21:03:18Z).
+
+### Pattern: ISR + Cache Components + Partial Prefetching (PR #96526, icyJoseph — docs only)
+
+This is the **canonical 16.3.0 architecture** for content-heavy sites: ISR-style time-based caching combined with the new cacheComponents PPR model + Partial Prefetching for instant navigation. PR #96526 (docs only, merged 2026-08-03T15:15:01Z) is the new authoritative guide.
+
+```tsx
+// app/blog/[slug]/page.tsx
+import { cacheLife, cacheTag } from 'next/cache'
+import { Suspense } from 'react'
+import { notFound } from 'next/navigation'
+
+// 'use cache' + cacheLife gives you ISR-like behavior under cacheComponents
+async function getPost(slug: string) {
+  'use cache'
+  cacheLife('hours')          // ISR: revalidate every hour, stale-while-revalidate
+  cacheTag(`post:${slug}`)
+
+  const post = await db.post.findUnique({ where: { slug } })
+  if (!post) notFound()
+  return post
+}
+
+export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const post = await getPost(slug)
+
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <p>{post.body}</p>
+      {/* Suspense boundary lets the shell render instantly while data resolves */}
+      <Suspense fallback={<CommentsSkeleton />}>
+        <Comments postId={post.id} />
+      </Suspense>
+    </article>
+  )
+}
+```
+
+**`next.config.ts` for the full combo:**
+```ts
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  experimental: {
+    // The new SPA-style prefetch model — only the layout/shell is prefetched
+    partialPrefetching: true,
+  },
+}
+```
+
+**The Partial Prefetching model** — hovering a `<Link>` now prefetches the route shell + layout, but the page data is deferred until actual navigation. Combined with `'use cache' + cacheLife('hours')`, the shell is cacheable for hours, so users on slow connections still see something useful within ~50ms.
+
+**When to use:**
+- ✅ Marketing pages, blog posts, docs, product pages — anything with hour-scale freshness
+- ✅ Apps where shell speed matters more than instant data (the shell includes nav + chrome + Suspense fallbacks)
+- ❌ Real-time dashboards, chat apps, live scores — use `cacheLife('seconds')` + App Shell exclude (the 5-minute `stale` floor still applies, so `seconds` is excluded from App Shells per PR #95833)
+
+**Sources:** [PR #96526 — `docs: ISR with Cache Components and Partial Prefetching`](https://github.com/vercel/next.js/pull/96526) · icyJoseph · merged 2026-08-03T15:15:01Z · **shipped in `16.3.0` stable**.
+
+### Pattern: Cache-Poisoning After Prerender Abort — Fixed (PR #96426, jankaeryga)
+
+A subtle correctness/security fix that ships in 16.3.0. Caches that started filling **after** a prerender was aborted (fast-click navigation, prefetch cancellation under `partialPrefetching: true`, slow connections) would silently produce an empty entry because the aborted `renderSignal` propagated into `AbortSignal.any(...)` inside the cache-fill code path.
+
+**The bug (pre-16.3.0):**
+```ts
+// app/data/feed.ts
+'use cache'
+cacheLife('minutes')
+
+export async function getFeed() {
+  const res = await fetch('https://api.example.com/feed')
+  return res.json()
+}
+
+// If a user clicks <Link> during this fetch, the prerender aborts.
+// Pre-16.3.0: getFeed() returns `undefined`, the empty entry is written to the cache,
+// and every subsequent user sees an empty feed for `cacheLife('minutes')` duration.
+```
+
+**The fix (16.3.0):**
+PR #96426 removes `renderSignal` from `AbortSignal.any(...)` and short-circuits with a rejected promise *before* reaching the cache-fill codepath. The cache now errors instead of silently saving an empty entry.
+
+**Practical impact:**
+- Apps with `cacheComponents: true` + heavy `'use cache'` use + frequent navigation aborts (most interactive App Router apps) → was silently producing wrong cache entries
+- Apps NOT on `cacheComponents` → no impact (the bug only manifested in the CC code path)
+- Both dev mode AND production were affected
+
+**Audit recipe:**
+```bash
+# Find projects that need this fix
+rg -n "cacheComponents\s*:\s*true" next.config.* apps/*/next.config.*
+
+# Find use cache usages
+rg -l "use cache" app/ src/
+
+# Symptom check: empty cache entries after fast clicks
+# Look for "empty stream" / "undefined" in your cache hit logs after fast nav
+```
+
+**No migration required** — just upgrade to 16.3.0. The fix is invisible to correct code; it only changes the behavior of the broken path.
+
+**Sources:** [PR #96426 — `[Cache] Make caches error if called after prerender aborts`](https://github.com/vercel/next.js/pull/96426) · jankaeryga · merged 2026-08-03T11:42:26Z · **shipped in `16.3.0` stable** · closes [#96339](https://github.com/vercel/next.js/issues/96339).
+
+### Pattern: `instant()` No Longer Implicitly Opts Into Partial Prefetching (PR #96539, acdlite)
+
+A subtle breaking change that ships in 16.3.0: **`export const instant = true` no longer silently enables Partial Prefetching** under the hood. Pre-16.3.0, the `instant` segment config was conflated with the Partial Prefetching opt-in; 16.3.0 separates them so the two concerns are explicit and independent.
+
+```tsx
+// app/dashboard/page.tsx — pre-16.3.0
+export const instant = true  // implicitly opts into partialPrefetching
+// → shell + page data both instant
+
+// app/dashboard/page.tsx — 16.3.0+
+export const instant = true  // only controls the shell rendering speed
+// → you must explicitly opt into Partial Prefetching:
+
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    partialPrefetching: true,  // required for SPA-style prefetch
+  },
+}
+```
+
+**Practical impact:**
+- If you relied on `instant` to get Partial Prefetching behavior, **add `experimental.partialPrefetching: true` to `next.config.ts`** after upgrading
+- If you used `instant` purely for shell speed (no partial prefetching), nothing changes
+- The `prefetch` segment config (`'allow-runtime'`, `'static'`, etc.) is the canonical per-segment knob — `instant` is now shell-only
+
+**Audit recipe:**
+```bash
+# Find every route using `instant`
+rg -l "export const instant" app/
+
+# For each: confirm either `partialPrefetching: true` in next.config.ts,
+# OR the route doesn't need prefetch behavior (e.g., a settings page)
+```
+
+**Sources:** [PR #96539 — `Remove implicit Partial Prefetching opt-in from \`instant\``](https://github.com/vercel/next.js/pull/96539) · acdlite · merged 2026-08-03T19:56:48Z · **shipped in `16.3.0` stable**.
+
+### Pattern: Catch-All Index Page Served for Every Other Slug (PR #96553, acdlite) — FIXED in v16.3.1-canary.0
+
+A bug introduced in 16.3.0 that ships fixed in the first canary of 16.3.1: requesting `/blog/anything` would serve the catch-all index page (`/blog/[...slug]/page.tsx` with `slug = []`) instead of the proper page. PR #96553 (merged 2026-08-03T21:49:27Z) fixes it; ships in **`next@16.3.1-canary.0`** at npm-published 2026-08-03T22:32:33Z.
+
+**The bug (16.3.0 only):**
+```tsx
+// app/blog/[...slug]/page.tsx
+export default function BlogIndex({ params }: { params: Promise<{ slug: string[] }> }) {
+  // When user visits /blog/anything-here, this runs with slug=['anything-here']
+  // Pre-fix: 16.3.0 was serving THIS component (slug=[]) instead of the [slug] page
+}
+```
+
+**Practical impact:**
+- Apps with catch-all routes (docs, blogs, product catalogs) — every URL rendered the index instead of the dynamic page
+- Fix is in `next@16.3.1-canary.0` (live now); will ship in 16.3.1 stable
+
+**Audit recipe:**
+```bash
+# Find catch-all routes that may have been affected
+rg -l "\[\.\.\." app/
+
+# Test: visit /<catch-all-base>/anything-here in dev — should serve the dynamic page, not the index
+```
+
+**Workaround if you're stuck on 16.3.0:** use a non-catch-all dynamic segment (`[slug]` instead of `[...slug]`) + a static `/blog` index page.
+
+**Sources:** [PR #96553 — `Fix catch-all index page being served for every other slug`](https://github.com/vercel/next.js/pull/96553) · acdlite · merged 2026-08-03T21:49:27Z · **shipped in `16.3.1-canary.0`** (npm-published 2026-08-03T22:32:33Z).
+
+---
+
+**Tracked versions updated:**
+- `next@latest` 16.2.12 → **16.3.0** (npm-published 2026-08-03T21:03:18Z, GitHub release tag `v16.3.0` published at the same time)
+- `next@canary` 16.3.0-canary.107 → **16.3.1-canary.0** (npm-published 2026-08-03T22:32:33Z)
+
+**Common mistakes:**
+- **"Next.js 16.3 is still in canary"** — no, it's stable. `next@latest` = 16.3.0 since 2026-08-03T21:03:18Z.
+- **Leaving `experimental: { useTypeScriptCli: true }` in `next.config.ts` after upgrading to 16.3.0+** — it's redundant; delete the line. (If you need the JS Compiler API opt-out, set `: false` explicitly.)
+- **Using `export const instant = true` and expecting Partial Prefetching** — separated in 16.3.0; opt into `partialPrefetching: true` explicitly.
+- **Trusting catch-all routes on 16.3.0** — bug PR #96553 ships in 16.3.1-canary.0; pin to that or wait for 16.3.1 stable.
+

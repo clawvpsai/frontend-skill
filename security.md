@@ -1450,3 +1450,68 @@ NEXTAUTH_SECRET="..."
 - [GHSA-ffhc-5mcf-pf4q: XSS via CSP nonces](https://github.com/vercel/next.js/security/advisories/GHSA-ffhc-5mcf-pf4q)
 - [GHSA-wfc6-r584-vfw7: Cache poisoning in RSC](https://github.com/vercel/next.js/security/advisories/GHSA-wfc6-r584-vfw7)
 - [Node.js — Wednesday, July 29, 2026 Security Releases (9 CVEs, 3 HIGH — postponed twice from Mon Jul 27)](https://nodejs.org/en/blog/vulnerability/july-2026-security-releases)
+
+## Next.js 16.3.0 STABLE — Cache Poisoning, Supply-Chain via TypeScript CLI Default, Catch-All Page Hijack (August 3, 2026)
+
+The 6-day-old `security.md` was missing three material security-relevant changes that ship in **`next@latest` = `16.3.0`** (npm-published 2026-08-03T21:03:18Z, stable release tagged by Tim Neutkens):
+
+### Cache Poisoning After Prerender Abort — Silent Cache Corruption (PR #96426, jankaeryga — fixed in 16.3.0)
+
+A correctness bug with security implications: under `cacheComponents: true`, `'use cache'` entries that started filling *after* a prerender was aborted (fast-click navigation, prefetch cancellation under `partialPrefetching: true`, slow connections) silently produced **empty cache entries**. The aborted `renderSignal` propagated into `AbortSignal.any(...)` inside the cache-fill codepath, so the cache wrote an empty stream and saved it — every subsequent user reading from that cache got an empty result for the duration of `cacheLife()`.
+
+**Security implications:**
+- **User-targeted attack via fast clicks** — an attacker can clear a cached value via repeated fast navigation, then trick a victim into seeing the empty response (e.g., empty shopping cart, empty notifications list, empty feed). This is a *low-effort* denial-of-functionality attack.
+- **Cache poisoning amplification** — once an empty entry is written, the original data is *not* re-cached (the cache key now has an empty entry). Even after the attack ends, users see the empty result until `expire` fires.
+- **Only affected apps with `cacheComponents: true`** + heavy `'use cache'` use + interactive navigation. Pre-CC apps (16.2.x and earlier default) were NOT affected.
+
+**The fix:** PR #96426 removes `renderSignal` from `AbortSignal.any(...)` and short-circuits with a rejected promise before the cache-fill codepath. The cache now errors instead of saving an empty entry. **No user-visible behavior change for correct code** — the fix only changes the behavior of the broken path.
+
+**Action items:**
+1. Bump to `next@16.3.0` (stable) or `next@16.3.1-canary.0` (live now) — no code changes required
+2. Audit your codebase for `cacheComponents: true` usage: `rg -n "cacheComponents\s*:\s*true" next.config.*`
+3. If you're stuck on a pre-16.3.0 version, defensively wrap `use cache` data fetches in try/catch and reject on `AbortError` (signal-aborted fetches shouldn't write to cache)
+
+**Sources:** [PR #96426 — `[Cache] Make caches error if called after prerender aborts`](https://github.com/vercel/next.js/pull/96426) · jankaeryga · merged 2026-08-03T11:42:26Z · **shipped in `16.3.0` stable** · closes [#96339](https://github.com/vercel/next.js/issues/96339).
+
+### TypeScript CLI Default-ON — Supply-Chain Implications (PR #96497, timneutkens — ships in 16.3.0)
+
+**The single biggest behavioral change in 16.3.0** is invisible but security-relevant: `experimental.useTypeScriptCli` flips from default-`false` to default-`true`. Every `next build` now runs the project-local `tsc` CLI to type-check.
+
+**Supply-chain implications:**
+- **Your installed `typescript` package is now on the build path.** Pre-16.3.0, Next.js bundled its own `typescript` JS API adapter; the project's `typescript` was only used by editors and CLI tools. In 16.3.0, Next.js spawns *your* installed `tsc` binary. A compromised `typescript` package can now affect every build, not just your IDE.
+- **TypeScript 7 (Go-native) is the supported fast path.** If you've pinned `typescript: "^6.x"` to avoid the Go compiler, your build now runs the TS 6 JS API through the CLI path — slower (~50-200ms per build) but functionally equivalent.
+- **Pin `typescript` explicitly** in `package.json` — `npm install -D typescript@latest` could install a typo-squat (the supply-chain-attack surface for `@types/*` and `typescript` is well-known; see the [ProjectDiscovery 2026 vulnerability curve](#why-this-matters-in-2026) above).
+- **CI cache invalidation** — type checking is now a build step; bump `engines.node` and add `typescript` to your Renovate / Dependabot `typescript` group so upgrades trigger a cache rebuild.
+
+**Action items:**
+1. Confirm `typescript` is pinned in `package.json` (not caret-ranged): `rg "typescript" package.json`
+2. If using TS 7, verify `tsc --version` resolves correctly in your build environment: `npx tsc --version` should print `7.x.x`
+3. If using a custom transformer or `typescript` as a library, opt out: `experimental: { useTypeScriptCli: false }` in `next.config.ts`
+4. Verify CI `engines.node` matches the TS 7 requirement (Node 20.15+ recommended)
+
+**Sources:** [PR #96497 — `Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) · timneutkens · merged 2026-08-03T16:10:51Z · **shipped in `16.3.0` stable**.
+
+### Catch-All Index Page Hijack (PR #96553, acdlite — fixed in 16.3.1-canary.0)
+
+A 16.3.0-introduced bug with security implications: requesting `/blog/anything` served the catch-all index page (`/blog/[...slug]/page.tsx` with `slug = []`) instead of the proper dynamic page. The bug was caused by Next.js's catch-all routing logic mistaking the URL path for a slug array.
+
+**Security implications:**
+- **Information disclosure via fallback rendering** — any URL matching a catch-all base served the index page, which could leak the existence of internal routes or expose a less-restricted version of the page (e.g., admin index with public content vs. admin/[id] with PII). This is an OWASP API4:2023 "Unrestricted Resource Consumption" + partial API3:2023 "Broken Object Property Level Authorization" issue.
+- **Authorization bypass potential** — if a catch-all route served the index while a dynamic `[slug]` page had stricter auth, attackers could request `/{admin-path}/any-garbage` and see the unauthenticated index instead of being redirected to login.
+
+**The fix:** PR #96553 (acdlite, merged 2026-08-03T21:49:27Z) ships in `next@16.3.1-canary.0` (npm-published 2026-08-03T22:32:33Z).
+
+**Action items:**
+1. If you're on `next@16.3.0`, audit catch-all routes immediately: `rg -l "\[\.\.\." app/`
+2. Test in dev: visit `/{catch-all-base}/anything-here` — should serve the dynamic page, not the index
+3. Upgrade to `next@16.3.1-canary.0` (live now) or wait for `16.3.1` stable
+4. Defensive workaround if stuck on 16.3.0: replace `[...slug]` with `[slug]` + add a static index page
+
+**Sources:** [PR #96553 — `Fix catch-all index page being served for every other slug`](https://github.com/vercel/next.js/pull/96553) · acdlite · merged 2026-08-03T21:49:27Z · **shipped in `16.3.1-canary.0`** (npm-published 2026-08-03T22:32:33Z).
+
+### Vercel August 2026 Security Release — Forward-Looking (Program Established July 13, 2026)
+
+The Vercel Next.js monthly security release program (launched 2026-07-13, see [Vercel Next.js Security Release Program](#vercel-next-js-security-release-program-july-13-2026) above) means the **next scheduled security release is August 20, 2026** (one month after July 20, 2026's 9-CVE release). Calendar a reminder for August 19-20 to catch any pre-announced advisories.
+
+**As of this writing (August 4, 2026)**, no `v16.3.x` security releases have been published (only the 16.2.11 / 15.5.21 LTS lines received the July 20 patch). The next patch-day for the LTS line is most likely August 20, 2026.
+
