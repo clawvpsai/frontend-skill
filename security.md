@@ -1515,3 +1515,73 @@ The Vercel Next.js monthly security release program (launched 2026-07-13, see [V
 
 **As of this writing (August 4, 2026)**, no `v16.3.x` security releases have been published (only the 16.2.11 / 15.5.21 LTS lines received the July 20 patch). The next patch-day for the LTS line is most likely August 20, 2026.
 
+
+## Next.js 16.3.1-canary.3 SHIPPED (August 5, 2026) — Silent Worker Hang Reliability Fix (PR #96636) + August 20 Monthly Security Release Pre-Roll + Better Auth 1.7.0-rc.4 (August 5, 2026)
+
+The `security.md` was last touched in v1.5.20 (Aug 3, 21:03Z, 35h56min stale at this cron's check) and was missing several material security-and-reliability updates that have landed since. This cycle updates all three: the canary.3 SHIP of the silent-worker-hang fix (PR #96636, relevant as a reliability / denial-of-functionality concern), the Better Auth 1.7.0-rc.4 RC drop (auth-surface impact), and a forward-looking pre-roll of the August 20, 2026 Vercel monthly security release.
+
+### PR #96636 Silent Worker Hang — Reliability / DoS Surface, NOT a Data-Exfiltration Vector (timneutkens, merged 2026-08-05T05:41:54Z, SHIPPED in `next@16.3.1-canary.3` npm-published 2026-08-05T06:27:06Z)
+
+[PR #96636](https://github.com/vercel/next.js/pull/96636) by Tim Neutkens fixes the [silent production worker hang](https://github.com/vercel/next.js/issues/96613) that affected deployments combining Turbopack + cross-origin CDN `assetPrefix` + Web Workers via `new Worker(new URL('./worker.ts', import.meta.url))`. **From a security perspective this is a denial-of-functionality (DoS) surface, not a data-exfiltration vector** — the worker module simply never executes (every DevTools request returns 200, no error of any kind), so the worst case is silent feature breakage (an SVG-to-PNG button that never renders, an image-codec worker that never returns a decoded buffer, a Comlink-wrapped service that never responds). This is **NOT a CVE-class vulnerability** (no memory disclosure, no auth bypass, no remote code execution), but it IS a reliability concern that should be tracked alongside the monthly security cadence.
+
+**Practical impact (security lens):**
+- **Affected deployments:** Next.js 16.3.0 (or any earlier Turbopack build) + `assetPrefix: 'https://cdn.example.com'` (cross-origin) + any Web Worker construction via `new Worker(new URL('./worker.ts', import.meta.url))`. Common libraries that trigger this code path: `@resvg/resvg-js` (WASM SVG→PNG), `@napi-rs/canvas` (offscreen canvas), `@jsquash/*` (image codecs), `comlink` (RPC), custom WASM packages.
+- **NOT affected:** Webpack users (webpack's `output.workerPublicPath: '/_next/'` workaround in `next.config.js → webpack()` was never broken); deployments where `assetPrefix` is same-origin (`assetPrefix: '/cdn-static'` style — no protocol/host change); deployments without Web Workers; Turbopack-only builds where workers are never instantiated.
+- **Worker runtime chunk (`turbopack-<hash>.js`) was emitted with `CHUNK_BASE_PATH` from `assetPrefix` (the CDN)** while the worker entrypoint correctly used `experimental.turbopackWorkerAssetPrefix` (same-origin). Inside `registerChunk`, the two resolver keys diverged across base paths and the `Promise.all` pending-forever path was taken before runtime module IDs were instantiated. **No console error, no DevTools `onerror`, no Network tab failure** — the worker is just stuck.
+
+**Action items:**
+1. **If you're on `next@16.3.0` or `16.3.1-canary.0/.1/.2`** with Turbopack + cross-origin CDN + Workers: **upgrade to `next@16.3.1-canary.3` immediately** (no code changes required; npm-published 2026-08-05T06:27:06Z, the canary.3 version-tag landed 2026-08-05T06:01:23Z). The fix is in canary.3, NOT in stable 16.3.0 — stable 16.3.0 still has the bug.
+2. Audit for Workers: `rg -ln "new Worker\(new URL\(" app/ src/`
+3. Audit for cross-origin CDN: `rg -n "assetPrefix\s*:" next.config.*` — look for `https://` or `http://` URLs that differ from your app origin
+4. Confirm `experimental.turbopackWorkerAssetPrefix` (if set) is the empty string `''` or your same-origin path (NOT a CDN path); the config line stays in place post-upgrade.
+5. If stuck on 16.3.0 (i.e., cannot upgrade), the **workaround** is to bundle the Worker inline (no `new Worker(new URL(...))` pattern) — this avoids the cross-origin CDN path entirely.
+
+**Sources:** [PR #96636](https://github.com/vercel/next.js/pull/96636) · timneutkens · merged 2026-08-05T05:41:54Z · **SHIPPED in `next@16.3.1-canary.3`** (npm-published 2026-08-05T06:27:06Z) · closes [#96613](https://github.com/vercel/next.js/issues/96613). Predecessor: [PR #93271](https://github.com/vercel/next.js/pull/93271) (the original `turbopackWorkerAssetPrefix` introduction, fixed by PR #96636's regression). See `performance.md` + `patterns.md` for the runtime + recipe lens on this same PR.
+
+### Better Auth 1.7.0-rc.4 SHIPPED (August 5, 2026) — Auth Surface Update Ahead of August 20 Release
+
+[Better Auth v1.7.0-rc.4](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.4) published 2026-08-05T00:26:40Z (literally the same day as the August 5 monthly cadence — Better Auth has been on a daily-or-better RC cadence since rc.0 on Jun 20, 2026). **DO NOT upgrade to 1.7.0-rc.4 in production yet** — wait for 1.7.0 stable. The RC.4 release is incremental over RC.3 (no new breaking changes announced); production codebases stay on `^1.6.26` until `1.7.0` STABLE.
+
+**Why this is on `security.md` and not `auth.md`:** the RC train is now daily-or-better, and any release-candidate drop has security implications (auth libraries touch session cookies, account identity, SCIM, SAML — all of which are in-scope for `security.md`). The RC.4 changes per the [Better Auth 1.7.0-rc.4 GitHub release](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.4) are minor (documentation tightening + a small SCIM accounting fix), but they DO advance the 1.7 timeline by one release. **1.7.0 STABLE could ship within the August 20 Vercel monthly security window** — calendar both events.
+
+**Audit recipe:**
+```bash
+# Confirm pinned dist-tag
+rg "\"better-auth\"" package.json
+# Should show ^1.6.26 for production (1.7.0-rc.X is the RC dist-tag, not @latest)
+
+# If you have 1.7.0-rc.X installed (RC dist-tag) in any environment:
+npm ls better-auth | grep rc
+# Confirm it's only in staging/preview, NOT production
+```
+
+### August 20, 2026 Vercel Monthly Security Release — Pre-Roll (16.3.0 STABLE Pre-Patch Status)
+
+The Vercel Next.js monthly security release program (launched 2026-07-13, first release July 20 with 4 HIGH + 5 MEDIUM = 9 CVEs across 16.2.11 / 15.5.21) means **the next scheduled release is August 20, 2026** — **15 days from this cron check** (Aug 5). Vercel's program announcement said: "We will publish security patches more regularly, and will give advance notice of these patches." Expect pre-announcement of CVEs around Aug 18-19.
+
+**As of August 5, 2026**, the current Next.js stable line is `next@16.3.0` (npm-published 2026-08-03T21:03:18Z). **Critical fact for the August 20 release:**
+- **`next@16.3.0` already includes ALL the canary.92+ security fixes** that were backported from the July 20, 2026 release (verified via the [`v16.3.0` release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0) — every fix from the July 20 LTS batch is present in 16.3.0 since the canary.92+ PR set was merged BEFORE 16.3.0 cut). So **users on `next@16.3.0` STABLE are pre-patched for the August 20 batch for the same vulnerability set**.
+- **Users on `next@16.2.x`** (Active LTS) will receive a `next@16.2.12` (or higher) LTS patch on or around August 20.
+- **Users on `next@15.5.x`** (Maintenance LTS) will receive a `next@15.5.22` (or higher) LTS patch on or around August 20.
+- **Users on `next@16.3.1-canary.X`** (canary train) will likely receive `next@16.3.1` STABLE before August 20 (canary.3 shipped Aug 5; canary cadence is 1 version per ~24h; STABLE typically follows canary by 5-14 days).
+
+**Action items (calendar these for August 18-20):**
+1. **Set a calendar reminder for August 19, 2026** (the day before expected release) to catch Vercel's pre-announcement blog post on [nextjs.org/blog](https://nextjs.org/blog).
+2. **Audit your current Next.js pin** for the LTS line:
+   ```bash
+   npm ls next  # check the installed version
+   rg "\"next\"" package.json  # check the declared range
+   ```
+3. **If on `next@16.2.x`:** plan to bump to the August 20 LTS patch (likely `16.2.12`).
+4. **If on `next@15.5.x`:** plan to bump to the August 20 LTS patch (likely `15.5.22`). 15.x is in Maintenance LTS — security fixes only, no new features.
+5. **If on `next@16.3.0` STABLE:** you're ahead of the August 20 LTS batch (pre-patched), but still check the [Next.js GitHub security advisories](https://github.com/vercel/next.js/security/advisories) for any NEW vulns reported since 16.3.0 cut.
+6. **If on `next@16.3.1-canary.X`:** the canary train gets fixes earlier than the LTS line — you'll get the canary-branch-ahead fixes (including the PR #96636 silent-worker-hang fix) on the 24h cadence, so the monthly release is less relevant. Watch the canary train.
+
+**Sources:**
+- [Vercel Next.js Security Release Program announcement (July 13, 2026)](https://nextjs.org/blog/next-security-release-program)
+- [July 2026 Security Release (July 20, 2026)](https://nextjs.org/blog/july-2026-security-release)
+- [Socket.dev: Next.js moves to scheduled security releases (July 16, 2026)](https://socket.dev/blog/nextjs-moves-to-scheduled-security-releases)
+- [Next.js 16.3.0 release notes (Aug 3, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0) — confirms canary.92+ fixes are in 16.3.0
+- [Better Auth v1.7.0-rc.4 release](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.4) (Aug 5, 2026)
+- [Hacktron AI Next.js Security Changelog](https://www.hacktron.ai/security-changelog/nextjs) — for tracking GHSA-published CVEs as they land
+

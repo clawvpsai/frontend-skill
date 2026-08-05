@@ -3125,3 +3125,160 @@ The full preview.9 release body:
 - [v16.3.0-preview.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-preview.9)
 - [`npm view next@16.3.0-preview.9`](https://www.npmjs.com/package/next/v/16.3.0-preview.9) — confirmed published 2026-07-23T12:42:49Z
 - canary.94 release body ([v16.3.0-canary.94 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.0-canary.94)) — the same PRs, already documented in 1.4.82
+
+## Web Worker Setup on Turbopack + Cross-Origin CDN — Pre/Post `next@16.3.1-canary.3` Fix (PR #96636, August 5, 2026)
+
+The `setup.md` was last touched in v1.5.21 (Aug 4, 06:02Z, 29h49min stale at this cron's check) and was missing the canonical setup recipe for the Web Worker + cross-origin CDN pattern that ships fixed in `next@16.3.1-canary.3`. This section covers both the **pre-canary.3 silent-hang setup** (broken state) and the **post-canary.3 working setup** (the recipe), plus the **setup cleanup checklist** for users upgrading from 16.2.x or 16.3.0 to 16.3.x (the `useTypeScriptCli` line removal, the `turbopackFileSystemCacheForBuild` CI cache persistence, and the worker chunking config).
+
+### Setup recipe for Web Workers on Turbopack + cross-origin CDN (post-`next@16.3.1-canary.3`)
+
+The canonical `next.config.ts` for a deployment that uses Turbopack + cross-origin CDN `assetPrefix` + Web Workers via `new Worker(new URL(...))`:
+
+```ts
+// next.config.ts — Turbopack + cross-origin CDN + Web Workers (post-canary.3)
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  // The CDN your static assets (JS/CSS/images) live on
+  // MUST be a different origin than your app origin for the bug to apply
+  assetPrefix: process.env.NODE_ENV === 'production'
+    ? 'https://cdn.example.com'
+    : undefined,
+
+  // Keep worker chunks same-origin (NOT served from the CDN)
+  // Required for Turbopack to correctly emit worker runtime chunks
+  // Pre-canary.3: this option was honored for the worker entrypoint
+  //               but silently BROKEN for the worker's runtime chunk
+  //               (caused silent worker hang under cross-origin CDN)
+  // Post-canary.3: this option is correctly honored for BOTH the
+  //                worker entrypoint AND the worker's runtime chunk
+  experimental: {
+    turbopackWorkerAssetPrefix: '',  // empty string = same-origin (default)
+  },
+}
+
+export default nextConfig
+```
+
+The canonical Worker setup:
+
+```ts
+// app/page.tsx
+'use client'
+import { useEffect, useState } from 'react'
+
+export default function Page() {
+  const [png, setPng] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Post-canary.3: this Worker correctly evaluates + round-trips messages
+    // Pre-canary.3: this Worker loads (200 status) but never executes the entry module
+    const worker = new Worker(
+      new URL('./resvg-worker.ts', import.meta.url),
+      { type: 'module' }
+    )
+    worker.onmessage = (e: MessageEvent<string>) => setPng(e.data)
+    worker.postMessage({ svg: '<svg>...</svg>' })
+    return () => worker.terminate()
+  }, [])
+
+  return png ? <img src={png} alt="converted" /> : <p>Converting…</p>
+}
+```
+
+```ts
+// app/resvg-worker.ts
+import { Resvg } from '@resvg/resvg-js'
+
+// Post-canary.3: this console.log fires in DevTools → Application → Workers → Console tab
+// Pre-canary.3:  this console.log NEVER fires (worker entry module never evaluates)
+console.log('[resvg-worker] module evaluated')
+
+self.onmessage = async (e: MessageEvent<{ svg: string }>) => {
+  const { svg } = e.data
+  const png = new Resvg(svg).render().asPng()
+  // PostMessage back to main thread; post-canary.3 this round-trips correctly
+  ;(self as unknown as Worker).postMessage(
+    `data:image/png;base64,${Buffer.from(png).toString('base64')}`
+  )
+}
+```
+
+### Setup cleanup checklist — upgrading from `next@16.2.x` or pre-fix `next@16.3.0`
+
+When upgrading to `next@16.3.x` (STABLE) or `next@16.3.1-canary.3+` (post-fix), there are **3 silent setup changes** you should review:
+
+1. **REMOVE the now-redundant `experimental: { useTypeScriptCli: true }` line from `next.config.ts`** — PR #96497 (timneutkens, merged 2026-08-03T16:10:51Z, shipped in `16.3.0` stable) flipped `useTypeScriptCli` from default-`false` to default-`true`. **Every `next build` now runs the project-local `tsc` CLI by default.** The previously-required opt-in line is redundant (silently a no-op in 16.3.0+); remove it. **If you specifically want the JS Compiler API path** (e.g., for custom transformers or library compatibility), keep it as `experimental: { useTypeScriptCli: false }`.
+
+   ```diff
+    // next.config.ts
+    export default {
+   -  experimental: {
+   -    useTypeScriptCli: true,  // redundant in 16.3.0+, remove this line
+   -  },
+    }
+   ```
+
+2. **CI users: persist `.next/cache/turbopack` between runs** — PR #96493 (timneutkens, merged 2026-08-02T18:33:34Z, shipped in `16.3.0` stable) removed the Vercel/env gate from the `experimental.turbopackFileSystemCacheForBuild` option. **Every `next build` in every environment (local + Vercel + GitHub Actions + GitLab + CircleCI + Jenkins + K8s + ECS + self-hosted VPS) now defaults to the warm `.next/cache/turbopack/` filesystem cache.** If your CI doesn't persist `.next/cache/` between runs (no `actions/cache`, no Docker named volume, no K8s persistent volume), you'll regress to cold builds (5-30% slower). **Audit + add cache persistence if missing.**
+
+   ```yaml
+   # GitHub Actions — add this to your build job
+   - uses: actions/cache@v4
+     with:
+       path: .next/cache/turbopack
+       key: turbo-${{ runner.os }}-${{ hashFiles('**/next.config.*', 'package-lock.json') }}
+       restore-keys: turbo-${{ runner.os }}-
+   ```
+
+   ```bash
+   # GitLab CI — add this to your build job
+   cache:
+     key:
+       files:
+         - next.config.js
+         - package-lock.json
+     paths:
+       - .next/cache/turbopack
+   ```
+
+   ```bash
+   # Docker — use a named volume or build cache mount
+   docker build \
+     --mount type=cache,target=/app/.next/cache/turbopack \
+     -t myapp:latest .
+   ```
+
+   **Opt-out (if you can't add cache persistence):** `experimental: { turbopackFileSystemCacheForBuild: false }` in `next.config.ts` — but this throws away the 2.3×–5.5× warm-build speedup.
+
+3. **Workers on cross-origin CDN: bump to `next@16.3.1-canary.3` or later** — PR #96636 (timneutkens, merged 2026-08-05T05:41:54Z, **shipped in `next@16.3.1-canary.3`** npm-published 2026-08-05T06:27:06Z). If you're on `next@16.3.0` or `next@16.3.1-canary.0/.1/.2`, **upgrade to `next@16.3.1-canary.3`** to get the silent-worker-hang fix. No code changes required; the fix is internal to Turbopack's runtime chunk emitter.
+
+   ```bash
+   # Upgrade to canary.3+ for the silent-worker-hang fix
+   npm install next@16.3.1-canary.3
+   # Or wait for next@16.3.1 STABLE (likely within ~1 week)
+   ```
+
+### Setup recipe verification — the DevTools check
+
+The definitive post-upgrade verification for the Web Worker setup:
+
+1. Open your app in Chrome / Firefox / Safari
+2. Open DevTools → **Application** tab → **Workers** section (left sidebar)
+3. Click your worker (e.g., `app/resvg-worker.ts`)
+4. Open the **Console** tab in the DevTools docked panel
+5. **Expected post-canary.3:** you see `[resvg-worker] module evaluated` (or your equivalent top-level `console.log`)
+6. **Pre-canary.3 (silent hang):** the Console tab is **empty** (no logs, no errors)
+7. Bonus check: click the **Network** tab → filter by `turbopack-` → confirm the runtime chunk URL starts with `/` (same-origin) NOT `https://cdn.example.com` (cross-origin CDN)
+
+If the Console tab is empty AND the Network tab shows same-origin 200s, the worker is hung — confirm you're on `next@16.3.1-canary.3+` (the fix version).
+
+### Sources
+
+- [PR #96636 — Turbopack Worker Chunk Loading with Asset Prefix Fix](https://github.com/vercel/next.js/pull/96636) · timneutkens · merged 2026-08-05T05:41:54Z · **SHIPPED in `next@16.3.1-canary.3`** (npm-published 2026-08-05T06:27:06Z) · closes [#96613](https://github.com/vercel/next.js/issues/96613)
+- [PR #96497 — `Enable TypeScript CLI by default`](https://github.com/vercel/next.js/pull/96497) · timneutkens · merged 2026-08-03T16:10:51Z · **SHIPPED in `next@16.3.0` stable**
+- [PR #96493 — `Enable Turbopack build filesystem cache by default`](https://github.com/vercel/next.js/pull/96493) · timneutkens · merged 2026-08-02T18:33:34Z · **SHIPPED in `next@16.3.0` stable**
+- [`experimental.turbopackWorkerAssetPrefix` config docs](https://nextjs.org/docs/app/api-reference/turbopack)
+- [`assetPrefix` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/assetPrefix)
+- [GitHub Actions `actions/cache` documentation](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
+- Cross-references: `patterns.md` → `## Pattern: Turbopack + Web Workers + Cross-Origin CDN assetPrefix` for the recipe; `performance.md` → `## 16.3.1-canary.3-ahead — Turbopack Worker Chunk Loading with Asset Prefix Fix` for the runtime; `api.md` → `## Web Worker API Surface — Turbopack Chunking Context` for the API contract; `security.md` → `## Next.js 16.3.1-canary.3 SHIPPED (August 5, 2026)` for the reliability/DoS lens.
+

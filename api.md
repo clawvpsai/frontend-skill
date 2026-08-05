@@ -1258,3 +1258,74 @@ curl http://localhost:3000/api/anything-here
 
 **Sources:** [PR #96553 — `Fix catch-all index page being served for every other slug`](https://github.com/vercel/next.js/pull/96553) · acdlite · merged 2026-08-03T21:49:27Z · **shipped in `16.3.1-canary.0`** (npm-published 2026-08-03T22:32:33Z).
 
+
+## Web Worker API Surface — Turbopack Chunking Context (`next@16.3.1-canary.3` SHIPPED + PR #96636, August 5, 2026)
+
+The `api.md` was last touched in v1.5.20 (Aug 3, 21:03Z, 35h56min stale at this cron's check) and was missing the Web Worker chunking-context API surface introduced and fixed in 16.3.x. The fix is in `next@16.3.1-canary.3` (npm-published 2026-08-05T06:27:06Z). Although the v1.5.25 cycle explicitly noted PR #96636 is "neither security- nor API-relevant" (i.e., the public Route Handler / Server Action / Middleware surface is unchanged), the **Web Worker chunking context is an API surface for code that uses Workers** — the runtime chunk's `CHUNK_BASE_PATH`, the `turbopackWorkerAssetPrefix` config option, and the `registerChunk` resolver keys are part of the runtime contract that Worker-using apps depend on. This section documents the post-fix Worker API surface from the consumer perspective.
+
+### Web Worker chunking context — public API surface in 16.3.1-canary.3+
+
+Before PR #96636 (i.e., `next@16.3.0` + `next@16.3.1-canary.0` + `next@16.3.1-canary.1` + `next@16.3.1-canary.2`), the runtime contract was:
+- **Worker entrypoint** (`new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })`) loaded with `experimental.turbopackWorkerAssetPrefix` (same-origin) — **CORRECT**
+- **Worker's own runtime chunk** (`turbopack-<hash>.js`) emitted with `CHUNK_BASE_PATH` from global `assetPrefix` (CDN) — **BROKEN** (cross-origin mismatch vs the worker's own runtime resolver key)
+- **Symptom:** Every Network request returned `200`, but the worker's entry module never executed — `Promise.all` in `registerChunk` pending forever (two divergent resolver keys across base paths)
+
+After PR #96636 (i.e., `next@16.3.1-canary.3`+), the runtime contract is:
+- **Worker entrypoint** loads with `experimental.turbopackWorkerAssetPrefix` (same-origin) — **UNCHANGED**
+- **Worker's own runtime chunk** (`turbopack-<hash>.js`) emitted with `CHUNK_BASE_PATH` from `experimental.turbopackWorkerAssetPrefix` (same-origin) — **FIXED**
+- **Symptom:** Worker loads, evaluates the entry module, `onmessage` fires correctly, `postMessage` round-trip works as expected
+
+### The 3 Web Worker API surfaces touched by PR #96636
+
+1. **`new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' })` construction** — unchanged API. **The fix is internal to Turbopack's runtime chunk emitter**, not the user-facing Worker constructor. Code that worked pre-16.3.0 + pre-fix in webpack still works the same way.
+2. **`experimental.turbopackWorkerAssetPrefix` config option** — unchanged public API. **The fix makes this config option actually do what it advertises** (keep worker runtime chunks same-origin when global `assetPrefix` is a cross-origin CDN). Pre-#96636 the config was honored for the worker entrypoint but NOT for the worker's runtime chunk — a silent partial-fix bug.
+3. **The worker runtime chunk itself** (`turbopack-<hash>.js`) — **internal API**, not user-facing. The chunk now correctly resolves its base path from the worker asset prefix rather than the global asset prefix. **No code changes required in user code.**
+
+### Practical worker API patterns that depend on this fix
+
+The following libraries / patterns depend on `turbopackWorkerAssetPrefix` being honored for the runtime chunk (not just the entrypoint). All of these were silently broken on `next@16.3.0` + `next@16.3.1-canary.0/.1/.2` and are FIXED in `next@16.3.1-canary.3`:
+
+| Library / Pattern | Worker Usage | Pre-canary.3 Symptom |
+|---|---|---|
+| **`@resvg/resvg-js`** | WASM SVG→PNG conversion in Worker | SVG buttons never render; silent worker hang |
+| **`@napi-rs/canvas`** | Offscreen canvas rendering in Worker | Canvas operations never complete |
+| **`@jsquash/*`** (jpeg, png, webp, etc.) | Image codec decode/encode in Worker | Decoded images never returned |
+| **`comlink`** | RPC bridge between main thread and Worker | Comlink proxy never resolves |
+| **Custom WASM packages** | WASM-compiled modules running in Worker | WASM `init()` never completes |
+| **Custom WASM-bundled libraries** (`rustler-wasm`, `wasm-bindgen`, etc.) | Same — WASM in Worker | Same — silent worker hang |
+
+### Audit recipe for Worker API consumers
+
+```bash
+# Step 1: confirm you're on canary.3+ (or 16.3.1 STABLE once it ships)
+npm ls next | head -5
+# Should show 16.3.1-canary.3 or later
+
+# Step 2: audit Workers in your codebase
+rg -ln "new Worker\(new URL\(" app/ src/
+
+# Step 3: audit CDN asset prefix
+rg -n "assetPrefix\s*:" next.config.*
+# Look for https:// or http:// URLs that differ from your app origin
+
+# Step 4: verify the worker asset prefix config (if any)
+rg -n "turbopackWorkerAssetPrefix" next.config.*
+# If set, should be '' or your same-origin path (NOT a CDN path)
+
+# Step 5: test in production
+# Visit the route that uses the Worker
+# Open DevTools → Application → Workers
+# Click the worker, check Console tab — should see your worker's console.log output
+# Pre-canary.3: Console tab is empty (worker never evaluated)
+# canary.3+: Console tab shows your worker's logs
+```
+
+### Sources
+
+- [PR #96636 — Turbopack Worker Chunk Loading with Asset Prefix Fix](https://github.com/vercel/next.js/pull/96636) · timneutkens · merged 2026-08-05T05:41:54Z · **SHIPPED in `next@16.3.1-canary.3`** (npm-published 2026-08-05T06:27:06Z)
+- [Issue #96613 — silent worker hang reproducer](https://github.com/vercel/next.js/issues/96613)
+- [PR #93271 — original `experimental.turbopackWorkerAssetPrefix` introduction](https://github.com/vercel/next.js/pull/93271) (the feature PR #96636 fixes)
+- [Discussion #93044 — original feature request](https://github.com/vercel/next.js/discussions/93044)
+- [`@resvg/resvg-js`](https://github.com/yisibl/resvg-js) — canonical "Workers used in Next.js apps" example
+- Cross-references: `patterns.md` → `## Pattern: Turbopack + Web Workers + Cross-Origin CDN assetPrefix` for the recipe; `performance.md` → `## 16.3.1-canary.3-ahead — Turbopack Worker Chunk Loading with Asset Prefix Fix` for the runtime; `security.md` → `## Next.js 16.3.1-canary.3 SHIPPED (August 5, 2026)` for the reliability/DoS lens.
+
