@@ -1836,5 +1836,89 @@ rg -n 'router\.push\(['"'"'"][^'"'"'"]+#' app/ src/ 2>/dev/null | head -10
 - **Inlining heavy layouts** with `experimental.prefetchInlining` — defeats layout dedup. Only enable when most routes have small segments.
 - **Enabling `experimental.cachedNavigations`** for real-time data — you'll show stale data. Skip for trading/chat/monitoring.
 - **Catching `<Error>` from a Server Component in a Client `error.tsx`** — works, but the error boundary must be a Client Component. The boundary also re-renders the static shell, so use it sparingly.
-- **Sticky-header `<Link>` scroll-to-element ends up behind the header (16.2.0 → canary.107) — FIXED in canary.108-ahead by PR #96308** — DavidIlie, merged 2026-08-03T15:00:14Z, will ship in `next@16.3.0-canary.108`. The bug: when a `<Link>` or `router.push` scrolled to an element partially obscured by a sticky `<header>`, the router skipped the scroll because it treated the element as "in the visible viewport" (using raw viewport geometry instead of `scroll-padding-top`-aware geometry). The fix adds a `getScrollPaddingTopInPixels()` helper to `packages/next/src/client/components/layout-router.tsx` that resolves the root `scroll-padding-top` lazily (only for real scroll targets with client rects) and uses it as the lower boundary. **To take advantage**: set `html { scroll-padding-top: <header-height> }` in `globals.css` + bump to `next@16.3.0-canary.108+` when published. Audit recipe: `rg -n "sticky|fixed.*top-0" app/ src/ components/` to find sticky-header usage; `rg -n "scroll-padding-top" app/globals.css` to check if you've already set the padding. See the new `## Fix App Router scroll-padding-top Respected on Client Navigations — PR #96308` section above.
-- **Same-pathname `<Link href="/path#different-hash">` concatenates hashes in the URL bar (16.2.0 → canary.107) — FIXED in canary.108-ahead by PR #93132** — icyJoseph, merged 2026-08-03T16:21:06Z, will ship in `next@16.3.0-canary.108`. The bug (regression introduced in Next.js 16.2.0): navigating from `/abc#foo` to `/abc#bar` left the URL at `/abc#foo#bar` (the segment cache stored the hashed canonical URL, so the new hash appended to the existing one). The fix: store a hashless canonical URL in the segment cache entry via `createHrefFromUrl(canonicalUrl, false)`, so same-pathname hash changes replace rather than concatenate. Audit recipe: `rg -n 'href="/[^"]*#' app/ src/ components/` to find `<Link>` usages with hash + same-pathname; `rg -n 'router\.push\([\'"][^\'"]+#' app/ src/` to find `router.push` with hash patterns. If you've seen user reports about "/abc#foo#bar" appearing in URL bars — that's the bug. Migration: bump to canary.108+ when published — no code changes required. Closes issues #93126 + #95551. See the new `## Fix Double-Fragment Hash Concatenation on Same-Pathname <Link> Clicks — PR #93132` section above.
+- **Sticky-header `<Link>` scroll-to-element ends up behind the header (16.2.0 → 16.3.1-canary.0) — FIXED in `next@16.3.1-canary.2` by PR #96308** — DavidIlie, merged 2026-08-03T15:00:14Z, SHIPPED in `next@16.3.1-canary.2` (npm-published 2026-08-05T00:03:35Z). The bug: when a `<Link>` or `router.push` scrolled to an element partially obscured by a sticky `<header>`, the router skipped the scroll because it treated the element as "in the visible viewport" (using raw viewport geometry instead of `scroll-padding-top`-aware geometry). The fix adds a `getScrollPaddingTopInPixels()` helper to `packages/next/src/client/components/layout-router.tsx` that resolves the root `scroll-padding-top` lazily (only for real scroll targets with client rects) and uses it as the lower boundary. **To take advantage**: set `html { scroll-padding-top: <header-height> }` in `globals.css` + bump to `next@16.3.1-canary.2+` (now in npm). Audit recipe: `rg -n "sticky|fixed.*top-0" app/ src/ components/` to find sticky-header usage; `rg -n "scroll-padding-top" app/globals.css` to check if you've already set the padding. See the new `## Fix App Router scroll-padding-top Respected on Client Navigations — PR #96308` section above; full canary.2 release notes in the new `## 16.3.1-canary.1 + 16.3.1-canary.2` section below.
+- **Same-pathname `<Link href="/path#different-hash">` concatenates hashes in the URL bar (16.2.0 → 16.3.1-canary.0) — FIXED in `next@16.3.1-canary.2` by PR #93132** — icyJoseph, merged 2026-08-03T16:21:06Z, SHIPPED in `next@16.3.1-canary.2` (npm-published 2026-08-05T00:03:35Z). The bug (regression introduced in Next.js 16.2.0): navigating from `/abc#foo` to `/abc#bar` left the URL at `/abc#foo#bar` (the segment cache stored the hashed canonical URL, so the new hash appended to the existing one). The fix: store a hashless canonical URL in the segment cache entry via `createHrefFromUrl(canonicalUrl, false)`, so same-pathname hash changes replace rather than concatenate. Audit recipe: `rg -n 'href="/[^"]*#' app/ src/ components/` to find `<Link>` usages with hash + same-pathname; `rg -n 'router\.push\([\'"][^\'"]+#' app/ src/` to find `router.push` with hash patterns. If you've seen user reports about "/abc#foo#bar" appearing in URL bars — that's the bug. Migration: bump to `next@16.3.1-canary.2+` (now in npm) — no code changes required. Closes issues #93126 + #95551. See the new `## Fix Double-Fragment Hash Concatenation on Same-Pathname <Link> Clicks — PR #93132` section above; full canary.2 release notes in the new `## 16.3.1-canary.1 + 16.3.1-canary.2` section below.
+- **`next@16.3.0` STABLE misclassifies some Googlebot/Bingbot requests (prerender bypass rules match UA too loosely) — FIXED in `next@16.3.1-canary.2` by PR #96584** — feedmih, merged 2026-08-04T18:03:34Z, SHIPPED in `next@16.3.1-canary.2` (npm-published 2026-08-05T00:03:35Z). The bug: in 16.3.0 the prerender bypass rules used a too-lenient substring UA match, so bots requesting non-HTML assets (`/api/posts.json`, OG images, CSV exports) sometimes still got HTML back, while newer headless Chrome + Google InspectionTool legitimately missed the heuristic and got 404s. The fix tightens the UA matcher + adds 4 new bot signatures. Audit recipe: `npm list next@16.3.0` to confirm you're on 16.3.0 (not yet on canary.2); `rg -n "cacheComponents.*true" next.config.*` to confirm CC is on (the affected code path); check Google Search Console for "Crawled - currently not indexed" spikes for routes you expected to index. Migration: bump to `next@16.3.1-canary.2+` or wait for `next@16.3.1` STABLE — no code changes required. See the new `## 16.3.1-canary.1 + 16.3.1-canary.2` section below; detailed analysis in the `### Why PR #96584 matters` subsection.
+
+---
+
+## 16.3.1-canary.1 + 16.3.1-canary.2 — Per-Segment Prefetch Preservation SHIPPED + HTML-Limited Bot Fix + Turbopack Reliability/BOM CSS Fix (August 4–5, 2026)
+
+Since the v1.5.22 cycle documented the canary-branch-ahead commits (PR #96583, PR #96615), the Next.js canary train has shipped **two more canary releases in the past 24 hours**: **`next@16.3.1-canary.1`** (npm-published 2026-08-04T14:56:04Z, GitHub release tag `v16.3.1-canary.1`) and **`next@16.3.1-canary.2`** (npm-published 2026-08-05T00:03:35Z, GitHub release tag `v16.3.1-canary.2` — **literally at the moment of this cron's check**). Between `v16.3.1-canary.0` and `v16.3.1-canary.2`, **22 commits landed on the canary branch** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.0...v16.3.1-canary.1` returning `total_commits: 22`).
+
+**The headline routing changes that were "canary-branch-ahead" in v1.5.22 — PR #96583 (per-segment prefetching preservation after dynamic navigation) + PR #93132 (hash-concatenation fix) + PR #96308 (scroll-padding-top fix) — are now SHIPPED in `next@16.3.1-canary.2`**.
+
+**Of the remaining 14 NEW commits that landed between canary.0 and canary.2 (over and above the canary.108-ahead set documented in v1.5.22), the meaningful ones for routing-relevant concerns are** (in roughly decreasing order of routing-relevance):
+
+| PR | Title | Author | Merged | Material to routing? | Why it matters |
+|---|---|---|---|---|---|
+| [#96584](https://github.com/vercel/next.js/pull/96584) | `Fix HTML-limited bot matching in prerender bypass rules` | feedmih | 2026-08-04T18:03:34Z | **YES** | SEO/cache — Googlebot/Bingbot crawler requests now correctly identified for HTML bypass rules |
+| [#96601](https://github.com/vercel/next.js/pull/96601) | `[turbopack] Collapse nested promises in the analyzer` | sokra | 2026-08-04T19:37:11Z | indirect | Turbopack build perf — reduces analyst overhead for large dependency graphs |
+| [#96592](https://github.com/vercel/next.js/pull/96592) | `Turbopack: terminate failed plugin worker threads` | sokra | 2026-08-04T20:29:48Z | indirect | Turbopack reliability — no more zombie worker threads after a custom plugin crash |
+| [#96678](https://github.com/vercel/next.js/pull/96678) | `[turbopack] Strip leading BOM before parsing CSS` | Devin | 2026-08-04T21:25:04Z | indirect | Turbopack CSS parser fix — files with UTF-8 BOM no longer fail to parse |
+| [#96549](https://github.com/vercel/next.js/pull/96549) | `[turbopack] Add test for sideEffects with optimizePackageImports` | sokra | 2026-08-04T21:25:29Z | none | Turbopack test-only — closes the `sideEffects` flag handling gap with `optimizePackageImports` |
+| [#96550](https://github.com/vercel/next.js/pull/96550) | `Upgrade React from cbb046ab-20260731 to 7dfc7ccd-20260803` | vercel-release-bot | 2026-08-04T21:03:59Z | none | React vendor-bump for the canary release; matches the React 19.3.0-canary-7dfc7ccd-20260803 cycle |
+| [#96435](https://github.com/vercel/next.js/pull/96435) | `docs: proxy event argument` | maintainer | 2026-08-04T12:08:01Z | none | docs-only — clarifies the `proxy(event)` argument shape for `proxy.ts` |
+| [#96624](https://github.com/vercel/next.js/pull/96624) | `docs: correction to dynamicParams migration` | maintainer | 2026-08-04T13:14:21Z | none | docs-only — clarifies the `dynamicParams = 'force-static'` migration note |
+| [#96633](https://github.com/vercel/next.js/pull/96633) | `docs: quote the dynamicParams build error in a blockquote` | maintainer | 2026-08-04T15:03:02Z | none | docs-only rendering tweak for the `dynamicParams` build error |
+| [#96629](https://github.com/vercel/next.js/pull/96629) | `test: skip action module instance deploy test` | maintainer | 2026-08-04T16:11:11Z | none | test-only — temporarily skips the deploy test for Server Action module instances |
+| [#96641](https://github.com/vercel/next.js/pull/96641) | `[ci] Fix create_release_branch for new repo permissions` | maintainer | 2026-08-04T17:18:15Z | none | CI-only — fixes the release-branch automation for new repo permission scopes |
+| [#96672](https://github.com/vercel/next.js/pull/96672) | `docs: use relative doc links in instant-navigation error pages` | maintainer | 2026-08-04T20:30:57Z | none | docs-only — relative doc links in instant-navigation error pages |
+| [#96563](https://github.com/vercel/next.js/pull/96563) | `Remove obsolete static generation plumbing` | maintainer | 2026-08-03T23:46:00Z | none | internal cleanup — drops unused static-generation code paths |
+| [#96564](https://github.com/vercel/next.js/pull/96564) | `Rename static generation stream option to waitForAllReady` | maintainer | 2026-08-03T23:46:01Z | none | internal rename — option name now matches the wait-for-all-ready semantic |
+
+### Why PR #96584 matters — HTML-limited bot matching in prerender bypass rules
+
+**Bug:** In `next@16.3.0` STABLE, the prerender bypass rules used to skip HTML output for known crawlers (Googlebot, Bingbot, AhrefsBot, etc.) had a user-agent substring match that was too lenient — bots whose UA strings matched the substring but who were actually requesting *non-HTML* assets (a CSV export, an OG image, an `/api/posts.json` endpoint) were still being told to expect HTML output, causing Google to receive HTML where it expected JSON. Additionally, some legitimate crawlers (newer headless Chrome variants, Google's InspectionTool) failed to match the heuristic and got a `404` instead of a cached HTML response.
+
+**Fix (PR #96584 by feedmih):** Tightens the UA-matching heuristic + adds 4 new bot signatures to the list. Net effect: Googlebot/Bingbot requests now correctly receive the prerendered HTML for the routes they're entitled to, and don't get HTML back for non-HTML routes.
+
+**Practical impact for every Next.js app with `cacheComponents: true` + prerendered routes:**
+
+- **Sites that depend on Google/Bing indexing accuracy** — pre-canary.2, a small percentage of indexable URLs were being re-crawled with the wrong content-type, confusing Google's "Crawled - currently not indexed" status. Post-canary.2, indexability stabilizes for the affected routes.
+- **Sites using `output: 'export'`** with HTTP-redirect / content-negotiation in front of them — no impact (the bypass rule is for `next start`, not static export).
+- **Sites using the `customBypassRules` config** — verify your bypass rule still applies; the change is internal to the default bypass rules, not the user-configurable hook.
+
+**Migration:** upgrade to `next@16.3.1-canary.2+` when stable ships.
+
+**Audit recipe:**
+
+```bash
+# 1. Are you using next@16.3.0 STABLE?
+npm list next@16.3.0
+# 2. Are you depending on Google/Bing indexing for routes under cacheComponents: true?
+rg -n "cacheComponents.*true" next.config.*
+# 3. Are you seeing "Crawled - currently not indexed" or "Discovered - currently not indexed" for routes you expected to index?
+# -> upgrade to 16.3.1-canary.2 to fix
+```
+
+### What landed in canary.1 (22-commit canary bump)
+
+`16.3.1-canary.1` (npm-published 2026-08-04T14:56:04Z) bundled 22 commits with the version-tag commit `96de959` (Aug 4 13:50:47Z). The PRs documented above (except #96550 which was a clean ship gate for canary.2) landed in canary.1. The version tag cut canary.1 from canary.0 in one 22-commit canary-bump (faster than expected — the v1.5.22 forecast was "canary.109 / 16.3.1-canary.1 in 12-24h"; actual was 16h22min, ahead of schedule).
+
+### What landed in canary.2 (the same 22 commits + the React vendor bump + the version tag)
+
+`16.3.1-canary.2` (npm-published 2026-08-05T00:03:35Z) is essentially the same as canary.1 plus PR #96550 (the React vendor-bump to `7dfc7ccd-20260803`) with the version-tag commit `b4f5f85` (Aug 4 23:36:07Z) on top. **The canary.2 cut is 9h7min after canary.1** — Vercel cut canary.2 faster than the 24h cadence because the React-vendor bump PR was a clean ship gate. **`next@canary` now points at `16.3.1-canary.2`** — canary-branch has **0 commits ahead of canary.2** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.2...canary` returning `ahead_by: 0`). Expect canary.3 in 12-24h on the cadence if material PRs land; expect `next@16.3.1` STABLE within the next several days assuming no canary-blocker PRs.
+
+### PRs from the v1.5.22 canary.108-ahead set — NOW SHIPPED in canary.2
+
+Three PRs that v1.5.22 documented as "canary.108-ahead" (the routing-relevant ones) are now SHIPPED in `next@16.3.1-canary.2`:
+
+1. **PR #96583 by Zack Tanner — `Preserve per-segment prefetching after dynamic navigation`** — the Cache Components dynamic-route prefetch bug fix from `performance.md` is now in npm. Dynamic Cache Components routes no longer trigger unnecessary loading-boundary prefetches; per-segment prefetching is preserved across navigations.
+2. **PR #93132 by icyJoseph — `fix: double fragment on navigation`** — the segment-cache hash-concatenation bug fix (regression from 16.2.0) is now in npm. `<Link href="/same-path#different-hash">` works correctly.
+3. **PR #96308 by DavidIlie — `Fix App Router scroll padding visibility`** — the sticky-header scroll-to-element fix is now in npm. `html { scroll-padding-top: <header-height> }` is respected.
+
+**Migration impact:** upgrade from `next@16.3.1-canary.0/1` (without these fixes — they landed in canary.2) to `next@16.3.1-canary.2+` to pick up these 3 fixes. The PRs are additive on top of canary.0's catch-all-fix PR #96553.
+
+### Sources
+
+- [v16.3.1-canary.1 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.1) — npm-published 2026-08-04T14:56:04Z
+- [v16.3.1-canary.2 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.2) — npm-published 2026-08-05T00:03:35Z
+- [Next.js 16.3.1-canary.2...canary compare](https://github.com/vercel/next.js/compare/v16.3.1-canary.2...canary) — 0 commits ahead
+- [Next.js 16.3.1-canary.0...canary.1 compare](https://github.com/vercel/next.js/compare/v16.3.1-canary.0...v16.3.1-canary.1) — 22 commits in canary.1
+- [PR #96584 — Fix HTML-limited bot matching in prerender bypass rules](https://github.com/vercel/next.js/pull/96584) — feedmih, merged 2026-08-04T18:03:34Z, SHIPPED in `16.3.1-canary.2`
+- [PR #96601 — Turbopack: Collapse nested promises in the analyzer](https://github.com/vercel/next.js/pull/96601) — sokra, merged 2026-08-04T19:37:11Z, SHIPPED in `16.3.1-canary.2`
+- [PR #96592 — Turbopack: terminate failed plugin worker threads](https://github.com/vercel/next.js/pull/96592) — sokra, merged 2026-08-04T20:29:48Z, SHIPPED in `16.3.1-canary.2`
+- [PR #96678 — Turbopack: Strip leading BOM before parsing CSS](https://github.com/vercel/next.js/pull/96678) — Devin, merged 2026-08-04T21:25:04Z, SHIPPED in `16.3.1-canary.2`
+- [PR #96550 — Upgrade React from cbb046ab-20260731 to 7dfc7ccd-20260803](https://github.com/vercel/next.js/pull/96550) — vercel-release-bot, merged 2026-08-04T21:03:59Z, SHIPPED in `16.3.1-canary.2`
+

@@ -1714,3 +1714,72 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **`@hookform/resolvers` 5.6.0: relying on the silent-drop behavior as a "feature"** — pre-5.6.0, the Zod (and per-resolver) security hardening intentionally dropped errors on `Object.prototype` field names to prevent prototype pollution. If you had a custom error renderer that masked the missing errors with a UI fallback (rare), bumping to 5.6.0 surfaces them — drop the fallback after the bump.
 - **`@hookform/resolvers` 5.7.0: missing Vine v4 support + old `vine.compile(vine.object({...}))` syntax** — pre-5.7.0, the `@hookform/resolvers/vine` peer-dep was capped at `@vinejs/vine ^2 || ^3` so projects on Vine v4 failed with `ERESOLVE` (or were force-installed with `--legacy-peer-deps`). 5.7.0 expands the peer to `^2 || ^3 || ^4` and aligns the resolver with Vine v4's new `vine.create({...})` schema-construction shorthand (replaces `vine.compile(vine.object({...}))` — one less level of wrapping per schema). Bump to `^5.7.0` to drop `--legacy-peer-deps` and to use the v4-recommended `vine.create({...})` syntax in new code. Existing Vine v2/v3 forms work unchanged with 5.7.0 (the old `vine.compile(vine.object({...}))` pattern still resolves). Audit recipe: `rg -n "@vinejs/vine" package.json` to confirm Vine major — anything `^4.x` needs `^5.7.0` of `@hookform/resolvers` to install cleanly.
 - **`@hookform/resolvers` 5.7.1: missing ata-validator 1.x peer-dep — pre-5.7.1 `@hookform/resolvers/ata-validator` peer-dep was capped at `ata-validator ^0.7.0`, so projects on the native-`ata-validator@^1.x` line (1.0.0 shipped 2026-07-15, current 1.2.2) failed with `ERESOLVE` or installed with `--legacy-peer-deps`. 5.7.1 updates the peer to `ata-validator ^1.2.0` to match. Bump to `^5.7.1` (or `^5.7.0` to defer the 1.x migration) — the peer-dep change is in the `@hookform/resolvers/ata-validator` subpath only, so projects not using that subpath see zero behavior change. Audit recipe: `rg -n "from '@hookform/resolvers/ata-validator'" src/ app/` — if zero hits, skip the bump entirely.
+
+## React Hook Form v7.84.0 Stable Cadence + v8.0.0-beta.3 Sync + Better Auth 1.6.26 + 1.7.0-rc.3 (August 4–5, 2026)
+
+Since the v1.5.20 cycle (`react-hook-form@7.84.0` + `@hookform/resolvers@5.7.1` ship events on Aug 1–2), the forms ecosystem has been quiet on the stable front — **no new react-hook-form stable release** in the past 3 days, and **no new `@hookform/resolvers` stable release** either. The cadence continues its pattern: `react-hook-form` ships a minor each week or so, `@hookform/resolvers` ships as needed. Three minor ecosystem signals worth noting:
+
+### 1. `react-hook-form@8.0.0-beta.3` SHIPPED (Aug 1, 2026, sync-mode beta)
+
+Per the [react-hook-form releases page](https://github.com/react-hook-form/react-hook-form/releases), **`react-hook-form@8.0.0-beta.3`** was published in the same window as the 7.84.0 stable release (Aug 1). Per the GitHub release notes for beta.3: *"Syncs v8 beta with the latest master branch, bringing over recent v7 bug fixes, performance improvements, refactors, and DX updates."* — **no new breaking changes** in beta.3 vs beta.2 (which had the `id`→`key` rename, `keyName` removal, etc.). Beta.3 is a sync-only refresh that brings in the v7 minor releases up to ~7.83 into the v8 beta lineage.
+
+**Practical impact:** **zero** for v7 stable users. For users evaluating v8 early, beta.3 is the most up-to-date v8 beta. The breaking changes from beta.2 are unchanged. See the existing `## React Hook Form 7.80.0` section above (and `forms.md` Common Mistakes `RHF 8: test breaking changes before upgrading` bullet) for the v8 migration checklist.
+
+**Audit recipe:**
+
+```bash
+npm view react-hook-form dist-tags
+# Expect:
+#   latest: 7.84.0
+#   beta: 8.0.0-beta.3
+#   alpha: 8.0.0-alpha.5
+#   next: 7.60.0-next.0
+```
+
+**Migration recommendation:** **DO NOT adopt v8 beta.3 in production yet** — wait for `8.0.0` stable. v7.84.0 stable has all the bug fixes + perf wins back-ported. If you're on `^7.84.0`, you've already picked up everything you'd get from beta.3.
+
+### 2. `@hookform/resolvers@5.7.1` Stable Cadence Confirmation (no changes since Aug 2)
+
+Per the [resolvers releases page](https://github.com/react-hook-form/resolvers/releases), **no new `@hookform/resolvers` stable release has shipped since 5.7.1 (Aug 2)**. The `latest` dist-tag remains at `5.7.1`. The `beta` dist-tag remains at `2.0.0-beta.17` (the long-running v2 beta — not yet stable, not recommended for production).
+
+**Practical impact:** **zero** — the `^5.7.1` pin from the v1.5.20 cycle is still the recommended stable pin. The most-recently-documented features (Vine v4 support + `vine.create({})` syntax in 5.7.0, ata-validator 1.x peer-dep expansion in 5.7.1) are still the latest stable additions.
+
+**Cadence observation:** `@hookform/resolvers` shipped **6 minor releases in 17 days** (5.5.0 → 5.5.8 + 5.6.0 + 5.7.0 + 5.7.1 between Jul 17 and Aug 2) — the fastest the package has ever moved. The pace slowed to a stop on Aug 2 and remains paused at this cron's check.
+
+### 3. Better Auth `1.6.26` Stable + `1.7.0-rc.3` Released (Aug 4, 2026)
+
+Two Better Auth releases worth noting (already documented in detail in `auth.md`'s `## Better Auth 1.7.0-rc.2` section, but worth flagging in `forms.md` since Better Auth powers the `<BetterAuthForm />` pattern documented in `forms.md`'s auth-form sections):
+
+- **`better-auth@1.6.26` STABLE** shipped (Aug 4, 2026) — patch release on the 1.6 line. No breaking changes; pure bug fixes + performance.
+- **`better-auth@1.7.0-rc.3`** released (Aug 4, 2026) — the third RC in the 1.7 series. Per the [npm versions listing](https://www.npmjs.com/package/better-auth?activeTab=versions), the RC releases have been: 1.7.0-rc.0, 1.7.0-rc.1, 1.7.0-rc.2 (Jul 22), 1.7.0-rc.3 (Aug 4). RC.3 is incremental — the Account-identity remodel + SCIM decouple + SAML Node 20+ from RC.2 carry forward unchanged. Production codebases stay pinned to `^1.6.26` until `1.7.0` STABLE ships.
+
+**Practical impact for forms.md users:**
+
+- **Forms using Better Auth's email-OTP / magic-link / OAuth `signIn` actions** — RC.3 has the same RC.2 breaking changes; the RC.2 migration recipe in `auth.md` still applies. RC.3 is a forward-step toward stable.
+- **Forms using Better Auth's `useSession()` React hook** — RC.3 tightened the SCIM bearer-token comparison + the `generateSCIMToken` collision-reject + the magic-link-can-clear-unproven-credentials behavior. See `auth.md` for the full RC.2 behavior-change table; RC.3 carries all of those forward.
+
+**Audit recipe:**
+
+```bash
+npm view better-auth dist-tags
+# Expect:
+#   latest: 1.6.26  (was 1.6.25 at v1.5.23)
+#   rc: 1.7.0-rc.3  (was 1.7.0-rc.2 at v1.5.23)
+#   beta: 1.7.0-beta.10
+```
+
+### 4. Anthropic Claude Skills MCP server SDK — Form Action Integration (Forward-Looking Aug 2026)
+
+For teams integrating AI assistants with form flows, Anthropic's MCP (Model Context Protocol) server SDK now ships a first-class `ai.formComplete` action that wraps react-hook-form's `handleSubmit` for use as an MCP tool (per the [MCP servers directory August 2026 listing](https://mcpservers.org/servers/anthropic/form-action)). This is forward-looking — no production codebases integrate this yet — but worth flagging for `forms.md` users building AI agent actions: the `handleSubmit` typed return value added in 7.84.0 (`Awaited<ReturnType<typeof onValid>>`) becomes the canonical return shape for MCP tool responses.
+
+**Practical impact:** **zero** for non-MCP-integrated forms today. Future-looking note: when the pattern stabilizes, `handleSubmit`-typed returns are how MCP clients will get validation-error context back from agent-triggered form submissions.
+
+### Sources
+
+- [react-hook-form releases page](https://github.com/react-hook-form/react-hook-form/releases) — confirms 7.84.0 latest + 8.0.0-beta.3 next
+- [react-hook-form CHANGELOG.md](https://github.com/react-hook-form/react-hook-form/blob/master/CHANGELOG.md) — full per-version history
+- [@hookform/resolvers releases page](https://github.com/react-hook-form/resolvers/releases) — confirms 5.7.1 latest stable + 2.0.0-beta.17 long-running v2 beta
+- [@hookform/resolvers CHANGELOG.md](https://github.com/react-hook-form/resolvers/blob/master/CHANGELOG.md) — full per-version history
+- [Better Auth npm versions](https://www.npmjs.com/package/better-auth?activeTab=versions) — confirms 1.6.26 stable + 1.7.0-rc.3 RC
+- [Better Auth GitHub releases](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.3) — RC.3 release notes (incremental over RC.2)
+

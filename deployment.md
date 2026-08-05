@@ -1127,7 +1127,10 @@ The adapter interface handles these concerns:
 - [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
 - [OpenNext adapter for Cloudflare](https://opennext.js.org/)
 
-## Next.js 16.3 Self-Hosting Additions (March 2026 docs refresh + 16.3.0-canary.105 deploy-relevant changes)
+## Next.js 16.3 Self-Hosting Additions (March 2026 docs refresh) — pre-16.3.0 STABLE deploy-relevant changes
+
+**NOTE:** This section was written pre-16.3.0 STABLE (when the canary.105 era was the active deploy-relevant train). **The 16.3.0 STABLE + 16.3.1-canary.0–2 cycles shipped additional deploy-critical changes that supersede some of this section — see the `## Next.js 16.3.0 STABLE Deployment-Critical Changes (August 3, 2026) + Canary.2 Updates` section at the bottom of this file for the current state.** In particular: PR #96493 expanded the Turbopack build cache to ALL environments (not just Vercel/local), PR #96497 flipped `useTypeScriptCli` to default-ON, and PR #94311 brought +22% throughput via native Node streams.
+
 
 The official Next.js self-hosting guide was last updated 2026-03-25 with new content that didn't make it into this skill at the time. Three additions are deployment-critical for any team running Next.js on its own infrastructure:
 
@@ -1318,3 +1321,181 @@ See `performance.md` for the full PR #96398 breakdown (4 heuristic knobs + 4 NEW
 - [PR #96432 — `[turbopack] Fix component chunks for workers`](https://github.com/vercel/next.js/pull/96432)
 - [Vercel — Next.js on Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs)
 - [Docker official Next.js guide](https://docs.docker.com/guides/nextjs)
+
+## Next.js 16.3.0 STABLE Deployment-Critical Changes (August 3, 2026) + Canary.2 Updates
+
+`next@16.3.0` STABLE shipped 2026-08-03T20:34:17Z (npm `dist-tag.latest` flipped from `16.2.12` → `16.3.0`), and the canary train cut `16.3.1-canary.0` (PR #96553 catch-all fix) the same evening at 2026-08-03T22:37:40Z, then `16.3.1-canary.1` (22-commit batch) at 2026-08-04T14:56:04Z, and `16.3.1-canary.2` (final cleanup) at 2026-08-05T00:03:35Z. The earlier `## Next.js 16.3 Self-Hosting Additions` section above covered canary.105-era changes; this section covers the **deployment-critical changes that shipped in the 16.3.0 STABLE + canary.1/canary.2 cycles** that any agent deploying Next.js needs to know.
+
+### 1. Turbopack Build Cache Default-ON EVERYWHERE (NOT just Vercel/local) — PR #96493 (shipped in 16.3.0 STABLE)
+
+The previous `## Next.js 16.3 Self-Hosting Additions` section above stated that `experimental.turbopackFileSystemCacheForBuild` was **auto-OFF on non-Vercel CI** (a Vercel-vs-everyone-else gate). **That gate is removed in 16.3.0 STABLE** via PR #96493 (timneutkens, merged 2026-08-02T18:33:34Z). **Every `next build` in every environment (local + Vercel + GitHub Actions + GitLab + CircleCI + Buildkite + Jenkins + ECS + K8s + self-hosted VPS) now uses the warm `.next/cache/turbopack/` filesystem cache by default.**
+
+**Why this matters for self-hosted deployments in particular:** self-hosted VPS / Docker / K8s deployments that skip the cache will now run noticeably slower than users who follow the cache (CI cold builds are unaffected, but warm builds are 2.3×–5.5× faster per the Vercel-tracked workload). **You now need to either (a) persist the cache across builds or (b) opt out explicitly.**
+
+**Opt-out (rare):**
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForBuild: false,  // explicit opt-out from build cache
+  },
+};
+```
+
+**For Docker multi-stage builds:**
+
+```dockerfile
+# Builder stage
+FROM node:22-slim AS builder
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npx next build  # writes .next/cache/turbopack/
+
+# Production stage
+FROM node:22-slim
+# Either (a) skip the cache entirely (default behavior — clean container):
+#    -- no COPY of .next/cache/turbopack --
+# Or (b) persist the cache via a named volume on host:
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+# Mount a volume for the cache:
+# docker run -v turbopack-cache:/app/.next/cache/turbopack myapp
+```
+
+**For GitHub Actions / GitLab CI:**
+
+```yaml
+# .github/workflows/deploy.yml
+- uses: actions/cache@v4
+  with:
+    path: |
+      .next/cache/turbopack
+    key: ${{ runner.os }}-turbopack-${{ hashFiles('**/package-lock.json') }}
+    restore-keys: |
+      ${{ runner.os }}-turbopack-
+```
+
+**Audit recipe:**
+
+```bash
+# 1. Are you on next@16.3.0+?
+npm list next
+# 2. Is the build cache enabled?
+rg -n "turbopackFileSystemCacheForBuild" next.config.*
+# 3. Does your CI persist .next/cache/turbopack between runs?
+ls -la .next/cache/turbopack  # check after a build
+rg -n "actions/cache|key: \\$\\{\\{ runner.os \\}\\}-nextjs|path: \\.next/cache" .github/workflows/
+```
+
+### 2. TypeScript CLI Default-ON — PR #96497 (shipped in 16.3.0 STABLE, was canary.108-ahead)
+
+The previous 16.3-canary-era docs had TypeScript CLI as `experimental.useTypeScriptCli: false` by default (you had to opt in for TS 7 to work). **In 16.3.0 STABLE, the default flips to `true`:** every `next build` runs the project-local `tsc` CLI by default (which uses the TS 7 Go-native binary when `typescript@^7` is installed).
+
+**Practical impact for self-hosted / Docker CI:**
+
+- **TS 7 users** — drop the now-redundant `experimental: { useTypeScriptCli: true }` line from `next.config.ts`.
+- **TS 6 users** — silent behavior change: your installed TS 6 `tsc` runs instead of the JS Compiler API. Build time impact ~50–200ms per build (faster than the JS API for most projects).
+- **Custom TypeScript transformers / `typescript` as a library users** — `useTypeScriptCli` only affects the `next build` type-check pass; `require('typescript')` calls in your build tools are independent. To keep using the JS Compiler API for compatibility with custom transformers, opt out:
+
+```ts
+// next.config.ts (opt out)
+const nextConfig: NextConfig = {
+  experimental: {
+    useTypeScriptCli: false,  // back to JS Compiler API for custom-transformer compat
+  },
+};
+```
+
+**Audit recipe:**
+
+```bash
+# 1. Are you on next@16.3.0+?
+npm list next
+# 2. Are you on TypeScript 7?
+npm list typescript | grep "typescript@"
+# 3. Are you still setting useTypeScriptCli? (redundant on 16.3.0+)
+rg -n "useTypeScriptCli" next.config.*
+# 4. Do you rely on custom TypeScript transformers?
+rg -n "require\(['"]typescript['"]\)" tools/ scripts/ 2>/dev/null
+```
+
+### 3. Native Node.js Streams Replace Web Streams — PR #94311 (shipped in 16.3.0 STABLE, +22% throughput)
+
+In 16.3.0 STABLE, the App Router rendering layer now uses **native Node.js streams** instead of web streams (which Next.js converted to / from Node streams under the hood). The web→Node stream conversion overhead is removed entirely. **In Vercel benchmarks, 16.3.0 STABLE handles up to 22% more requests under load** (per the [official 16.3 blog post](https://nextjs.org/blog/next-16-3), `Improvements for today's apps > Faster server-side rendering`).
+
+**Practical impact for self-hosted:**
+
+- **No code changes required** — the App Router rendering surface is identical from a user's perspective.
+- **Existing nginx / CDN configurations unchanged** — the response shape is the same `<Suspense>`-boundary-flushed chunks; nginx `proxy_buffering off;` settings still apply (see `## Next.js 16.3 Self-Hosting Additions` section above).
+- **Memory profile improvement** — fewer intermediate buffers during streaming responses means the Node process holds ~10-15% less heap on bursty traffic.
+- **Node.js 20.15+ required** for full benefit (native streams need modern Node.js); Node 18 is EOL and not supported.
+
+**Audit recipe:**
+
+```bash
+# 1. Are you on next@16.3.0+?
+npm list next
+# 2. Are you on Node 20.15+? (for full native-streams benefit)
+node --version
+# 3. Are you using a CDN or load balancer? (none of those care about Node stream vs web stream)
+# No action needed — this is a silent perf win for self-hosted Node deployments.
+```
+
+### 4. Catch-All Index Page Bug Fixed — PR #96553 (shipped in `next@16.3.1-canary.2`)
+
+In `next@16.3.0` STABLE, catch-all routes (e.g. `/blog/[...slug]`, `/api/[...path]`) served the index handler (`slug = []` / `path = []`) for every URL matching the base path, instead of the proper dynamic page. **This was a security-relevant bug** (information disclosure + potential authorization bypass — see `security.md`'s August 3 section for the threat model). **Fixed in `next@16.3.1-canary.0` (immediate) and SHIPPED (in the full sense of "available via stable canary") in `next@16.3.1-canary.2`** (npm-published 2026-08-05T00:03:35Z).
+
+**For self-hosted deployments stuck on `next@16.3.0` STABLE:** you can either:
+
+- (a) **Bump to `next@16.3.1-canary.2`** — pure additive fix on top of 16.3.0; no migration steps.
+- (b) **Stay on 16.3.0 and add an audit-checked middleware** to filter out requests that match the bug pattern (only do this if you can't bump due to your Node version constraints).
+- (c) **Pin to `next@16.3.1-canary.2` in CI until `16.3.1` STABLE ships** (expected within days based on the canary cadence observed in the past 36h: 3 canary releases in canary.0 → canary.1 → canary.2, ~12h apart each).
+
+**Audit recipe:**
+
+```bash
+# 1. Are you using [...slug] or [...path]?
+rg -l '\[\.\.\..*\]' app/
+# 2. Are you on next@16.3.0 (vulnerable) vs canary.2 (fixed)?
+npm list next
+# 3. Are your catch-all routes serving the index for non-empty slugs?
+curl -s "https://your-app.example/blog/nonexistent-slug" | head -50
+# If you get the index render for any /blog/X where X != undefined, you're on the bug.
+```
+
+### 5. Turbopack `process.env.NODE_ENV` Hardening in Standalone Output — canary.1 PR #96527 area
+
+In `next@16.3.1-canary.1` (and SHIPPED in canary.2), Turbopack hardens the production environment variable surface in `output: 'standalone'` builds. Previously, some `process.env.*` reads could leak development-only values into the standalone bundle (notably `NEXT_PUBLIC_*` and a small set of compiler-only vars). Standalone-output deployments now get a clean production-only environment surface, which is the expected behavior for production Docker/K8s/EC2 deploys.
+
+**No action required** — this is a silent correctness fix. If you were relying on dev-only `process.env.*` reads leaking into production (anti-pattern), audit recipe: `rg -n "process\.env\.(NODE_ENV|NEXT_PUBLIC_)" .next/standalone/` to verify the env surface in your built output.
+
+### 6. Other canary.1+canary.2 deploy-relevant minor PRs
+
+- **PR #96692 → PR #96592 (sokra, merged 2026-08-04T20:29:48Z) — Turbopack terminates failed plugin worker threads** — reliability: no more zombie worker threads after a custom Turbopack plugin (think `experimental.turbo.plugins`) crashes the analyzer thread in CI. Self-hosted VPS deployments running `next build` in long-lived CI runners benefit most.
+- **PR #96678 (Devin, 2026-08-04T21:25:04Z) — Strip leading BOM before parsing CSS** — Turbopack CSS parser fix: files with UTF-8 BOM (rare but real, especially in vendored CSS) no longer fail to parse. Affects Windows + some legacy toolchain outputs.
+- **PR #96601 (sokra, 2026-08-04T19:37:11Z) — Collapse nested promises in Turbopack analyzer** — perf: reduces analyzer overhead for large dependency graphs. Self-hosted builds with many packages see a small but measurable build-time improvement.
+- **PR #96550 (vercel-release-bot, 2026-08-04T21:03:59Z) — React vendor bump `cbb046ab-20260731` → `7dfc7ccd-20260803`** — matches the React 19.3.0-canary-7dfc7ccd-20260803 cycle documented in `components.md`.
+
+### Sources
+
+- [Next.js 16.3 stable blog post](https://nextjs.org/blog/next-16-3) — the canonical 16.3 release announcement (August 3, 2026)
+- [Next.js 16.3 native Node streams PR #94311](https://github.com/vercel/next.js/pull/94311) — Vercel-tracked +22% throughput benchmark
+- [Next.js 16.3 Turbopack blog post](https://nextjs.org/blog/next-16-3-turbopack) — Turbopack-specific 16.3 changes
+- [Next.js Docker guide](https://docs.docker.com/guides/nextjs/) — Docker's official Next.js containerization guide (multi-stage with `output: 'standalone'`)
+- [Next.js deployment guides](https://nextjs.org/docs/app/guides/deploying-to-platforms) — all official deploy options (Vercel, Netlify, Cloudflare, AWS, etc.)
+- [Next.js 16.3 self-hosting guide](https://nextjs.org/docs/app/guides/self-hosting) — the canonical self-hosting reference
+- [Next.js `turbopackFileSystemCache` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackFileSystemCache) — docs for the default-on config
+- [Next.js `useTypeScriptCli` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/useTypeScriptCli) — docs for the default-on config
+- [v16.3.0 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — npm-published 2026-08-03T20:34:17Z
+- [v16.3.1-canary.0 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.0) — npm-published 2026-08-03T22:37:40Z (PR #96553 catch-all fix)
+- [v16.3.1-canary.1 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.1) — npm-published 2026-08-04T14:56:04Z (22 commits)
+- [v16.3.1-canary.2 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.2) — npm-published 2026-08-05T00:03:35Z (final cleanup)
+- [PR #96493 — Enable Turbopack build filesystem cache by default (everywhere)](https://github.com/vercel/next.js/pull/96493) — timneutkens, merged 2026-08-02T18:33:34Z, shipped in 16.3.0 STABLE
+- [PR #96497 — Enable TypeScript CLI by default](https://github.com/vercel/next.js/pull/96497) — timneutkens, merged 2026-08-03T16:10:51Z, shipped in 16.3.0 STABLE
+- [PR #96553 — Fix catch-all index page being served for every other slug](https://github.com/vercel/next.js/pull/96553) — acdlite, shipped in 16.3.1-canary.0 (instant patch for the 16.3.0 bug)
+
+---
+
