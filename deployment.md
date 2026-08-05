@@ -1127,6 +1127,8 @@ The adapter interface handles these concerns:
 - [Next.js 16.2 release notes](https://nextjs.org/blog/next-16-2)
 - [OpenNext adapter for Cloudflare](https://opennext.js.org/)
 
+
+**Cross-reference (added 2026-08-05T06:03Z, v1.5.25 cycle)**: For the SILENT PRODUCTION WORKER HANG that ships fixed in **`next@16.3.1-canary.3`-ahead via PR #96636** (timneutkens, merged 2026-08-05T05:41:54Z — Turbopack + cross-origin CDN `assetPrefix` + Web Workers via `new Worker(new URL(...))` = worker loads but never executes silently), see **`patterns.md` → `## Pattern: Turbopack + Web Workers + Cross-Origin CDN assetPrefix (PR #96636, timneutkens — August 5, 2026)`** for the full recipe (the canonical `next.config.ts` that hung + the worker module + the symptom + the root cause chain + the fix diff + the 6-step audit recipe). PR #96636 will land on npm via `next@16.3.1-canary.3` once the canary-branch version-tag commit `bcea67d` publishes (expected within 2-12h).
 ## Next.js 16.3 Self-Hosting Additions (March 2026 docs refresh) — pre-16.3.0 STABLE deploy-relevant changes
 
 **NOTE:** This section was written pre-16.3.0 STABLE (when the canary.105 era was the active deploy-relevant train). **The 16.3.0 STABLE + 16.3.1-canary.0–2 cycles shipped additional deploy-critical changes that supersede some of this section — see the `## Next.js 16.3.0 STABLE Deployment-Critical Changes (August 3, 2026) + Canary.2 Updates` section at the bottom of this file for the current state.** In particular: PR #96493 expanded the Turbopack build cache to ALL environments (not just Vercel/local), PR #96497 flipped `useTypeScriptCli` to default-ON, and PR #94311 brought +22% throughput via native Node streams.

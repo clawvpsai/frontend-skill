@@ -3867,6 +3867,148 @@ PR #96615 is docs-only: it removes the experimental notice from the `experimenta
 
 
 
+## 16.3.1-canary.3-ahead — Turbopack Worker Chunk Loading with Asset Prefix Fix (PR #96636, timneutkens, August 5, 2026) — Silent Production Worker Hang Resolved
+
+The v1.5.24 cron (6h ago at 00:08Z Aug 5) said "canary.2 was npm-published 2026-08-05T00:03:35Z literally at cron-check time" and the canary-branch had 14 NEW commits ahead of canary.1 (which the v1.5.24 cycle fully covered). The canary-branch has now moved **3 NEW commits ahead of `16.3.1-canary.2`** (verified at 2026-08-05T06:03Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.2...canary` returning `ahead_by: 3`). The 3 commits break down as: **1 MATERIAL USER-FACING FIX** (PR #96636 — timneutkens, `Fix Turbopack worker chunk loading with asset prefix`, closes #96613 — a SILENT production breaker for any Turbopack user that combines `assetPrefix: 'https://cdn.example.com'` with Web Workers, since PR #93271 introduced `experimental.turbopackWorkerAssetPrefix`), **1 INFRA/CI** (PR #96682 — `react-sync` bot setups for opening PRs as the authoring bot), and **the `v16.3.1-canary.3` version-tag commit** `bcea67d` by `next-js-bot` at 2026-08-05T06:01:23Z (NOT YET npm-published at this cron's check time — npm `dist-tag.canary` still points at `16.3.1-canary.2`; the npm publish is expected within hours on the 24h cadence). Expect `next@16.3.1-canary.3` to npm-publish within 2-12h.
+
+### PR #96636 — Fix Turbopack Worker Chunk Loading with Asset Prefix (timneutkens, merged 2026-08-05T05:41:55Z)
+
+A SILENT PRODUCTION WORKER HANG for any Next.js 16.3.0 (or earlier Turbopack build) deployment that combines:
+1. Turbopack (`next build --turbopack` or `next dev --turbopack`)
+2. A cross-origin CDN `assetPrefix` (e.g., `assetPrefix: 'https://cdn.example.com'` for a Cloudflare/Cloudfront/Akamai/Fastly CDN)
+3. Web Workers created via `new Worker(new URL('./worker.ts', import.meta.url))` (e.g., for `@resvg/resvg-js` WASM-based SVG→PNG rendering, image decoders, PDF generation, webcodecs offscreen, etc.)
+
+**The bug (pre-#96636, in 16.3.0 STABLE + 16.3.1-canary.0/1/2):** Workers load successfully (every asset returns `200`), but the worker entry module NEVER EXECUTES — `self.onmessage` is never assigned, posted messages are silently dropped, no error event fires, no console error. The page `console.log`s the message was posted but nothing comes back. **The failure is completely silent** — only debuggable by `console.log` inside the worker module itself (which the bug also prevents from running).
+
+**The root cause** (per [issue #96613](https://github.com/vercel/next.js/issues/96613), filed 2026-08-04 by `Manitej66`, reproducer at `turbopack-worker-asset-prefix-repro`):
+
+`experimental.turbopackWorkerAssetPrefix` (added in PR #93271, designed to keep worker URLs same-origin when `assetPrefix` is a CDN) is applied to the URLs generated in the **parent** chunking context — the worker entrypoint URL and the chunk URLs handed to the bootstrap via `#params=`. But the worker's **own runtime chunk** is emitted with `CHUNK_BASE_PATH` set from `assetPrefix` (the CDN):
+
+```js
+// .next/static/chunks/turbopack-<hash>.js  (the worker's runtime chunk)
+var CHUNK_BASE_PATH = "https://cdn.example.com/_next/";   // ← the CDN
+```
+
+Inside `registerChunk`, the two sides of the chunk-resolver map are then keyed with DIFFERENT base paths:
+
+```ts
+// turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/dom/runtime-backend-dom.ts
+async registerChunk(chunk, params) {
+  let chunkPath
+  if (chunk != null) {
+    chunkPath = getPathFromScript(chunk)
+    const resolver = getOrCreateResolver(getUrlFromScript(chunk))  // ← key: chunk.src, i.e. WORKER base path
+    resolver.resolve()
+  }
+  if (params == null) return
+
+  for (const otherChunkData of params.otherChunks) {
+    const otherChunkPath = getChunkPath(otherChunkData)
+    const otherChunkUrl = getChunkRelativeUrl(otherChunkPath)      // ← key: CHUNK_BASE_PATH (the CDN)
+    getOrCreateResolver(otherChunkUrl)
+  }
+
+  await Promise.all(
+    params.otherChunks.map((d) => loadInitialChunk(chunkPath, d))  // ← waits on the CDN-keyed resolver
+  )
+  // runtime module ids are instantiated after this await — never reached
+}
+```
+
+In a worker, `chunk.src` comes from the bootstrap:
+
+```ts
+// runtime-base.ts, getChunkFromRegistration
+if (typeof TURBOPACK_NEXT_CHUNK_URLS !== "undefined") {
+  return { src: TURBOPACK_NEXT_CHUNK_URLS.pop()! } as CurrentScript;
+}
+```
+
+and `TURBOPACK_NEXT_CHUNK_URLS` is populated from `#params=`, which the parent built with the **worker** asset prefix. Meanwhile `getChunkRelativeUrl` defaults to `CHUNK_BASE_PATH` (the CDN). So `registerChunk` resolves the resolver keyed `"/_next/static/chunks/x.js?dpl=…"` while awaiting the one keyed `"https://cdn.example.com/_next/static/chunks/x.js?dpl=…"`. Two different entries in the resolver map.
+
+The await never settles because for `SourceType.Runtime` the backend deliberately does not fetch — it assumes `importScripts` already ran (which it did, under the other key). Hence: no request, no error, `Promise.all` pending forever, `params.runtimeModuleIds` never instantiated, worker entry module never evaluated.
+
+**Note this affects EVERY worker, not just ones with heavy dependencies.** Even a trivial dependency-free worker is emitted as a runtime chunk + one module chunk, so `params.otherChunks` is never empty and the broken path is always taken. The author of the reproducer noted the existing `test/e2e/turbopack-worker-asset-prefix` test may have been asserting URL shape only and missing the message round-trip.
+
+**The fix** (PR #96636, by timneutkens): **emit the worker's runtime chunk with `CHUNK_BASE_PATH` set to the worker asset prefix** rather than the global `assetPrefix`. The narrower alternative (thread a `WORKER_BASE_PATH` into the worker runtime) was considered but the wider fix is cleaner — every URL a worker's runtime constructs has to be same-origin with the worker anyway (the bootstrap enforces exactly that with its `Refusing to load script from foreign origin` check), so within a worker chunking context the worker prefix IS the chunk base path. That fixes `getChunkRelativeUrl`, `getPathFromScript`, and any subsequent dynamic chunk loads at once, with no call-site changes.
+
+```diff
+// runtime-base.ts (Web Worker context)
+- var CHUNK_BASE_PATH = "<assetPrefix>/_next/";   // the CDN
++ var CHUNK_BASE_PATH = "/_next/";               // the worker asset prefix (same-origin)
+```
+
+Diff summary: **35 files, +296/-102**. Touched files include:
+- `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/dom/runtime-backend-dom.ts` — propagate the effective worker asset prefix through the worker bootstrap
+- `turbopack/crates/turbopack-ecmascript-runtime/js/src/browser/runtime/base/runtime-base.ts` — `getChunkRelativeUrl` + `getPathFromScript` use the worker-specific base path (defensive: also fixes the latent same-path issue the issue author flagged)
+- `test/e2e/turbopack-worker-asset-prefix/` — full coverage (the new test asserts an actual message round-trip, not just URL shape)
+- `test/e2e/app-dir/worker/` — resvg WASM worker reproduction added (`test/e2e/app-dir/worker/app/resvg/page.tsx`, `resvg-worker.ts`, `svg-to-png-from-web-worker.ts`, `worker.test.ts`)
+- Verification per Tim: `NEXT_TEST_PREFER_OFFLINE=1 pnpm test-start-turbo test/e2e/turbopack-worker-asset-prefix/turbopack-worker-asset-prefix.test.ts` (passing) + `NEXT_TEST_PREFER_OFFLINE=1 pnpm test-dev-turbo test/e2e/turbopack-worker-asset-prefix/turbopack-worker-asset-prefix.test.ts` (passing) + the resvg WASM worker test in production AND development Turbopack (both passing) + `pnpm swc-build-native`.
+
+**Practical impact (NOW live in canary.3 once it npm-publishes, expected within 2-12h):**
+
+- **Apps with `assetPrefix: 'https://cdn...'` AND `new Worker(new URL('./worker.ts', import.meta.url))`** — the silent worker hang is fixed. Workers will now execute as expected. **Audit recipe:** in Chrome DevTools → Application → Workers (in your deployed app), inspect the worker → Console tab; if you see NO console output at all (not even the module-evaluated log) and the network tab shows all worker chunks returning `200`, you're affected by #96613.
+- **Apps with `assetPrefix: '...'` BUT no Workers** — zero impact. Workers were the only path affected.
+- **Apps with `assetPrefix: ''` or unset** — zero impact (the bug only manifests when `assetPrefix` differs from the worker asset prefix).
+- **Apps with `experimental.turbopackWorkerAssetPrefix` explicitly set** — also fixed for any prefix configuration (the fix replaces the CHUNK_BASE_PATH derivation wholesale, so any explicit override works too).
+- **Webpack users** — zero impact (the bug was Turbopack-only). Webpack's `output.workerPublicPath: '/_next/'` workaround in `next.config.js → webpack()` keeps Worker URLs same-origin and was never affected.
+- **Migration required: none** — bump to `next@16.3.1-canary.3+` (will npm-publish within hours) or `next@16.3.1+` stable (when published). The fix is in the worker runtime + chunking context; no code or config changes required.
+
+**The 3 new canary-branch commits ahead of `16.3.1-canary.2`** (chronological, oldest first):
+
+1. **`50eacb5` — PR #96682** [`[react-sync] Open pull requests as the bot that authors the commits`](https://github.com/vercel/next.js/pull/96682) (vercel-release-bot, merged 2026-08-05T05:24:09Z) — CI/infra change: the `react-sync` GitHub Action now opens PRs against `facebook/react` from the bot account that authored the commits (instead of from the bot that opened the PR), so PR authorship matches commit authorship per the React team's contribution conventions. **No user-facing impact** — pure infra change to the React-sync workflow.
+
+2. **`7577fa3` — PR #96636** [`Fix Turbopack worker chunk loading with asset prefix`](https://github.com/vercel/next.js/pull/96636) (timneutkens, merged 2026-08-05T05:41:54Z) — **THE BIGGEST BEHAVIORAL FIX OF THIS CYCLE.** See the full breakdown above.
+
+3. **`bcea67d` — `v16.3.1-canary.3` version-tag commit** by `next-js-bot` at 2026-08-05T06:01:23Z — the canary-branch version stamp for the next npm-published canary. Not yet npm-published at this cron's check time; expect `next@16.3.1-canary.3` on npm within 2-12h on the 24h cadence. The v1.5.26 cron (6h from now) will document the canary.3 SHIP event once npm publishes.
+
+### Why PR #96636 matters — silent worker hang fix on cross-origin CDN deploys
+
+**The bug** (pre-#96636, on `next@16.3.0` STABLE and all `next@16.3.1-canary.0/.1/.2` releases): for any deployment combining Turbopack + `assetPrefix: 'https://cdn.example.com'` + Web Workers (e.g., `@resvg/resvg-js`, `@napi-rs/canvas`, `@jsquash/*`, custom WASM packages, Comlink-wrapped services), the worker loads but never executes — **silently**. No error, no console message, no `onerror`, no failed request. Every network request in Chrome DevTools shows `200`. The page `console.log`s confirm `worker.postMessage()` was called and the message was posted, but nothing comes back. Without an explicit `console.log` at the top of the worker module (which the bug also prevents from running), the failure is completely opaque.
+
+**The fix** (PR #96636, timneutkens, 35 files / +296/-102): emit the worker's runtime chunk with `CHUNK_BASE_PATH` set to the worker asset prefix rather than the global `assetPrefix`. Within a worker chunking context the worker prefix IS the chunk base path (since every URL a worker's runtime constructs has to be same-origin with the worker anyway — the bootstrap enforces this with its `Refusing to load script from foreign origin` check). That fixes `getChunkRelativeUrl`, `getPathFromScript`, and any subsequent dynamic chunk loads at once, with no call-site changes.
+
+**The exact root cause** — `experimental.turbopackWorkerAssetPrefix` (PR #93271) applies to URLs in the parent chunking context (worker entrypoint URL + chunk URLs in `#params=`), but the worker's **own runtime chunk** was emitted with `CHUNK_BASE_PATH` from `assetPrefix` (the CDN). In `registerChunk`, the parent-context resolver is keyed with worker base path while the awaiting loader uses `CHUNK_BASE_PATH` (CDN). Two different keys → `Promise.all` pending forever → runtime module ids never instantiated → worker entry module never evaluated.
+
+**Practical impact**:
+- **Silent hang fixed for Turbopack + cross-origin CDN + Web Workers** — the canonical use case. Projects using `@resvg/resvg-js` (serverless-friendly SVG→PNG, popular in Next.js image pipelines), `@napi-rs/canvas` (offscreen canvas in workers), `@jsquash/*` (image codecs in workers), or any Web Worker created via `new Worker(new URL('./worker.ts', import.meta.url))` on Turbopack + CDN, will have their Workers execute as expected after the upgrade.
+- **Tons of pre-16.3.0 + Turbopack + CDN Worker users were affected** — the bug originated in PR #93271's introduction of `turbopackWorkerAssetPrefix` (the option designed to prevent a different, more catastrophic bug — Workers being constructed against cross-origin CDN URLs with a `SecurityError`). PR #96636 fixes the case where `turbopackWorkerAssetPrefix: ''` was used to keep workers same-origin but introduced a new bug in doing so.
+- **Audit recipe (if you're on a pre-canary.3 version with `assetPrefix` + Workers):**
+  ```bash
+  # 1. Confirm you're on a version with the fix:
+  npm ls next
+  # → should be next@>=16.3.1-canary.3 (live soon) or next@>=16.3.1 stable (when published)
+
+  # 2. Confirm you have the cross-origin CDN setup:
+  rg -n "assetPrefix\s*:" next.config.*    # shows your assetPrefix setting
+
+  # 3. Confirm you use Web Workers via import.meta.url:
+  rg -ln "new Worker\(new URL\(" app/ src/   # shows every Worker constructor
+
+  # 4. Confirm the symptom:
+  # In Chrome DevTools → Application → Workers (in the deployed app),
+  # click on your worker → check the Console tab.
+  # If you see NO console output (not even the module-evaluated log)
+  # but ALL network requests return 200, you have the #96613 bug.
+  ```
+- **Migration required: none** — the fix is in the worker runtime + chunking context; no code or config changes required. Bump to `next@16.3.1-canary.3+` (will npm-publish within hours) or `next@16.3.1+` stable (when published).
+
+### Sources (canary-branch ahead of 16.3.1-canary.2)
+
+- [**Next.js PR #96636** — `Fix Turbopack worker chunk loading with asset prefix**](https://github.com/vercel/next.js/pull/96636) — by timneutkens, merged 2026-08-05T05:41:54Z, 35 files / +296/-102, the source-of-truth for the silent-worker-hang fix; will ship in `next@16.3.1-canary.3`
+- [Next.js PR #96636 files diff](https://github.com/vercel/next.js/pull/96636/files) — full 35-file breakdown incl. `runtime-backend-dom.ts` (worker bootstrap propagation), `runtime-base.ts` (`getChunkRelativeUrl` + `getPathFromScript` worker-base-path fix), 4 new test files in `test/e2e/turbopack-worker-asset-prefix/` (incl. message round-trip assertion), 4 new test files in `test/e2e/app-dir/worker/` (resvg WASM repro)
+- [**Next.js issue #96613** — `Turbopack: experimental.turbopackWorkerAssetPrefix makes Workers load but never execute when assetPrefix is a cross-origin CDN**](https://github.com/vercel/next.js/issues/96613) — filed 2026-08-04 by `Manitej66`, reproducer at [`turbopack-worker-asset-prefix-repro`](https://github.com/Manitej66/turbopack-worker-asset-prefix-repro), the source-of-truth for the bug + root cause + proposed fix shape (PR #96636 implements the wider "emit worker's runtime chunk with worker asset prefix" alternative the issue author proposed)
+- [Next.js canary-branch compare: `v16.3.1-canary.2...canary` (3 commits ahead)](https://github.com/vercel/next.js/compare/v16.3.1-canary.2...canary) — verified at 2026-08-05T06:03Z; = 1 material PR (#96636) + 1 infra PR (#96682) + the `v16.3.1-canary.3` version-tag commit (not yet npm-published)
+- [Next.js canary-branch compare: `v16.3.1-canary.1...canary` (17 commits ahead cumulatively)](https://github.com/vercel/next.js/compare/v16.3.1-canary.1...canary) — the cumulative ahead-of-canary.1 set (the 14 commits v1.5.24 documented + 3 NEW this cycle)
+- [Next.js PR #96682 — `[react-sync] Open pull requests as the bot that authors the commits`](https://github.com/vercel/next.js/pull/96682) — by vercel-release-bot, merged 2026-08-05T05:24:09Z, CI/infra change (no user-facing impact)
+- [Next.js commit `bcea67d` — `v16.3.1-canary.3` version-tag](https://github.com/vercel/next.js/commit/bcea67d) — by next-js-bot at 2026-08-05T06:01:23Z, the canary-branch version stamp; will npm-publish as `next@16.3.1-canary.3` within 2-12h on the 24h cadence
+- [Next.js PR #93271 — `Original worker asset prefix introduction`](https://github.com/vercel/next.js/pull/93271) — the PR that introduced `experimental.turbopackWorkerAssetPrefix` (the option PR #96636 fixes); relevant historical context for why the option existed (Workers being constructed against cross-origin CDN URLs with a SecurityError)
+- [Next.js discussion #93044 — `Turbopack: add turbopack.workerPublicPath to keep Workers same-origin when assetPrefix is a CDN`](https://github.com/vercel/next.js/discussions/93044) — the original feature request that led to PR #93271 (added the `turbopackWorkerAssetPrefix` config); the PR #96636 fix resolves the regression that config introduced
+- [Next.js `experimental.turbopackWorkerAssetPrefix` config docs](https://nextjs.org/docs/app/api-reference/turbopack) — the config reference page describing `turbopackWorkerAssetPrefix` as "Custom asset prefix for Web Worker URLs (entrypoint + module chunks), overriding `assetPrefix`. Mirrors webpack's `output.workerPublicPath`." (the option PR #96636 fixes; semantics unchanged for `turbopackWorkerAssetPrefix` users)
+- [Next.js `assetPrefix` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/assetPrefix) — CDN setup walkthrough including the `phase === PHASE_DEVELOPMENT_SERVER` pattern that exposes the bug only in production builds
+- [Next.js `next@16.3.1-canary.2` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.2) — npm-published 2026-08-05T00:03:35Z; 14-commit canary.1+canary.2 set (full breakdown in v1.5.24 cycle entry + `routing.md` → `## 16.3.1-canary.1 + 16.3.1-canary.2` section)
+
+
 ## Web Vitals
 
 | Metric | Target | What to Fix |
@@ -3897,5 +4039,7 @@ PR #96615 is docs-only: it removes the experimental notice from the `experimenta
 - **Ignoring the new `experimental.useCache` deprecation warning that PR #96448 surfaces (canary.106+)** — the `experimental.useCache` option has carried a `@deprecated` JSDoc annotation since PR #92316 but nothing surfaced that at runtime. PR #96448 (unstubbable, merged 2026-08-01T00:26:11Z) **logs a warning** whenever `experimental.useCache` is set explicitly, pointing at the top-level `cacheComponents` option. Worse, **disabling the option while `cacheComponents` is enabled is now rejected outright** as a compile error (because that combination is contradictory — it turns off the very directive Cache Components is built around, and the resulting error asks the user to enable `cacheComponents` which they already have on). Throwing matches how `cachedNavigations` and `partialPrefetching` already reject configs that require `cacheComponents`. Migration: remove `experimental.useCache` from your `next.config.ts`; if `cacheComponents: true`, the `useCache` option is backfilled automatically and is redundant; if you have `experimental.useCache: false` AND `cacheComponents: true`, simply remove the `useCache: false` line. Audit recipe: `rg -n 'experimental.*useCache' next.config.*` to find projects with the deprecated option set; `rg -B2 -A4 'useCache.*false' next.config.*` to find the contradictory config that will now throw at config-eval.
 
 - **`use cache` returns empty content after a prerender aborts (canary.105 / canary.106) — FIXED in canary.107 by PR #96426** — Janka Uryga, merged 2026-08-03T11:42:26Z, **SHIPPED in `next@16.3.0-canary.107`** (npm-published 2026-08-03T14:04:47Z). Pre-#96426, caches that started filling after a prerender was aborted (e.g. client navigated away mid-render, prefetch cancelled under `partialPrefetching: true`) would silently produce an empty stream and save it as a valid cache entry — effectively poisoning the cache with a tombstone that subsequent requests would hit and return empty content from. The fix removes `renderSignal` from the `AbortSignal.any(...)` passed to `prerender()` inside `use-cache-wrapper` and short-circuits with a rejected promise *before* reaching the cache-fill codepath (so the prerender is aborted, but the cache is never poisoned). **Only affects apps with `cacheComponents: true`** that use `use cache` heavily under navigation aborts. Audit recipe: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; `rg -l "use cache" app/ src/` to confirm you use `use cache`; if you've seen "this cache should have content but it's empty" after a navigation — you're affected by #96339. Migration: bump to `next@16.3.0-canary.107+` (when published, canary.107 is the first release with the fix live in npm) — no code changes required, the fix is in the runtime cache wrapper. The bug was on canary.105 / canary.106 / `next@16.3.0-preview.10`; the fix is live in `next@16.3.0-canary.107+` and in `next@16.2.12` once backported (not yet backported at this cron's check — backport PR not open).
+
+- **Cross-origin CDN `assetPrefix` + Web Workers = silent worker hang on Turbopack (16.3.0 + 16.3.1-canary.0/.1/.2) — FIXED in `next@16.3.1-canary.3`-ahead by PR #96636** — timneutkens, merged 2026-08-05T05:41:54Z. Pre-#96636, any deployment combining Turbopack + `assetPrefix: 'https://cdn.example.com'` + Web Workers created via `new Worker(new URL('./worker.ts', import.meta.url))` (e.g., `@resvg/resvg-js`, `@napi-rs/canvas`, `@jsquash/*`, custom WASM packages) would silently hang — workers load (every network request returns `200`) but never execute (no `onerror`, no console, no failed request, page posts a message but nothing comes back). Cause: `experimental.turbopackWorkerAssetPrefix` (PR #93271) was applied to parent-context URLs but the worker's own runtime chunk was emitted with `CHUNK_BASE_PATH = assetPrefix` (the CDN) — `registerChunk`'s two resolver keys collided across base paths and the `Promise.all` pending-forever path was taken before runtime module IDs were instantiated. Affects every worker that uses Turbopack + cross-origin CDN. After PR #96636: the worker's runtime chunk is emitted with `CHUNK_BASE_PATH` set to the worker asset prefix (same-origin). **Audit recipe:** `npm ls next` (should be `>=16.3.1-canary.3` after npm publishes within hours); `rg -n "assetPrefix\s*:" next.config.*` to confirm cross-origin CDN setup; `rg -ln "new Worker\(new URL\(" app/ src/` to find Workers; in Chrome DevTools → Application → Workers, check the Console tab for the deployed app's worker — if there is NO output (not even the module-evaluated log) and all network requests return `200`, you have the #96613 bug. **Migration required: none** — bump to `next@>=16.3.1-canary.3` (will npm-publish within hours) or `next@>=16.3.1` stable (when published). The bug was on `next@16.3.0` STABLE and all `next@16.3.1-canary.0/.1/.2` releases. Webpack users are unaffected (webpack's `output.workerPublicPath: '/_next/'` workaround in `next.config.js → webpack()` was never broken).
 
 - **Cache Components dynamic routes trigger unnecessary loading-boundary prefetches instead of per-segment prefetches — FIXED in `next@16.3.1-canary.1`-ahead by PR #96583** — Zack Tanner, merged 2026-08-04T02:02:33Z. Pre-#96583 (i.e. on `next@16.3.0` STABLE), any `router.prefetch()` call on a Cache Components dynamic route (any route with `experimental.cacheComponents: true` whose render path is dynamic — e.g. calls `headers()`, `cookies()`, uses a dynamic data source, or relies on `await connection()`) would incorrectly fall back to **loading-boundary prefetching** (large payload with loading state) instead of **per-segment prefetching** (small payload with just the changed segments). The cause: the dynamic Flight response was setting the `S:` flag to `workStore.isStaticGeneration` (always `false` for dynamic renders) without including `ctx.renderOpts.cacheComponents` in the `||` expression. After PR #96583: `S: workStore.isStaticGeneration || ctx.renderOpts.cacheComponents` — Cache Components routes now correctly advertise per-segment prefetching capability regardless of static/dynamic mode. **Expected reduction in prefetch network traffic**: ~30-50% (depending on route complexity) per `router.prefetch()` call on a dynamic CC route. **Only affects apps with `cacheComponents: true`** — non-CC routes are unaffected. **Audit recipe**: `rg -n "cacheComponents\s*:\s*true" next.config.*` to confirm you're on Cache Components; in Chrome DevTools → Network, trigger a `router.prefetch()` on a dynamic CC route and confirm the request is a **segment-level prefetch** (small payload, no loading boundary), not a full-page loading-boundary prefetch (large payload with loading state). **Migration**: bump to `next@>=16.3.1-canary.1` (when published — will likely ship within 12-24h on the 24h cadence) or to `next@>=16.3.1` stable (when published shortly after); no code changes required, the fix is in the server-render output + the segment cache field. The bug was on `next@16.3.0` STABLE; the fix will ship in `next@16.3.1-canary.1`-ahead.
