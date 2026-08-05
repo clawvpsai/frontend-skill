@@ -975,6 +975,126 @@ For each match, either (a) use a stable derived key (specific header values, not
 
 **Source:** [PR #96085 — `Ensure unique resolved headers() value between render passes`](https://github.com/vercel/next.js/pull/96085) · Sebastian "Sebbie" Silbermann · merged 2026-07-29T22:16:35Z · **SHIPPED in `16.3.0-canary.103`** (npm-published 2026-07-30T00:11:44Z).
 
+
+## App Router Execution Mode Refactor — 9-PR Coordinated Set Ahead of `16.3.1-canary.3` (August 5, 2026)
+
+The v1.5.21 cycle (Aug 4 06:14Z) added the `## headers() Returns a Unique Object Per Render Pass — PR #96085` section (SHIPPED in `next@16.3.0-canary.103`). The v1.5.21 cycle also touched `server-components.md` for the `## revalidateTag vs updateTag — The Canonical Decision Matrix (Next.js 16.3 STABLE, August 3, 2026)` section. Since then, **server-components.md has been silent through the v1.5.22 → v1.5.26 cycles (35h48min stale at this cron's check, tied with `testing.md` for the most-stale topic file)**. The material change in the 6h window for server-components is the **coordinated 9-PR executionMode refactor** that landed on the Next.js canary-branch in the 6h window — a significant App Router pipeline refactor that moves `WorkStore.isStaticGeneration` → explicit `'prerender' | 'request'` execution mode, lifts the decision to entrypoints, separates render/prerender pipelines, and removes the downstream mode reads. All 9 PRs are on the canary-branch ahead of `next@16.3.1-canary.3` (which was published 2026-08-05T06:27:06Z); the canary-branch has 18 commits ahead of canary.3 at this cron's check; the 9-PR executionMode refactor + PR #96735 React vendor bump are the bulk of what will ship in `next@16.3.1-canary.4` when that npm-publishes (expected within 2-12h on the 24h cadence).
+
+**All 9 PRs are pure refactors — zero observable behavior change for App Router users on `next@16.3.0` STABLE or on `next@16.3.1-canary.3`.** The only user-visible change when canary.4 npm-publishes: the WorkStore internal field for execution mode is gone, but no public API contract is touched. **Do not plan a migration for this refactor** — it's pure internal cleanup for maintainability.
+
+### The 9-PR executionMode refactor set (in chronological order)
+
+The 9 PRs are a coordinated refactor that moves the "is this a prerender or a request?" decision through 4 phases:
+
+**Phase 1 — Foundation: replace `WorkStore.isStaticGeneration` with `executionMode`** ([PR #96570](https://github.com/vercel/next.js/pull/96570), merged 2026-08-05T12:51:07Z)
+
+Replaces the boolean `WorkStore.isStaticGeneration` with an explicit `'prerender' | 'request'` execution mode. Preserves the existing derivation and behavior while making the render/prerender distinction explicit. Documents that prerendering includes both **build-time generation** (the static prerender pass during `next build`) AND **runtime revalidation** (the per-request revalidation pass when a stale cache entry is detected and re-rendered before being served). Establishes groundwork for moving the render decision higher in the stack and replacing downstream mode checks with purpose-specific state. Stacked on PR #96564.
+
+**Phase 2 — Threading: pass explicit prefetch hint policy + render capabilities through App Render** (PR #96572 + PR #96576, both merged 2026-08-05T12:51:04Z)
+
+- [PR #96572](https://github.com/vercel/next.js/pull/96572) — Pass explicit **prefetch hint policy** through App Render (the policy that determines which segments to prefetch and how aggressively — used by the partial-prefetching logic).
+- [PR #96576](https://github.com/vercel/next.js/pull/96576) — Pass explicit **render capabilities** through App Render (the capability flags that determine what operations are valid in this render pass — e.g. "can spawn runtime prefetches", "can throw redirect exceptions", "can read request headers").
+
+Both PRs thread the values as explicit parameters rather than relying on the App Render code to read them from WorkStore (which is the pattern the refactor is moving away from).
+
+**Phase 3 — The headline: Move App Router execution intent to entrypoints** ([PR #96640](https://github.com/vercel/next.js/pull/96640), merged 2026-08-05T12:51:11Z, closes issue #96519)
+
+App Router execution intent was **previously inferred during WorkStore construction** from response capabilities and request state. App Page also carried that intent through its handler context and lazy render API before selecting the rendering operation inside app-render. **PR #96640 moves those decisions to entrypoints where the work is known:**
+
+- **Reusable output** — including build-time generation, fallback shells, and runtime revalidation — selects **prerendering**.
+- **Request-specific and resumed rendering** selects **request rendering**.
+- **App Page** exposes distinct **render** and **prerender** operations, so execution mode no longer travels through `AppPageRouteHandlerContext` or the lazy render API.
+- **App Route** execution derives its intent from **whether the response has an ISR cache key** (responses without an ISR cache key are request-time, responses with one can be prerendered).
+
+**WorkStore still consumes the explicit mode internally as a transitional seam.** Follow-up work can migrate downstream behavior to the active `WorkUnitStore` and remove the mode from WorkStore entirely (PR #96674 below is that follow-up).
+
+**Verification** per the PR description: `pnpm --filter=next types` + `pnpm test-start-turbo test/e2e/app-dir/segment-cache/static-shell-vary-params-regression/static-shell-vary-params-regression.test.ts` + `pnpm test-start-webpack test/e2e/app-dir/segment-cache/static-shell-vary-params-regression/static-shell-vary-params-regression.test.ts`.
+
+**Phase 4 — Pipeline separation: split App Page and App Route render/prerender pipelines** (PR #96659 + PR #96662, both merged 2026-08-05T12:51:12Z / 16:52:57Z)
+
+- [PR #96659](https://github.com/vercel/next.js/pull/96659) — **Separate App Page render and prerender pipelines**. App Page rendering previously shared a single implementation that used the Work Store execution mode to choose between the request and prerender pipelines. **The fix**: (a) extracts mode-neutral App Page preparation into a shared step, (b) gives request rendering and prerendering separate top-level implementations, (c) moves Work Store creation into the corresponding entrypoint, (d) makes each path call `renderToStream` or `prerenderToStream` directly, removing the execution-mode dispatch between them. This moves the rendering decision to the App Page boundary and creates a clearer path toward removing execution mode from the Work Store entirely.
+- [PR #96662](https://github.com/vercel/next.js/pull/96662) — **Separate App Route render and prerender pipelines**. The App Route counterpart to PR #96659; same pattern — separate top-level implementations, Work Store creation moved to entrypoint.
+
+**Phase 5 — Downstream cleanup: remove execution-mode reads** (PR #96660 + PR #96670, both merged 2026-08-05T16:52:56–57Z)
+
+- [PR #96660](https://github.com/vercel/next.js/pull/96660) — **Remove App Page execution mode reads**. Downstream consumers no longer read execution mode from WorkStore / handler context; they receive the intent as an explicit parameter. Matches the threading done in Phase 2.
+- [PR #96670](https://github.com/vercel/next.js/pull/96670) — **Remove cache revalidation execution mode reads**. Downstream cleanup for the cache revalidation path (revalidateTag / updateTag / revalidatePath handlers).
+
+**Phase 6 — Final removal: WorkStore no longer carries execution mode** ([PR #96674](https://github.com/vercel/next.js/pull/96674), merged 2026-08-05T16:52:57Z)
+
+The **final removal PR** — WorkStore no longer carries an execution mode field; the transitional seam from PR #96570 is gone. After PR #96674, all rendering decisions are made at entrypoints; WorkStore is purely a work-context object (carrying params, request state, cache state) without the "am I a prerender or a request?" flag.
+
+### Companion PR: React vendor bump 7dfc7ccd-20260803 → 11eddecd-20260805
+
+[PR #96735](https://github.com/vercel/next.js/pull/96735) — `Upgrade React from 7dfc7ccd-20260803 to 11eddecd-20260805`, merged 2026-08-05T17:15:10Z by vercel-release-bot. Single-PR vendor bump; no public API change. The PR carries the React 11eddecd-20260805 canary cut (which ships PR #36944 [Devtools] component search in Profiler's commit view — the same 1-commit bundle documented in `components.md` → "React 19.3.0-canary-11eddecd-20260805 SHIPPED"). After this PR merges, `npm view next@canary dependencies.react` returns `19.3.0-canary-11eddecd-20260805` instead of the previous `19.3.0-canary-7dfc7ccd-20260803`. **Zero user-visible impact** from the vendor bump — both `7dfc7ccd` and `11eddecd` are DevTools-only on the React side.
+
+### Per-PR practical-impact table
+
+| PR | Phase | Files | User-visible change |
+|---|---|---|---|
+| [#96570](https://github.com/vercel/next.js/pull/96570) | 1 — Foundation | multiple WorkStore callers | None — internal field rename |
+| [#96572](https://github.com/vercel/next.js/pull/96572) | 2 — Threading | App Render | None — explicit parameter |
+| [#96576](https://github.com/vercel/next.js/pull/96576) | 2 — Threading | App Render | None — explicit parameter |
+| [#96640](https://github.com/vercel/next.js/pull/96640) | 3 — Headline | App Page + Work Store | None — decisions move to entrypoints |
+| [#96659](https://github.com/vercel/next.js/pull/96659) | 4 — Pipelines | App Page render + prerender | None — separate top-level impls |
+| [#96660](https://github.com/vercel/next.js/pull/96660) | 5 — Cleanup | App Page downstream | None — reads replaced with params |
+| [#96662](https://github.com/vercel/next.js/pull/96662) | 4 — Pipelines | App Route render + prerender | None — separate top-level impls |
+| [#96670](https://github.com/vercel/next.js/pull/96670) | 5 — Cleanup | Cache revalidation | None — reads replaced with params |
+| [#96674](https://github.com/vercel/next.js/pull/96674) | 6 — Final | WorkStore field | None — WorkStore field removed |
+| [#96735](https://github.com/vercel/next.js/pull/96735) | Vendor | next packages/react | None — 11eddecd React vendor bump |
+
+**Zero user-visible change across all 10 PRs.** Pure refactor.
+
+### Architectural rationale
+
+The `WorkStore.isStaticGeneration` boolean was an **inferable-but-not-explicit** signal that traveled through the rendering layers. Three problems with the old design:
+
+1. **Implicit decision-making** — the boolean was set during WorkStore construction based on response capabilities + request state, but the rendering layer had to read it later to know what to do. This made the rendering decision implicit + spread across multiple files.
+2. **"I forgot to set the flag" bugs** — any code path that needed to know the rendering mode had to remember to read the WorkStore field. If a new code path was added that needed the mode, the developer had to thread the read through the appropriate layers.
+3. **Two-source-of-truth risk** — the WorkStore field could drift from the actual response/request state if either was modified after WorkStore construction (e.g. runtime revalidation could change the semantics).
+
+The refactor **lifts the decision to entrypoints where the work is known** — by the time the request hits App Render, the entrypoint has already classified the work as "reusable output" (prerender) or "request-specific" (request render). The decision travels through as an explicit parameter, not a hidden WorkStore read. This is the same pattern that Vercel has been hinting at for several releases as part of the **`WorkUnitStore` migration** — PR #96674 (the WorkStore field removal) is a stepping stone toward fully migrating the rendering layer to `WorkUnitStore`-based work contexts.
+
+### 5-step audit recipe (after `next@16.3.1-canary.4` npm-publishes)
+
+```bash
+# 1. Confirm canary.4 includes the executionMode refactor + React 11eddecd vendor bump:
+npm view next@canary version
+# → should show: 16.3.1-canary.4 or later
+
+# 2. Confirm the WorkStore.isStaticGeneration field is gone:
+rg -n "isStaticGeneration" packages/next/src/server/  # would only work in the next.js source; for users, skip
+# (this is a source-level audit only; users see no API change)
+
+# 3. Find any code paths that read WorkStore.executionMode directly (should be NONE post-PR-#96674):
+# (source-level audit only)
+
+# 4. Confirm React 11eddecd-20260805 is the bundled React:
+npm view next@canary dependencies.react
+# → should show: 19.3.0-canary-11eddecd-20260805 (post-#96735 vendor bump)
+
+# 5. Confirm canary-branch ahead count is back to 0:
+curl -s https://api.github.com/repos/vercel/next.js/compare/v16.3.1-canary.4...canary | python3 -c "import sys,json; print('ahead:', json.load(sys.stdin).get('ahead_by'))"
+# → should show: 0 (or low single digits if new PRs landed in the gap)
+```
+
+### What's NOT in the refactor (forward-looking)
+
+- **No public API change** — no exports added, none removed, none renamed.
+- **No new config option** — `next.config.ts` keys are unchanged.
+- **No codemod needed** — the refactor is purely internal.
+- **No behavior change for production users** — pre-fix and post-fix produce identical rendered output for App Router routes.
+- **Pure internal refactor for maintainability** — the goal is to make future rendering-layer changes easier + to set up the `WorkUnitStore` migration.
+- **Will ship in `next@16.3.1-canary.4`** (and eventually `next@16.3.1` STABLE) when the canary-branch version-tag commit lands + npm publishes.
+
+### Sources
+
+- [Next.js PR #96570 — `Replace WorkStore isStaticGeneration with executionMode`](https://github.com/vercel/next.js/pull/96570) — merged 2026-08-05T12:51:07Z, foundation phase
+- [Next.js PR #96640 — `Move App Router execution intent to entrypoints`](https://github.com/vercel/next.js/pull/96640) — merged 2026-08-05T12:51:11Z, **the headline PR**; closes issue #96519
+- [Next.js PR #96659 — `Separate App Page render and prerender pipelines`](https://github.com/vercel/next.js/pull/96659) — merged 2026-08-05T12:51:12Z, App Page pipeline split
+- [Next.js PR #96662 — `Separate App Route render and prerender pipelines`](https://github.com/vercel/next.js/pull/96662) — merged 2026-08-05T16:52:57Z, App Route pipeline split
+- [Next.js PR #96674 — `Remove WorkStore execution mode`](https://github.com/vercel/next.js/pull/96674) — merged 2026-08-05T16:52:57Z, **the final removal PR**
+- [Next.js PR #96735 — `Upgrade React from 7dfc7ccd-20260803 to 11eddecd-20260805`](https://github.com/vercel/next.js/pull/96735) — merged 2026-08-05T17:15:10Z, vendor bump
 **Test coverage added:** the PR adds a test that demonstrates the previous incorrect behavior (the same `Headers` object returned across passes), and confirms the post-fix behavior (distinct objects per pass).
 
 

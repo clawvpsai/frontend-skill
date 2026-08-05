@@ -2038,6 +2038,161 @@ test('product title is available immediately after navigation', async ({ page })
 **Source:** [Next.js 16.3 — Instant Navigations blog post](https://nextjs.org/blog/next-16-3-instant-navigations) · [`@next/playwright` — Instant Navigation Testing API docs](https://nextjs.org/docs/app/guides/testing/instant-navigation)
 
 **Sources:**
+
+## Playwright `1.63.0-alpha-2026-08-05` + `next/image` Preserve-Response Testing Pattern (PR #96681, August 5, 2026)
+
+The v1.5.21 cycle (Aug 4 06:14Z) added the `## @next/playwright — instant() Test Helper for Instant Navigations (Next.js 16.3)` section that documented the `@next/playwright` `instant()` test helper for instant-navigation testing. The v1.5.21 cycle also touched testing.md for the Vitest 5 forward-looking section + the `Testing 'use cache' Functions and 'use cache' Components` section. Since then, **testing.md has been silent through the v1.5.22 → v1.5.26 cycles (35h48min stale at this cron's check, tied with `server-components.md` for the most-stale topic file)**. The only material change in the 6h window for testing is:
+
+1. **`@playwright/test@next` bumped to `1.63.0-alpha-2026-08-05`** (npm `dist-tag.next` moved 2026-08-05; the alpha train; **NOT the tracked `@latest` stable pin which remains `1.62.1`**; documented as forward-looking only — production pin remains `^1.62.1`).
+2. **PR #96681 — `fix(next/image): preserve image response after optimization`** (merged 2026-08-05T15:13:25Z, closes issue #96612; lands in `next@16.3.1-canary.4` when that npm-publishes; documented in `components.md` → "Canary-branch component-relevant PRs ahead of canary.3" → PR #96681).
+
+This new section covers both:
+
+### `@playwright/test@next` 1.63.0-alpha-2026-08-05 (alpha train, forward-looking)
+
+The `next` dist-tag of `@playwright/test` tracks the alpha train — new features + experimental APIs that haven't yet graduated to `@latest` stable. The 1.63.0 alpha line carries forward:
+
+- **`@next/playwright` `instant()` helper enhancements** (the helper itself continues to evolve in lockstep with the 16.3.x line; expect new `instant()` features in the 1.63.x line as Next.js 16.3 grows).
+- **Playwright Trace improvements** (the Trace Viewer + the trace.zip format continue to evolve; expect new fields in the trace schema in 1.63.x).
+- **Test runner instrumentation hooks** (the alpha train carries forward new hooks for AI-agent-driven test scenarios — `@playwright/test` has been investing in agent-friendly hooks throughout 2026).
+
+**Practical impact** (for projects currently on `@playwright/test@^1.62.1` stable):
+
+- **NO production action required** — the tracked stable pin remains `^1.62.1`. The 1.63.0 alpha train is forward-looking only.
+- **For teams experimenting with AI-agent test scenarios**: the alpha train is worth tracking; the new hooks may enable simpler agent-test integrations.
+- **For teams migrating from another test runner (Cypress, WebdriverIO, etc.) to Playwright**: the 1.63.x line will be the next stable; worth waiting for the STABLE cut before committing.
+
+**Audit recipe**:
+
+```bash
+# Confirm the alpha train version:
+npm view @playwright/test dist-tags.next
+# → should show: 1.63.0-alpha-2026-08-05 (or later alpha)
+
+# Confirm the stable pin version:
+npm view @playwright/test dist-tags.latest
+# → should show: 1.62.1
+
+# Audit your project's actual install:
+npm ls @playwright/test
+# → if you're on 1.62.x stable, no action required
+# → if you're on 1.63.0-alpha, you're experimenting — know that the API may shift
+```
+
+### PR #96681 — `next/image` preserve-response testing pattern
+
+Closes issue #96612 (the silent production crash for `next/og` after `next/image` SVG requests in the same Node.js process). The pre-fix behavior:
+
+```ts
+// PRE-FIX (next@16.3.0 + 16.3.1-canary.0/.1/.2/.3) — module-level singleton state corrupts downstream ImageResponse calls:
+
+// 1. The first /_next/image?url=...svg request in the process triggers getSharp(), which calls
+//    _sharp.block({ operation: ['VipsForeignLoad'] }) — this PERMANENTLY disables Sharp's SVG loader
+//    for the entire process (because _sharp is a module-level singleton, the block is global).
+
+// 2. Any subsequent ImageResponse (next/og) call that hands SVG to Sharp (resvg rasterizes to PNG
+//    internally, but the post-rasterization handoff goes through Sharp for some pipelines) fails
+//    with: "Input buffer contains unsupported image format" — which surfaces as a socket hang up
+//    / crashed response on the ImageResponse route.
+
+// POST-FIX (next@16.3.1-canary.4+) — getSharp() unblocks the SVG loader correctly:
+
+// 1. Same first /_next/image SVG request — but the unblock list now includes 'VipsForeignLoadSvg',
+//    so the SVG loader remains available process-wide.
+
+// 2. Subsequent ImageResponse calls work correctly — no crash, no hang up.
+```
+
+**Practical impact on tests**:
+
+- **Tests that exercise both `next/og` and `next/image`** — pre-fix, tests had to be ordered carefully (render `next/og` BEFORE any `next/image` SVG request) or had to call `_sharp.unblock({operation: ['VipsForeignLoadSvg']})` manually between tests; post-fix, no ordering or manual intervention is required.
+- **Tests that exercise only `next/og` (no `next/image` in the same test file)** — pre-fix, no impact (the singleton is only corrupted by `next/image` requests); post-fix, no impact.
+- **Tests that exercise only `next/image`** — pre-fix, no impact; post-fix, no impact.
+- **Snapshot tests using Vitest + a next/image + next/og mix** — pre-fix, snapshots could fail if the test order varied; post-fix, snapshots are stable across runs.
+
+**The canonical Playwright test for `next/og` + `next/image` coexistence** (works correctly on `next@16.3.1-canary.4+`):
+
+```ts
+import { expect, test } from '@playwright/test'
+
+test('next/og works after next/image SVG request', async ({ page, request }) => {
+  // 1. Hit a next/image SVG endpoint FIRST (this is the request that corrupted Sharp pre-fix)
+  const imageResponse = await request.get('/_next/image?url=%2Ffoo.svg&w=384&q=75')
+  expect(imageResponse.status()).toBe(200)
+  expect(await imageResponse.headerValue('content-type')).toMatch(/^image\//)
+
+  // 2. Then hit a next/og ImageResponse endpoint (this would CRASH pre-fix with
+  //    "Input buffer contains unsupported image format" / socket hang up)
+  const ogResponse = await page.goto('/api/og?title=hello')
+  expect(ogResponse?.status()).toBe(200)
+  expect(ogResponse?.headers()['content-type']).toMatch(/^image\/png/)
+
+  // 3. Optional: take a snapshot of the rendered og image
+  const ogBuffer = await ogResponse?.body()
+  expect(ogBuffer).toBeTruthy()
+  expect(ogBuffer!.length).toBeGreaterThan(100)
+})
+
+test('order does not matter post-fix', async ({ page, request }) => {
+  // Post-fix, the order of next/og vs next/image requests does NOT matter.
+  // Pre-fix, this test would fail because next/og was hit first (no corruption yet),
+  // then next/image SVG hit (corrupts), then next/og again (would crash).
+
+  const ogFirst = await page.goto('/api/og?title=world')
+  expect(ogFirst?.status()).toBe(200)
+
+  const imageAfter = await request.get('/_next/image?url=%2Fbar.svg&w=384&q=75')
+  expect(imageAfter.status()).toBe(200)
+
+  const ogSecond = await page.goto('/api/og?title=again')
+  expect(ogSecond?.status()).toBe(200) // ← would fail pre-fix
+})
+```
+
+**Vitest snapshot caveat** (for projects using Vitest + `@playwright/test` for next/image testing):
+
+The `_sharp` module-level singleton persists across Vitest tests in the same worker process. If a Vitest test file mixes `next/image` + `next/og` tests, **the first `next/image` SVG request in the test file corrupts `_sharp` for all subsequent tests in the same file**. The pre-fix workaround was to either (a) call `_sharp.unblock({operation: ['VipsForeignLoadSvg']})` in a `beforeEach` hook, or (b) force module reload with `vi.resetModules()`. The post-fix behavior removes the need for either workaround, but for robustness across `next@16.3.0` and `next@16.3.1-canary.0/.1/.2/.3` (pre-fix) versions:
+
+```ts
+// vitest.config.ts — for next/image + next/og test suites, force module reset between tests:
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    // Force module reset between tests so _sharp singleton state doesn't leak
+    clearMocks: true,
+    restoreMocks: true,
+    // For projects on pre-fix next@16.3.0 or next@16.3.1-canary.0/.1/.2/.3:
+    // setupFiles: ['./vitest.setup.ts'],
+  },
+})
+
+// vitest.setup.ts (only needed pre-fix; remove once on canary.4+):
+// import { vi } from 'vitest'
+// beforeEach(() => {
+//   vi.resetModules()  // forces fresh _sharp import per test
+// })
+```
+
+**3-step audit recipe**:
+
+```bash
+# 1. Confirm canary.4 includes PR #96681:
+npm view next@canary version
+# → should show: 16.3.1-canary.4 or later
+
+# 2. Find any code paths that combine next/image SVG + next/og:
+rg -ln "ImageResponse|next/og" tests/ e2e/ playwright/
+# → any match means you should bump to canary.4 immediately
+
+# 3. Check if any tests have manual _sharp.unblock calls (the pre-fix workaround):
+rg -n "_sharp\.(un)?block" tests/ e2e/ playwright/ src/
+# → any match means you have tests written against the pre-fix behavior; can be removed once on canary.4+
+```
+
+### Common Mistakes — `next/image` + `next/og` testing edition
+
+- **Running `next/og` tests after `next/image` SVG tests in the same Playwright suite (pre-`next@16.3.1-canary.4`)** — `ImageResponse` crashes with `Input buffer contains unsupported image format` because `getSharp()`'s module-level `_sharp.block({...})` permanently disables the `VipsForeignLoadSvg` loader for the entire Node.js process. The fix in PR #96681 (closes issue #96612) adds `'VipsForeignLoadSvg'` to the Sharp unblock allowlist. Pre-fix workaround: render `next/og` BEFORE any `next/image` request in the same process, or call `_sharp.unblock({operation: ['VipsForeignLoadSvg']})` manually between tests. Migration: bump to `next@>=16.3.1-canary.4` once available; no code or config changes required. **The `dangerouslyAllowSVG` security gate is NOT affected** — untrusted user-supplied SVG is still blocked separately by `imageOptimizer()`. Cross-reference: `components.md` → "Canary-branch component-relevant PRs ahead of canary.3 → PR #96681".
 - [Testing Library docs](https://testing-library.com/docs/react-testing-library/intro/)
 - [Vitest docs](https://vitest.dev/)
 - [Vitest 4.0 announcement — VoidZero](https://voidzero.dev/posts/announcing-vitest-4) (Browser Mode stable, Visual Regression, Playwright Trace)

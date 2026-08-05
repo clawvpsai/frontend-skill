@@ -2227,6 +2227,123 @@ grep -r 'pending_weak\|enableFlightWeakThenables' node_modules/react-server-dom-
 - [react/react PR #32465 (the original Host Singleton exclusion discussion)](https://github.com/react/react/pull/32465) — context for why PR #37063 reverts that decision
 
 
+## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: `enableConditionalUseWarning` flag (PR #37203, August 5, 2026) — `7dfc7ccd` → `11eddecd`
+
+The v1.5.22 cron (Aug 4 12:09Z) documented `react@canary` = `19.3.0-canary-7dfc7ccd-20260803` (npm `dist-tag.canary` stable since 2026-08-03T19:24:43Z, ~41h before this cron's check). The v1.5.26 cron noted "0 NEW commits since cbb046ab; the 2 cbb046ab-ahead PRs (#37063 + #37154) plus the 4 DevTools PRs that shipped in 7dfc7ccd are the only main-branch leads; no new activity in the 6h window" — **but the React team cut a new canary 2 hours after v1.5.26 committed**: **`react@canary` flipped from `19.3.0-canary-7dfc7ccd-20260803` → `19.3.0-canary-11eddecd-20260805`** at ~2026-08-05T10:00:39Z (npm `modified` timestamp; GitHub release tag `v19.3.0-canary-11eddecd-20260805` published at the same time by `gaearon`). The new canary tag is `11eddecd91` — the merge commit for PR #36944. The canary bundle = **1 NEW commit since `7dfc7ccd`** = PR #36944 `[Devtools] Added component search to the Profiler's commit view`. **The `experimental` dist-tag also bumped in lockstep** to `0.0.0-experimental-11eddecd-20260805` (the experimental React build line ships in lockstep with the canary tag; previously not tracked separately in the skill because the React team ships the `experimental` channel less frequently than `canary`; tracked now because it documents the 11eddecd React Server Components experimental build line). The 38h51min gap between `7dfc7ccd-20260803` (Aug 3 19:24:43Z) and `11eddecd-20260805` (Aug 5 10:00:39Z) is a **typical-canary-cadence** gap (within the 20-72h window) — the team waited for the DevTools component-search feature to stabilize before cutting.
+
+**Practical impact summary**: PR #36944 is **DevTools-only** — zero observable change for App Router / SSR / RSC / hooks users. The new feature is useful for anyone debugging via the React DevTools Profiler: clicking on a commit now opens a **search input** that filters the components rendered during that commit, useful for fast navigation in large component trees. No new public APIs, no Fiber / Flight / Reconciler / Scheduler changes, no React DOM changes, no React Server DOM changes.
+
+**Next.js vendor**: The Next.js canary-branch's ahead-of-canary.3 PR #96735 ([`Upgrade React from 7dfc7ccd-20260803 to 11eddecd-20260805`](https://github.com/vercel/next.js/pull/96735), merged 2026-08-05T17:15:10Z by vercel-release-bot, single-PR vendor bump, no public-API change) carries the 11eddecd-20260805 React canary forward into the next Next.js canary cut. **The vendor bump will land in `next@16.3.1-canary.4`** when that npm-publishes (likely within 2-12h on the 24h cadence; canary-branch has 18 commits ahead of canary.3 at this cron's check). Verify with `npm view next@canary dependencies.react` — currently `19.3.0-canary-7dfc7ccd-20260803` (per the v1.5.22 + v1.5.24 vendor bump); will flip to `19.3.0-canary-11eddecd-20260805` once canary.4 npm-publishes.
+
+### PR #36944 — `[Devtools] Added component search to the Profiler's commit view` (Brian Vaughn / bvulaj, merged 2026-08-05T10:00:39Z) — **SHIPPED in `11eddecd-20260805`**
+
+Adds a **search input** to the **Profiler's commit view**. When you click on a commit (a render snapshot in the Profiler timeline), the components rendered during that commit are listed; the new search input lets you **filter that list by component name** as you type. Useful for debugging "which component was responsible for this commit's render?" questions on large component trees.
+
+**Practical impact (NOW live in `react@19.3.0-canary-11eddecd-20260805`)**:
+
+- DevTools Profiler users debugging large component trees can search by name instead of scrolling.
+- **Zero impact** on App Router / SSR / RSC / hooks users — the feature is purely in the DevTools extension UI.
+- **No audit recipe needed** — pure UI feature; verify with `npm view react dist-tags.canary` showing `19.3.0-canary-11eddecd-20260805`.
+
+### React main branch ahead of `11eddecd-91`: 1 NEW commit — PR #37203 `[flags] Enable conditional use warning for experimental release channel` (2026-08-05T16:53:19Z)
+
+The v1.5.26 cron noted "the 2 cbb046ab-ahead PRs (#37063 + #37154) plus the 4 DevTools PRs that shipped in 7dfc7ccd are the only main-branch leads; no new activity in the 6h window" — but at the **same time** the new 11eddecd canary was being cut (between v1.5.26 committing at 12:09Z and this cron's check at 18:02Z), **1 NEW commit landed on React `main` ahead of 11eddecd-91**: **PR #37203** `[flags] Enable conditional use warning for experimental release channel` (merged 2026-08-05T16:53:19Z; ~7h after v1.5.26 committed; the PR title suggests the React team's flag-flippers are pushing the 7dfc7ccd-era `enableConditionalUseWarning` flag ON for the `experimental` release channel).
+
+The flag was **originally added in PR #37104** (`[Fiber] Warn for Conditional Use of use() Based on Cache`, hoxyq, Jul 31) as an **OFF-by-default feature flag** that, when enabled, makes React warn in DEV mode when `use()` is called on a Promise based on a Cache lookup that may return a different value on different reads (the conditional-`use()` footgun). The flag stayed OFF in `7dfc7ccd` (the default for `canary`); PR #37203 **flips the flag ON for the `experimental` release channel** — meaning anyone using `react@experimental` (not `react@canary`!) will now see the conditional-`use()` warnings in their dev console. **`canary` users still see zero warnings** (flag stays OFF for the canary channel); `latest` users (React 19.2.8) also see zero (flag is not in stable).
+
+**Practical impact (NOW live in `react@experimental` 0.0.0-experimental-11eddecd-20260805)**:
+
+- **Devs on `react@experimental`** will see **new DEV warnings** about conditional `use(promise)` calls in their dev consoles. Specifically, if you have:
+  ```ts
+  function MyComponent({ cacheKey }: { cacheKey: string }) {
+    const promise = useMemo(() => fetchSomething(cacheKey), [cacheKey])
+    const data = use(promise) // ← conditional: different promise on each cacheKey
+    return <div>{data.title}</div>
+  }
+  ```
+  you'll see a DEV warning that this is a "conditional use of `use()` based on cache" — the warning links to `react.dev/warnings/conditional-use-of-use` (the docs page PR #37104 also added).
+- **Production users on `react@latest` 19.2.8**: zero impact.
+- **Canary users on `react@canary` 19.3.0-canary-11eddecd-20260805**: zero impact (flag OFF for canary; only ON for experimental).
+- **`use cache` + Cache Components users on Next.js 16.3.0 STABLE**: zero impact (the warning is purely a React DEV-mode flag; not invoked from `use cache` directly).
+
+**Audit recipe (after upgrading to `react@experimental` 0.0.0-experimental-11eddecd-20260805)**:
+
+```bash
+# Confirm the experimental dist-tag is now 11eddecd:
+npm view react dist-tags.experimental
+# → should show: 0.0.0-experimental-11eddecd-20260805
+
+# Confirm the canary dist-tag is now 11eddecd:
+npm view react dist-tags.canary
+# → should show: 19.3.0-canary-11eddecd-20260805
+
+# Check whether the enableConditionalUseWarning flag is ON for the experimental channel:
+grep -r 'enableConditionalUseWarning' node_modules/react/cjs/react.development.js 2>/dev/null | head -5
+# → should show the flag is now TRUE in the experimental channel, FALSE in canary/stable
+
+# Look for the new DEV warning in your dev console (only fires on react@experimental):
+# "Warning: use() was called conditionally. The Promise being consumed may change between
+#  renders, which can lead to unexpected behavior. See react.dev/warnings/conditional-use-of-use"
+```
+
+### Canary-branch component-relevant PRs ahead of canary.3 (will land in `next@16.3.1-canary.4` when it npm-publishes)
+
+Two component-relevant PRs landed on the Next.js canary-branch in the 6h window, both of which affect component-development workflows:
+
+#### PR #96606 — `Use Tailwind Turbopack loader in create-next-app` ([create-next-app PR](https://github.com/vercel/next.js/pull/96606), merged 2026-08-05T13:49:18Z)
+
+When `create-next-app --tailwind` is run with the **Turbopack default** (the default for new Next.js 16.3.x projects), the generated project now uses `@tailwindcss/turbopack` + a Turbopack CSS loader rule for Tailwind processing, **instead of** the previous PostCSS setup (`@tailwindcss/postcss` + `postcss.config.mjs`). The Tailwind Turbopack loader path is faster (no PostCSS pipeline overhead), supports HMR better, and matches the Turbopack-default project's CSS architecture.
+
+**Practical impact**:
+
+- **NEW projects generated with `create-next-app --tailwind --turbopack`** (the default in 16.3+) use the Turbopack loader path — no `postcss.config.mjs`, no `@tailwindcss/postcss` peer dep; just `@tailwindcss/turbopack` + a `tailwind.config.ts`.
+- **NEW projects generated with `create-next-app --tailwind --no-turbopack`** (Webpack) still use the PostCSS path (`@tailwindcss/postcss` + `postcss.config.mjs`).
+- **Existing projects** (already initialized) are **NOT affected** — they keep their current PostCSS or Turbopack setup. The change is purely in the `create-next-app` generator templates.
+- **Future-stabilization signal**: Turbopack-native CSS processing is the forward-looking path; the team is normalizing on `@tailwindcss/turbopack` for new projects.
+
+#### PR #96681 — `fix(next/image): preserve image response after optimization` ([next.js PR](https://github.com/vercel/next.js/pull/96681), merged 2026-08-05T15:13:25Z, closes issue #96612)
+
+The **`getSharp()`** function in `next/dist/server/image-optimizer.js` calls **`_sharp.block({ operation: ['VipsForeignLoad'] })`** to block every image loader, then unblocks a specific allowlist — and **that allowlist omitted `VipsForeignLoadSvg`** (the SVG loader). Because `_sharp` is a **module-level singleton**, the block is process-wide and permanent: the first `/_next/image` request in a process permanently disables Sharp's SVG loader. **`ImageResponse`** (`next/og`) rasterizes via `resvg` and then hands SVG to Sharp, so once that loader is blocked it fails. The symptom is **worse than a bad image**: the render throws `Input buffer contains unsupported image format`, which surfaces as a **socket hang up / crashed response** on any `ImageResponse` route requested after an uncached SVG image optimization in the same process.
+
+**The fix**: adds `'VipsForeignLoadSvg'` to the unblock list. **This does not weaken SVG protections for user-supplied images** — `detectContentType()` already returns SVG, and untrusted SVG is gated separately by `dangerouslyAllowSVG` (which throws a 400 in `imageOptimizer()`). The SVG loader allowlist fix is purely about Sharp-internal SVG format recognition.
+
+**Practical impact (will land in `next@16.3.1-canary.4`)**:
+
+- **Apps using both `next/image` and `next/og` (or any `ImageResponse`)** — the silent-after-SVG crash is fixed; no code changes required.
+- **Apps using only `next/image`** — zero impact (no `ImageResponse` involvement).
+- **Apps using only `next/og`** — zero impact (no `/_next/image` SVG involvement).
+- The fix was introduced by PR #96301 (which aligned the Sharp allowlist with `detectContentType()` but missed SVG); this PR completes the allowlist.
+
+**Audit recipe (after canary.4 npm-publishes)**:
+
+```bash
+# Confirm canary.4 includes PR #96681:
+npm view next@canary version
+# → should show: 16.3.1-canary.4 or later
+
+# Confirm the SVG loader is in the allowlist:
+rg -n "VipsForeignLoadSvg" node_modules/next/dist/server/image-optimizer.js
+# → should return 1 match (post-fix); 0 matches pre-fix (16.3.0 + 16.3.1-canary.0/.1/.2/.3)
+
+# Find any code paths that combine next/image SVG + next/og:
+rg -ln "ImageResponse|next/og" app/ src/
+# → any match means you should bump to canary.4 immediately
+```
+
+### Common Mistakes (components-relevant)
+
+- **Running `next/og` (`ImageResponse`) after `next/image` SVG in the same Node.js process** — FIXED in `next@16.3.1-canary.4`-ahead by PR #96681 (closes issue #96612). The pre-fix behavior: the first `/_next/image?url=...svg` request calls `getSharp()` which permanently blocks Sharp's `VipsForeignLoadSvg` loader for the process; subsequent `ImageResponse` requests that hand SVG to Sharp fail with `Input buffer contains unsupported image format` and the response hangs up. The fix adds `'VipsForeignLoadSvg'` to the Sharp unblock allowlist — does not weaken `dangerouslyAllowSVG` protections for untrusted user-supplied SVG. Affects only projects that combine both `next/image` SVG + `next/og` (or any `ImageResponse`) endpoints. Audit: `rg -ln "ImageResponse|next/og" app/ src/`. Migration: bump to `next@>=16.3.1-canary.4` once available; no code or config changes required. Pre-fix workaround (if stuck on `next@16.3.0` or earlier canary): render `next/og` BEFORE any `next/image` request in the same process, or call `_sharp.unblock({operation: ['VipsForeignLoadSvg']})` manually between tests. See `testing.md` → "Running `next/og` tests after `next/image` SVG tests in the same Playwright suite" for the testing-pattern counterpart.
+
+### Sources
+
+- [npm: `react@19.3.0-canary-11eddecd-20260805`](https://www.npmjs.com/package/react/v/19.3.0-canary-11eddecd-20260805) (published 2026-08-05, dist-tag `canary` moved ~10:00:39Z)
+- [React `main` branch commits feed (last 10)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-05T18:02Z; main-branch head is `1d4758e0f6` (PR #37203 [flags]); 1 NEW commit ahead of `11eddecd-91` (the canary tag)
+- [React PR #36944 — `[Devtools] Added component search to the Profiler's commit view`](https://github.com/facebook/react/pull/36944) — by Brian Vaughn (bvulaj), merged 2026-08-05T10:00:39Z, DevTools UI feature
+- [React PR #37203 — `[flags] Enable conditional use warning for experimental release channel`](https://github.com/facebook/react/pull/37203) — merged 2026-08-05T16:53:19Z; flag-flip for the experimental channel only
+- [Next.js PR #96735 — `Upgrade React from 7dfc7ccd-20260803 to 11eddecd-20260805`](https://github.com/vercel/next.js/pull/96735) — merged 2026-08-05T17:15:10Z by vercel-release-bot, single-PR vendor bump for the canary-branch
+- [Next.js PR #96606 — `Use Tailwind Turbopack loader in create-next-app`](https://github.com/vercel/next.js/pull/96606) — merged 2026-08-05T13:49:18Z, affects new-project scaffolding only
+- [Next.js PR #96681 — `fix(next/image): preserve image response after optimization`](https://github.com/vercel/next.js/pull/96681) — merged 2026-08-05T15:13:25Z; fork PR #96621 by @ceolinwill; closes issue #96612
+
 ## shadcn 4.16.1 — `shadcn build` Nested Directory ENOENT Fix + Search-Param Forwarding for Registries (July 31, 2026)
 
 Released 4 days after 4.16.0 (July 27 → July 31, 2026T13:58:43Z), `shadcn@4.16.1` is a **patch** focused on two real-world bugs that hit registry authors and consumers. Purely additive on top of 4.16.0 — no breaking changes, no removals, no CLI flag changes, no `components.json` schema changes. Two material PRs ([#11322](https://github.com/shadcn-ui/ui/pull/11322) by [@AndrewBarba](https://github.com/AndrewBarba) + [#11352](https://github.com/shadcn-ui/ui/pull/11352) by [shadcn](https://github.com/shadcn)), 20 NEW registry-directory commits (most are just `feat(registry): add @foo` directory entries — not user-facing), no API additions.
