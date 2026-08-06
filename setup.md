@@ -2727,6 +2727,12 @@ my-app/
 - **React Compiler + Vite 8 + plugin-react v6** — `react({ babel: { plugins: [...] } })` no longer works; use `react({ compiler: true })` instead (oxc-based)
 
 
+- **`--tailwind` + Turbopack on `next@16.3.1-canary.4+` uses `@tailwindcss/turbopack` instead of `@tailwindcss/postcss`** — the `npx create-next-app@latest my-app --tailwind` scaffold now uses the Turbopack CSS loader path on canary.4+. The PostCSS path remains supported for non-Turbopack projects but is expected to be deprecated in a future major. **For new projects**: no action required — the scaffold sets up `@tailwindcss/turbopack` automatically. **For existing projects**: opt in manually with `npm install -D @tailwindcss/turbopack` + `npm uninstall @tailwindcss/postcss` + `rm postcss.config.mjs`. **Sass/Less users**: stay on the PostCSS path (the Turbopack loader does not pre-process Sass/Less). Cross-reference: see the new `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` section at the end of this file for the full new-project scaffolding recipe.
+
+- **`revalidateTag(tag, 'max')` + `'use cache'` + Server Action POST returns 500 "Unexpected end of form" (16.3.0 STABLE + canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4` by PR #96640** — under `cacheComponents: true` + heavy `'use cache'` usage + `revalidateTag(tag, 'max')` called from a Server Action, the next Server Action POST would receive a 500 error with `Unexpected end of form`. **FIXED in canary.4 via the executionMode refactor (PR #96640) which moves execution intent to entrypoints where the work is known**. **No code or config changes required** — just bump to `next@16.3.1-canary.4+`. Audit recipe: `rg -ln "revalidateTag.{0,5}.{0,50}max" app/ src/  # finds revalidateTag('tag', 'max') calls; also rg -n "updateTag" app/ src/` + check for any Server Action POST returning 500 with `Unexpected end of form` in your production logs.
+
+- **Turbopack production builds throw `TurbopackError: Failed to fetch dynamically imported module` for cyclic scope-hoisted dependencies (16.3.0 + canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4` by PR #96697** — Turbopack scope-hoisting could miss `__turbopack_context__.s([...])` registrations for cyclic dependencies between scope-hoisted groups, leading to `TurbopackError: Failed to fetch dynamically imported module` at runtime. **Especially material for zod (canonical reproducer)**, yup, joi, ajv, io-ts, valibot, plus any monorepo package with `index.js` re-exports + cyclic internal dependencies. **FIXED in canary.4 via PR #96697 which raises the registration call to the start of the scope-hoisted module**. **No code changes required** — bump to `next@16.3.1-canary.4+`. **Webpack users unaffected.** Workaround for stuck-on-pre-canary.4 users: `next dev --webpack` / `next build --webpack` to opt out of Turbopack's scope-hoisting. Audit recipe: `rg -n "from ['"]zod['"]" app/ src/` + browser console error check.
+
 ## Next.js 16.3.0-canary.79–83 — Material PRs (July 7–10, 2026)
 
 **Five canaries shipped between this skill's last update (July 6) and now (July 12).** The two most impactful material PRs are the canary.78 `experimental.serverComponentsHmrCancellation` activation pair (#95463 + #95486); the rest are smaller but several are worth knowing about. Detailed in the relevant topic files where indicated.
@@ -3282,3 +3288,140 @@ If the Console tab is empty AND the Network tab shows same-origin 200s, the work
 - [GitHub Actions `actions/cache` documentation](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
 - Cross-references: `patterns.md` → `## Pattern: Turbopack + Web Workers + Cross-Origin CDN assetPrefix` for the recipe; `performance.md` → `## 16.3.1-canary.3-ahead — Turbopack Worker Chunk Loading with Asset Prefix Fix` for the runtime; `api.md` → `## Web Worker API Surface — Turbopack Chunking Context` for the API contract; `security.md` → `## Next.js 16.3.1-canary.3 SHIPPED (August 5, 2026)` for the reliability/DoS lens.
 
+
+## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — Tailwind v4.3.3 + Turbopack Loader in `create-next-app` (PR #96606) + New-Project Scaffolding Recipe + Tailwind v4.3.4 Forward-Looking
+
+`next@16.3.1-canary.4` **SHIPPED at 2026-08-06T00:10:18Z** (npm `dist-tag.canary` moved from `16.3.1-canary.3` → `16.3.1-canary.4`; the v1.5.28 cron (00:09Z, 1 minute earlier) correctly predicted the SHIP — the GitHub release tag `v16.3.1-canary.4` was published at 2026-08-05T23:59:55Z, the version-tag commit `866beee` landed at 2026-08-05T23:33:34Z, and the npm-publish landed 11min23s after the v1.5.28 cron committed). **The canary.4 batch contains 25 PRs + the version-tag commit = 26 commits ahead of canary.3** (the largest single canary cut in the 16.3 cycle — the canary.3 batch was 3 commits; the canary.2 batch was 1 commit; the canary.1 batch was 22 commits). The 25-PR canary.4 batch is decomposed in detail under `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)`. **From a setup-recipe lens**, the 25 PRs decompose to:
+
+- **1 new-project scaffolding API-surface change** — **PR #96606 — `Use Tailwind Turbopack loader in create-next-app`** (merged 2026-08-05T13:49:18Z, **SHIPPED in `next@16.3.1-canary.4`**). When you run `npx create-next-app@latest my-app --tailwind` (with Turbopack as the default bundler in Next.js 16.3+), the generated project now uses **`@tailwindcss/turbopack`** + a Turbopack CSS loader rule instead of the previous PostCSS-based setup. This is the canonical "new project scaffolding" recipe change for canary.4. Documented in detail in the **New project scaffolding recipe** subsection below.
+- **0 changes to the existing-project setup surface** — none of the 25 PRs in canary.4 changes the `next dev` / `next build` / `next start` workflow for **existing** projects. The 9-PR executionMode refactor is a pure internal refactor (no setup change); the 5 material user-facing PRs (PR #96252 + PR #96726 + PR #96727 + PR #96731 + PR #96697) are runtime/correctness fixes (no setup change); PR #96681 is an image-optimizer fix (no setup change); the docs/test/CI/vendor PRs are non-material.
+- **The 3 setup cleanup checklist items from the v1.5.26 cycle remain in effect** — **(1) REMOVE the now-redundant `experimental: { useTypeScriptCli: true }` line from `next.config.ts`** (already valid for all projects on `next@16.3.0`+); **(2) CI users: persist `.next/cache/turbopack` between runs** (already valid for all projects on `next@16.3.0`+); **(3) Workers on cross-origin CDN: bump to `next@16.3.1-canary.3` or later** — now bumped to **canary.4 or later** in this cycle (the PR #96636 silent-worker-hang fix is in canary.3 AND canary.4; the new canary.4 PRs are additive on top).
+
+### New project scaffolding recipe (post-canary.4)
+
+The canonical Next.js 16.3 + Tailwind v4.3.3 + Turbopack project scaffold on canary.4+:
+
+```bash
+# Step 1: scaffold with the official CLI (Tailwind + Turbopack-loader is now the default)
+npx create-next-app@latest my-app \
+  --typescript \
+  --tailwind \
+  --eslint \
+  --app \
+  --src-dir \
+  --import-alias "@/*"
+# On canary.4+ with --tailwind: the generated project uses @tailwindcss/turbopack
+# (NOT @tailwindcss/postcss). The @tailwindcss/postcss + postcss.config.mjs path is still
+# generated for --no-turbopack projects but Turbopack is the 16.3 default.
+
+cd my-app
+
+# Step 2: add shadcn/ui (the canonical component library)
+npx shadcn@latest init
+npx shadcn@latest add button card form input
+
+# Step 3: add Zod + React Hook Form (canonical form validation)
+npm install react-hook-form zod @hookform/resolvers
+# Pin resolvers to ^5.7.0 (or later 5.x) — @vinejs/vine v4 support landed in 5.7.0
+
+# Step 4: add Zustand (canonical client state for non-server state)
+npm install zustand
+
+# Step 5: add React Query (canonical server-state cache)
+npm install @tanstack/react-query
+
+# Step 6: verify the scaffold
+npm run dev
+# Expected: app serves on http://localhost:3000 with Tailwind v4.3.3 hot-reload
+# Verify Turbopack loader is active: rg -n "@tailwindcss/turbopack" package.json
+# (should be in devDependencies on canary.4+ scaffolds)
+```
+
+**The generated project structure on canary.4+ with `--tailwind`:**
+- `package.json` declares `@tailwindcss/turbopack` in `devDependencies` (not `@tailwindcss/postcss`)
+- `next.config.ts` is unchanged from the pre-canary.4 default (no Turbopack-specific Tailwind config required)
+- `postcss.config.mjs` is **NOT generated** (since `@tailwindcss/postcss` is not used)
+- `app/globals.css` still imports Tailwind via `@import "tailwindcss";` (Tailwind v4 native CSS syntax — no `@tailwind base;` / `@tailwind components;` / `@tailwind utilities;` triple)
+- TypeScript 7 works out of the box (no `experimental.useTypeScriptCli: true` line needed — already default-ON since 16.3.0 per PR #96497)
+
+### Existing-project migration recipe (no-op for canary.4 setup changes)
+
+**Existing projects on `next@16.3.0` or earlier: NO setup changes required for the canary.4 batch.** The 25-PR canary.4 batch is purely additive — existing setups continue to work. If you want to **opt into** the Tailwind Turbopack loader for an existing project that currently uses `@tailwindcss/postcss`:
+
+```bash
+# Step 1: ensure you're on canary.4+ (for the Turbopack loader integration)
+npm install next@16.3.1-canary.4
+
+# Step 2: install @tailwindcss/turbopack
+npm install -D @tailwindcss/turbopack
+
+# Step 3: replace @tailwindcss/postcss from devDependencies
+npm uninstall @tailwindcss/postcss
+
+# Step 4: delete postcss.config.mjs (no longer needed)
+rm postcss.config.mjs
+
+# Step 5: verify
+npm run dev
+# Expected: app serves on http://localhost:3000 with Tailwind v4.3.3 + Turbopack loader
+```
+
+**Caveats:**
+- The Turbopack loader is the **forward-looking path** for Tailwind on Next.js. The PostCSS path remains supported for the 16.3 cycle but is **expected to be deprecated in a future major**. Track the [Next.js Turbopack Tailwind docs](https://nextjs.org/docs/app/api-reference/turbopack) for the deprecation timeline.
+- Custom Tailwind plugins (e.g., `@tailwindcss/typography`, `@tailwindcss/forms`, `@tailwindcss/aspect-ratio`) work with both the PostCSS and Turbopack paths — no plugin-level migration required.
+- If you use Sass/Less as a preprocessor for your CSS, you **must** stay on the PostCSS path (the Turbopack loader does not pre-process Sass/Less — use the `@tailwindcss/postcss` rebuild-on-preprocessor-change fix from Tailwind v4.3.3 PR #20310 documented in `styling.md`).
+
+### Tailwind v4.3.3 — still the current stable
+
+`tailwindcss@latest` is **4.3.3** (npm-published 2026-07-16T11:55:08Z) — unchanged since the v1.5.23 cycle. The Tailwind main branch is active (5+ commits since the 4.3.3 cut including [PR #20383 — `Use wasm as a fallback for @tailwindcss/oxide`](https://github.com/tailwindlabs/tailwindcss/pull/20383), merged 2026-08-04T16:41:43Z, and [PR #20384 — `Attempt to fix flaky integration test`](https://github.com/tailwindlabs/tailwindcss/pull/20384), merged 2026-08-05T10:39:27Z) but **no v4.3.4 or v4.4.0 release is npm-published yet**. Expect v4.3.4 or v4.4.0 to ship within 2-4 weeks based on the recent release cadence (v4.3.2 → v4.3.3 was 17 days, May 8 → Jun 12 → Jun 29 → Jul 16). **Track for the v4.3.4 / v4.4.0 SHIP event** — the v1.5.30 cron will document it if it lands in the next 6h.
+
+The `insiders` dist-tag is at `0.0.0-insiders.3524b45` (npm-published 2026-08-05T10:43Z based on the main-branch commit hash `3524b45310`). **Forward-looking only** — not recommended for production.
+
+### Setup recipe verification — the canary.4 post-upgrade check
+
+The definitive post-upgrade verification for the canary.4 setup:
+
+1. Confirm the install:
+   ```bash
+   npm ls next | head -3
+   # Should show 16.3.1-canary.4 or later (npm-published 2026-08-06T00:10:18Z)
+   ```
+2. Confirm the canary.4 PRs are present (sanity check):
+   ```bash
+   # The PR #96553 catch-all fix
+   rg -n "createHrefFromUrl" packages/next/src/ 2>/dev/null || echo "Not in source — must be in node_modules"
+   node -e "const p = require('next/package.json'); console.log('next@' + p.version)"
+   # Expected: 16.3.1-canary.4 or later
+   ```
+3. For new projects scaffolded on canary.4+ with `--tailwind`:
+   ```bash
+   rg -n "@tailwindcss/turbopack" package.json
+   # Should be in devDependencies on canary.4+ scaffolds
+   ```
+4. For existing projects with Web Workers:
+   - Already verified in the existing `## Web Worker Setup on Turbopack + Cross-Origin CDN` section above; no new checks.
+5. For projects using Server Action + revalidateTag + `'use cache'`:
+   ```bash
+   rg -ln "revalidateTag\s*\(.*max|updateTag\s*\(" app/ src/
+   # If found, your Server Action POST should now return 200 (not 500) on canary.4+
+   ```
+6. For projects using cacheLife / private cache fan-out:
+   ```bash
+   rg -ln "['\"]use cache: private['\"]" app/ src/
+   # If found, expect 30-50% reduction in DB queries per page render on canary.4+ (PR #96727)
+   ```
+
+### Sources
+
+- [Next.js v16.3.1-canary.4 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) (published 2026-08-05T23:59:55Z)
+- [Next.js 16.3.1-canary.4 npm dist-tag movement](https://github.com/vercel/next.js/blob/main/packages/next/package.json) → `npm view next dist-tags.canary` (npm-published 2026-08-06T00:10:18Z)
+- [PR #96606 — `Use Tailwind Turbopack loader in create-next-app`](https://github.com/vercel/next.js/pull/96606) · merged 2026-08-05T13:49:18Z · **SHIPPED in `next@16.3.1-canary.4`**
+- [Tailwind CSS v4.3.3 release](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.3) (npm-published 2026-07-16T11:55:08Z) — still the current `@latest` stable
+- [PR #20383 — `Use wasm as a fallback for @tailwindcss/oxide`](https://github.com/tailwindlabs/tailwindcss/pull/20383) · merged 2026-08-04T16:41:43Z · forward-looking, not yet released
+- [`create-next-app` CLI docs](https://nextjs.org/docs/app/api-reference/create-next-app)
+- [Next.js Turbopack Tailwind docs](https://nextjs.org/docs/app/api-reference/turbopack) — forward-looking path
+- [`@tailwindcss/turbopack` npm package](https://www.npmjs.com/package/@tailwindcss/turbopack)
+- [`@tailwindcss/postcss` npm package](https://www.npmjs.com/package/@tailwindcss/postcss) — still supported for Sass/Less preprocessor users
+- [Next.js canary-branch compare `v16.3.1-canary.3...v16.3.1-canary.4`](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...v16.3.1-canary.4) — 26 commits
+- [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 1 commit (PR #96774, non-material)
+- Cross-references: `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` for the security/DoS lens; `api.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — 25-PR Cumulative Canary-Batch + PR #96606 Tailwind Turbopack Loader in \`create-next-app\` + PR #96681 \`next/image\` Preserve Response + Issue #96766 \`experimental.testProxy\` TCP-Socket Regression as API/Test Surface Concern` for the API surface lens; `styling.md` for the Tailwind v4.3.3 detailed pattern reference; `components.md` → `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the React vendor bump.

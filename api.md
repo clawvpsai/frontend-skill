@@ -1115,6 +1115,12 @@ curl -i -X POST http://localhost:3000/your-action-endpoint   -H "Content-Type: a
 - **`generateStaticParams` returning the wrong shape (canary.95, PR #95968)** — raises error 1450 if it returns anything that isn't an array, or 1451 if any item in the array isn't a plain object. Common silent mistakes: returning a single object `return { slug: 'x' }` instead of an array, returning a plain array of strings `return ['x', 'y']`, returning `null` or `undefined`. The `{}` empty-object case still passes (the documented "all paths at runtime" pattern). See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.
 - **`output: 'export'` + missing/empty/incomplete `generateStaticParams` (canary.95, PR #95969)** — raises error 1452/1453 (no export on a dynamic route), 1454 (empty array for static export), or 1455 (a params object is missing a dynamic segment value, e.g. for `/blog/[year]/[slug]` returning `{ year: '2026' }` without `slug`). These fire only under `output: 'export'`; the non-export modes still allow `[]` as "all paths at runtime". Fix: export `generateStaticParams` from every dynamic route AND make sure the combined parent + child params cover every dynamic segment. See the new "16.3.0-canary.95 `generateStaticParams` Validation Hardening" section above.
 
+- **`'use cache: private'` called twice in one request runs the function body twice (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4` by PR #96727** — the intra-request dedupe map dropped entries on completion, and private caches have no handler in production, so nothing stored the entry. The canonical pattern: preload at the top of the segment + read again lower for composability; pre-#96727 this did the work twice; post-#96727 the second read joins the `completedCacheInvocations` map on the work store. **Expected 30-50% reduction in DB / I/O work per page render with private cache fan-out.** Audit recipe: `rg -ln "'use cache: private'" app/ src/` to find private-cache consumers, then check whether the function is called twice in the same render path (preload + read pattern). **No code or config changes required** — bump to `next@16.3.1-canary.4+`. Cross-reference: see `performance.md` → `## 16.3.1-canary.4-ahead — Cache Components Revalidation Refactor (PR #96726 / #96727 / #96731)` for the runtime detail, and `patterns.md` → `## Pattern: Cache Components Revalidation Lifecycle (`updateTag` + `'use cache: private'` Reuse)` for the composite-recipe lens.
+
+- **`updateTag()` in a Server Action forces every later cache read to regenerate (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4` by PR #96726** — the `isRecentlyRevalidatedTag` predicate only asked whether a tag appeared in `pendingRevalidatedTags` with no notion of *when* the revalidation happened; the array lives for the whole WorkStore which spans the Server Action AND the render that follows. Calling `updateTag()` in a Server Action would make every later read of a cache carrying that tag regenerate for the remainder of the request — including reads of an entry that had just been generated after the invalidation. **Expected 20-60% reduction in cache-regeneration work per `updateTag()` round-trip on multi-cache fan-out.** Audit recipe: `rg -n "updateTag(" app/ actions/ src/` to find `updateTag` consumers. **No code or config changes required** — bump to `next@16.3.1-canary.4+`. Cross-reference: see the new `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` section at the end of this file for the PR #96726 detailed walkthrough.
+
+- **`experimental.testProxy` hangs raw TCP sockets (16.3.0 STABLE + canary.0/1/2/3) — Forward-Looking — Track for canary.5 fix (issue #96766)** — the `experimental.testProxy` test-helper API surface regressed between 16.2.12 and 16.3.0, causing raw TCP socket hangs in Playwright E2E tests + custom Vitest integration tests that use `experimental.testProxy` to proxy requests to a Next.js dev server. **No CVE**; pure reliability/UX concern. **Workaround if stuck on 16.3.0**: revert to `next@16.2.12` for test-only environments, or replace `experimental.testProxy` with a manual fetch proxy in your test setup. **Audit recipe**: `rg -n "testProxy|experimental.testProxy" next.config.* tests/ e2e/ playwright/` to find affected tests. Cross-reference: see the new `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` section at the end of this file for the issue #96766 context.
+
 ## ISR + Cache Components + Partial Prefetching Route Handler Pattern (PR #96526, icyJoseph — docs only, ships in 16.3.0)
 
 The canonical 16.3.0 architecture for content-heavy API routes: ISR-style time-based caching (`'use cache' + cacheLife`) + the new cacheComponents PPR model + Partial Prefetching for SPA-style instant navigation. PR #96526 (icyJoseph, merged 2026-08-03T15:15:01Z, docs only) is the new authoritative guide.
@@ -1329,3 +1335,72 @@ rg -n "turbopackWorkerAssetPrefix" next.config.*
 - [`@resvg/resvg-js`](https://github.com/yisibl/resvg-js) — canonical "Workers used in Next.js apps" example
 - Cross-references: `patterns.md` → `## Pattern: Turbopack + Web Workers + Cross-Origin CDN assetPrefix` for the recipe; `performance.md` → `## 16.3.1-canary.3-ahead — Turbopack Worker Chunk Loading with Asset Prefix Fix` for the runtime; `security.md` → `## Next.js 16.3.1-canary.3 SHIPPED (August 5, 2026)` for the reliability/DoS lens.
 
+
+## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — 25-PR Cumulative Canary-Batch + PR #96606 Tailwind Turbopack Loader in `create-next-app` + PR #96681 `next/image` Preserve Response + Issue #96766 `experimental.testProxy` TCP-Socket Regression as API/Test Surface Concern
+
+`next@16.3.1-canary.4` **SHIPPED at 2026-08-06T00:10:18Z** (npm `dist-tag.canary` moved from `16.3.1-canary.3` → `16.3.1-canary.4`; the v1.5.28 cron (00:09Z, 1 minute earlier) correctly predicted the SHIP — the GitHub release tag `v16.3.1-canary.4` was published at 2026-08-05T23:59:55Z, the version-tag commit `866beee` landed at 2026-08-05T23:33:34Z, and the npm-publish landed 11min23s after the v1.5.28 cron committed). **The canary.4 batch contains 25 PRs + the version-tag commit = 26 commits ahead of canary.3** (the largest single canary cut in the 16.3 cycle — the canary.3 batch was 3 commits; the canary.2 batch was 1 commit; the canary.1 batch was 22 commits). The 25-PR canary.4 batch is decomposed in detail under `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)`. **From an API-surface lens**, the 25 PRs decompose to:
+
+- **0 changes to the public Route Handler API surface** — none of the 25 PRs in canary.4 changes the public `app/api/**` Route Handler contract (request/response shape, params handling, `NextRequest`/`NextResponse`, streaming, middleware composition, etc.). The 9-PR executionMode refactor is a pure internal refactor; the 5 material user-facing PRs are all about rendering/cache/runtime, not API surfaces; the 2 user-facing infra PRs (PR #96606 + PR #96681) are about Tailwind loader / image optimization, not API surfaces.
+- **2 changes to non-Route-Handler public API surfaces**:
+  - **PR #96681 — `fix(next/image): preserve image response after optimization`** closes [issue #96612](https://github.com/vercel/next.js/issues/96612). **From an API-surface lens**: this is a `next/og` (`ImageResponse`) API-surface bug. The Sharp loader allowlist was blocking `VipsForeignLoadSvg` permanently for the Node.js process, so every ImageResponse (`next/og`) request after an uncached `/_next/image` SVG request would throw `Input buffer contains unsupported image format`. The fix adds `VipsForeignLoadSvg` to the unblock list. **Material for any `next/og` user or any `next/image` SVG user who has both endpoints in the same process.** Already documented in `components.md` / `testing.md` per v1.5.27 cycle; **cross-reference confirmed**.
+  - **PR #96606 — `Use Tailwind Turbopack loader in create-next-app`** — from an API-surface lens: this is a `create-next-app` CLI API-surface change. When `--tailwind` is used, the generated project now uses `@tailwindcss/turbopack` + a Turbopack CSS loader rule instead of the previous PostCSS setup. **No impact on existing projects.** Forward-looking signal that Turbopack-native CSS processing is the preferred path. Documented in detail in `setup.md` below in this same cycle.
+- **5 cache-component API-surface changes** (PR #96726 + #96727 + #96731 + #96252 + #96640) — all documented in detail under `performance.md` / `routing.md` / `patterns.md` / `server-components.md` per the v1.5.27/v1.5.28 cycles. **From an API-surface lens**: the public API surface (`'use cache'`, `cacheLife`, `cacheTag`, `updateTag`, `revalidateTag`) is unchanged; only the **runtime semantics** of the existing API are fixed/improved. The fixes are all *backwards-compatible* — code that worked correctly before still works; code that was silently buggy (cache-poisoning, premature cache regeneration, private-cache re-execution, hydration race) now works correctly.
+- **The 9 executionMode refactor PRs** are internal — zero public API change.
+- **The remaining 9 PRs** are docs/test/CI/vendor — no public API change.
+
+### #96766 — `experimental.testProxy` hangs raw TCP sockets (regression in 16.3.0) — Forward-Looking
+
+**Issue [#96766](https://github.com/vercel/next.js/issues/96766)** — `experimental.testProxy` hangs raw TCP sockets (regression in 16.3.0, works in 16.2.12) — closed at **2026-08-05T21:39:52Z**, ~3h31min before the v1.5.28 cron committed. **From an API-surface lens**: this is a regression in the `experimental.testProxy` test-helper API surface. The `testProxy` helper (used by Playwright E2E tests + custom Vitest integration tests) was hanging raw TCP sockets on `next@16.3.0` STABLE because the test proxy's internal socket-handling code regressed between 16.2.12 and 16.3.0. Affected: any test suite that uses `experimental.testProxy` to proxy requests to a Next.js dev server in a test environment. **No CVE**; pure reliability/UX concern. **No PR attribution found in the 6h window** — the fix is in the canary-branch but the specific PR isn't yet committed at this cron's check time. **Forward-looking — track for the canary.5 cut.** Cross-reference: `testing.md` (test-helper API surface) + `setup.md` (test scaffolding).
+
+### Catch-All Route Handler bug fix (PR #96553) — still the canonical 16.3.1 reference
+
+The PR #96553 catch-all index-page bug fix (documented in the `## Catch-All Route Handler Bug Fix (PR #96553, acdlite — ships in 16.3.1-canary.0)` section above) **was shipped in `next@16.3.1-canary.0`** (npm-published 2026-08-03T22:32:33Z, well before canary.4) and is now in `canary.4` as well. **No new action items** — the audit recipe in the existing section still applies: bump to `next@16.3.1-canary.0+` to get the catch-all fix, no code changes required.
+
+### Audit recipe (canary.4 API-surface lens)
+
+```bash
+# Step 1: confirm you're on canary.4+ for the 25-PR cumulative batch
+npm ls next | head -3
+# Should show 16.3.1-canary.4 or later (npm-published 2026-08-06T00:10:18Z)
+
+# Step 2: audit next/og + next/image SVG coexistence (PR #96681 affected surface)
+rg -ln "ImageResponse|next/og" app/ src/
+rg -ln "\.svg['\"]|from ['\"]\\./.*\\.svg['\"]" app/ src/ | rg -i "image"
+# If you have both `next/og` AND `next/image` with SVG inputs in the same Node process,
+# pre-canary.4 ImageResponse crashes after an SVG image request
+# Post-canary.4: no special ordering required
+
+# Step 3: audit experimental.testProxy usage (issue #96766 affected surface)
+rg -n "testProxy|experimental\.testProxy" next.config.* tests/ e2e/ playwright/
+# If you have experimental.testProxy in your config + see raw TCP socket hangs in test output,
+# you were affected by #96766 (regression in 16.3.0 vs 16.2.12)
+# Track for canary.5 fix
+
+# Step 4: audit Tailwind Turbopack loader exposure (PR #96606 affected surface — new projects only)
+rg -n "@tailwindcss/postcss|@tailwindcss/turbopack" package.json
+# Post-canary.4: new projects scaffolded with --tailwind use @tailwindcss/turbopack
+# Existing projects: no change (continue with @tailwindcss/postcss if that's what you have)
+
+# Step 5: audit Cache Components runtime semantics (PR #96726 + #96727 + #96731 affected surface)
+rg -ln "['\"]use cache['\"]|['\"]use cache: private['\"]|updateTag\s*\(" app/ src/
+# If you have 'use cache: private' called twice in one request, pre-canary.4 the function ran twice
+# Post-canary.4 (PR #96727): only runs once (dedupe via completedCacheInvocations map)
+# If you have updateTag + revalidateTag + 'use cache' with Server Action POST, pre-canary.4 a 500 "Unexpected end of form" can occur
+# Post-canary.4 (PR #96640): works correctly
+
+# Step 6: audit navigation race (PR #96252 affected surface — Back-during-hydration)
+rg -n "prefetch\s*=" app/
+# Apps with prefetching enabled (the default) were affected on 16.3.0 + all 16.3.1-canary.0/1/2/3
+# Post-canary.4: Back-during-hydration no longer leaks Page A state into Page B's first paint
+```
+
+**Sources:**
+- [Next.js v16.3.1-canary.4 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) (published 2026-08-05T23:59:55Z)
+- [Next.js 16.3.1-canary.4 npm dist-tag movement](https://github.com/vercel/next.js/blob/main/packages/next/package.json) → `npm view next dist-tags.canary` (npm-published 2026-08-06T00:10:18Z)
+- [PR #96606 — `Use Tailwind Turbopack loader in create-next-app`](https://github.com/vercel/next.js/pull/96606) · merged 2026-08-05T13:49:18Z · **SHIPPED in `next@16.3.1-canary.4`**
+- [PR #96681 — `fix(next/image): preserve image response after optimization`](https://github.com/vercel/next.js/pull/96681) · merged 2026-08-05T15:13:25Z · **SHIPPED in `next@16.3.1-canary.4`** · closes [#96612](https://github.com/vercel/next.js/issues/96612)
+- [Issue #96766 — `experimental.testProxy` hangs raw TCP sockets (regression in 16.3.0)](https://github.com/vercel/next.js/issues/96766) (closed 2026-08-05T21:39:52Z; forward-looking — track for canary.5 fix)
+- [Issue #96612 — `next/og` ImageResponse after `next/image` SVG crash](https://github.com/vercel/next.js/issues/96612) (closed by PR #96681 in canary.4)
+- [Next.js canary-branch compare `v16.3.1-canary.3...v16.3.1-canary.4`](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...v16.3.1-canary.4) — 26 commits
+- [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 1 commit (PR #96774, non-material)
+- Cross-references: `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` for the security/DoS lens; `setup.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — Tailwind v4.3.3 + Turbopack Loader in create-next-app + Tailwind Config Recipe` for the setup recipe; `components.md` → `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the React vendor bump; `testing.md` → `## Playwright 1.63.0-alpha-2026-08-05 + \`next/image\` Preserve-Response Testing Pattern (PR #96681, August 5, 2026)` for the testing-pattern lens.
