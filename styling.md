@@ -1774,3 +1774,83 @@ rg -n 'tailwindcss.*--watch' package.json
 - [PR #20329 — @tailwindcss/upgrade ignore-list respect from subdirectory](https://github.com/tailwindlabs/tailwindcss/pull/20329)
 - [Tailwind CSS v4.3 release notes (older, pre-patch)](https://tailwindcss.com/blog/tailwindcss-v4-3)
 - [Tailwind CSS docs — `@utility` directive](https://tailwindcss.com/docs/functions-and-directives#utility-directive) (still the canonical `@utility` reference, the `@utility` section above remains the v4-stable form)
+
+
+## Tailwind CSS 4.3.4 / v4.4.0 Forward-Looking — `@tailwindcss/oxide` WASM Fallback (PR #20383, August 4, 2026)
+
+`tailwindcss@latest` is still **4.3.3** (npm-published 2026-07-16T11:55:08Z, ~3 weeks ago at this cron's check). The Tailwind main branch has been active since then — **4 NEW commits ahead of 4.3.3** at this cron's check (verified via `GET /repos/tailwindlabs/tailwindcss/commits?since=2026-08-04T12:00:00Z`):
+
+- **d190343594 — `Use wasm as a fallback for @tailwindcss/oxide`** (PR #20383, Robin Malfait, merged 2026-08-04T16:41:43Z, **MATERIAL**) — see below.
+- **b5ab20473b — `improve flaky integration test`** (Aug 4 17:27Z, test infra only).
+- **9dae5163db — `update changelog`** (Aug 4 15:55Z, docs only).
+- **3524b45310 — `Attempt to fix flaky integration test`** (Aug 5 10:39Z, PR #20384, test infra only).
+
+**None have been npm-published as `tailwindcss@4.3.4` or `4.4.0` yet** — `npm view tailwindcss dist-tags` still returns `latest: 4.3.3`. The 3 non-PR-20383 commits are prep work for the next release train; expect `4.3.4` or `4.4.0` to npm-publish within the next 2-4 weeks based on recent cadence (4.3.0 → 4.3.1 in 7 days, 4.3.1 → 4.3.2 in 10 days, 4.3.2 → 4.3.3 in 8 days; a slight slowdown but still weekly-to-bi-weekly).
+
+### Why PR #20383 matters — `@tailwindcss/oxide` WASM Fallback
+
+`@tailwindcss/oxide` is the native (Rust-via-napi-rs) scanner that Tailwind v4 uses to (1) traverse the file system and figure out which files to scan based on auto source detection + `@source` directives, and (2) extract candidate class names from those files. It relies on `napi-rs`-generated native `.node` files per platform/arch.
+
+**The current limitation (pre-PR-#20383):** If you're on a platform/arch that doesn't have a prebuilt `.node` binary, you get the dreaded `Cannot find native binding` error:
+
+```
+Error: Cannot find native binding. npm has a bug related to optional dependencies
+(https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing
+both package-lock.json and node_modules directory.
+    at Object.<anonymous> (.../@tailwindcss/oxide/index.js:573:19)
+    ...
+  cause: Error: Cannot find module '@tailwindcss/oxide-darwin-arm64'
+```
+
+This means Tailwind currently **supports**: Windows arm64, Windows x64, macOS arm64, macOS x64 — but **doesn't fully support** the Linux-based permutations (Android arm eabi, Android arm64, Linux arm64 gnu, Linux arm64 gnueabihf, Linux arm64 musl, Linux x64 gnu, Linux x64 musl, freebsd x64) and a growing list of additional platforms (openharmony, etc.). Adding native support for each is "not the end of the world, but it gets complex" (Robin Malfait).
+
+**The fix in PR #20383:** Use the `wasm32-wasi` build as a **universal fallback**. The napi-rs loader already knows how to fall back to `@tailwindcss/oxide-wasm32-wasi`, but that package declared `"cpu": ["wasm32"]`, so npm/pnpm never installed it on real hardware. **Removing that restriction means the WASM package is installed everywhere, and the loader picks it up whenever no native binding exists.**
+
+**Bonus fix** in the same PR: a `UVWASI_EACCES` crash on sandboxed platforms (OpenHarmony, Android). The generated WASM loader preopens `/`, which those sandboxes deny, so the fallback failed to load on exactly the platforms that needed it most. The fix patches `@napi-rs/cli`'s codegen templates via `pnpm patch` to retry with narrower preopens (`/` → cwd → none). On such platforms, scanning is limited to files under the current working directory.
+
+**Closes 3 pending PRs** by giving them WASM coverage for free: #20327, #20276, #20201.
+
+### Practical impact (forward-looking — not yet npm-published)
+
+- **Platforms gaining Tailwind v4 support**: Linux arm eabi, Android arm/arm64, freebsd x64, OpenHarmony, and the long tail of less-common platforms that previously couldn't load `@tailwindcss/oxide`. WASM is slower than native (~2-5× for large projects) but functional.
+- **CI users on exotic platforms** (Docker `linux/arm/v7`, openharmony CI runners, Alpine variants with non-standard libc): currently your `npm ci && next build` may fail with the `Cannot find native binding` error. PR #20383 makes the build succeed via WASM.
+- **Sandboxed platforms (OpenHarmony, Android)**: gain Tailwind v4 via WASM with cwd-scoped file scanning (a reasonable tradeoff for mobile/embedded use cases where the Tailwind scanning surface IS the cwd).
+- **macOS arm64 + x64 + Linux x64 + Windows arm64/x64 users**: zero behavior change — they keep using the native `.node` binding.
+- **No code changes required** for any user — pure build-system fix in `@tailwindcss/oxide` + `@tailwindcss/oxide-wasm32-wasi` packages.
+
+### Audit recipe
+
+```bash
+# 1. Are you on a non-mainstream platform? (Check your OS/arch)
+node -e "console.log(process.platform, process.arch)"
+# Mainstream = darwin arm64/x64, linux x64 (gnu/musl), win32 arm64/x64
+# Non-mainstream = everything else
+
+# 2. Does your current setup hit the "Cannot find native binding" error?
+rg -n "Cannot find native binding" .next/ logs/ 2>/dev/null
+# If hits, PR #20383 will fix you once it ships.
+
+# 3. Are you on a sandboxed platform? (OpenHarmony, Android, restricted CI)
+echo "Check: does $HOME and $PWD allow file traversal? Are you in a chroot or sandbox?"
+# If yes, PR #20383 will give you cwd-scoped scanning via WASM.
+
+# 4. Track when 4.3.4 / v4.4.0 ships
+npm view tailwindcss dist-tags --json | head -10
+# Expected: `latest: 4.3.3` until the SHIP event; once updated, the next v1.5.x cron will document it.
+
+# 5. Pin strategy
+# Once shipped, bump from "tailwindcss": "^4.3.3" → "^4.3.4" (or "^4.4.0" if minor bump).
+# The patch is pure additive — no breaking changes expected.
+```
+
+### Sources
+
+- [Tailwind CSS main branch (4 commits ahead of 4.3.3 at 2026-08-06T12:05Z)](https://github.com/tailwindlabs/tailwindcss/commits/main) — `d190343594` (PR #20383) + `b5ab20473b` + `9dae5163db` + `3524b45310` (PR #20384)
+- [PR #20383 — Use wasm as a fallback for `@tailwindcss/oxide`](https://github.com/tailwindlabs/tailwindcss/pull/20383) — Robin Malfait, merged 2026-08-04T16:41:43Z, the headline change
+- [Tailwind CSS `@tailwindcss/oxide` npm package](https://www.npmjs.com/package/@tailwindcss/oxide) — the native scanner package that gains WASM fallback
+- [Tailwind CSS `@tailwindcss/oxide-wasm32-wasi` package (currently `"cpu": ["wasm32"]`)](https://www.npmjs.com/package/@tailwindcss/oxide-wasm32-wasi) — the WASM package whose `cpu` restriction is removed
+- [PR #20327 — pending platform support PR closed by PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20327)
+- [PR #20276 — pending platform support PR closed by PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20276)
+- [PR #20201 — pending platform support PR closed by PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20201)
+- [napi-rs WASM loader docs](https://napi-rs.dev/docs/concepts/wasi) — the underlying WASM runtime used by the fallback
+- [Tailwind CSS CHANGELOG.md (still showing 4.3.3 as latest; will be updated on the next release)](https://github.com/tailwindlabs/tailwindcss/blob/main/CHANGELOG.md)

@@ -1281,3 +1281,127 @@ The official upgrade CLI: `npx @better-auth/cli@rc upgrade` — **not** the `lat
 - [newreleases.io entry for `better-auth@1.7.0-rc.2`](https://newreleases.io/project/npm/better-auth/release/1.7.0-rc.2)
 - [`@clerk/nextjs@7.6.4` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.4)
 - [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
+
+
+## Better Auth 1.7.0-rc.3 + 1.7.0-rc.4 (August 4–5, 2026) + `@clerk/nextjs` 7.7.0-snapshot (Forward-Looking) — Auth Surface Update
+
+This section covers two material auth-surface updates since the v1.5.24 cycle (which stopped at `1.7.0-rc.2`):
+
+### 1. Better Auth `1.7.0-rc.3` (August 4, 2026) + `1.7.0-rc.4` (August 5, 2026)
+
+`better-auth@rc` has continued its daily-or-better RC cadence since rc.0 (June 20). After rc.2 (Jul 22, 2026 — documented in the section above), two more RCs have shipped:
+
+- **`better-auth@1.7.0-rc.3`** — npm-published **2026-08-04**, RC.3 is incremental over RC.2 with **no new breaking changes announced** in the release notes. Main branch had 8 commits since Aug 1 (verified at this cron's check via `GET /repos/better-auth/better-auth/commits?since=2026-08-04T12:00:00Z`) — `client: deduplicate session requests across suspense retries` (PR #10676, Taesu) + `test(electron): wait for session refresh after sign-out` (PR #10685) + `chore(deps): tighten undici override to >=7.29.0` (PR #10684) + `chore: bump postcss` (PR #10683) + Dependabot `hono` bump + docs updates + the v1.6.26 stable release commit. The deduplicate-session-requests PR (#10676) is the most user-facing — fixes a duplicate-fetch pattern where React Suspense retries (the `useTransition` re-render on action errors) could trigger duplicate `getSession()` calls. Most apps won't notice; the few that observe `getSession()` is the bottleneck will see a small latency reduction.
+
+- **`better-auth@1.7.0-rc.4`** — npm-published **2026-08-05T00:26:40Z**, RC.4 is incremental over RC.3 with **no new breaking changes announced**. Production codebases **stay on `^1.6.26`** (the `@latest` dist-tag is still 1.6.26). The `@rc` dist-tag remains pinned at rc.4; expect **rc.5 within 2-4 days** based on the daily cadence. The v1.5.26 cron (Aug 5 06:09Z) noted rc.4 had shipped ~5h before that commit; the v1.5.29 cron (Aug 6 06:10Z) noted "no new RC drop in the 24h since Aug 5" — both observations remain accurate.
+
+**Calendar both events**:
+
+- **`better-auth@1.7.0-rc.5`** — expected within 2-4 days of this cron's check (so on or before ~2026-08-10).
+- **`better-auth@1.7.0` STABLE** — could ship within the **August 20, 2026 Vercel monthly security window** (which is now T-14 days as of this cron's check), since Better Auth is under Vercel stewardship post-acquisition and the team may target the security window for the stable release. Track for the v1.5.31+ cron.
+
+**Production guidance:**
+
+- **Stay on `better-auth@^1.6.26`** for now. Do NOT adopt `1.7.0-rc.x` in production until 1.7.0 STABLE ships.
+- **The RC API surface is essentially final** — no breaking changes announced since rc.2. RC.3 and RC.4 are stabilization fixes, not feature additions.
+- **The `Account.accountId` rename + SCIM decoupling from organization plugin + SAML Node 20+ + proxy header hardening** (all documented in the rc.2 section above) remain the breaking-change headline for the 1.7.0 upgrade.
+- **For RC testers**: continue with `npm install better-auth@rc @better-auth/core@rc @better-auth/cli@rc` (CLI is on a separate version line at `3.0.0-rc.x`).
+
+### 2. `@clerk/nextjs` 7.7.0-snapshot + 7.7.0-canary Forward-Looking (August 5–6, 2026) — Clerk Main Branch Ahead of 7.6.5
+
+`@clerk/nextjs@latest` is still **7.6.5** (npm-published 2026-07-31, no change at this cron's check). The Clerk main branch (`clerk/javascript` monorepo) has been active since the 7.6.5 cut:
+
+**Verified 9 NEW commits on `clerk/javascript` main since 2026-08-04T12:00:00Z** (at this cron's check):
+
+| SHA | Date | Author | Headline |
+|---|---|---|---|
+| `58d8ff50b1` | 2026-08-06T01:39:03Z | Robert Soriano | **fix(react): Detect nested `ClerkProvider` via context instead of a global mount counter** ([PR #9335](https://github.com/clerk/javascript/pull/9335)) — **MATERIAL** |
+| `f38cf02fd5` | 2026-08-05T20:10:04Z | Josh Rowley | **feat(backend): support removing user passwords** ([PR #9326](https://github.com/clerk/javascript/pull/9326)) — **MATERIAL** |
+| `1ef84c3592` | 2026-08-05T16:43:48Z | Sarah Soutoul | fix(backend,shared): fix generated TypeDoc references ([PR #9340](https://github.com/clerk/javascript/pull/9340)) |
+| `4717aab0f7` | 2026-08-05T14:56:36Z | Alex Carpenter | fix(ui): Give each Mosaic component a minimal CSS reset ([PR #9332](https://github.com/clerk/javascript/pull/9332)) |
+| `d639048e0e` | 2026-08-05T12:46:17Z | Alex Carpenter | feat(js): add `InviteMembersButton` and `Clerk.openInviteMembers` ([PR #9124](https://github.com/clerk/javascript/pull/9124)) |
+| `a66cbbf549` | 2026-08-04T22:57:56Z | Mike Wickett | docs: rename "Client Trust" to "Device Trust" ([PR #9266](https://github.com/clerk/javascript/pull/9266)) |
+| `438f2e5220` | 2026-08-04T16:42:51Z | Clerk Cookie | ci(repo): Version packages ([PR #9306](https://github.com/clerk/javascript/pull/9306)) |
+| `83a8fc57d7` | 2026-08-04T16:17:42Z | Daniel Moerner | fix(ui): Fix email link race with sign up if missing ([PR #9328](https://github.com/clerk/javascript/pull/9328)) — **MATERIAL** |
+| `5c81479d30` | 2026-08-04T13:14:26Z | Daniel Moerner | feat(ui): Support `signUpIfMissing` with `<SignIn>` ([PR #7928](https://github.com/clerk/javascript/pull/7928)) |
+
+**Two of the 3 MATERIAL commits are forward-looking — they will land in the next Clerk stable (likely 7.7.0):**
+
+**(a) PR #9335 — Detect nested `ClerkProvider` via context (Robert Soriano, 2026-08-06T01:39:03Z)**
+
+Pre-PR-#9335: Clerk used a **global module-level mount counter** to detect nested `<ClerkProvider>` instances (e.g., in microfrontends, monorepos with shared root layouts, multi-tenant apps with per-tenant Clerk configs, Storybook stories that wrap `<ClerkProvider>`). The mount counter had a bug: it couldn't distinguish "legitimate nested provider" from "HMR-triggered re-mount during dev" — both incremented the counter, leading to spurious "nested ClerkProvider detected" warnings (or, worse, silently dropping config from the inner provider).
+
+Post-PR-#9335: detection uses **React context propagation** instead of a global counter. The fix is invisible for correctly-configured apps (single `<ClerkProvider>` at the root) but resolves a class of false-positive warnings for monorepo + MFE users.
+
+**Practical impact**: zero code changes required for users; pure reliability fix for monorepo + MFE + Storybook setups. Track for 7.7.0.
+
+**(b) PR #9326 — Support removing user passwords (Josh Rowley, 2026-08-05T20:10:04Z)**
+
+New backend capability to **remove a user's password** (typically for SSO-only / passkey-only / magic-link-only flows where the password was originally set up but is no longer needed). This is the counterpart to the password-set flow added in earlier Clerk versions.
+
+**Practical impact**: adds a new backend method on the user object (likely `clerkClient.users.removePassword(userId)` or similar — exact API will be in the stable release notes). Track for 7.7.0.
+
+**(c) PR #9328 — Fix email link race with sign up if missing (Daniel Moerner, 2026-08-04T16:17:42Z)**
+
+Pre-PR-#9328: clicking an email verification link during a fresh sign-up could race with the user-lookup-by-email step, causing a "user not found" error if the link arrived before the sign-up completed. The fix adds `signUpIfMissing` semantics (see PR #7928 in the same window — `<SignIn>` now supports this flag too).
+
+**Practical impact**: pure reliability fix for email-link sign-up + sign-in flows. Track for 7.7.0.
+
+**Clerk snapshot/canary dist-tags** (verified at this cron's check):
+
+```
+@clerk/nextjs@canary   = 7.7.0-canary.v20260806013959  (latest canary)
+@clerk/nextjs@snapshot = 7.7.0-snapshot.v20260805185245 (latest snapshot)
+@clerk/nextjs@latest   = 7.6.5  (stable — unchanged from Jul 31)
+```
+
+The canary branch is ahead of the 7.6.5 stable; expect `7.7.0` stable to npm-publish within the next 2-4 weeks based on recent cadence (7.5.12 → 7.6.4 = 28 days; 7.6.4 → 7.7.0 likely faster).
+
+### Audit recipe
+
+```bash
+# 1. Confirm Better Auth version
+npm ls better-auth @better-auth/core @better-auth/cli
+# Expected on production: better-auth@^1.6.26 (stable), not @rc
+
+# 2. Confirm Clerk version
+npm ls @clerk/nextjs @clerk/react @clerk/backend
+# Expected: 7.6.5 (latest stable). @canary or @snapshot if you're testing 7.7.0.
+
+# 3. Check for nested ClerkProvider warnings (pre-7.7.0)
+rg -n "ClerkProvider" components/ app/ 2>/dev/null
+# Expected: 1 root-level instance. Multiple instances in monorepo/MFE → may have seen false-positive warnings; 7.7.0 fixes this.
+
+# 4. Check for password-removal needs (will need 7.7.0)
+rg -n "removePassword|deletePassword" app/ src/ lib/ 2>/dev/null
+# If your code needs this and you're stuck on 7.6.5, file a feature request or migrate to a manual password-deletion flow.
+
+# 5. Check for email-link race conditions (pre-7.7.0)
+rg -n "signUp.create|verifyEmailAddress" app/ src/ lib/ 2>/dev/null | head -10
+# If you see test failures for fresh sign-ups in dev, this race may be the culprit.
+
+# 6. Track Better Auth 1.7.0 STABLE
+npm view better-auth@rc version
+# Currently: 1.7.0-rc.4. Watch for rc.5 then 1.7.0 STABLE.
+```
+
+### Sources
+
+- [Better Auth GitHub `v1.7.0-rc.3` releases page](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.3) — Aug 4, 2026
+- [Better Auth GitHub `v1.7.0-rc.4` releases page](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.4) — Aug 5, 2026
+- [Better Auth main branch commits since 2026-08-04T12:00:00Z](https://github.com/better-auth/better-auth/commits/main) — 8 NEW commits verified at this cron's check
+- [PR #10676 — `fix(client): deduplicate session requests across suspense retries`](https://github.com/better-auth/better-auth/pull/10676) — Taesu, merged Aug 4
+- [PR #10685 — `test(electron): wait for session refresh after sign-out`](https://github.com/better-auth/better-auth/pull/10685)
+- [PR #10684 — `chore(deps): tighten undici override to >=7.29.0`](https://github.com/better-auth/better-auth/pull/10684)
+- [PR #10683 — `chore: bump postcss`](https://github.com/better-auth/better-auth/pull/10683)
+- [Releasebot summary for `better-auth@1.7.0-rc.3` and `1.7.0-rc.4`](https://releasebot.io/updates/better-auth/betterauth)
+- [Better Auth `v1.6.26` stable release](https://github.com/better-auth/better-auth/releases/tag/v1.6.26) — the production `@latest` dist-tag
+- [Clerk/javascript main branch — 9 commits since 2026-08-04T12:00:00Z](https://github.com/clerk/javascript/commits/main) — verified at this cron's check
+- [PR #9335 — `fix(react): Detect nested ClerkProvider via context instead of a global mount counter`](https://github.com/clerk/javascript/pull/9335) — Robert Soriano, Aug 6
+- [PR #9326 — `feat(backend): support removing user passwords`](https://github.com/clerk/javascript/pull/9326) — Josh Rowley, Aug 5
+- [PR #9328 — `fix(ui): Fix email link race with sign up if missing`](https://github.com/clerk/javascript/pull/9328) — Daniel Moerner, Aug 4
+- [PR #7928 — `feat(ui): Support signUpIfMissing with Clerk <SignIn> component`](https://github.com/clerk/javascript/pull/7928)
+- [PR #9124 — `feat(js): add InviteMembersButton and Clerk.openInviteMembers`](https://github.com/clerk/javascript/pull/9124)
+- [`@clerk/nextjs@7.6.5` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.5)
+- [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
+- [`@clerk/nextjs` dist-tags — snapshot/canary/latest](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)

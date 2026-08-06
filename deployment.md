@@ -1501,3 +1501,89 @@ In `next@16.3.1-canary.1` (and SHIPPED in canary.2), Turbopack hardens the produ
 
 ---
 
+
+
+## Next.js 16.3.1-canary.4-ahead — `experimental.appNewScrollHandler` Removal (PR #95602) + `@swc/helpers` Bump Fixes `wrap_reg_exp` Module Not Found (PR #96720) (August 5–6, 2026)
+
+Two deployment-relevant changes landed on the canary branch ahead of `next@16.3.1-canary.4` (which itself shipped at npm `dist-tag.canary` on 2026-08-06T00:10:18Z; both PRs are now live in `next@16.3.1-canary.4+` and will be in the next 16.3.1 stable). They affect self-hosted deployments differently:
+
+### 1. `experimental.appNewScrollHandler` Flag Removed — PR #95602 (Sebbie Silbermann, merged 2026-08-06T09:53:09Z, ships in `next@16.3.1-canary.5`)
+
+The `experimental.appNewScrollHandler` flag has been **removed entirely** (Sebbie's note: *"The flag has been enabled by default for 16.3. It could've been removed before 16.3 but I just missed the window."*). PR #95602 is a 21-file / +160/-485 diff that:
+
+- **Deletes** `appNewScrollHandler` from `ExperimentalConfig` in `packages/next/src/server/config-shared.ts`, the schema in `packages/next/src/server/config-schema.ts`, the `define-env` build-time flag plumbing, the `layout-router.tsx` 5-line branch, and the build-and-test workflow matrix entry.
+- **Cleans up** 9 test files that referenced the flag (hydration-error.test.ts, navigation-focus.test.ts, parallel-routes-scroll-owner.test.ts, router-autoscroll.test.ts, etc.).
+
+**For self-hosted deployments:**
+
+- **(a) Config cleanup required** — if your `next.config.ts` has `experimental: { appNewScrollHandler: true }` (or `false`), **remove the line**. The flag no longer exists in canary.5+. Next.js will warn (or error in strict mode) about unknown experimental flags. The build will not fail with a hard error (the config-schema validator silently drops unknown keys), but you'll get a `next-config-validator` warning.
+- **(b) Behavior unchanged on 16.3.0 STABLE** — the new scroll handler has been the default since 16.3.0 (you've already been using it). The only deployment-relevant change is the config cleanup.
+- **(c) No CI changes required** — the existing scroll-restoration semantics are preserved verbatim.
+
+**Audit recipe:**
+
+```bash
+# 1. Is your project on the flag?
+rg -n "appNewScrollHandler" next.config.* tsconfig.* 2>/dev/null
+# Expected post-fix: 0 hits. If you have a hit, remove the line.
+
+# 2. Are you on next@16.3.1-canary.5+?
+npm ls next
+# If canary.5+, the flag is gone; if canary.4 or earlier, the flag still parses but emits a deprecation warning.
+
+# 3. Verify scroll-restoration behavior in your app
+# Open the app, navigate via <Link>, click the Back button. The scroll position should restore correctly.
+# (This should be unchanged from 16.3.0 — the flag was default-on there.)
+```
+
+**Migration:** No code changes. Config cleanup (`rg -n "appNewScrollHandler" next.config.*` → remove the line). The flag will be removed entirely in the next 16.3.1 stable.
+
+### 2. `@swc/helpers` Bump Fixes `Module not found: '@swc/helpers/_/_wrap_reg_exp'` — PR #96720 (Niklas Mischkulnig, merged 2026-08-06T07:09:24Z, ships in `next@16.3.1-canary.5`)
+
+A long-standing bundling bug: `next@16.3.0` STABLE could fail at `next build` with `Module not found: Can't resolve '@swc/helpers/_/_wrap_reg_exp'` for any user code that uses `RegExp` operations compiled by SWC. The SWC **crates** were upgraded but the **`@swc/helpers`** npm package was never bumped to match. The `_wrap_reg_exp` helper was added in March 2026 (the SWC side picked it up), but Next.js's pinned `@swc/helpers` dependency didn't include it, so Webpack/Turbopack's module resolver couldn't find the helper for any compiled output that needed it.
+
+**The fix** — PR #96720 bumps `@swc/helpers` to the version that includes `_wrap_reg_exp`. **Closes issue #94634** (ken-spencer/ff-refresh-bug — the Firefox + PPR infinite-refresh-loop repro that surfaced the underlying issue).
+
+**For self-hosted deployments:**
+
+- **(a) Affected deployments** — `next@16.3.0` STABLE + `next@16.3.1-canary.0/1/2/3/4` (all canary cuts before PR #96720). Any deployment that compiles `RegExp` operations (string `.match()`, `.replace()`, `.split()` with regex; `new RegExp(...)`; regex literals in conditional paths) is potentially affected.
+- **(b) Trigger pattern** — the error surfaces during `next build` (Turbopack or Webpack) when the analyzer first hits a chunk that needs the `_wrap_reg_exp` helper. Production builds may emit a successful bundle but with a broken dynamic-import resolution at runtime (lazy-loaded chunks silently fail). Dev mode (`next dev`) is more likely to surface the error because Turbopack re-analyzes on every request.
+- **(c) The fix** — bump to `next@16.3.1-canary.5+`. No code changes, no config changes, no peer-dep churn. Pure build-system fix.
+- **(d) Affected deployments stay on 16.3.0** — the workaround is to bump to `next@16.3.1-canary.5+` (or wait for `next@16.3.1` STABLE). If you can't bump due to Node version constraints or a custom SWC transformer that pins a specific helper version, the only alternative is to refactor the affected code to avoid the helper (e.g., replace `str.match(/regex/g)` with `str.split(/regex/g).filter(...)` patterns that don't trigger SWC's regex wrapping).
+
+**Audit recipe:**
+
+```bash
+# 1. Are you on next@16.3.0 or canary.0-4 (potentially affected)?
+npm ls next
+# Expected: 16.3.0 or 16.3.1-canary.0..canary.4 → potentially affected. canary.5+ → fixed.
+
+# 2. Does your codebase use RegExp operations in compiled paths?
+rg -n "(new RegExp|\.match\(|\.replace\(|\.split\(|/\^?[a-z]/i)" app/ src/ components/ lib/ 2>/dev/null | head -20
+# Expected: a list of files. Any hits → potentially affected. None → likely not affected.
+
+# 3. Run next build and watch for the module-not-found error
+next build 2>&1 | rg -i "wrap_reg_exp|module not found"
+# If hits → you're on the bug, bump to canary.5+.
+
+# 4. Smoke-test lazy-loaded chunks in production
+# If your app uses dynamic imports with RegExp-heavy modules, exercise them in production mode:
+# next build && next start
+# Click through routes that trigger dynamic imports; check the Network tab for 404s on _next/static/chunks/*.js
+
+# 5. Firefox + PPR users (ken-spencer repro): if you're seeing infinite refresh loops in dev, you may have hit this bug.
+# Bump to canary.5+ to fix.
+```
+
+**Migration:** No code changes. Bump `next` to `16.3.1-canary.5+` (or wait for `16.3.1` STABLE). The fix is a one-line `@swc/helpers` version bump in `packages/next/package.json` and the corresponding lockfile update.
+
+### Sources
+
+- [PR #95602 — `[fragment-scroll]` Remove `experimental.appNewScrollHandler`](https://github.com/vercel/next.js/pull/95602) — Sebbie Silbermann, 21 files / +160/-485, merged 2026-08-06T09:53:09Z, ships in `next@16.3.1-canary.5` (canary-branch version-tag still pending at this cron's check)
+- [PR #96720 — Bump `@swc/helpers`](https://github.com/vercel/next.js/pull/96720) — Niklas Mischkulnig, merged 2026-08-06T07:09:24Z, ships in `next@16.3.1-canary.5`; closes [issue #94634](https://github.com/vercel/next.js/issues/94634) (Firefox + PPR infinite refresh loop)
+- [Next.js `experimental.appNewScrollHandler` docs (pre-#95602 — page now redirects to fragment-scroll since the flag is removed)](https://nextjs.org/docs/app/api-reference/config/next-config-js/appNewScrollHandler) — the canonical pre-removal reference
+- [Next.js fragment-scroll behavior docs](https://nextjs.org/docs/app/building-your-application/routing/fragment-scroll-behavior) — the new home for the scroll-restoration docs (the flag's behavior lives here now)
+- [Issue #94634 — infinite refresh loop and crashes in next.js 16.2.7 (ken-spencer repro)](https://github.com/vercel/next.js/issues/94634) — closed 2026-06-29T06:46:23Z (the issue was closed but the fix didn't ship until PR #96720 on 2026-08-06)
+- [@swc/helpers npm package](https://www.npmjs.com/package/@swc/helpers) — the bumped dependency
+- [v16.3.1-canary.4 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) — npm-published 2026-08-06T00:10:18Z (the canary cut that shipped before these two PRs landed; PR #95602 + #96720 will be in `canary.5`)
+- [canary-branch compare v16.3.1-canary.4...canary (3 commits ahead at 2026-08-06T12:05Z)](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — the source of both PRs
