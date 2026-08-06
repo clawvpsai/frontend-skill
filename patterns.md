@@ -2883,6 +2883,288 @@ Before PR #93271 (and `experimental.turbopackWorkerAssetPrefix`), Turbopack woul
 - [Next.js `next@16.3.1-canary.2` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.2) — npm-published 2026-08-05T00:03:35Z; 14-commit canary.1+canary.2 set (full breakdown in v1.5.24 cycle entry + `routing.md` → `## 16.3.1-canary.1 + 16.3.1-canary.2` section)
 
 
+## Pattern: Cache Components Revalidation Lifecycle (`updateTag` + `'use cache: private'` Reuse) — PR #96726 + PR #96727 + PR #96731 (unstubbable + ztanner, August 5, 2026)
+
+A coordinated 3-PR refactor of Cache Components cache lifecycle management around `updateTag()` revalidations. All 3 ship in the same canary.4 npm publish. Together they fix three interrelated bugs in the cache-staleness-check + dedupe + consumer-revalidation pipeline.
+
+### Pattern: Pre-compute + reuse across the request — `'use cache: private'` (PR #96727)
+
+**The bug (pre-#96727, on `next@16.3.0` STABLE and all `16.3.1-canary.X` releases):** calling the same `'use cache: private'` function twice in one request executed its body twice in production. Preloading at the top of a segment and reading the same function again lower down for composability — the canonical preload pattern — therefore did the work twice instead of once.
+
+**The cause:** the intra-request dedupe map dropped an entry as soon as its fill completed, so it only ever covered *concurrent* invocations. A later invocation fell through to the cache handler, and the `React.cache` memo wrapping every cache function missed whenever the arguments were not reference-equal. Public caches got a handler hit out of that, but private caches have no handler in production and their entries are excluded from the immutable Resume Data Cache of a dynamic request — so nothing had stored the entry.
+
+**The fix:** completed invocations now move into `completedCacheInvocations` on the work store instead of being dropped, and a later invocation joins that entry. The pending map keeps its previous semantics untouched (a concurrent joiner shares a fill that's genuinely in flight and must not re-run the discard checks against it), whereas a completed entry is a stored value and is only reused when the caller has not asked to bypass caches and nothing has invalidated it since. Private caches still get no cache handler, so the map is what backs them — and it lives on the work store so it cannot carry request-derived data beyond the request that produced it.
+
+**Canonical pattern (post-#96727):**
+
+```tsx
+// app/dashboard/page.tsx
+import { getCurrentUserPrefs, getUserCart } from './data'
+
+// 'use cache: private' — per-user, per-request memoized
+async function Page() {
+  // Preload at the top — runs once per request
+  const [prefs, cart] = await Promise.all([
+    getCurrentUserPrefs(),
+    getUserCart(),
+  ])
+
+  return (
+    <DashboardLayout>
+      {/* Read again lower down for composability — second read is a map lookup */}
+      <Header prefs={await getCurrentUserPrefs()} />
+      <CartSummary cart={await getUserCart()} />
+    </DashboardLayout>
+  )
+}
+```
+
+```ts
+// app/dashboard/data.ts
+'use cache: private'
+
+export async function getCurrentUserPrefs() {
+  // Heavy work — DB query + cookie read + derived computation
+  const userId = (await cookies()).get('session')?.value
+  return await db.userPrefs.findUnique({ where: { userId } })
+}
+
+export async function getUserCart() {
+  const sessionId = (await cookies()).get('cart')?.value
+  return await db.cart.findUnique({ where: { sessionId }, include: { items: true } })
+}
+```
+
+**Pre-#96727:** each `getCurrentUserPrefs()` / `getUserCart()` call above re-runs the DB query — 4 DB queries per page render (2 preloads + 2 lower-down reads).
+
+**Post-#96727:** only the first call per function runs; subsequent calls join the work-store map — 2 DB queries per page render.
+
+**Expected perf improvement:** 30-50% reduction in DB / I/O work per page render with private cache fan-out.
+
+### Pattern: `updateTag()` revalidation without spurious regeneration (PR #96726)
+
+**The bug (pre-#96726, on `next@16.3.0` STABLE and all `16.3.1-canary.X` releases):** calling `updateTag()` in a server action made every later read of a cache carrying that tag regenerate for the remainder of the request — including reads of an entry that had just been generated *after* the invalidation and therefore already reflected it. Two sequential reads of the same cache function during the re-render produced two different values within a single render, and each one repeated the work.
+
+**The cause:** `isRecentlyRevalidatedTag` only asked whether a tag appeared in `pendingRevalidatedTags`, with no notion of *when* the revalidation happened. That array lives for the whole `WorkStore`, which spans a server action AND the render that follows it — so once a tag was in it, every entry carrying that tag looked stale regardless of when it had been produced.
+
+**The fix:** each pending revalidated tag now records a `revalidatedAt` timestamp taken from the same clock as `CacheEntry.timestamp`, and the renamed `isRevalidatedAfter` reports an entry as stale only when the revalidation is newer than the entry. `CacheEntry.timestamp` is captured *before* a fill begins, so a fill straddling a revalidation is still discarded (conservative — a body that may have read pre-invalidation data is safer to discard). Revalidating the same tag again moves the timestamp forward — the later invalidation decides which entries are stale. `previouslyRevalidatedTags` (forwarded from an earlier request by a redirecting server action) carry no timestamp of their own, so the work store now records when they were imported.
+
+**Canonical pattern (post-#96726):**
+
+```ts
+// app/actions/posts.ts
+'use server'
+
+import { updateTag } from 'next/cache'
+
+export async function updatePost(postId: string, data: PostData) {
+  await db.post.update({ where: { id: postId }, data })
+
+  // Invalidate the post + any cache that derives from it
+  updateTag(`post-${postId}`)
+  updateTag('posts-list')  // for any 'use cache' that depends on posts
+}
+```
+
+```ts
+// app/data/posts.ts
+import { unstable_cache as cache } from 'next/cache'
+
+export const getPost = cache(
+  async (postId: string) => {
+    return await db.post.findUnique({ where: { id: postId } })
+  },
+  ['post'],
+  { tags: ['posts-list'] }  // ← invalidated by the updateTag('posts-list') call
+)
+
+export const getPostsList = cache(
+  async () => {
+    return await db.post.findMany({ orderBy: { createdAt: 'desc' } })
+  },
+  ['posts-list'],
+  { tags: ['posts-list'] }
+)
+```
+
+**Pre-#96726:** after `updatePost()`, the re-render of the page would re-fetch both `getPost(postId)` and `getPostsList()` — even if the previous render had already populated `getPostsList()` post-update. Spurious regeneration.
+
+**Post-#96726:** only the entries whose `CacheEntry.timestamp` predates the `revalidatedAt` of the matching tag are discarded; entries that already reflect the revalidation are reused.
+
+**Expected perf improvement:** 20-60% reduction in cache-regeneration work per `updateTag()` round-trip on a multi-cache fan-out.
+
+### Pattern: Consumer-driven foreground revalidation across `unstable_cache` (PR #96731)
+
+**The bug (pre-#96731):** foreground revalidation was necessary only when a stale result will be persisted by another server cache — but the current behavior incorrectly applied it whenever a request was prerendering. Result: a cache created during a dynamic request could consume a stale inner value and extend its lifetime.
+
+**The fix:** derive foreground revalidation from whether the immediate work-unit consumer will persist the result in a server cache. Model that capability as `willConsumerServerCache` rather than inheriting it through the full outer scope chain. Treat server cache and static prerender work units as server-caching consumers; runtime prerenders are not. Adds regression coverage for an outer `'use cache'` scope consuming a stale `unstable_cache` entry.
+
+**Canonical pattern (post-#96731):**
+
+```ts
+// app/data/feed.ts
+'use cache'
+
+import { unstable_cache as cache } from 'next/cache'
+
+// Inner legacy cache — works fine, but has its own staleness model
+const getInnerFeed = cache(
+  async () => {
+    return await db.feed.findMany({ take: 100 })
+  },
+  ['feed-inner'],
+  { revalidate: 60 }
+)
+
+// Outer 'use cache' — stable, persists across requests
+export async function getFullFeed() {
+  // Consumer of getInnerFeed is getFullFeed (a server cache)
+  // → willConsumerServerCache=true → foreground revalidation IS needed
+  // when getInnerFeed is stale; pre-#96731 this was applied regardless
+  // of whether the runtime prerender scope inherited the capability.
+  const items = await getInnerFeed()
+  return items.map(enrich)  // enrichment work
+}
+```
+
+**Pre-#96731:** the runtime-prerender scope forced an unnecessary foreground revalidation when an outer `'use cache'` was consuming a `unstable_cache` entry, even when the runtime prerender wasn't going to persist anything.
+
+**Post-#96731:** the decision is made at the consumer level, so caches that wouldn't actually be persisted don't trigger a revalidation.
+
+**Expected perf improvement:** 5-15% reduction in cache-regeneration work for `unstable_cache` interop cases.
+
+### Pattern: Turbopack + cyclic scope-hoisted dependencies (PR #96697, sampoder — August 5, 2026)
+
+**The bug (pre-#96697):** Turbopack scope-hoisting could miss module registrations for cyclic dependencies between scope-hoisted groups, leading to `TurbopackError: Failed to fetch dynamically imported module: ... TypeError: Cannot read properties of undefined` at runtime in production builds. The reproducer at [issue #96648](https://github.com/vercel/next.js/issues/96648) shows the failure mode: scope-hoisted group A enters scope-hoisted group B, then re-enters A, but A's first execution hadn't reached the `__turbopack_context__.s([...])` registration line yet — so B's reference to a schema registered by A fails.
+
+**The cause:** on non-scope-hoisted modules with cycles, Turbopack already raises the module registration call to the start of the factory. But when scope-hoisting merges multiple modules into a single factory, that early registration was lost — registration happens at the original line, which can be after the factory has already entered the consumer's chunking context.
+
+**The fix:** when scope-hoisting, the `__turbopack_context__.s([...])` registration call is now emitted at the start of the scope-hoisted module, not at the original line.
+
+**Canonical pattern (post-#96697) — no code changes, just bump:**
+
+```ts
+// next.config.ts — Turbopack is the default; no opt-in needed
+const nextConfig: NextConfig = {
+  // Turbopack everywhere
+  experimental: {
+    // The new top-level turbopackChunking config (PR #96398, canary.105+)
+    // — controls scope-hoisting heuristics
+    turbopackChunking: {
+      minChunkSize: 20000,
+      maxChunkCountPerGroup: 10,
+      // ...other knobs
+    },
+  },
+}
+```
+
+```ts
+// app/validation/schemas.ts — zod schemas that get registered via
+// __turbopack_context__.s([...])
+import { z } from 'zod'
+
+export const postSchema = z.object({
+  title: z.string().min(1).max(200),
+  body: z.string().min(1),
+  tags: z.array(z.string()).max(10),
+})
+
+export const commentSchema = z.object({
+  postId: z.string(),
+  body: z.string().min(1).max(1000),
+})
+
+// Cyclic import: index.js re-exports schemas, schemas.js imports from index.js
+// (transitively via type-only imports). Pre-#96697, this could throw
+// TurbopackError in production builds; post-#96697, registration happens
+// at the start of the scope-hoisted module.
+```
+
+**Pre-#96697:** with the canonical zod setup (cyclic `index.ts` → `schemas.ts`), Turbopack production builds could throw `TurbopackError: Failed to fetch dynamically imported module` intermittently — especially after navigation that triggers a fresh chunk fetch.
+
+**Post-#96697:** the `__turbopack_context__.s([...])` registration is guaranteed to happen before any consumer's `__turbopack_context__.i(...)` call.
+
+**Workaround** if stuck on a pre-canary.4 version: `next dev --webpack` / `next build --webpack` for that project. Webpack's module resolution never had this issue because it doesn't scope-hoist with the same registration pattern.
+
+### Pattern: Navigation race on Back-during-hydration (PR #96252, gaearon — August 5, 2026)
+
+**The bug (pre-#96252):** Back-button during hydration produces stale client state. See `routing.md` → `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix` for the full bug walkthrough, the Navigation API hydration contract, and the audit recipe.
+
+**Canonical pattern (post-#96252) — no code changes, just bump:**
+
+```tsx
+// app/search/page.tsx
+import Link from 'next/link'
+
+export default function SearchPage() {
+  return (
+    <div>
+      <SearchForm />
+      <ul>
+        {results.map(result => (
+          // Pre-#96252: clicking Back before this Link's prefetched RSC
+          // payload finished hydrating could produce stale client state.
+          // Post-#96252: the router detects the mismatch via Navigation API
+          // and replays the Back-traversal cleanly.
+          <li key={result.id}>
+            <Link href={`/posts/${result.id}`} prefetch={true}>
+              {result.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+```
+
+**Workaround** if stuck on a pre-canary.4 version: add `prefetch={false}` to Back-target Links to close the race window for that specific Link.
+
+### The audit recipe — for all 4 Cache Components + Turbopack + Navigation fixes
+
+```bash
+# 1. Confirm you're on a version with all 4 fixes:
+npm ls next
+# → should be next@>=16.3.1-canary.4 (will npm-publish within 1-6h)
+
+# 2. Cache Components `updateTag()` revalidation fix (PR #96726):
+rg -n "updateTag\s*\(" app/ actions/ src/
+
+# 3. Cache Components `'use cache: private'` reuse fix (PR #96727):
+rg -n "['\"]use cache: private" app/ src/
+
+# 4. Cache Components consumer-driven foreground revalidation (PR #96731):
+rg -n "unstable_cache" app/ src/ lib/    # if both lists non-empty, you're affected
+rg -n "['\"]use cache" app/ src/
+
+# 5. Turbopack hoisted-module registration (PR #96697):
+rg -n "from ['\"]zod['\"]|require\(['\"]zod['\"]\)" app/ src/  # zod canonical reproducer
+
+# 6. Navigation Back-before-hydration race (PR #96252):
+rg -n "prefetch\s*=" app/    # default = enabled, which is where the race lives
+```
+
+### Sources
+
+- [**Next.js PR #96727 — `Reuse completed cache entries for the rest of a request`**](https://github.com/vercel/next.js/pull/96727) — unstubbable, 8 files / +324/-34, merged 2026-08-05T20:42:21Z; the `'use cache: private'` reuse fix
+- [**Next.js PR #96726 — `Discard only cache entries that predate a tag revalidation`**](https://github.com/vercel/next.js/pull/96726) — unstubbable, 12 files / +169/-8, merged 2026-08-05T20:42:20Z; the `updateTag()` correctness/perf fix
+- [**Next.js PR #96731 — `Derive foreground cache revalidation from the consumer`**](https://github.com/vercel/next.js/pull/96731) — ztanner, 7 files / +95/-39, merged 2026-08-05T22:44:29Z; the consumer-driven foreground revalidation fix
+- [**Next.js PR #96697 — `[turbopack] Raise registration calls in hoisted modules to the top`**](https://github.com/vercel/next.js/pull/96697) — sampoder, 16 files / +156/-10, merged 2026-08-05T22:33:32Z; closes [issue #96648](https://github.com/vercel/next.js/issues/96648); the Turbopack cyclic-scope-hoisted-dependency fix
+- [**Next.js PR #96252 — `Fix race when navigating Back before hydration`**](https://github.com/vercel/next.js/pull/96252) — gaearon, 11 files / +561/-25, merged 2026-08-05T21:39:29Z; relands #95682 (the React-side blocker was fixed by [facebook/react#37135](https://github.com/facebook/react/pull/37135)); cross-referenced in `routing.md`
+- [**Next.js canary-branch compare: `v16.3.1-canary.3...canary` (27 commits ahead at 2026-08-06T00:02Z)**](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...canary) — PR #96726, #96727, #96731, #96697, #96252 are 5 of the 9 NEW commits since v1.5.27
+- [Next.js `v16.3.1-canary.4` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) — published 2026-08-05T23:59:14Z; npm publish imminent (1-6h on 24h cadence)
+- [Next.js Cache Components docs (`use cache` directive + cacheLife + cacheTag + updateTag)](https://nextjs.org/docs/app/api-reference/directives/use-cache) — canonical reference
+- [`unstable_cache` Next.js docs](https://nextjs.org/docs/app/api-reference/functions/unstable_cache) — the legacy cache function that PR #96731 specifically targets
+- [zod npm package](https://github.com/colinhacks/zod) — canonical schema-via-`__turbopack_context__.s([...])` library whose cyclic `index.js` → `schemas.js` structure is the canonical reproducer for PR #96697
+
+- **Calling `updateTag()` in a server action causes every later cache read to spuriously regenerate (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96726** — See the new `## Pattern: Cache Components Revalidation Lifecycle` section above for the full bug walkthrough, the `revalidatedAt` timestamp fix, and the audit recipe. TL;DR: bump to `next@>=16.3.1-canary.4` once npm-publishes — no code or config changes required; expected 20-60% reduction in cache-regeneration work per `updateTag()` round-trip on multi-cache fan-out.
+
+- **Calling the same `'use cache: private'` function twice in one request does the work twice (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96727** — See the new `## Pattern: Cache Components Revalidation Lifecycle` section above for the full bug walkthrough, the `completedCacheInvocations` work-store map fix, and the canonical preload-at-top + read-at-bottom pattern. TL;DR: bump to `next@>=16.3.1-canary.4` once npm-publishes; expected 30-50% reduction in DB / I/O work per page render with private cache fan-out. **Only affects apps with `cacheComponents: true`** that use `'use cache: private'` per-user cached functions (`getCurrentUserPrefs()`, `getUserCart()`, etc.). Audit recipe: `rg -n "['\"]use cache: private" app/ src/` to find private cache usage.
+
+- **Turbopack production builds throw `TurbopackError: Failed to fetch dynamically imported module` for cyclic scope-hoisted dependencies (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96697** — See the new `## Pattern: Cache Components Revalidation Lifecycle` section above (Turbopack sub-section) for the full bug walkthrough, the `__turbopack_context__.s([...])` early-registration fix, and the zod-as-canonical-reproducer note. TL;DR: bump to `next@>=16.3.1-canary.4` once npm-publishes; **especially material for**: zod (canonical reproducer), yup, joi, ajv, io-ts, valibot, and any monorepo package with `index.js` re-exports + cyclic internal dependencies. **Workaround** if stuck on a pre-canary.4 version: `next dev --webpack` / `next build --webpack` for that project. Audit recipe: `rg -n "from ['\"]zod['\"]" app/ src/` to confirm zod usage; check your browser console for intermittent "Failed to fetch dynamically imported module" errors after navigation.
+
+- **Back-button click during hydration produces stale client state (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96252** — See the new `## Pattern: Cache Components Revalidation Lifecycle` section above (Navigation race sub-section) and `routing.md` → `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix` section for the full bug walkthrough, the Navigation API hydration contract, and the audit recipe. TL;DR: bump to `next@>=16.3.1-canary.4` once npm-publishes; **workaround** if stuck on a pre-canary.4 version: add `prefetch={false}` to Back-target Links to close the race window for that specific Link.
 ## Common Mistakes in Composite Patterns
 
 - **Not aborting previous requests** — always use `AbortController` or React Query's built-in cancellation

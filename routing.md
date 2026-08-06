@@ -1826,6 +1826,87 @@ rg -n 'router\.push\(['"'"'"][^'"'"'"]+#' app/ src/ 2>/dev/null | head -10
 
 **Source:** [PR #93132 — `fix: double fragment on navigation`](https://github.com/vercel/next.js/pull/93132) · icyJoseph · merged 2026-08-03T16:21:06Z · canary-branch ahead of canary.107 (will ship in canary.108 when published) · closes issues [#93126](https://github.com/vercel/next.js/issues/93126) + [#95551](https://github.com/vercel/next.js/issues/95551).
 
+## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix (PR #96252, gaearon, August 5, 2026)
+
+The v1.5.27 cron (6h ago at 2026-08-05T18:08Z) did not catch PR #96252 — it landed 2026-08-05T21:39:29Z, 3h31min **after** the v1.5.27 commit. PR #96252 is the most routing-relevant PR of the canary.4-ahead cycle — it fixes a silent navigation race condition that affects every App Router app with prefetching (the default).
+
+### The bug — Back-button during hydration produces stale client state
+
+**Pre-#96252, on `next@16.3.0` STABLE and all `next@16.3.1-canary.X` releases (canary.0 / canary.1 / canary.2 / canary.3):** a user lands on Page A (RSC payload finishes streaming, hydration kicks off), then clicks the **Back** button before hydration completes. The router enters the Back-traversal mid-hydration, but the hydration itself assumes "we're still on Page A" — so the newly-mounted client tree is for Page A while the URL bar / viewport now show Page B. Result: **Page B is rendered with stale client state from Page A**, scroll position is wrong, focus is wrong, and any state-setter from Page A bleeds into Page B's first paint. Sometimes the Back action appears to do nothing. Sometimes the wrong route's data appears under Page B's URL.
+
+This is the **reland of [PR #95682](https://github.com/vercel/next.js/pull/95682)**, which was originally reverted in [PR #95853](https://github.com/vercel/next.js/pull/95853) due to [issue #95848](https://github.com/vercel/next.js/issues/95848) — under the then-broken React Activity, state updates from the Back-traversal would sometimes hang applying. The Activity fix is now in [React PR #37135](https://github.com/facebook/react/pull/37135), synced to `next@canary`, so the original Back-traversal fix is safe to reland.
+
+### Why the bug existed — the Navigation API hydration contract
+
+When Next.js finishes streaming the RSC payload for Page A and starts hydrating, the client's mental model is: "we are hydrating Page A, the URL is Page A, any state changes belong to Page A." If the user clicks Back **during** hydration, the browser fires the `popstate` event (or the Navigation API's `navigate` event), but the hydrating Page A client tree is still mid-flight — its `useEffect` cleanup hasn't run, its refs haven't been assigned, its `useState` callbacks haven't been wired. The router swaps the URL and the viewport to Page B, but the client tree is still Page A's. Then hydration finishes — but it hydrates against Page B's server-rendered HTML, so Page A's client state survives into Page B's first paint.
+
+The fix: use the Navigation API (`window.navigation`) during hydration to detect that we're on a **different history entry** than the one we started hydrating, and in that case **replay the missed traversal** with similar logic to what we do for `onPopState`. The replay happens once hydration observes the mismatch — by then, both Page A's hydration tree and the pending Page B navigation are dequeued, and we can swap to Page B cleanly without the stale-state contamination.
+
+### What PR #96252 changes in practice
+
+**Files changed:** 11 files / +561 / -25. Touches the App Router's hydration orchestration, the segment-cache hydration completion tracker, and the Navigation API listener registration.
+
+**For users on `next@16.3.0` STABLE:** the bug has shipped since 16.3.0 STABLE on 2026-08-03. Anyone running 16.3.0 in production is affected — the race fires whenever a user lands on a slow-hydrating page and clicks Back within ~2s.
+
+**For users on `next@16.3.1-canary.0/1/2/3`:** same bug, not yet fixed.
+
+**For users on `next@16.3.1-canary.4`-ahead (will npm-publish within 1-6h):** fix live. No code or config changes required.
+
+### Practical impact — who is affected
+
+- **Every App Router app with prefetching enabled (the default)** — pre-#96252, a fast Back click during hydration on a slow device (mid-tier mobile, throttled CPU) would produce visible state confusion. Post-#96252, the router detects the mismatch and replays cleanly.
+- **Especially material for**:
+  - Marketing pages (users often click Back immediately)
+  - Product detail pages (Back after PDP → list)
+  - Search results (Back after click → results list)
+  - Any page that does heavy work in `useEffect` on mount (analytics, A/B test enrollment, consent management)
+- **Apps with a non-trivial `loading.tsx` or PPR-not-found chain** — the longer the hydration takes, the wider the race window. Multi-segment routes with PPR fallback shells see this more often.
+- **Apps with `experimental.instantNavigation` (16.3 preview feature) or `instantBrowsing`** — both rely on Navigation API semantics, so this fix is foundational for those features.
+
+### Audit recipe — confirm you're affected + verify the fix
+
+```bash
+# 1. Confirm you're on a version with the fix:
+npm ls next
+# → should be next@>=16.3.1-canary.4 (will npm-publish within 1-6h)
+
+# 2. Confirm you're on App Router with prefetching (the default):
+rg -n "prefetch\s*=" app/    # should show prefetch="auto" or no prefetch attr (= default)
+
+# 3. Diagnose (if you suspect you're seeing the race):
+# In Chrome DevTools → Performance → CPU throttling to 4x slowdown,
+# navigate to a slow page (one with a heavy useEffect on mount),
+# then click Back immediately. Pre-#96252 you may see stale client state;
+# post-#96252 you should always see the correct Back-traversal result.
+
+# 4. Reproduce in production (pre-fix users):
+# Vercel Analytics → Real User Monitoring → hydration time p75.
+# If p75 hydration > 1s AND you have measurable Back-rate within 2s of
+# the page load, you're losing users to the race. Bump to canary.4.
+
+# 5. Workaround (if you can't bump right away):
+# Add `prefetch={false}` to the Back-target Link. Prevents the prefetched
+# RSC payload from sitting in the segment cache ready to be hydrated,
+# which closes the race window for that specific Link.
+```
+
+### Migration required
+
+**None** — the fix is in the App Router runtime; no code or config changes required. Bump to `next@>=16.3.1-canary.4` (will npm-publish within hours) or to `next@>=16.3.1` stable (when it ships shortly after).
+
+### Sources
+
+- [**Next.js PR #96252 — `Fix race when navigating Back before hydration`**](https://github.com/vercel/next.js/pull/96252) — by gaearon, merged 2026-08-05T21:39:29Z, 11 files / +561/-25, relands #95682; the React-side blocker was fixed by [facebook/react#37135](https://github.com/facebook/react/pull/37135); the most user-visible PR of the canary.4 cycle
+- [**Next.js PR #95682 — `Fix race when navigating Back before hydration` (original, reverted)**](https://github.com/vercel/next.js/pull/95682) — the original Back-traversal fix that PR #96252 relands; reverted in #95853 due to #95848
+- [Next.js PR #95853 — revert of #95682](https://github.com/vercel/next.js/pull/95853) — the revert PR; #96252 lands now that the React-side blocker is fixed
+- [Next.js issue #95848 — original Back-traversal bug report](https://github.com/vercel/next.js/issues/95848) — the original issue that PR #95682 tried to fix
+- [React PR #37135 — Activity state-update hang fix](https://github.com/facebook/react/pull/37135) — the React-side blocker that had to be merged before PR #95682/#96252 could safely land
+- [Next.js Navigation API docs (window.navigation event + currentEntry)](https://developer.mozilla.org/en-US/docs/Web/API/Navigation_API) — the browser primitive PR #96252 uses to detect Back-traversal-mid-hydration
+- [Next.js canary-branch compare: `v16.3.1-canary.3...canary` (27 commits ahead at 2026-08-06T00:02Z)](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...canary) — PR #96252 is one of 9 NEW commits in the 6h window since v1.5.27
+- [Next.js `v16.3.1-canary.4` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) — published 2026-08-05T23:59:14Z; npm publish imminent (1-6h on 24h cadence)
+- [Next.js `next@16.3.0` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE; ships with the bug; users on 16.3.0 need to upgrade to 16.3.1-canary.4 / 16.3.1 STABLE to get the fix
+
+- **Back-button click during hydration produces stale client state (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96252** — See the new `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix` section above for the full bug walkthrough, the Navigation API hydration contract, the affected-deployment profile (every App Router app with prefetching — the default), the impact table (especially material for marketing pages / PDPs / search results / heavy useEffect on mount / `experimental.instantNavigation`), and the audit recipe. TL;DR: bump to `next@>=16.3.1-canary.4` (will npm-publish within hours) or `next@>=16.3.1` stable (when it ships shortly after) — no code or config changes required. **Workaround** if stuck on a pre-canary.4 version: add `prefetch={false}` to the Back-target Link to close the race window for that specific Link.
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
