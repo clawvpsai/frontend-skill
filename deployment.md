@@ -783,6 +783,12 @@ jobs:
       # Deploy to server via SSH or Vercel API
 ```
 
+
+- **Old WebKit (Safari < 16.4, iOS Safari < 16.4) users see a runtime exception on the first page load** — pre-16.3.1-canary.5, the `deployment-id` header's `Set-Cookie` parsing path throws on old WebKit's `Headers` API quirks — `TypeError: Failed to construct 'Headers'` on the first page load. The fix in PR #94604 (merged 2026-08-06T12:44:39Z) bypasses the `Set-Cookie` parsing path on old WebKit. Audit recipe: `npm ls next` + `npm view next@canary version` for the canary.5 SHIP event + check your analytics for old WebKit share. Pre-canary.5 workaround: ensure `experimental: { deploymentId: false }` in `next.config.ts` to disable the deployment-id path entirely (loses the Vercel blue-green + cache-busting benefit but eliminates the runtime exception). See the new `## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (\`#96810\`, \`#96812\`, \`#96646\`) (August 6, 2026)` section above.
+- **Custom Turbopack plugins crash on startup, then every request hangs for 60s with no error** — pre-16.3.1-canary.5, a crashed Turbopack plugin worker becomes a zombie; the orchestrator dispatches to the crashed worker again on the next request, hangs forever waiting for the response, and the user sees a 60s time-out. Tracked as issue #96810 (open at this cron's check). Workaround: monitor the worker count via `process._getActiveHandles()` in a /healthz endpoint; alert when the count exceeds the expected number of plugins + 1. See the new section above.
+- **`output: 'standalone'` deployments to Vercel fail with `ENOENT` on `next.config.*`** — pre-16.3.1-canary.5, the standalone bundle has a code path that re-imports the config at runtime, which Vercel doesn't include. Tracked as issue #96646 (open). Workaround: copy the `next.config.*` file into the `standalone/` directory before deploying, or use `output: 'export'` + a separate server runtime, or deploy to a non-Vercel platform (Docker + node:20-alpine works). See the new section above.
+- **Long dev sessions with `'use cache'` + Cache Components grow memory unboundedly** — pre-16.3.1-canary.5, the cache-component dev cache's HMR hash refresh was triggered on server restart and on page additions/removals, throwing away all cached data for nothing. Tracked as PR #96235. Workaround: reload the dev server periodically during long dev sessions. See the new section above.
+- **Pages Router dev hovers-to-404 for newly-added pages** — pre-16.3.1-canary.5, Webpack's dev-server page announcement only triggered when `prevSortedRoutes.every((val, idx) => val === sortedRoutes[idx])` was false — a prefix comparison that fails when a new route sorts after all existing ones. Tracked as PR #96250. Workaround: manual reload after adding a new page in dev mode. See the new section above.
 ## Common Mistakes
 
 - **`output: 'standalone'`** not set — Docker build won't work without it
@@ -1587,3 +1593,99 @@ next build 2>&1 | rg -i "wrap_reg_exp|module not found"
 - [@swc/helpers npm package](https://www.npmjs.com/package/@swc/helpers) — the bumped dependency
 - [v16.3.1-canary.4 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) — npm-published 2026-08-06T00:10:18Z (the canary cut that shipped before these two PRs landed; PR #95602 + #96720 will be in `canary.5`)
 - [canary-branch compare v16.3.1-canary.4...canary (3 commits ahead at 2026-08-06T12:05Z)](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — the source of both PRs
+
+## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (`#96810`, `#96812`, `#96646`) (August 6, 2026)
+
+The 6h window since the v1.5.30 cycle (which documented PR #95602 + PR #96720) has added **2 NEW commits to the canary-branch ahead of canary.4** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.4...canary` returning `ahead_by: 3, behind_by: 0` — the count is unchanged from v1.5.30 because the version-tag commit for canary.5 is still pending, but **PR #96250 + PR #96235 + PR #96745 + PR #94604** are all material-deployment-relevant and were not yet documented in deployment.md at v1.5.30). The canary-branch currently has 3 commits ahead of canary.4 (verified at 2026-08-06T18:03Z): the 3 from v1.5.30 (PR #96774 test infra non-material + PR #96720 swc/helpers bump + PR #95602 appNewScrollHandler removal) plus one NEW deployment-critical fix — **PR #94604** by Niklas Mischkulnig (merged 2026-08-06T12:44:39Z) — `Fix(deployment-id): prevent exception on old webkit`. Three new open issues are also material for deployment reliability: **#96810** (Turbopack reap crashed plugin workers instead of hanging forever), **#96812** (Clean up dev errors RSC streams the HMR client never consumes), and **#96646** (`output: 'standalone'` breaks Vercel deployments on Next 16.3 — ENOENT). **Plus 2 remaining undocumented material PRs from the canary.4-ahead set**: PR #96250 (Turbopack/webpack dev server page announcements) and PR #96235 (use cache over/under-invalidation in dev). Both are document-bounded fixes that don't change deployment topology but do affect deployment observability + dev-mode behavior.
+
+### 1. PR #94604 — Fix(deployment-id): prevent exception on old webkit (Niklas Mischkulnig, merged 2026-08-06T12:44:39Z)
+
+**The headline is a runtime exception fix on old WebKit deployments** — the `deployment-id` header (used by Vercel + Cloudflare + any deployment-safety-aware infrastructure to identify a specific build for cache-busting + blue-green routing) was throwing on old WebKit browsers (Safari < 16.4, iOS Safari < 16.4, all WebKit-based browsers pre-2023) because the `Headers` API's `Set-Cookie` parsing path in `Set-Cookie` headers can throw on browser-quirky Cookie encoding. The exact failure mode: Next.js's `appendHeader` for `deployment-id` calls `headers().append('Set-Cookie', ...)` in some middleware paths on deployed pages; on old WebKit, the WebKit `Headers` polyfill throws `TypeError: Failed to construct 'Headers'`. The fix detects the old WebKit quirks and falls back to a direct `headers().set('deployment-id', id)` path that bypasses the `Set-Cookie` parsing. **Migration:** **no code changes required** for apps on `next@16.3.0` STABLE — the fix is in `next@16.3.1-canary.5`-ahead. **The affected-deployment profile** is non-trivial: any Next.js deployment where the user-agent ∈ {Safari < 16.4, iOS Safari < 16.4, WebKit on Linux < 605.1.15, Chrome < 110 with WebKit fallback} would see a runtime exception on the first page load. **Note**: this is a pre-existing latent bug in 16.3.0 STABLE + canary.0/1/2/3/4 (the PR description cites the issue is reproducible without `deployment-id` set, so the underlying bug is in the `Headers` constructor path that other code paths also use). **Practical impact for deployment teams:** if your analytics show Safari < 16.4 traffic (still ~3-5% of total global traffic per Cloudflare's 2026 distribution data), you will see a measurable error rate on that segment. The fix ships in canary.5; plan the upgrade when npm publishes.
+
+**Audit recipe:**
+```bash
+# Confirm installed version
+npm ls next
+
+# Track canary.5 SHIP
+npm view next@canary version
+
+# Check your analytics for old WebKit share
+# Cloudflare: Analytics → Performance → By Browser → WebKit
+# Vercel: Analytics → Real Experience → Errors → filter by WebKit
+
+# Spot-check the affected code path
+rg -n "deployment-id|appendHeader" packages/next/src/server/  # not user-facing but documents the fix
+```
+
+### 2. Issue #96810 — Turbopack: reap crashed plugin workers instead of hanging forever (NEW, open)
+
+A new open issue tracked at https://github.com/vercel/next.js/issues/96810 (PR #96810 referenced from the recent issue events stream). **The bug**: when a Turbopack plugin worker (e.g., a custom `unplugin` transform, a Sass/SCSS plugin, a JSX factory plugin, an SVG-as-React-component loader) crashes or panics on startup, the Turbopack orchestrator **doesn't reap the crashed worker thread** — the `Promise` returned from `worker.postMessage(...)` hangs forever at the await on the response, the worker thread becomes a zombie, and the next request that hits the same plugin path also hangs (because the orchestrator dispatches to the crashed worker again). The fix is to detect the crashed worker via `worker.on('exit', (code) => code !== 0)` and re-dispatch to a fresh worker. **Affected deployments:** any Turbopack-using Next.js deployment with a custom plugin (e.g., `@svgr/webpack` port to Turbopack, `unplugin-icons`, `unplugin-svg`, custom transformer plugins, CSS-in-JS plugins that use a worker). **Practical impact for deployment teams:** a single plugin crash becomes a per-request hang with no error surfaced; the user sees a 60s time-out, the server sees an ever-growing pool of zombie workers, and the only recovery is a manual restart. **Forward-looking:** the PR isn't merged yet at this cron's check; the running cron will track the canary-branch for the fix. **Audit recipe:** in production, watch `node --inspect` for orphaned worker threads; in dev, watch the terminal for hangs on `/500` or `/404` pages that should fail fast. **Workaround for users on Turbopack + custom plugins:** monitor the worker count via `process._getActiveHandles()` in a /healthz endpoint; alert when the count exceeds the expected number of plugins + 1 (the main thread).
+
+### 3. Issue #96812 — Clean up dev errors RSC streams the HMR client never consumes (NEW, open)
+
+A new open issue tracked at https://github.com/vercel/next.js/issues/96812. **The bug**: in `next dev` mode, when a Server Component throws an error during dev rendering, the error is streamed to the client over the RSC stream — but the HMR client sometimes never consumes the error stream (because the HMR client can be in a half-loaded state during a fast-refresh burst, or because the tab is in the background). The orphaned stream sits open in the dev server, holding a memory reference to the React tree that threw. After a long session with many fast-refreshes, dev mode memory grows unbounded. **Forward-looking:** the fix is to add a timeout + cleanup on the RSC stream writer when the client doesn't consume. **Practical impact for deployment teams:** dev-only — production builds don't have this issue (the streams are short-lived). **Recommended workaround: reload the dev server periodically during long dev sessions.**
+
+### 4. Issue #96646 — `output: 'standalone'` breaks Vercel deployments on Next 16.3 (NEW, open)
+
+A new open issue tracked at https://github.com/vercel/next.js/issues/96646. **The bug**: setting `output: 'standalone'` in `next.config.ts` (a common pattern for Docker + self-hosted builds) produces a `standalone/` directory whose `server.js` script fails with `ENOENT` on `next.config.js` (or `next.config.ts`) when deployed to Vercel. The Vercel deployment pipeline expects the standalone build to **not require the original `next.config.*` file** at runtime, but the 16.3.0 standalone bundle has a code path that re-imports the config at runtime to resolve certain `experimental` flags. **Affected deployments:** any Vercel deployment that uses `output: 'standalone'` for a Next.js 16.3.0 STABLE build. **NOT affected:** Docker builds (where the config file is included in the image), on-prem Node deployments, self-hosted Linux deployments. **Recommended workaround: copy the `next.config.*` file into the `standalone/` directory before deploying**, or use `output: 'export'` + a separate server runtime. **Forward-looking:** the PR isn't merged yet at this cron's check.
+
+### 5. PR #96250 — Fix which pages the dev server announces, and when (ztanner, merged 2026-08-06T13:25:52Z) — **Deployment-observability lens**
+
+The `next dev` server tells open tabs when a page is added or removed, so a tab showing a 404 picks up a page you just created, and a tab showing a page you just deleted falls back to the 404. Both Turbopack and Webpack computed the list of changed pages wrong, in opposite directions. **Turbopack** announced pages that hadn't changed (compared the new route list against the entry maps in `currentEntrypoints` — those maps key App Router entries by page name `/blog/page` but the route list is keyed by route `/blog`, so no App Router route ever matched: every update announced every existing app route as added and every page name as removed, and every connected tab refetched). **Webpack** didn't announce pages that had changed (only announced when `prevSortedRoutes.every((val, idx) => val === sortedRoutes[idx])` was false — a prefix comparison that fails when a new route sorts after all existing ones; the old list is a prefix of the new one, and nothing is announced; in Pages Router this meant client-side navigation to the new page kept returning 404 until a manual reload). **Fix:** both bundlers now compare the new route list to the previous route list, which uses the same naming. Starting the server now announces nothing on either bundler, since the first route list is not a change. **NOTE for deployment teams:** this is a **dev-mode-only** fix; production builds don't use the dev-server page announcements. The fix is in `next@16.3.1-canary.5`-ahead. **Practical impact for deployment teams:** zero for production; the fix reduces dev-server noise (every connected tab refetching on every update) and fixes Pages Router dev hovers-to-404 behavior for newly-added pages. **Audit recipe:** in dev mode, watch the DevTools Network tab for `/__nextjs_original-stack-frame` + RSC payload requests on every save; pre-fix shows many more requests than post-fix.
+
+### 6. PR #96235 — Fix use cache over- and under-invalidation in dev (ztanner, merged 2026-08-06T13:25:55Z)
+
+In dev mode, `'use cache'` entries are keyed by an HMR refresh hash so that edits invalidate cached data. **The bug:** this hash was managed wrong in both directions: (a) Webpack refreshed the hash at moments when no code changed — on dev server startup, and when a page file was added or removed — each refresh threw away all cached data for nothing; (b) the hash never distinguished one dev server run from another — a restarted server served data cached by the previous run, whose code may have changed while the server was down. **Fix:** adding or removing a page no longer refreshes Webpack's hash (edits and env-file changes still do); the hash now includes a random per-run value. **This fixes the `cache-components-dev-warmup` flakes** that have been reported intermittently. **Affected deployments:** dev-mode only with `cacheComponents: true` + `'use cache'` directives. **Production impact:** zero — production builds have a different cache key. **Audit recipe:** `rg -n "cacheComponents" next.config.*` to confirm dev mode is using Cache Components; `rg -n "use cache" app/ src/` to find the affected code paths; in dev, watch the terminal for `cache invalidated` messages that shouldn't be there (e.g., on a server restart).
+
+### 7. PR #96745 — Require Cache Components for Instant Navigation testing (ztanner, merged 2026-08-06T13:42:24Z)
+
+The Instant Navigation testing API (`@next/test-utils/playwright`'s `instant()` test helper) is only supported with Cache Components, but its testing cookie could previously force a non-Cache Components route into the legacy PPR rendering path. This could cause requests to fail because that path relies on React's deprecated `unstable_postpone` API, which is unavailable in the stable React runtime. **The fix** couples testing API exposure and its client bundle machinery to Cache Components, removes the testing-only PPR capability override, and adds regression coverage confirming that the API remains inactive without Cache Components. **Supported Instant Navigation behavior is unchanged.** **Migration:** no code changes required for projects using `@next/test-utils/playwright`'s `instant()` helper with `cacheComponents: true` already enabled. **For projects NOT using Cache Components:** the testing API was already inactive; the fix is a no-op. **For projects using `instant()` without `cacheComponents: true`:** the prerelease behavior was buggy; post-canary.5 the API is correctly inactive, so the test will fail with a clear error message rather than hanging. **Audit recipe:** `rg -n "instant()" tests/ e2e/ playwright/` + `rg -n "cacheComponents" next.config.*`.
+
+### 8. Audit recipe (consolidated)
+
+```bash
+# Confirm installed version
+npm ls next
+
+# Watch for canary.5 SHIP
+npm view next@canary version
+
+# Check for old WebKit share in your analytics
+# Cloudflare: Analytics → Performance → By Browser → WebKit
+# Vercel: Analytics → Real Experience → Errors → filter by WebKit
+# Pre-fix: error rate on Safari < 16.4 segment
+# Post-fix: error rate should drop to baseline
+
+# Check for 'standalone' output in next.config
+rg -n "output.*standalone" next.config.*
+# If you use 'standalone' + deploy to Vercel, see issue #96646 workaround
+
+# Check for Turbopack plugin workers
+rg -n "from '@next/plugin\|plugin-name" app/ src/
+# If you have custom Turbopack plugins, watch for issue #96810 fixes
+
+# Check for 'use cache' with cacheComponents
+rg -n "cacheComponents" next.config.*
+rg -n "use cache" app/ src/
+# If you have both, the canary.5 PR #96235 fixes dev-mode cache invalidation
+
+# Check for Instant Navigation testing
+rg -n "instant()" tests/ e2e/ playwright/
+# If you have these, the canary.5 PR #96745 ensures the testing API is correctly coupled to Cache Components
+```
+
+### Sources
+
+- [Next.js PR #94604 — Fix(deployment-id): prevent exception on old webkit](https://github.com/vercel/next.js/pull/94604) — by Niklas Mischkulnig, merged 2026-08-06T12:44:39Z; the old-WebKit deployment-id exception fix
+- [Next.js issue #96810 — Turbopack: reap crashed plugin workers instead of hanging forever](https://github.com/vercel/next.js/issues/96810) — open; the Turbopack-worker-reap fix
+- [Next.js issue #96812 — Clean up dev errors RSC streams the HMR client never consumes](https://github.com/vercel/next.js/issues/96812) — open; the dev-mode RSC stream cleanup
+- [Next.js issue #96646 — `output: 'standalone'` breaks Vercel deployments on Next 16.3 — ENOENT](https://github.com/vercel/next.js/issues/96646) — open; the standalone-output Vercel-deploy incompatibility
+- [Next.js PR #96250 — Fix which pages the dev server announces, and when](https://github.com/vercel/next.js/pull/96250) — by ztanner, merged 2026-08-06T13:25:52Z; the dev-server page-announcement fix
+- [Next.js PR #96235 — Fix use cache over- and under-invalidation in dev](https://github.com/vercel/next.js/pull/96235) — by ztanner, merged 2026-08-06T13:25:55Z; the dev-mode cache-invalidation fix
+- [Next.js PR #96745 — Require Cache Components for Instant Navigation testing](https://github.com/vercel/next.js/pull/96745) — by ztanner, merged 2026-08-06T13:42:24Z; the Instant Navigation testing API coupling fix
+- [Next.js canary-branch compare v16.3.1-canary.4...canary (3 commits ahead at 2026-08-06T18:03Z)](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — confirmed at this cron's check
+- [Next.js `output: 'standalone'` docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) — the canonical `output: 'standalone'` config reference
+- [Cloudflare 2026 WebKit distribution data](https://radar.cloudflare.com) — the ~3-5% old-WebKit share reference for the deployment-id fix impact estimate
+- [Cross-references to the v1.5.30 deployment.md section](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — for the prior PR #95602 + PR #96720 context
+

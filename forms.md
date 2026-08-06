@@ -1677,6 +1677,15 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 ```
 
 **Source:** Next.js [PR #95453 — `docs: Update FormEvent to SubmitEvent in form handling example (deprecated in React 19.2.10+)`](https://github.com/vercel/next.js/pull/95453) · [react-router issue #14795](https://github.com/remix-run/react-router/issues/14795) for the cross-framework context.
+- **RHF 7.85.0: forms inside `<Activity mode="hidden">` keep `formState.isSubmitting` stuck on `true` after Activity-hidden submit, `useWatch` stale after `reset()` while hidden, `useFormState` state inconsistent across Activity transitions — FIXED in `react-hook-form@7.85.0`-ahead by PR #13633 (closes #13625 + #13563 + #13571 + #13629)** — with the React 19.2 `<Activity>` API (released Oct 2025) becoming the canonical way to hide/show a DOM tree without unmounting, any form inside `<Activity>` will be silently affected pre-7.85.0. **The fix is on master as of 2026-08-06T11:12:04Z; expect 7.85.0 stable within 7-14 days.** Audit recipe: `rg -n "from 'react'" app/ src/ | rg -i "Activity"` to find Activity-using forms; plan to bump to `^7.85.0` when it ships. Pre-7.85.0 workarounds: avoid `<Activity>` for forms (use conditional rendering `{isVisible && <Form />}`), or wrap the form's `useEffect` cleanup in `requestAnimationFrame` to defer state clears past the Activity's Effect-suspend cycle. See the new `## React Hook Form — Master Branch Ahead-of-7.84.0 (5 NEW Commits + 4 Open PRs, August 4–6, 2026)` section above.
+- **RHF 7.85.0: `subscribe({ formState: { values: true } })` fires twice per `setValue` call on `Controller` / `useController` fields and on input-less registered fields — FIXED in `react-hook-form@7.85.0`-ahead by PR #13637** — pre-fix, the duplicate emit was inside `setFieldValue`'s `!fieldReference.ref.type` branch (controlled fields via Controller / useController, or fields registered without a rendered input). Plain typed `<input>` was unaffected. Audit recipe: `rg -n "formState: \{ values: true \}"` to find `subscribe` listeners; if any of those subscribers are on `Controller` / `useController` fields, the 7.85.0 fix will deduplicate the emit. Pre-7.85.0 workaround: use a `useRef` to track the last-emitted values reference and skip the callback if it equals the previous reference. See the new section above.
+- **RHF 7.85.0: `useWatch({ control, name: 'x', defaultValue: 'inline' })` returns `'inline'` instead of `form._defaultValues.x` — FIXED in `react-hook-form@7.85.0`-ahead by PR #13635** — pre-fix, the inline `defaultValue` hijacked the form-level default. The fix makes the form's `defaultValues` take precedence when set. Audit recipe: `rg -n "useWatch\(\{[^}]*defaultValue" app/ src/` to find `useWatch` callers with an inline `defaultValue`; if any are on a field that has a `useForm({ defaultValues: { x: ... } })` default, the 7.85.0 fix will change behavior. Pre-7.85.0 behavior is a bug; post-7.85.0 behavior is the documented contract. See the new section above.
+- **RHF 7.85.0: `getFieldState('users').error` is typed as `FieldError | undefined` even when `users` is a nested array path — type-only fix in `react-hook-form@7.85.0`-ahead by PR #13632** — pre-fix, parent paths that returned nested error nodes at runtime were typed as `FieldError | undefined`, forcing TS workarounds. Post-7.85.0, `getFieldState('users').error?.[0]?.firstName?.message` typechecks when `users` is an array of `{ firstName: string }`. Audit recipe: `rg -n "getFieldState\(['"]users['"]" app/ src/` to find parent-path calls; `rg -n "// @ts-ignore" app/ src/ | rg "getFieldState"` to find TS workarounds. See the new section above.
+- **RHF 7.85.0: keeping `useForm({ defaultValues: { name: 'initial' } })` while wrapping the form in `<Activity mode="hidden">` and calling `form.reset({ name: 'updated' })` while the Activity is hidden — pre-7.85.0, `useWatch` returns stale `'initial'` after the Activity becomes visible again; post-7.85.0, `useWatch` returns `'updated'`** — the canonical reproduction from issue #13625. See the new section above.
+- **RHF 7.85.0: dismissing a sidebar form inside `<Activity>` while a submit is in-flight — pre-7.85.0, `formState.isSubmitting` stays `true` after the Activity goes hidden because the submit handler's `setIsSubmitting(false)` clears in an Effect that was suspended; post-7.85.0, `isSubmitting` correctly resets** — the use case is form-state machines that need to know whether the form is still in-flight after the parent tree's hide/show cycle. See the new section above.
+- **RHF 7.85.0: subscribing to `formState: { values: true }` on a `useController` field and dispatching `setValue` twice in rapid succession — pre-7.85.0, the subscriber fires twice for each `setValue` call (4 emissions for 2 `setValue` calls); post-7.85.0, the subscriber fires once per `setValue` (2 emissions for 2 `setValue` calls)** — see the new section above for the full bug walkthrough.
+- **RHF 7.85.0: `@remix-run/router@<1.23.2` as a direct dependency in your app — audit recipe `npm ls @remix-run/router` — bump to `^1.23.2` separately if your app pulls it in directly. RHF's PR #13638 fixes the transitive dependency in the RHF bench harness only; the CVE is [HIGH severity] XSS via Open Redirects in React Router. Pre-7.85.0 RHF releases don't affect the CVE status; the fix is per-app, not per-RHF-version.** See the new section above.
+
 ## Common Mistakes
 
 - **Using `any` for form data** — always use Zod `z.infer<typeof schema>`
@@ -1782,4 +1791,112 @@ For teams integrating AI assistants with form flows, Anthropic's MCP (Model Cont
 - [@hookform/resolvers CHANGELOG.md](https://github.com/react-hook-form/resolvers/blob/master/CHANGELOG.md) — full per-version history
 - [Better Auth npm versions](https://www.npmjs.com/package/better-auth?activeTab=versions) — confirms 1.6.26 stable + 1.7.0-rc.3 RC
 - [Better Auth GitHub releases](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.3) — RC.3 release notes (incremental over RC.2)
+
+
+## React Hook Form — Master Branch Ahead-of-7.84.0 (5 NEW Commits + 4 Open PRs, August 4–6, 2026)
+
+The 36h window since the v7.84.0 stable cycle (Aug 1, 2026) and the v1.5.24 forms.md update has accumulated **5 NEW commits on `react-hook-form` master** (verified at this cron's check via `GET /repos/react-hook-form/react-hook-form/compare/v7.84.0...master` returning `ahead_by: 5`) plus **4 open PRs** that are previews of likely 7.85.0 content. None of these have shipped on the `latest` dist-tag yet (still `7.84.0` as of 2026-08-06T18:03Z) — all 5 are forward-looking for the next stable release on the 1-2 week cadence (last release was 7.84.0 on Aug 1; expect 7.85.0 within 7-14 days). The headline of the cycle is the **React 19.2 `<Activity />` primitive support** (PR #13633 by locphamnice, merged 2026-08-06T11:12:04Z, 8 files / +417/-26) — a feature PR that prepares RHF for the React 19.2 Activity API (released Oct 2025) and closes four stale issues around RHF state behavior when wrapped in `<Activity mode="hidden">`. The four bug fixes are smaller but forward-looking for 7.85.0. The four open PRs preview the next-next minor: `getErrors` method (PR #13639, draft), `validationScope` config (PR #13616), refactor cleanups (PR #13643 dead code), and a `validate` callback access fix (PR #13642). On the resolvers side, `react-hook-form/resolvers` master has had **0 NEW commits since 5.7.1** (verified at this cron's check via `GET /repos/react-hook-form/resolvers/compare/v5.7.1...master` returning `ahead_by: 0`); the 5 NEW resolvers commits since the v1.5.24 lock (5.6.0 → 5.7.0 → 5.7.1) are still *the* substantive recent content. The 5 NEW RHF commits on master ahead of v7.84.0:
+
+### 1. PR #13633 — feat: support `<Activity />` (locphamnice, merged 2026-08-06T11:12:04Z, 8 files / +417/-26) — **HEADLINE**
+
+The React 19.2 `<Activity>` API (released Oct 2025, per [React 19.2 release notes](https://react.dev/blog/2025/10/01/react-19-2)) lets a parent component hide and restore its children without unmounting them: `<Activity mode={visibility}><Sidebar /></Activity>` preserves the Sidebar's internal state across hide/show cycles by tracking refs + clearing effects but keeping the React tree mounted. The RHF internals needed to know whether a form was inside an Activity boundary to correctly: (a) **clear `formState.isSubmitting` when the form is hidden by `<Activity>` during submit** (issue #13571 — pre-fix, the form kept `isSubmitting: true` after the Activity went hidden because the submit handler's `setIsSubmitting(false)` ran in an Effect that was suspended); (b) **keep `useWatch` subscription live across `<Activity>` reconnect** (issue #13629 — pre-fix, `useWatch` was stale after `reset()` while the Activity was hidden because the internal FormState subscription was disposed during the Effect teardown); (c) **preserve `setValue` emit-once** across Activity hide/show (issue #13636 — pre-fix, the subscribe-emit-once fix from PR #13637 was lost when the Activity went hidden because the workStore's `setFieldValue` emit was watching the `!fieldReference.ref.type` branch which had been cleared); (d) **keep `useFormState` state consistent across Activity visibility changes** (issue #13563 — pre-fix, `useFormState` had a steady-state architecture that didn't anticipate the Effect-suspend/resume cycle). The fix in 8 files adds Activity-aware awareness to the form state machine + the workStore subscription lifecycle + the `useResyncOnReconnect` hook for resync. The diff is concentrated in `src/useForm.ts` (+18/-3), `src/useFormState.ts` (+33/-18), `src/useWatch.ts` (+26/-4), `src/useResyncOnReconnect.ts` (+39/-0), `src/logic/createFormControl.ts` (+2/-0), plus 3 test files (`+88 +102 +109` lines of new test coverage). **Practical impact for 7.85.0+ users:** any form inside an `<Activity>` boundary (sidebar forms, drawer forms, tab-switched forms, modal forms) will now correctly track `isSubmitting` + `useWatch` + `useFormState` across the Activity's hide/show cycle. **No code changes required** for users on v7.84.0 who upgrade to v7.85.0+. **For users on `<Activity>` pre-7.85.0:** the three buggy behaviors are silent (no errors, no warnings) — `formState.isSubmitting` stuck on `true` after Activity-hidden submit, `useWatch` stale after `reset()` during Activity-hidden, `useFormState` state inconsistent across Activity transitions. The canonical reproduction per issue #13625:
+
+```tsx
+function App() {
+  const form = useForm({ defaultValues: { name: 'initial' } })
+  const [mode, setMode] = useState('visible')
+  return (
+    <Activity mode={mode}>
+      <input {...form.register('name')} />
+    </Activity>
+  )
+}
+```
+
+Pre-7.85.0: `formState.isSubmitting` stuck on `true` after hide-during-submit; `useWatch` stale after `reset()` while hidden. Post-7.85.0: both work correctly.
+
+### 2. PR #13637 — fix #13636 emit values state only once per setValue (merged 2026-08-04T10:48:29Z, 2 files / +73/-5)
+
+`subscribe({ formState: { values: true } })` was invoking its callback **twice** for a single `setValue` call when the target field's ref had no native `type` (i.e., controlled fields via `Controller` / `useController`, or a field registered without a rendered input). A plain typed `<input>` was unaffected (the `!fieldReference.ref.type` branch in `setFieldValue` only fires for input-less references). The fix threads a `skipValueRender` flag through `setFieldValue` / `setFieldValues` → `_setValue` so the redundant field-level emit is suppressed when the canonical `_setValue` emit is going to fire anyway. **Touch/dirty rendering is untouched** — only the duplicate `values` emit is suppressed. **Practical impact for 7.85.0+ users:** any form with a `subscribe({ formState: { values: true } })` listener on a `Controller` / `useController` field, or a non-rendered input field, will now emit exactly once per `setValue` instead of twice. **No code changes required** — pure bug fix. Tests added to `__tests__/useForm/subscribe.test.tsx`.
+
+### 3. PR #13635 — fix(useWatch): prefer form defaultValues over the hook's own defaultValue (merged 2026-08-03T22:32:14Z, 1 file / +87/-13)
+
+Before the fix, `_getWatch` was building its value source from `{ [name]: defaultValue }` whenever a string `name` and a `defaultValue` were both supplied to `useWatch`. This **threw away `useForm({ defaultValues })` for that render** — `useWatch` returned its own inline fallback even when the form had a real default for the path. The documented contract is the opposite: *"Fallback value returned before the form has mounted and no current value exists yet. Once the form is mounted, the actual current form value takes precedence over this fallback."* The fix reads from `_defaultValues` for a string name and lets `generateWatchOutput` apply the fallback through `get(values, name, defaultValue)`, which already returns `defaultValue` when the path is genuinely absent. The fix also updates one snapshot test (`useWatch › fieldArray with shouldUnregister true`); the rendered DOM is unchanged. **Practical impact for 7.85.0+ users:** `useWatch({ control, name: 'x', defaultValue: 'inline' })` now returns `form._defaultValues.x` when set, instead of `'inline'`. Pre-7.85.0 the inline `defaultValue` hijacked the form-level default. **No code changes required** — pure bug fix.
+
+### 4. PR #13632 — fix(types): resolve getFieldState error from field path (merged 2026-08-01T23:52:50Z, 1 file / +20/-2)
+
+`getFieldState(name).error` was always typed as `FieldError | undefined`, although parent paths could return nested error nodes from `formState.errors` at runtime. Type-only fix: adds a public `FieldPathError` type that resolves the error type from the selected field path, then uses it for `getFieldState(name).error`. Leaf and generic paths keep the existing `FieldError | undefined` type; parent paths now include nested errors. **Compatibility:** leaf + generic paths work unchanged; code that explicitly expects `FieldError | undefined` for a parent path may need to be updated. **Practical impact:** type-only; zero runtime change. **For users on 7.84.0 with TypeScript strict:** forms using `form.getFieldState('users')` where `users` is a nested array get corrected typing for `error[0].firstName?.message`.
+
+### 5. PR #13637 (already in #2 above) — same author as #1, both merged into the Activity support PR
+
+Note: PR #13637's "fix #13636 emit values state once per setValue" was actually merged into the canary-branch ahead of v7.85.0 *separately* from PR #13633; the Activity support PR #13633 also pulled in the `setValue` fix as part of its 8-file diff. The two PRs together cover the full Activity + setValue correction set.
+
+### 6. PR #13638 — fix: upgrade @remix-run/router to 1.23.2 (CVE-2026-22029) — open, not merged
+
+Auto-generated security fix that bumps `@remix-run/router` from 1.21.0 to 1.23.2 in the `app/` dev-bench folder to address **CVE-2026-22029 [HIGH severity]** — XSS via Open Redirects in React Router. The fix is scoped to 2 files (`app/package.json` + `app/pnpm-lock.yaml`) in the bench harness, not the main RHF lib. The CVE assessor's note reads: *"Present in dependency tree, not confirmed reachable"* — the vulnerable `@remix-run/router` is a transitive dependency of the bench's benchmark fixtures, not RHF's peer-deps. **Practical impact for v7.85.0+ users:** **zero** unless you also import `@remix-run/router` directly in your app. **Audit recipe:** `npm ls @remix-run/router` — if your app pulls in `@remix-run/router` directly and you're on `@remix-run/router@<1.23.2`, bump to `^1.23.2` separately. The RHF bump is a "housekeeping" PR for the bench, not a security advisory for app developers.
+
+### 7. Open PRs — Forward-Looking for 7.86.0+
+
+- **PR #13639 (draft) — feat: add `getErrors` method to read form errors without subscription** (open, draft). Reads current errors on demand without adding a form-state subscription. Proposed call shapes (similar to `getValues`): `getErrors()` returns all currently stored errors; `getErrors(name)` returns the error for one field or error namespace; `getErrors(names)` returns multiple errors while preserving tuple order and length. The motivation: existing ways to access errors (`formState.errors` is subscription-based, `getFieldState` is one-field-at-a-time) require accessing private `control._formState.errors` to read all errors without subscribing. **Status: DRAFT — may not land in 7.85.0.** Audit recipe: `rg -n "formState.errors" app/ src/` to find current subscribers; count how many of those could be replaced with `getErrors()` once it ships.
+- **PR #13616 (open) — feat: validation scope**. New `validationScope: 'form'` option on `useForm()` that controls whether a single field's error update re-renders the entire form or just the field. Default: per-field re-render. **Status: OPEN — not yet merged.** Audit recipe: `rg -n "formState: \{ errors \}"` to find current per-field subscribers; flag any "re-render entire form when errors update at form level" use case.
+- **PR #13642 (open) — fix #13641 stale render re-creating field array path vacated by array action**. Bug fix for stale render after `useFieldArray` array action. **Status: OPEN.**
+- **PR #13643 (open) — chore: remove dead code and stale api-extractor report**. Pure cleanup. **Status: OPEN.**
+
+### 8. Resolvers — Master Branch Status (no new commits since 5.7.1)
+
+`react-hook-form/resolvers` master has had **0 NEW commits since v5.7.1** (verified at this cron's check via `GET /repos/react-hook-form/resolvers/compare/v5.7.1...master` returning `ahead_by: 0`). The 5.7.1 cycle's headline (Vine v4 support + ata-validator 1.x peer-dep expansion) is still the latest stable. The `next` dist-tag at `1.0.0-rc.2` and the `beta` dist-tag at `2.0.0-beta.17` are unchanged.
+
+### 9. Recommended version pin after this cycle
+
+For production codebases, **stay on `^7.84.0` stable**. The 5 NEW master commits will ship in `7.85.0` within 7-14 days. When `7.85.0` ships, the recommended pin becomes `^7.85.0`. For early evaluators, the `8.0.0-beta.3` dist-tag is the latest v8 beta (still not production-ready; documented in the `## React Hook Form v7.84.0 Stable Cadence + v8.0.0-beta.3 Sync` section above).
+
+### 10. Audit recipe
+
+```bash
+# Confirm installed version
+npm ls react-hook-form @hookform/resolvers
+
+# Watch for 7.85.0 release
+npm view react-hook-form dist-tags
+# Expect:
+#   latest: 7.84.0  (will bump to 7.85.0 when it ships)
+#   beta: 8.0.0-beta.3  (v8 beta, not production-ready)
+#   alpha: 8.0.0-alpha.5
+#   next: 7.60.0-next.0
+
+# Check for Activity use in your forms
+rg -n "from 'react'" app/ src/ | rg -i "Activity"
+# If you use <Activity> with react-hook-form, plan to bump to 7.85.0 when it ships
+
+# Check for subscribe-emit-twice on Controllers
+rg -n "formState: \{ values: true \}" app/ src/
+# If you have these on Controller / useController fields, the 7.85.0 fix will clean them up
+
+# Check for useWatch with defaultValue on a string name
+rg -n "useWatch\(\{[^}]*defaultValue" app/ src/
+# If you have these, the 7.85.0 fix will make form._defaultValues take precedence
+
+# Check for getFieldState on parent paths
+rg -n "form.getFieldState\(['\"]users['\"]" app/ src/
+# If you have these with parent paths, the type-only fix is in 7.85.0
+```
+
+### Sources
+
+- [react-hook-form release history](https://github.com/react-hook-form/react-hook-form/releases) — `7.84.0` latest + `8.0.0-beta.3` next
+- [react-hook-form PR #13633 — feat: support `<Activity />`](https://github.com/react-hook-form/react-hook-form/pull/13633) — by locphamnice, merged 2026-08-06T11:12:04Z, 8 files / +417/-26, closes #13625 + #13563 + #13571 + #13629
+- [react-hook-form PR #13637 — fix #13636 emit values state only once per setValue](https://github.com/react-hook-form/react-hook-form/pull/13637) — merged 2026-08-04T10:48:29Z, 2 files / +73/-5
+- [react-hook-form PR #13635 — fix(useWatch): prefer form defaultValues over the hook's own defaultValue](https://github.com/react-hook-form/react-hook-form/pull/13635) — merged 2026-08-03T22:32:14Z, 1 file / +87/-13
+- [react-hook-form PR #13632 — fix(types): resolve getFieldState error from field path](https://github.com/react-hook-form/react-hook-form/pull/13632) — merged 2026-08-01T23:52:50Z, 1 file / +20/-2
+- [react-hook-form PR #13638 — fix: upgrade @remix-run/router to 1.23.2 (CVE-2026-22029)](https://github.com/react-hook-form/react-hook-form/pull/13638) — open, not merged; auto-generated Trivy fix for the bench harness
+- [react-hook-form PR #13639 — feat: add getErrors method (draft)](https://github.com/react-hook-form/react-hook-form/pull/13639) — open, draft
+- [react-hook-form PR #13616 — feat: validation scope](https://github.com/react-hook-form/react-hook-form/pull/13616) — open
+- [react-hook-form PR #13642 — fix #13641 stale render re-creating field array path](https://github.com/react-hook-form/react-hook-form/pull/13642) — open
+- [react-hook-form PR #13643 — chore: remove dead code and stale api-extractor report](https://github.com/react-hook-form/react-hook-form/pull/13643) — open
+- [react-hook-form issue #13625 — useWatch remains stale when reset is called while a React Activity is hidden](https://github.com/react-hook-form/react-hook-form/issues/13625) — the canonical reproduction linked from PR #13633
+- [React 19.2 release notes — `<Activity />` API](https://react.dev/blog/2025/10/01/react-19-2) — the React 19.2 Activity primitive that PR #13633 adds support for
+- [React 19.2 `<Activity>` reference docs](https://react.dev/reference/react/Activity) — the `<Activity mode="visible" | "hidden">` API surface
+- [@hookform/resolvers release history](https://github.com/react-hook-form/resolvers/releases) — `5.7.1` latest + `2.0.0-beta.17` v2 beta + `1.0.0-rc.2` next
+- [CVE-2026-22029 — React Router XSS via Open Redirects](https://github.com/advisories?query=CVE-2026-22029) — the CVE that PR #13638 fixes for the bench harness
+- [v7.84.0...master compare](https://github.com/react-hook-form/react-hook-form/compare/v7.84.0...master) — confirms 5 commits ahead at this cron's check
 

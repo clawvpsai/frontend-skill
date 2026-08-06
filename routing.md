@@ -1907,6 +1907,11 @@ rg -n "prefetch\s*=" app/    # should show prefetch="auto" or no prefetch attr (
 - [Next.js `next@16.3.0` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE; ships with the bug; users on 16.3.0 need to upgrade to 16.3.1-canary.4 / 16.3.1 STABLE to get the fix
 
 - **Back-button click during hydration produces stale client state (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96252** — See the new `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix` section above for the full bug walkthrough, the Navigation API hydration contract, the affected-deployment profile (every App Router app with prefetching — the default), the impact table (especially material for marketing pages / PDPs / search results / heavy useEffect on mount / `experimental.instantNavigation`), and the audit recipe. TL;DR: bump to `next@>=16.3.1-canary.4` (will npm-publish within hours) or `next@>=16.3.1` stable (when it ships shortly after) — no code or config changes required. **Workaround** if stuck on a pre-canary.4 version: add `prefetch={false}` to the Back-target Link to close the race window for that specific Link.
+
+- **Pages Router dev hovers-to-404 for newly-added pages** — pre-`next@16.3.1-canary.5`, Webpack's dev-server page announcement only triggered when `prevSortedRoutes.every((val, idx) => val === sortedRoutes[idx])` was false — a prefix comparison that fails when a new route sorts after all existing ones. The fix in PR #96250 (by ztanner, merged 2026-08-06T13:25:52Z) compares lengths too. Side benefit: App Router projects no longer flood every connected tab with refetch requests on every save. Migration: `npm install next@16.3.1-canary.5` when it ships — no code changes required. See the new `## 16.3.1-canary.4-ahead — Dev Server Page Announcement Fix (PR #96250) + Require Cache Components for Instant Navigation Testing (PR #96745) (August 6, 2026)` section above.
+- **Using `instant()` from `@next/test-utils/playwright` with `cacheComponents: false`** — pre-`next@16.3.1-canary.5`, the testing cookie could force a non-Cache Components route into legacy PPR rendering, which then failed at runtime with `unstable_postpone is not a function`. The fix in PR #96745 (by ztanner, merged 2026-08-06T13:42:24Z) couples the testing API to Cache Components. Post-canary.5, the API is correctly inactive for non-CC projects (test fails with clear error rather than hanging). Migration: `npm install next@16.3.1-canary.5` when it ships. Audit recipe: `rg -n "instant\(\)" tests/ e2e/ playwright/` + `rg -n "cacheComponents" next.config.*`. See the new section above.
+- **`router.refresh()` after a dev-server restart serves stale data from the previous run's cache** — pre-`next@16.3.1-canary.5`, the dev-mode cache hash didn't include a per-run identity token, so a restarted server served data cached by the previous run, whose code may have changed while the server was down. Tracked as PR #96235 (by ztanner, merged 2026-08-06T13:25:55Z; documented in `deployment.md` from the deployment-observability lens). Migration: `npm install next@16.3.1-canary.5` when it ships. Workaround pre-canary.5: clear `.next/cache/` between dev restarts. Audit recipe: `rg -n "use cache" app/ src/` to identify the cache-keying surfaces that are affected. See the new section above.
+- **Old WebKit (Safari < 16.4, iOS Safari < 16.4) users see a runtime exception on the first page load for routing pages** — pre-`next@16.3.1-canary.5`, the `deployment-id` header's `Set-Cookie` parsing path throws on old WebKit's `Headers` API quirks. Tracked as PR #94604 (by Niklas Mischkulnig, merged 2026-08-06T12:44:39Z; documented in `deployment.md` from the deployment-reliability lens). Migration: `npm install next@16.3.1-canary.5` when it ships. Workaround pre-canary.5: `experimental: { deploymentId: false }` in `next.config.ts`. See the new section above + cross-reference to `deployment.md`.
 ## Common Mistakes — Routing Edition
 
 - **Missing `default.tsx` in parallel route slots** — Next.js 16 will fail the build. Add `default.tsx` to every `@slot` that can be unmatched.
@@ -2002,4 +2007,81 @@ Three PRs that v1.5.22 documented as "canary.108-ahead" (the routing-relevant on
 - [PR #96592 — Turbopack: terminate failed plugin worker threads](https://github.com/vercel/next.js/pull/96592) — sokra, merged 2026-08-04T20:29:48Z, SHIPPED in `16.3.1-canary.2`
 - [PR #96678 — Turbopack: Strip leading BOM before parsing CSS](https://github.com/vercel/next.js/pull/96678) — Devin, merged 2026-08-04T21:25:04Z, SHIPPED in `16.3.1-canary.2`
 - [PR #96550 — Upgrade React from cbb046ab-20260731 to 7dfc7ccd-20260803](https://github.com/vercel/next.js/pull/96550) — vercel-release-bot, merged 2026-08-04T21:03:59Z, SHIPPED in `16.3.1-canary.2`
+
+
+## 16.3.1-canary.4-ahead — Dev Server Page Announcement Fix (PR #96250) + Require Cache Components for Instant Navigation Testing (PR #96745) (August 6, 2026)
+
+The 6h window since the v1.5.28 cycle (which documented PR #96252 navigation race) has added two more routing-relevant commits to the canary-branch ahead of canary.4 (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.4...canary` returning `ahead_by: 3, behind_by: 0` — the count is unchanged from v1.5.30 because the version-tag commit for canary.5 is still pending, but the 3 NEW material PRs since the v1.5.28 cycle are PR #96250 + PR #96745 + PR #96235). The headline for this routing-lens update is **PR #96250** (Fix which pages the dev server announces, and when) — both a dev-server-only fix and a Pages Router hovers-to-404 fix. The second is **PR #96745** (Require Cache Components for Instant Navigation testing) — testing-API coupling that affects how routing-aware tests are written. **PR #96235** (use cache over/under-invalidation in dev) is documented in `deployment.md` from the deployment-observability lens; cross-referenced here.
+
+### 1. PR #96250 — Fix which pages the dev server announces, and when (ztanner, merged 2026-08-06T13:25:52Z)
+
+The `next dev` server tells open tabs when a page is added or removed, so a tab showing a 404 picks up a page you just created, and a tab showing a page you just deleted falls back to the 404. Both bundlers computed the list of changed pages wrong, in opposite directions:
+
+**Turbopack announced pages that hadn't changed.** To find what changed, it compared the new route list against the entry maps in `currentEntrypoints`. Those maps key App Router entries by page name (`/blog/page`), but the route list is keyed by route (`/blog`), so no App Router route ever matched: every update announced every existing app route as added and every page name as removed, and starting the server announced every route once. Each announcement makes every connected tab refetch. Fixed by comparing the new route list to the previous route list, which uses the same naming. Starting the server now announces nothing on either bundler, since the first route list is not a change.
+
+**Webpack didn't announce pages that had changed.** It only announced when `prevSortedRoutes.every((val, idx) => val === sortedRoutes[idx])` was false. That is a prefix comparison: when a new route sorts after all existing ones, the old list is a prefix of the new one, and nothing is announced. In App Router this mostly went unnoticed, because adding a page was also (wrongly) treated as an env change, which refreshed tabs anyway; the next PR in this stack removes that. In Pages Router nothing hid it: the route manifest was never refetched, so client-side navigation to the new page kept returning 404 until a manual reload. Fixed by also comparing the lengths.
+
+**What this PR does not fix:** on Turbopack there is a window right after a page is added where the dev server has already announced it to tabs, but can't serve it yet (the route isn't in the dev router's route table until the watcher pass in `setup-dev-bundler` runs). A tab that reacts inside that window gets the 404 again, and since each page is only announced once. Track for a follow-up.
+
+**Practical impact for routing.md users:** (a) **Pages Router projects** that add new pages in dev mode — pre-canary.5, client-side navigation would keep returning 404 until a manual reload; post-canary.5, the dev server correctly announces the new page and the tab refetches. (b) **App Router projects** — pre-canary.5, every keystroke triggered a flood of `refetch` requests to every connected tab (every change announced every existing app route as added + every page name as removed); post-canary.5, only the actually-changed pages are announced. (c) **Dev-mode only** — production builds don't use the dev-server page announcements. **Affected deployments:** all `next dev` users; rate-of-impact proportional to the number of open tabs in the dev session.
+
+**The 5-step audit recipe:**
+```bash
+# Confirm installed version
+npm ls next
+# Watch for canary.5 SHIP
+npm view next@canary version
+
+# Reproduce the Pages Router bug pre-canary.5 (will be fixed in canary.5):
+# 1. npx create-next-app@latest my-app --pages --typescript
+# 2. Open /about in one tab
+# 3. Add a new page app/contact/page.tsx (or pages/contact.tsx for Pages Router)
+# 4. In the open tab, click a Link to /contact
+# 5. Pre-canary.5: 404; post-canary.5: contact page renders
+
+# Spot-check the announcement logic in dev-tools
+# DevTools → Network tab → filter by /__nextjs_original-stack-frame
+# Pre-fix: many requests on every save; post-fix: zero or one request per change
+```
+
+### 2. PR #96745 — Require Cache Components for Instant Navigation testing (ztanner, merged 2026-08-06T13:42:24Z)
+
+The Instant Navigation testing API is only supported with Cache Components, but its testing cookie could previously force a non-Cache Components route into the legacy PPR rendering path. This can cause requests to fail because that path relies on React's deprecated `unstable_postpone` API, which is unavailable in the stable React runtime. **This change** couples testing API exposure and its client bundle machinery to Cache Components, removes the testing-only PPR capability override, and adds regression coverage confirming that the API remains inactive without Cache Components. **Supported Instant Navigation behavior is unchanged.**
+
+**Practical impact for routing.md users:** the Instant Navigation testing API (`@next/test-utils/playwright`'s `instant()` helper documented in `testing.md` v1.5.27) is now correctly coupled to `cacheComponents: true`. For projects that have `cacheComponents: true` already enabled: zero change. For projects that have `cacheComponents: false` and use `instant()` in tests: the pre-canary.5 behavior was buggy (the testing cookie forced legacy PPR, which then failed at runtime with `unstable_postpone is not a function`); post-canary.5 the API is correctly inactive, so the test will fail with a clear error message rather than hanging. **The 3-step audit recipe:**
+```bash
+# Confirm installed version
+npm ls next
+npm view next@canary version
+
+# Check your test setup for instant() usage
+rg -n "instant\(\)" tests/ e2e/ playwright/
+# If you have these, the canary.5 PR #96745 ensures the API is correctly coupled to Cache Components
+
+# Check your next.config for cacheComponents
+rg -n "cacheComponents" next.config.*
+# If cacheComponents: false and you have instant() in tests, expect clear errors post-canary.5
+# If cacheComponents: true and you have instant() in tests, no change
+```
+
+### 3. Cross-references
+
+**PR #96235 — Fix use cache over- and under-invalidation in dev (ztanner, merged 2026-08-06T13:25:55Z)** is documented in `deployment.md` from the deployment-observability lens — it affects dev-mode cache lifecycle. Cross-referenced here because the routing-dev-experience lens (`router.refresh()` + cache invalidation) is touched: the dev-mode cache now correctly tracks per-server-run identity, so `router.refresh()` after a server restart no longer serves stale data from the previous run.
+
+**PR #94604 — Fix(deployment-id): prevent exception on old webkit (Niklas Mischkulnig, merged 2026-08-06T12:44:39Z)** is documented in `deployment.md` from the deployment-reliability lens. Cross-referenced here because the affected code path is in the request-handler middleware that sets the `deployment-id` header on every response — for routing pages, this means every request produces a `Set-Cookie` header parse attempt.
+
+### Sources
+
+- [Next.js PR #96250 — Fix which pages the dev server announces, and when](https://github.com/vercel/next.js/pull/96250) — by ztanner, merged 2026-08-06T13:25:52Z; the dev-server page-announcement fix
+- [Next.js PR #96745 — Require Cache Components for Instant Navigation testing](https://github.com/vercel/next.js/pull/96745) — by ztanner, merged 2026-08-06T13:42:24Z; the Instant Navigation testing API coupling fix
+- [Next.js PR #96235 — Fix use cache over- and under-invalidation in dev](https://github.com/vercel/next.js/pull/96235) — by ztanner, merged 2026-08-06T13:25:55Z; documented in `deployment.md` from the deployment-observability lens
+- [Next.js PR #94604 — Fix(deployment-id): prevent exception on old webkit](https://github.com/vercel/next.js/pull/94604) — by Niklas Mischkulnig, merged 2026-08-06T12:44:39Z; documented in `deployment.md` from the deployment-reliability lens
+- [Next.js issue #96592 — Turbopack: terminate failed plugin worker threads](https://github.com/vercel/next.js/issues/96592) — open; the Turbopack plugin-worker termination gap (related to #96810 in deployment.md)
+- [Next.js issue #96810 — Turbopack: reap crashed plugin workers instead of hanging forever](https://github.com/vercel/next.js/issues/96810) — open; documented in `deployment.md`
+- [Next.js issue #96812 — Clean up dev errors RSC streams the HMR client never consumes](https://github.com/vercel/next.js/issues/96812) — open; documented in `deployment.md`
+- [Next.js issue #96646 — `output: 'standalone'` breaks Vercel deployments on Next 16.3 — ENOENT](https://github.com/vercel/next.js/issues/96646) — open; documented in `deployment.md`
+- [Next.js canary-branch compare v16.3.1-canary.4...canary (3 commits ahead at 2026-08-06T18:03Z)](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — confirmed at this cron's check
+- [Next.js dev-mode page announcement docs](https://nextjs.org/docs/app/api-reference/next-cli#dev) — the `next dev` reference page that documents the dev-server behavior
+- [Next.js `@next/test-utils/playwright` `instant()` helper docs](https://nextjs.org/docs/app/guides/testing/instant-navigation) — the Instant Navigation testing helpers covered by PR #96745
+- [Cross-references to v1.5.28 routing.md](https://github.com/clawvpsai/frontend-skill/blob/main/routing.md) — for the prior PR #96252 navigation race context
 
