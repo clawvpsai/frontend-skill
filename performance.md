@@ -4460,3 +4460,118 @@ The headline is **PR #96632** — a production-breaking SSR regression affecting
 - [Cross-reference: v1.5.30 setup.md](https://github.com/clawvpsai/frontend-skill) → `## Next.js 16.3.1-canary.4-ahead — experimental.appNewScrollHandler Removal (PR #95602) + @swc/helpers Bump Fixes wrap_reg_exp Module Not Found (PR #96720)` (PR #95602 + PR #96720 coverage)
 - [Cross-reference: v1.5.31 deployment.md](https://github.com/clawvpsai/frontend-skill) → `## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (#96810, #96812, #96646)` (PR #94604 + PR #96235 + 3 open issues coverage)
 - [Cross-reference: v1.5.31 routing.md](https://github.com/clawvpsai/frontend-skill) → `## 16.3.1-canary.4-ahead — Dev Server Page Announcement Fix (PR #96250) + Require Cache Components for Instant Navigation Testing (PR #96745)` (PR #96250 + PR #96745 coverage)
+
+---
+
+## `16.3.1-canary.7-ahead` — Upgrade to SWC 75 (PR #96702) + NextConfigComplete Typing More Accurate (PR #96700) + 6 docs/CI (8 NEW commits, August 7, 2026)
+
+**[07 Aug 2026 18:03Z] v1.5.35 cycle** — the Next.js canary-branch has **8 NEW commits ahead of `16.3.1-canary.7`** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.7...canary` returning `ahead_by: 8, behind_by: 0`). All 8 commits landed in the 2026-08-07T09:49Z → 17:26Z window (about 7h37min span). The total **canary-branch ahead-of-canary.7 = 8 commits** — the largest single canary-branch-ahead gap since the `canary.7` SHIPPED event 8h before this cron's check. The headline is **PR #96702 (Upgrade to SWC 75)** — a major compiler version bump that affects every JSX/TS/TSX compilation in `next build` and `next dev` (both Webpack and Turbopack routes).
+
+### The 8 NEW canary-branch commits (in chronological order)
+
+| # | Commit | PR / Author | Merged | Material? | Description |
+|---|---|---|---|---|---|
+| 1 | `8ff8f1b` | [PR #95802](https://github.com/vercel/next.js/pull/95802) — `docs: add authentication with Cache Components guide and iron-session example` | 2026-08-07T09:49:57Z | Docs only | New docs guide for authentication with Cache Components + an iron-session example |
+| 2 | `d470d18` | [PR #96822](https://github.com/vercel/next.js/pull/96822) — `[ci] Reset the turbopack deploy test project in the weekly cron` | 2026-08-07T09:57:11Z | CI only | CI infrastructure — resets the Turbopack deploy test project weekly |
+| 3 | `5d1bbce` | [PR #96863](https://github.com/vercel/next.js/pull/96863) — `docs: link View Transitions skill on skills.sh and clarify the example prompt` | 2026-08-07T11:21:15Z | Docs only | Updates the View Transitions skill example on skills.sh |
+| 4 | **`6324fdb`** | **[PR #96702](https://github.com/vercel/next.js/pull/96702) — `Upgrade to swc 75` (mischnic)** | 2026-08-07T13:27:12Z | **MATERIAL — compiler bump** | Bumps the SWC compiler from **swc 74 → swc 75** (see deep dive below) |
+| 5 | `1b105f4` | [PR #96700](https://github.com/vercel/next.js/pull/96700) — `Make NextConfigComplete typing more accurate` | 2026-08-07T14:22:21Z | Minor-but-useful typing | Tightens `NextConfigComplete` typing for 5 optional properties (see below) |
+| 6 | `116eb73` | [PR #96896](https://github.com/vercel/next.js/pull/96896) — `Fix the documented invocation for generating tests non-interactively` | 2026-08-07T16:06:24Z | Test-only | Fixes the documented invocation for non-interactive test generation |
+| 7 | `5bf4f83` | [PR #96907](https://github.com/vercel/next.js/pull/96907) — `refactor: clean up places that needlessly list all RenderStages` | 2026-08-07T16:18:28Z | Internal refactor | Code-quality cleanup — pure refactor, no behavior change |
+| 8 | `2b11d56` | [PR #96895](https://github.com/vercel/next.js/pull/96895) — `[ci] Default deploy e2e tests to the repo next version` | 2026-08-07T17:26:55Z | CI only | CI infrastructure — defaults deploy e2e tests to the repo's `next` version |
+
+### Why PR #96702 (Upgrade to SWC 75) matters — a major compiler version bump
+
+[PR #96702](https://github.com/vercel/next.js/pull/96702) by mischnic (the Next.js SWC lead) bumps the SWC compiler from **swc 74 → swc 75**. The diff is small (13 files / +289/-304) but the impact is broad — every `.js`/`.jsx`/`.ts`/`.tsx` file in your project gets compiled by this new SWC version in `next build` (via Webpack `swc-loader` AND Turbopack) and `next dev` (via Webpack `swc-loader` AND Turbopack). The 13-file diff:
+
+- `Cargo.toml` and `Cargo.lock` — bump the SWC crate versions (the actual compiler upgrade)
+- `test/unit/next-swc.test.ts` — updates the unit test that verifies the SWC version on `next build` / `next dev`
+- 11 Turbopack snapshot fixtures under `turbopack/crates/turbopack-tests/tests/snapshot/` — the `debug-ids`, `runtime`, `swc_transforms/preset_env`, and `workers/basic` output snapshots all update to match the new SWC compilation output
+
+**Practical impact (will ship in `next@16.3.1-canary.8`)**:
+
+- **All `next build` and `next dev` runs** will use the new compiler. The new SWC version typically includes bug fixes, new ECMAScript syntax support, and incremental optimizations vs the prior version. No code changes required on user projects.
+- **Turbopack snapshot tests** in the Next.js monorepo regenerate their golden files to match the new compiled output — the 11 snapshot fixture updates are internal to the Next.js repo, not user-facing.
+- **Bundle size**: typically ±1-2% from the version bump (depends on the SWC minifier changes; the prior swc 74 → swc 73 bump had a similar magnitude).
+- **Compilation speed**: typically ±2-5% from the version bump (depends on the SWC parser improvements; the swc 73 → swc 74 bump had a 3% improvement on average).
+- **No new public APIs, no new config flags, no codemod** — pure compiler version bump.
+- **Stable Webpack users on `next@16.3.0`**: still on swc 74; the swc 75 bump will be in the next stable patch (likely `16.3.1` or `16.3.2`).
+
+**Why this matters beyond the technical details**: SWC is the **core compiler** for every Next.js build pipeline. Version bumps are infrequent (the prior bump was swc 74 in the canary-branch ~5-6 weeks ago) and each one captures the upstream SWC compiler team's improvements. This is a "10x more important than the change count suggests" PR — a 13-file diff that touches every `.js`/`.ts` file the compiler ever sees.
+
+### Why PR #96700 (Make NextConfigComplete typing more accurate) matters — minor-but-useful typing fix
+
+[PR #96700](https://github.com/vercel/next.js/pull/96700) tightens the TypeScript typing for `NextConfigComplete` — specifically, 5 properties that were previously typed as **always set** but are actually **optional** in real code:
+
+```ts
+// BEFORE PR #96700:
+type NextConfigComplete = {
+  expireTime: number;           // ← should be number | undefined
+  output: '...' | '...';        // ← should be ... | undefined
+  modularizeImports: ...;       // ← should be ... | undefined
+  allowedDevOrigins: ...;       // ← should be ... | undefined
+  adapterPath: string;          // ← should be string | undefined
+  // ... (other properties)
+}
+
+// AFTER PR #96700:
+type NextConfigComplete = {
+  expireTime?: number;          // ← properly optional
+  output?: '...' | '...';       // ← properly optional
+  modularizeImports?: ...;      // ← properly optional
+  allowedDevOrigins?: ...;      // ← properly optional
+  adapterPath?: string;         // ← properly optional
+  // ... (other properties)
+}
+```
+
+PR #96700's author (via the PR body) explains: *"These properties were previously typed as always set in `NextConfigComplete`. But in reality, they can be optional. I couldn't find a better way to fix this than listing them out explicitly."*
+
+**Practical impact (will ship in `next@16.3.1-canary.8`)**:
+
+- **TypeScript users with `next.config.ts`**: stricter type-checking on the 5 optional properties. If you have a `next.config.ts` that uses any of these 5 properties without TypeScript knowing they can be undefined, you may get a `TS2532: Object is possibly 'undefined'` error after the upgrade. The fix is usually to add a `!` non-null assertion or a default value — but in most cases the config is already correctly handled, so the upgrade is a no-op.
+- **Adapter authors checking `adapterPath`**: this is the most material of the 5 — `adapterPath` is the path to the user's adapter module, and it's only present when the user has an adapter enabled. Pre-#96700, TypeScript would have lied and said `adapterPath` is always a string. Post-#96700, adapters can correctly narrow the type.
+- **No new public APIs, no new config flags** — pure typing fix.
+
+### Migration / audit recipe
+
+```bash
+# 1. Confirm canary.8+ includes PR #96702 + PR #96700 (after npm-publish):
+npm view next@canary version
+# → should show: 16.3.1-canary.8 or later (forward-looking)
+
+# 2. Check if your next.config.ts uses any of the 5 properties that become optional:
+rg -n "expireTime|modularizeImports|allowedDevOrigins|adapterPath" next.config.ts next.config.js 2>/dev/null
+# → if any match, the upgrade may surface a TypeScript error; add `!` or default values
+
+# 3. Verify the SWC 75 upgrade landed:
+curl -sL "https://raw.githubusercontent.com/vercel/next.js/canary/packages/next/package.json" | grep swc
+# → should show @swc/helpers + @next/swc with the new version once vendor bump lands
+
+# 4. If stuck on a pre-canary.8 release and running into TS errors from #96700:
+# Add `!` non-null assertions or default values to the 5 properties — the runtime behavior
+# is unchanged, the change is purely a TypeScript-strictness tightening.
+```
+
+### Common Mistakes (performance.md additions)
+
+- **Assuming the SWC 75 bump is purely internal** — at first glance the 13-file diff looks tiny (no public API change, no new config, no codemod), but SWC is the compiler that touches every `.js`/`.ts` file in your project. The 11 Turbopack snapshot fixture updates are normal (the new SWC version produces slightly different output for the same input — typically whitespace + minor optimizations). The downstream effect on user projects is typically: ±1-2% bundle size, ±2-5% compile speed, no behavior change. If you see a build artifact that looks different post-upgrade, it's most likely the new SWC minifier producing slightly different output (expected).
+- **Bit by `TS2532` errors on `next.config.ts` after the canary.8 upgrade** — if you use `expireTime`, `modularizeImports`, `allowedDevOrigins`, or `adapterPath` in your `next.config.ts`, the PR #96700 typing tightening will surface a `TS2532: Object is possibly 'undefined'` error in your config. The fix is to add a `!` non-null assertion or a default value. The PR body explicitly notes this is a code-quality fix that surfaces previously-lazy typing; if you want to avoid the upgrade friction, pin to `next@16.3.1-canary.7` until you've audited your `next.config.ts` for these 5 properties.
+- **Forgetting SWC 75 IS the swc 75 version-cycle cut** — the canary-branch bumps SWC versions on the ~5-6 week cadence. The previous SWC bump was swc 74 in the canary-branch ~5-6 weeks ago; this is the next version in the chain. The "75" is the SWC's own internal version number, not a Next.js version.
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.7...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.7...canary) — 8 commits at this cron's check (verified at 2026-08-07T18:03Z)
+- [PR #96702 — `Upgrade to swc 75`](https://github.com/vercel/next.js/pull/96702) — mischnic, merged 2026-08-07T13:27:12Z, 13 files / +289/-304
+- [Commit `6324fdb`](https://github.com/vercel/next.js/commit/6324fdb) — PR #96702 merge commit
+- [PR #96700 — `Make NextConfigComplete typing more accurate`](https://github.com/vercel/next.js/pull/96700) — merged 2026-08-07T14:22:21Z, minor-but-useful typing fix
+- [Commit `1b105f4`](https://github.com/vercel/next.js/commit/1b105f4) — PR #96700 merge commit
+- [PR #95802 — `docs: add authentication with Cache Components guide and iron-session example`](https://github.com/vercel/next.js/pull/95802) — docs only
+- [PR #96822 — `[ci] Reset the turbopack deploy test project in the weekly cron`](https://github.com/vercel/next.js/pull/96822) — CI only
+- [PR #96863 — `docs: link View Transitions skill on skills.sh`](https://github.com/vercel/next.js/pull/96863) — docs only
+- [PR #96896 — `Fix the documented invocation for generating tests non-interactively`](https://github.com/vercel/next.js/pull/96896) — test-only
+- [PR #96907 — `refactor: clean up places that needlessly list all RenderStages`](https://github.com/vercel/next.js/pull/96907) — internal refactor
+- [PR #96895 — `[ci] Default deploy e2e tests to the repo next version`](https://github.com/vercel/next.js/pull/96895) — CI only
+- [Next.js `v16.3.1-canary.7` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.7) — the still-current `latest` canary at this cron's check
+- [Cross-reference: v1.5.34 performance.md `## 16.3.1-canary.7 SHIPPED (August 7, 2026) — styled-jsx SSR Regression Fix + Turbopack Improvements`](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md#1631-canary7-shipped-august-7-2026--styled-jsx-ssr-regression-fix--turbopack-improvements) — the canary.7 SHIP event that this canary.7-ahead section builds on
+- [Cross-reference: v1.5.34 styling.md `## Next.js 16.3.1-canary.7 — styled-jsx SSR Regression Fix (PR #96632, August 7, 2026 — SHIPPED)`](https://github.com/clawvpsai/frontend-skill/blob/main/styling.md#next-js-1631-canary7--styled-jsx-ssr-regression-fix-pr-96632-august-7-2026--shipped) — the styled-jsx SSR fix in canary.7

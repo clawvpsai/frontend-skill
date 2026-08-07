@@ -2939,3 +2939,61 @@ The CLI doesn't ship a `npx shadcn@latest migrate --to=aria` command. Three path
 - [daily.dev — "React Aria components are now available in shadcn/ui" (Jul 17, 2026)](https://daily.dev/posts/react-aria-components-are-now-available-in-shadcn-ui-gyzi6eyu9)
 - [Adobe Spectrum / Photoshop web stack — context for React Aria maturity](https://react-spectrum.adobe.com/)
 
+
+## React 19.3.0-canary-ec61f187-20260806 SHIPPED (August 7, 2026) — `11eddecd` → `ec61f187` (PR #37203 + PR #37215 in canary bundle)
+
+**[07 Aug 2026 18:03Z] v1.5.35 cycle**, **32 minutes before this cron's check** at 2026-08-07T16:31:06Z, **`react@canary` flipped from `19.3.0-canary-11eddecd-20260805` → `19.3.0-canary-ec61f187-20260806`** (npm `dist-tag.canary` moved; GitHub release tag `v19.3.0-canary-ec61f187-20260806` published at the same time by `gaearon`). The new canary tag is `ec61f187fe`. The `experimental` dist-tag also bumped in lockstep to `0.0.0-experimental-ec61f187-20260806` (published 2026-08-07T16:32:35Z, ~83s after the canary). The gap between `11eddecd-20260805` (Aug 5 10:00:39Z) and `ec61f187-20260806` (Aug 7 16:31:06Z) is **~54h30min** — well within the typical 20-72h React canary cadence, but shows the team is **shipping the `main`-branch-ahead commits through to npm quickly** (the v1.5.31 cycle documented PR #37215 as a `main`-branch-ahead commit; only 32h elapsed between that commit's merge on Aug 6 and the npm-publish of the canary including it).
+
+The canary bundle vs `11eddecd-91` includes **2 NEW commits** (verified at this cron's check via `GET /repos/facebook/react/compare/11eddecd91...ec61f187fe` returning `ahead_by: 2, behind_by: 0`):
+
+| Commit | PR / Author | Merged | Description |
+|---|---|---|---|
+| `1d4758e0f6` | [PR #37203](https://github.com/facebook/react/pull/37203) — [flags] Enable conditional use warning for experimental release channel | 2026-08-05T16:53:19Z | Flips the `enableConditionalUseWarning` flag ON for the `experimental` release channel only (already documented in v1.5.27 doc tagged onto the 11eddecd section) |
+| `ec61f187fe` | [PR #37215](https://github.com/facebook/react/pull/37215) — [DevTools] Fix nested HOC name extraction in `extractHOCNames` | 2026-08-06T12:44:04Z | DevTools-only fix for the regex `lastIndex` bug that corrupted nested HOC component names (already documented in v1.5.31 as a `main`-branch-ahead commit; now live in npm) |
+
+**Practical impact (NOW live in `react@19.3.0-canary-ec61f187-20260806`)**:
+
+- **DevTools users debugging nested HOC component trees** (e.g., `withRouter(withStyles(MyComponent))` or `memo(forwardRef(MyComponent))`) — DevTools now shows the **correct nested name** in the component tree instead of the old truncated-only-top-level name. The pre-fix bug: `extractHOCNames()` used a non-global regex that retained its `lastIndex` across calls, so the second HOC's name extraction started from the position the first call ended at, producing wrong names like `Forget(Memo(ForgetMemoCounter))` instead of the correct nested `✨🧠ForgetMemoCounter`. Post-fix: every HOC layer appears in the DevTools display name correctly.
+- **Devs on `react@experimental`** will see **new DEV warnings** about conditional `use(promise)` calls in their dev consoles (the PR #37203 flag-flip for the `experimental` channel only). See the v1.5.27 section: `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the full warning text + audit recipe.
+- **Production users on `react@latest` 19.2.8**: zero impact.
+- **Canary users on `react@canary` 19.3.0-canary-ec61f187-20260806**: only the DevTools name fix is live (the `enableConditionalUseWarning` flag is OFF for the canary channel).
+
+**Next.js vendor**: The Next.js canary-branch already merged **PR #96735** (the `11eddecd` vendor bump) — the next React vendor bump (forward-looking) will target `ec61f187-20260806`. The next React vendor bump will land in the next Next.js canary cut after this cron's check; track the canary-branch's React vendor bump PR (none open at this cron's check). Verify with `npm view next@canary dependencies.react` — currently `19.3.0-canary-11eddecd-20260805`; will flip to `19.3.0-canary-ec61f187-20260806` once the next Next.js canary npm-publishes.
+
+### Audit recipe (after upgrading to `react@canary` 19.3.0-canary-ec61f187-20260806)
+
+```bash
+# 1. Confirm the canary dist-tag is now ec61f187:
+npm view react dist-tags.canary
+# → should show: 19.3.0-canary-ec61f187-20260806
+
+# 2. Confirm the experimental dist-tag also bumped:
+npm view react dist-tags.experimental
+# → should show: 0.0.0-experimental-ec61f187-20260806
+
+# 3. Verify the DevTools HOC name fix landed in the canary bundle:
+grep -A 2 'function extractHOCNames' node_modules/react/cjs/react-dom-client.development.js 2>/dev/null | head -10
+# → should show the regex pattern with the global `g` flag (post-fix)
+# → pre-fix the regex was missing `g` and corrupted nested HOC names
+
+# 4. Visual smoke test in DevTools:
+# Create a nested HOC component like `memo(forwardRef(MyComponent))` and inspect
+# its display name in React DevTools — should show "🧠forwardRef(MyComponent)" with
+# both wrappers visible, not just the top-level wrapper.
+```
+
+### Common Mistakes (components-relevant)
+
+- **Reporting nested HOC display names as "broken in React DevTools" when you're on `react@canary < 19.3.0-canary-ec61f187`** — the `extractHOCNames` regex `lastIndex` bug pattern was inherited from `cbb046ab-20260731` and persisted through `7dfc7ccd-20260803` + `11eddecd-20260805`. The bug is fixed in `ec61f187-20260806` (PR #37215). If you're on a pre-`ec61f187` canary and seeing nested HOC names truncated, bump to `react@>=19.3.0-canary-ec61f187-20260806` (npm-published 2026-08-07) — the fix is in the canary bundle, no code changes required. The bug only affects DevTools display names; runtime behavior is unchanged.
+- **Expecting `enableConditionalUseWarning` to fire on `react@canary`** — the flag is OFF for the canary channel by design. If you want to see the conditional-`use(promise)` DEV warnings, switch to `react@experimental` (which is now `0.0.0-experimental-ec61f187-20260806`). Canary users will not see the warnings. See the v1.5.27 section for the canonical anti-pattern + rewrite + audit recipe.
+
+### Sources
+
+- [npm: `react@19.3.0-canary-ec61f187-20260806`](https://www.npmjs.com/package/react/v/19.3.0-canary-ec61f187-20260806) (published 2026-08-07, dist-tag `canary` moved ~16:31:06Z)
+- [React `main` branch commits feed (last 10)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-07T18:03Z; main-branch head is `ec61f187fe` (PR #37215 [DevTools]); main-branch is now identical to the canary cut (no further commits ahead)
+- [React PR #37215 — `[DevTools] Fix nested HOC name extraction in extractHOCNames`](https://github.com/facebook/react/pull/37215) — by BIKI DAS, merged 2026-08-06T12:44:04Z, DevTools-only fix (72 new test cases in `extractHOCNames-test.js` + 1-line fix in `utils.js`)
+- [React PR #37203 — `[flags] Enable conditional use warning for experimental release channel`](https://github.com/facebook/react/pull/37203) — merged 2026-08-05T16:53:19Z; flag-flip for the experimental channel only (already documented in v1.5.27's 11eddecd section)
+- [React `v19.3.0-canary-ec61f187-20260806` GitHub release tag](https://github.com/facebook/react/releases/tag/v19.3.0-canary-ec61f187-20260806) — published 2026-08-07T16:31:06Z
+- [React compare `11eddecd91...ec61f187fe`](https://github.com/facebook/react/compare/11eddecd91...ec61f187fe) — 2 commits at this cron's check (PR #37203 + PR #37215)
+- [Cross-reference: v1.5.27 `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-11eddecd-20260805-shipped--react-main-branch-enableconditionalusewarning-flag-pr-37203-august-5-2026--7dfc7ccd--11eddecd) — the 11eddecd SHIP event with PR #37203 forward-looking
+- [Cross-reference: v1.5.31 `## React main branch ahead of 11eddecd: 1 NEW commit — PR #37215 [DevTools] Fix nested HOC name extraction in extractHOCNames (August 6, 2026) — DevTools-Only`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-main-branch-ahead-of-11eddecd-1-new-commit--pr-37215-devtools-fix-nested-hoc-name-extraction-in-extract hocnames-august-6-2026--devtools-only) — the v1.5.31 forward-looking note for PR #37215 (now live in ec61f187 canary)

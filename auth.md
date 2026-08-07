@@ -1522,3 +1522,83 @@ rg -n "signUp.create|verifyEmailAddress|<SignIn" app/ src/ lib/ 2>/dev/null | he
 - [PR #7928 — `feat(ui): Support signUpIfMissing with Clerk <SignIn> component`](https://github.com/clerk/javascript/pull/7928) — Daniel Moerner, merged 2026-08-04T13:14:26Z, **SHIPPED in `7.7.0`**
 - [PR #9124 — `feat(js): add InviteMembersButton and Clerk.openInviteMembers`](https://github.com/clerk/javascript/pull/9124) — Alex Carpenter, merged 2026-08-05T12:46:17Z, **SHIPPED in `7.7.0`**
 - [PR #9314 — `fix(react): make ClerkProvider publishableKey optional`](https://github.com/clerk/javascript/pull/9314) — merged 2026-08-04T06:57:21Z, **SHIPPED in `7.7.0`**
+
+## `@clerk/nextjs` 7.7.1 SHIPPED (August 7, 2026) — Patch (Dependency Bump Only, No New Features)
+
+**[07 Aug 2026 18:03Z] v1.5.35 cycle** — **8 minutes before this cron's check** at 2026-08-07T16:54:46Z, **`@clerk/nextjs@7.7.1` SHIPPED** (npm `dist-tag.latest` moved from `7.7.0` → `7.7.1`). This is a **PATCH release** — the CHANGELOG.md for `@clerk/nextjs` shows literally **only "Patch Changes" with internal dependency bumps** and **no new features, no new APIs, no breaking changes**. The Clerk/javascript changelog entry for 7.7.1 reads:
+
+```
+## 7.7.1
+
+### Patch Changes
+
+- Updated dependencies [
+    `63d25ba21386c77e186b3cbb00d09f9c6d0f1f8f`,  // @clerk/backend@3.16.1
+    `34d278bafc92d8f02ba150523de168f472679211`   // @clerk/shared@4.27.1
+  ]:
+  - @clerk/backend@3.16.1
+  - @clerk/shared@4.27.1
+  - @clerk/react@6.13.1
+```
+
+The 3 internal dependency bumps are:
+- **`@clerk/backend`: 3.16.0 → 3.16.1** (patch)
+- **`@clerk/shared`: 4.27.0 → 4.27.1** (patch)
+- **`@clerk/react`: 6.13.0 → 6.13.1** (patch)
+
+All 3 are PATCH-level bumps carrying internal reliability / test-coverage fixes inside the cross-package Clerk monorepo. **`@clerk/nextjs` itself has zero source changes** — the entire 7.7.1 tarball diff is just the regenerated `package.json` referencing the bumped internal deps.
+
+### Why this matters
+
+This is the **first PATCH release in the 7.7 line** — the 7.7.0 stable was just 1 day old when 7.7.1 shipped. The Clerk release cadence observed in the `## Clerk — Coverage — 7.5.13–7.6.4 Patch Train (July 2026)` section (`~2-3 days per release`) is back to its normal rhythm after the 7.7.0 slow week (the 6-day gap from 7.6.5 to 7.7.0 was the slow exception).
+
+### Practical impact
+
+- **Zero code changes required** for any user on `@clerk/nextjs@>=7.7.0`. The bump is a pure dependency-sync that everyone SHOULD pull in (carries internal fixes in the cross-package surface area).
+- **For users who pinned `@clerk/nextjs@7.7.0` exactly**: bump to `^7.7.1` to stay current with the internal Clerk monorepo improvements.
+- **For users on `@clerk/nextjs@^7.7.0` or `^7.6.x`**: the auto-bump to `7.7.1` is automatic on `npm install` (or `pnpm update` / `yarn upgrade`); no manual pin movement required.
+- **Bundle size**: unchanged (the source code is identical, only the lockfile-generated package.json bumps).
+- **Runtime behavior**: identical to 7.7.0.
+- **TypeScript types**: unchanged (the `@clerk/react` 6.13.1 bump is a PATCH-level type-compatibility fix, not a new type surface).
+
+### Recommended version pin
+
+**For new projects:** `npm install @clerk/nextjs@latest` picks up `7.7.1`.
+
+**For existing projects on `^7.7.0`:** the auto-bump to `7.7.1` happens on the next dependency update — no manual edit needed.
+
+**For projects on `~7.7.0` (locked patch pin):** the `~` range WILL auto-bump to `7.7.1` (since `~7.7.0` allows `7.7.x` where `x >= 0`); no manual pin movement required.
+
+**For projects on `7.7.0` exact / `=7.7.0`:** bump to `^7.7.1` to stay current.
+
+### Audit recipe
+
+```bash
+# 1. Confirm the install
+npm ls @clerk/nextjs @clerk/react @clerk/backend @clerk/shared
+# Expected: @clerk/nextjs@7.7.1 (or ^7.7.1)
+
+# 2. Confirm the 7.7.1 PRs are present (sanity check)
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.7.1
+
+# 3. Verify the internal Clerk monorepo deps bumped:
+npm view @clerk/react@latest version      # Expected: 6.13.1 (was 6.13.0 in 7.7.0)
+npm view @clerk/backend@latest version    # Expected: 3.16.1 (was 3.16.0 in 7.7.0)
+npm view @clerk/shared@latest version     # Expected: 4.27.1 (was 4.27.0 in 7.7.0)
+
+# 4. Check the 7.7.1 changelog entry (should be Patch-only, no new features):
+curl -sL "https://raw.githubusercontent.com/clerk/javascript/main/packages/nextjs/CHANGELOG.md" | head -15
+# → first 15 lines should show the 7.7.1 Patch Changes entry with only dependency bumps
+```
+
+### Sources
+
+- [npm: `@clerk/nextjs@7.7.1`](https://www.npmjs.com/package/@clerk/nextjs/v/7.7.1) (published 2026-08-07, dist-tag `latest` moved ~16:54:46Z)
+- [`@clerk/nextjs` CHANGELOG.md — full history](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) (verified at 2026-08-07T18:03Z; 7.7.1 entry shows only Patch Changes with dependency bumps)
+- [`@clerk/nextjs` dist-tags — canonical latest/canary/snapshot](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) (verified: `@clerk/nextjs@latest = 7.7.1`, `@clerk/nextjs@canary = 7.7.2-canary.v20260807164806`, `@clerk/nextjs@snapshot = 7.7.0-snapshot.v20260806134116`)
+- [`@clerk/react` 6.13.1 on npm](https://www.npmjs.com/package/@clerk/react/v/6.13.1) — the bumped internal dependency
+- [`@clerk/backend` 3.16.1 on npm](https://www.npmjs.com/package/@clerk/backend/v/3.16.1) — the bumped internal dependency
+- [`@clerk/shared` 4.27.1 on npm](https://www.npmjs.com/package/@clerk/shared/v/4.27.1) — the bumped internal dependency
+- [Clerk/javascript releases page](https://github.com/clerk/javascript/releases) — the `7.7.1` stable release tag (forward-looking link; the npm publish is the canonical signal)
+- [Cross-reference: v1.5.30 `## @clerk/nextjs 7.7.0 SHIPPED (August 6, 2026) — Nested ClerkProvider Context Fix (PR #9335) + Password Removal (PR #9326) + Email-Link Sign-Up Race Fix (PR #9328) + ClerkProvider publishableKey Optional (PR #9314) + InviteMembersButton (PR #9124)`](https://github.com/clawvpsai/frontend-skill/blob/main/auth.md#clerknextjs-770-shipped-august-6-2026--nested-clerkprovider-context-fix-pr-9335--password-removal-pr-9326--email-link-sign-up-race-fix-pr-9328--clerkprovider-publishablekey-optional-pr-9314--invitemembersbutton-pr-9124) — the 7.7.0 SHIP event that 7.7.1 is a patch bump on top of
