@@ -1405,3 +1405,120 @@ npm view better-auth@rc version
 - [`@clerk/nextjs@7.6.5` (Jul 31, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.6.5)
 - [`@clerk/nextjs` CHANGELOG.md (full history)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
 - [`@clerk/nextjs` dist-tags — snapshot/canary/latest](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)
+
+## `@clerk/nextjs` 7.7.0 SHIPPED (August 6, 2026) — Nested `ClerkProvider` Context Fix (PR #9335) + Password Removal (PR #9326) + Email-Link Sign-Up Race Fix (PR #9328) + `ClerkProvider` `publishableKey` Optional (PR #9314) + `InviteMembersButton` (PR #9124)
+
+The previous section documented `@clerk/nextjs@7.7.0` as a **forward-looking snapshot** (the `latest` dist-tag was still 7.6.5). Since v1.5.30 committed at 2026-08-06T12:05Z, **`@clerk/nextjs@7.7.0` SHIPPED at 2026-08-06T18:09:52Z** (npm `dist-tag.latest` moved from `7.6.5` → `7.7.0`; the [GitHub `clerk/javascript` canary-version-packages commit `a53c672` at 2026-08-06T13:13:00Z](https://github.com/clerk/javascript/commit/a53c672) was the version-packages bump that triggered the npm publish). This is the **first `7.7.0` stable in the 7.7 line** — the 7.6 line ended at 7.6.5 (Jul 31, 2026), and 7.7.0 ships **6 days after** 7.6.5.
+
+The 5 NEW features/fixes in 7.7.0 stable are the same ones the v1.5.30 cycle documented as forward-looking on the main branch — all 3 of the material commits (PR #9335 + PR #9326 + PR #9328) plus 2 additional non-material commits (PR #9124 + PR #9314) landed together in the version-packages bump.
+
+### What's new in `@clerk/nextjs@7.7.0`
+
+#### 1. PR #9335 — Nested `ClerkProvider` Detection via React Context (MATERIAL)
+
+Pre-7.7.0: Clerk used a **global module-level mount counter** to detect nested `<ClerkProvider>` instances (e.g., in microfrontends, monorepos with shared root layouts, multi-tenant apps with per-tenant Clerk configs, Storybook stories that wrap `<ClerkProvider>`). The mount counter had a real bug — it could not distinguish **legitimate nested provider** (MFE/Monorepo/Storybook case) from **HMR-triggered re-mount during dev** (which incremented the same counter). The result: spurious **"nested ClerkProvider detected"** warnings (or, worse, silently dropping the config from the inner provider).
+
+Post-7.7.0: detection uses **React context propagation** instead of a global counter. The fix is invisible for correctly-configured apps (a single `<ClerkProvider>` at the root) but resolves a class of false-positive warnings for **monorepo + MFE + Storybook users**.
+
+**Practical impact:**
+- **Single-provider apps:** zero observable change — the root `<ClerkProvider>` still works the same.
+- **Monorepo with shared root layout:** previously the inner provider's config (theme, localization, appearance) could be silently dropped; now correctly inherited via context.
+- **Storybook stories that wrap `<ClerkProvider>`:** previously triggered false-positive warnings; now clean.
+- **Next.js Multi-Zones / Micro-Frontends:** nested providers now work as expected without warnings.
+
+**Migration note:** no code changes required. If you have an existing `<ClerkProvider>` in a layout, just bump to `@clerk/nextjs@^7.7.0` and the warning behavior improves automatically.
+
+#### 2. PR #9326 — Backend Support for Removing User Passwords (MATERIAL)
+
+A new backend capability to **remove a user's password** — typically for SSO-only / passkey-only / magic-link-only flows where the password was originally set up but is no longer needed (e.g., the user migrated to passkeys and the password is now redundant attack surface).
+
+```ts
+import { clerkClient } from '@clerk/nextjs/server'
+
+// Inside a Server Action or Route Handler:
+const client = await clerkClient()
+await client.users.removePassword(userId)
+// → the user can now only sign in via SSO, passkeys, or magic link
+```
+
+The exact method name (`removePassword`) matches the convention of the existing `users.setPassword()` + `users.updatePassword()` + `users.verifyPassword()` methods. The capability is on the **backend** (`clerkClient.users.*`), not on the React hook surface — server-side mutations only.
+
+**Practical impact:**
+- **Apps supporting passkey-only or SSO-only flows:** can now clean up the password after passkey enrollment completes (or after the user explicitly opts in to passkey-only).
+- **Apps supporting account-recovery hardening:** can remove the password as part of a security audit (e.g., after detecting an unused password >180 days old).
+- **Apps that previously used custom workarounds (raw DB calls, Clerk Dashboard manual admin actions):** can now automate password removal programmatically.
+
+**Migration note:** this is purely additive — no existing flows change. If you don't need it, ignore it.
+
+#### 3. PR #9328 — Email-Link Sign-Up Race Fix (MATERIAL)
+
+Pre-7.7.0: clicking an email verification link during a **fresh sign-up** could race with the user-lookup-by-email step, causing a "user not found" error if the email-link click arrived **before** the sign-up completed server-side. The fix adds **`signUpIfMissing`** semantics — when the email-link click happens, Clerk now creates the user record automatically if it doesn't yet exist (instead of failing the lookup).
+
+This is paired with **PR #7928** (`feat(ui): Support signUpIfMissing with Clerk <SignIn>`) which exposes the same `signUpIfMissing` flag on the `<SignIn>` component, so users who click an email-verification link and end up on `<SignIn>` (instead of `<SignUp>`) are no longer shown the "user not found" error — Clerk creates the account on the fly.
+
+**Practical impact:**
+- **Apps using email-link sign-up:** the rare-but-frustrating "user not found" error during fresh sign-up + immediate email-link click is now resolved.
+- **Apps using email-link sign-in where the user has never signed up before:** the `<SignIn signUpIfMissing>` mode (added in PR #7928) eliminates the "you need to sign up first" friction.
+
+**Migration note:** the fix is automatic for users of `<SignUp>` and `<SignIn>` — no code changes required. The `signUpIfMissing` opt-in flag is exposed on `<SignIn>` for users who want to opt into the new behavior explicitly.
+
+#### 4. PR #9124 — `InviteMembersButton` + `Clerk.openInviteMembers()` (NON-MATERIAL UX enhancement)
+
+A new pre-built `<InviteMembersButton />` component and a new `Clerk.openInviteMembers()` imperative method. Both open the same "invite members" modal flow that was previously only accessible via the dashboard or via `<OrganizationProfile />`.
+
+**Practical impact:** pure UX enhancement — pre-built component for the most common org-admin action. If you already have a custom invite flow, ignore this PR.
+
+#### 5. PR #9314 — `ClerkProvider` `publishableKey` Optional (NON-MATERIAL)
+
+Pre-7.7.0: `<ClerkProvider>` required a `publishableKey` prop. Post-7.7.0: `publishableKey` is **optional** — Clerk falls back to reading `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` from `process.env` automatically.
+
+**Practical impact:** reduces boilerplate for apps that set the env var anyway. Purely additive — if you pass `publishableKey` explicitly, that still works.
+
+### Why 7.7.0 ships now
+
+The Clerk release cadence observed in the `## Clerk — Coverage — 7.5.13–7.6.4 Patch Train (July 2026)` section (`~2-3 days per release`) was **not** maintained for the 7.7.0 cut. The 7.6.4 → 7.6.5 patch shipped Jul 31, then a **6-day gap** to 7.7.0 stable on Aug 6. The longer cadence reflects the **3 material feature PRs** (nested-provider fix + password removal + email-link race) that needed careful coordination across `@clerk/nextjs` + `@clerk/react` + `@clerk/backend` + `@clerk/shared` + `@clerk/clerk-js` (the cross-package surface area for PR #9335 in particular touched 4 packages).
+
+### Recommended version pin
+
+**For new projects:** `npm install @clerk/nextjs@latest` picks up `7.7.0`.
+
+**For existing projects on `^7.6.0` or `^7.6.4`:** bump to `^7.7.0` — the upgrade is backwards-compatible (no breaking changes; PR #9335's behavior change is the inverse of a bug, not a breaking API change).
+
+**For projects on `~7.6.5` (locked patch pin):** the 7.7.0 bump requires explicitly editing the pin in `package.json` from `"@clerk/nextjs": "~7.6.5"` to `"@clerk/nextjs": "^7.7.0"` — `~` would NOT auto-bump to `7.7.0` (only patches within 7.6.x).
+
+### Audit recipe
+
+```bash
+# 1. Confirm the install
+npm ls @clerk/nextjs @clerk/react @clerk/backend
+# Expected: @clerk/nextjs@7.7.0 (or ^7.7.0)
+
+# 2. Confirm the 7.7.0 PRs are present (sanity check)
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.7.0
+
+# 3. Check if you're using nested ClerkProvider in MFE/Monorepo/Storybook
+rg -n "ClerkProvider" components/ app/ .storybook/ 2>/dev/null
+# Multiple matches in different packages / storybook files → the PR #9335 fix is material for you
+
+# 4. Check if you're using a custom password-removal flow
+rg -n "removePassword|deletePassword" app/ src/ lib/ 2>/dev/null
+# If you have a manual workaround, PR #9326 supersedes it
+
+# 5. Check if you're using email-link sign-up + SignIn together
+rg -n "signUp.create|verifyEmailAddress|<SignIn" app/ src/ lib/ 2>/dev/null | head -10
+# If you have test failures for fresh sign-ups followed by immediate email-link click, PR #9328 is the fix
+```
+
+### Sources
+
+- [`@clerk/nextjs@7.7.0` (Aug 6, 2026) — current `latest` stable](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.0)
+- [Clerk/javascript version-packages commit `a53c672` — the 7.7.0 npm-publish trigger](https://github.com/clerk/javascript/commit/a53c672)
+- [`@clerk/nextjs` CHANGELOG.md — full history](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)
+- [`@clerk/nextjs` dist-tags — snapshot/canary/latest](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)
+- [PR #9335 — `fix(react): Detect nested ClerkProvider via context instead of a global mount counter`](https://github.com/clerk/javascript/pull/9335) — Robert Soriano, merged 2026-08-06T01:39:03Z, **SHIPPED in `7.7.0`**
+- [PR #9326 — `feat(backend): support removing user passwords`](https://github.com/clerk/javascript/pull/9326) — Josh Rowley, merged 2026-08-05T20:10:04Z, **SHIPPED in `7.7.0`**
+- [PR #9328 — `fix(ui): Fix email link race with sign up if missing`](https://github.com/clerk/javascript/pull/9328) — Daniel Moerner, merged 2026-08-04T16:17:42Z, **SHIPPED in `7.7.0`**
+- [PR #7928 — `feat(ui): Support signUpIfMissing with Clerk <SignIn> component`](https://github.com/clerk/javascript/pull/7928) — Daniel Moerner, merged 2026-08-04T13:14:26Z, **SHIPPED in `7.7.0`**
+- [PR #9124 — `feat(js): add InviteMembersButton and Clerk.openInviteMembers`](https://github.com/clerk/javascript/pull/9124) — Alex Carpenter, merged 2026-08-05T12:46:17Z, **SHIPPED in `7.7.0`**
+- [PR #9314 — `fix(react): make ClerkProvider publishableKey optional`](https://github.com/clerk/javascript/pull/9314) — merged 2026-08-04T06:57:21Z, **SHIPPED in `7.7.0`**

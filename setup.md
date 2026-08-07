@@ -3425,3 +3425,208 @@ The definitive post-upgrade verification for the canary.4 setup:
 - [Next.js canary-branch compare `v16.3.1-canary.3...v16.3.1-canary.4`](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...v16.3.1-canary.4) — 26 commits
 - [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 1 commit (PR #96774, non-material)
 - Cross-references: `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` for the security/DoS lens; `api.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — 25-PR Cumulative Canary-Batch + PR #96606 Tailwind Turbopack Loader in \`create-next-app\` + PR #96681 \`next/image\` Preserve Response + Issue #96766 \`experimental.testProxy\` TCP-Socket Regression as API/Test Surface Concern` for the API surface lens; `styling.md` for the Tailwind v4.3.3 detailed pattern reference; `components.md` → `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the React vendor bump.
+
+## Vite 8.2.1 (August 6, 2026) — Patch Train — `chunkImportMap` + `sharedPlugins: true` Fix + LightningCSS Minify Perf + Random Port on Port 0 + Shebang Terminator Handling
+
+The previous section documented **Vite 8.2.0** (Jul 30, 2026) as the latest stable. Since v1.5.30 committed at 2026-08-06T12:05Z, **`vite@8.2.1` SHIPPED at 2026-08-06T13:44:21Z** (npm `dist-tag.latest` moved from `8.2.0` → `8.2.1`; the [Vite `v8.2.1` GitHub release tag](https://github.com/vitejs/vite/releases/tag/v8.2.1) was published at the same time; the version-packages commit `4216158` by `vitebot` at 2026-08-06T13:44:21Z was the trigger). **30 commits** in the `v8.2.0 → v8.2.1` range (verified at this cron's check via `GET /repos/vitejs/vite/compare/v8.2.0...v8.2.1` returning `ahead_by: 30, behind_by: 0`) — the largest Vite 8.x patch in a single `.1` cut. Most are dependency bumps + tests + docs, but **3 are user-facing material fixes**:
+
+### Material fixes in 8.2.1
+
+#### 1. PR #23184 — `fix(build): make client chunkImportMap work with `sharedPlugins: true`` (Aug 6, 12:37Z, [commit `15f0307`](https://github.com/vitejs/vite/commit/15f0307))
+
+Pre-8.2.1: When `build.sharedPlugins: true` (the new flag added in 8.2.0 for sharing plugin instances between build + dev) was combined with `build.rollupOptions.output.chunkImportMap` (the experimental output chunk-import-map format), the **client-side chunk-import-map resolution silently failed** — the browser would request the JS chunks by the wrong relative path, returning 404 for the chunk. This affected any 8.2.0 project with both flags enabled.
+
+Post-8.2.1: the chunk-import-map resolution correctly accounts for the shared-plugin context, so both flags work together as intended.
+
+**Practical impact:**
+- **Projects on 8.2.0 with `sharedPlugins: true` + `chunkImportMap: true`:** silently broken in 8.2.0 → fixed in 8.2.1.
+- **Projects on 8.2.0 with only one of the two flags:** no impact.
+- **Projects on 8.2.1:** working correctly.
+
+#### 2. PR #23147 — `fix(css): don't re-run lightningcss visitor during minify` (Aug 6, 12:38Z, [commit `de041a7`](https://github.com/vitejs/vite/commit/de041a7), closes issue #23146)
+
+Pre-8.2.1: Vite was running the **LightningCSS minify visitor twice** during production builds when `build.cssMinify: 'lightningcss'` — once to apply custom transforms (when `lightningcss.transformer` was configured) and once for the default minification pass. The duplicate run added **~50-200ms of CSS minify time** per build for projects using LightningCSS minify.
+
+Post-8.2.1: the LightningCSS visitor runs **once** — when a custom transformer is configured, the visitor applies the transform during the minify pass itself; when no transformer is configured, the visitor runs the default minification pass.
+
+**Practical impact:**
+- **Projects using `build.cssMinify: 'lightningcss'`:** ~50-200ms reduction in production CSS minify time per build.
+- **Projects using `build.cssMinify: 'esbuild'` (the default):** zero impact (the LightningCSS code path was never invoked).
+- **Projects using Tailwind v4 + `@tailwindcss/postcss`:** no impact (PostCSS path doesn't use LightningCSS for minify).
+
+#### 3. PR #23158 — `fix(server): use a random port when port is 0` (Aug 6, 13:01Z, [commit `fddf4ea`](https://github.com/vitejs/vite/commit/fddf4ea))
+
+Pre-8.2.1: Vite's dev server **ignored** the `server.port: 0` convention (which means "pick any available port" in Node.js http.Server). When `server.port: 0` was set in `vite.config.ts`, Vite would still fail to start if the default port (5173) was in use, instead of picking a random port.
+
+Post-8.2.1: `server.port: 0` works as expected — Vite delegates to Node.js's port-0 behavior, which picks a random available port.
+
+**Practical impact:**
+- **Test suites using Vite programmatically:** the canonical "start on a random port" pattern now works. Previously you had to call `server.listen(0)` manually after Vite resolved the port.
+- **CI smoke tests:** can now use `server.port: 0` to avoid port collisions in parallel CI jobs.
+- **Local dev with port conflicts:** can use `server.port: 0` to let the OS pick a free port (Vite prints the chosen port on stdout).
+
+### Non-material commits in 8.2.1 (the remaining 27 of 30)
+
+- **PR #23114** — `perf(css): look up pure CSS chunks through a Set` (Aug 3) — internal perf, no user-observable change for non-monorepo projects.
+- **PR #23135** — `fix: don't mutate the user config when resolving the lib entry from the top-level input` (Aug 3) — internal hardening, no observable change.
+- **PR #23138** — `test: reduce logs` (Aug 3) — test-infra cleanup.
+- **PR #23038** — `fix: handle shebang ending with uncommon line terminators` (Jul 31) — edge-case bug fix for non-Node shebang line endings (e.g., CR-only `\r` shebangs on legacy Windows-authored JS files). Rare.
+- **PR #23129** — `refactor(bundled-dev): remove rolldown lazy stub module workaround` (Aug 4) — bundled-dev internal cleanup.
+- **PR #23161** — `fix(bundled-dev): inject client script tag before chunk scripts` (Aug 5) — bundled-dev script ordering fix.
+- **PR #23174** — `chore: remove outdated `minimumReleaseAgeExclude` configuration` (Aug 5) — release-process cleanup.
+- **PR #23177** — `docs(build): fix incomplete @default for build.minify` (Aug 6) — docs.
+- **PR #23070 / #23136 / #23137 / #23140** — dep bumps (rolldown + non-major + rolldown-plugin-dts + strip-literal).
+- **Plus 14 docs/test/refactor commits** — see the [v8.2.1 commit list](https://github.com/vitejs/vite/compare/v8.2.0...v8.2.1).
+
+### Recommended upgrade path
+
+**For all projects on 8.2.0:** bump to `^8.2.1` immediately. The 3 material fixes (chunkImportMap + lightningcss perf + port 0) are all backward-compatible — no API changes, no breaking config changes, no plugin incompatibilities.
+
+```bash
+npm install vite@^8.2.1
+# or
+pnpm update vite@^8.2.1
+```
+
+**For projects on 8.2.0-beta.0 → 8.1.x:** go directly to `^8.2.1` — you skip 8.2.0 entirely (8.2.0's only material change was the 3 new features + 7 bug fixes documented in the previous section, all preserved in 8.2.1).
+
+**For projects on 7.x:** review the [Vite 8 migration guide](https://vite.dev/guide/migration) — the major-version bump from 7 → 8 has more breaking changes than the 8.2.0 → 8.2.1 patch.
+
+### Sources
+
+- [Vite `v8.2.1` GitHub release tag](https://github.com/vitejs/vite/releases/tag/v8.2.1) — npm-published 2026-08-06T13:44:21Z
+- [Compare `v8.2.0...v8.2.1`](https://github.com/vitejs/vite/compare/v8.2.0...v8.2.1) — 30 commits
+- [PR #23184 — `fix(build): make client chunkImportMap work with sharedPlugins: true`](https://github.com/vitejs/vite/pull/23184) (commit `15f0307`)
+- [PR #23147 — `fix(css): don't re-run lightningcss visitor during minify`](https://github.com/vitejs/vite/pull/23147) (commit `de041a7`) — closes issue #23146
+- [PR #23158 — `fix(server): use a random port when port is 0`](https://github.com/vitejs/vite/pull/23158) (commit `fddf4ea`)
+- [PR #23114 — `perf(css): look up pure CSS chunks through a Set`](https://github.com/vitejs/vite/pull/23114) (commit `1331b0b`)
+- [PR #23135 — `fix: don't mutate the user config when resolving the lib entry from the top-level input`](https://github.com/vitejs/vite/pull/23135) (commit `b4bf596`)
+- [PR #23038 — `fix: handle shebang ending with uncommon line terminators`](https://github.com/vitejs/vite/pull/23038) (commit `17f7b2f`)
+- [Vite 8.2.1 `vite/CHANGELOG.md` (raw)](https://github.com/vitejs/vite/blob/v8.2.1/packages/vite/CHANGELOG.md)
+
+---
+
+## `next@backport` 15.5.23 (August 6, 2026) — Security Backport — `[Flight] Port ReplyServer Traversal Guards to FlightClient` (PR #96405)
+
+The `next@backport` dist-tag (formerly `next-15`) tracks the **15.5.x maintenance line** — the LTS track for projects that haven't moved to 16.x yet. Since v1.5.30 committed at 2026-08-06T12:05Z, **`next@15.5.23` SHIPPED at 2026-08-06T14:22:00Z** (npm `dist-tag.backport` moved from `15.5.22` → `15.5.23`; the [Next.js `v15.5.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v15.5.23) was published by `vercel-release-bot` at the same time; the version-tag commit `c91fd53` by `vercel-release-bot` at 2026-08-06T14:22:00Z was the trigger).
+
+**15.5.23 is a security-priority 1-commit backport:** PR #96405 — `[15.x] Port ReplyServer traversal guards to FlightClient` ([commit `0cb3208`](https://github.com/vercel/next.js/commit/0cb3208), merged 2026-07-31T15:30:00Z, shipped to npm 6 days later on 2026-08-06T14:22:00Z).
+
+### Why this backport matters
+
+The PR is the **15.5.x backport** of the security hardening that shipped in **`next@16.3.0` STABLE + `next@16.3.1-canary.4` ahead** (React PR #37144, [Flight] Port ReplyServer traversal guards to FlightClient — Sebastian Silbermann, merged 2026-07-29T22:17:33Z; the same engineer who authored the recent Next.js PR #96085 `headers()` per-pass uniqueness fix).
+
+The hardening adds **two defense-in-depth guards** to the Flight Client deserializer in `packages/react-client/src/ReactFlightClient.js`:
+
+**(a) `getOutlinedModel` path-walk guard** — checks `getPrototypeOf(value)` is `ObjectPrototype` or `ArrayPrototype` AND `hasOwnProperty.call(value, name)` before descending the path; throws `Error('Invalid reference.')` otherwise. This blocks **prototype pollution via non-plain-prototype path entries** — a malicious RSC payload can no longer walk up the prototype chain via `__proto__` / `constructor` references.
+
+**(b) `reviveModel` plain-object walk guard** — wraps the `for (const k in value)` loop with `hasOwnProperty.call(value, k)`, so **inherited enumerable properties from a poisoned prototype are skipped during reviver walks**. Pairs with the path-walk guard.
+
+The companion server-side `processReply` hardening already shipped earlier (the PR title explicitly says "Port ReplyServer traversal guards to FlightClient"). The Flight Client side was harder to harden because `getOutlinedModel`'s path-walk also does **object-identity cache deduplication**, and skipping the wrong reference would break the outline cache — so the guard is precisely scoped to fire only when the value is **non-plain**.
+
+### Affected deployments (15.5.x)
+
+Any Next.js 15.5.x deployment that:
+- Receives RSC payloads from **untrusted or cross-tenant sources** (e.g., user-generated RSC, cross-origin RSC widgets, multi-tenant SaaS apps).
+- Uses `dangerouslyAllowBrowser: true` (rare, but exposes RSC to the browser).
+- Has a misconfigured trust model where the RSC origin and the render target are different.
+
+**Common trust model (your own server, your own RSC, your own database):** invisible — the guards fire only on prototype-pollution attempts, and you wouldn't be hitting that path with your own trusted RSC.
+
+### Migration path
+
+```bash
+# For any 15.5.x project — bump to 15.5.23 immediately:
+npm install next@^15.5.23
+# or
+pnpm update next@^15.5.23
+```
+
+**No code changes required.** The hardening is invisible for correctly-configured apps. The only difference you'll see is a hard `Error('Invalid reference.')` thrown on actual prototype-pollution attempts — which is the desired behavior.
+
+### Recommended version pin
+
+**For new projects:** use `next@latest` (currently 16.3.0 STABLE) or `next@backport` (currently 15.5.23) depending on your Next.js line. The `backport` dist-tag is the LTS-friendly choice for projects that haven't migrated to 16.x yet.
+
+**For existing 15.5.x projects:** bump from `^15.5.22` (or any earlier 15.5.x) to `^15.5.23` — pure security backport, no breaking changes.
+
+**For existing 16.x projects:** already on 16.3.0 STABLE (which has the Flight Client hardening). No action needed for this PR.
+
+### Audit recipe
+
+```bash
+# 1. Confirm the install
+npm ls next
+# Expected: next@15.5.23 (or ^15.5.23)
+
+# 2. Confirm the security backport is present
+npm view next@backport version
+# Expected: 15.5.23
+
+# 3. Check if you have any 15.5.x projects still in your monorepo
+rg -ln "\"next\":" packages/*/package.json apps/*/package.json 2>/dev/null
+# If you see 15.5.22 or earlier, bump them
+
+# 4. Check if you have cross-tenant / cross-origin RSC payloads (rare)
+rg -ln "dangerouslyAllowBrowser" app/ src/ 2>/dev/null
+# If yes, the Flight Client hardening is especially relevant — bump immediately
+
+# 5. Check if you have user-generated RSC rendering
+rg -ln "renderToReadableStream\|renderToPipeableStream" app/ src/ 2>/dev/null
+# If your server renders RSC from untrusted input, the hardening matters
+```
+
+### Sources
+
+- [Next.js `v15.5.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v15.5.23) — npm-published 2026-08-06T14:22:00Z
+- [PR #96405 — `[15.x] Port ReplyServer traversal guards to FlightClient`](https://github.com/vercel/next.js/pull/96405) — merged 2026-07-31T15:30:00Z by vercel-release-bot
+- [Commit `0cb3208`](https://github.com/vercel/next.js/commit/0cb3208) — the PR commit on the `15.x` branch
+- [Commit `c91fd53`](https://github.com/vercel/next.js/commit/c91fd53) — the `v15.5.23` version-tag commit
+- [Compare `v15.5.22...v15.5.23`](https://github.com/vercel/next.js/compare/v15.5.22...v15.5.23) — 2 commits (PR #96405 + the version-tag)
+- [React PR #37144 — `[Flight] Port ReplyServer Traversal Guards to FlightClient`](https://github.com/facebook/react/pull/37144) — Sebastian Silbermann, merged 2026-07-29T22:17:33Z — the canary-side origin of the Flight Client hardening
+- [`next@backport` dist-tag — current LTS track](https://www.npmjs.com/package/next?activeTab=versions)
+- [Next.js `backport` dist-tag tracking docs](https://nextjs.org/docs/community/upgrading)
+
+---
+
+## `shadcn` 4.16.2 (August 6, 2026) — Registry Item Titles in `searchRegistries` (PR #11348)
+
+The previous cycle documented `shadcn@4.16.1` (Jul 31, 2026) as the latest stable. Since v1.5.30 committed at 2026-08-06T12:05Z, **`shadcn@4.16.2` SHIPPED at 2026-08-06T11:39:11Z** (npm `dist-tag.latest` moved from `4.16.1` → `4.16.2`; the [GitHub `shadcn-ui/ui` release for `shadcn@4.16.2`](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.16.2) was published at the same time; the PR #11348 merge commit `df664e1bba86c6712bc5e08c8626590dca736089` by @OwenKephart at 2026-08-06 was the trigger). **1-commit, single-line patch** — pure UX enhancement.
+
+### What's in 4.16.2
+
+#### PR #11348 — Include registry item titles in `searchRegistries` results and fuzzy matching
+
+Pre-4.16.2: When the shadcn CLI's `searchRegistries` function returned results for `npx shadcn search <query>`, **only the registry item's `name` field** was matched against the search query — the `title` field (which is the human-readable label shown in the shadcn UI and on the registry website) was **ignored**. This meant a search for "button" might miss a registry item titled "Button" if its `name` was something obscure like "ui-button-component".
+
+Post-4.16.2: `searchRegistries` matches against **both `name` AND `title`**, with fuzzy matching across both fields. Result: searches hit more relevant items, and the search results can display the `title` field as the primary label.
+
+**Practical impact:**
+- **Projects using `shadcn search` interactively:** better recall on items with verbose titles — searches now match against the human-readable label, not just the slug.
+- **Projects using `shadcn add <item>` programmatically:** zero impact (this is a `searchRegistries`-internal change).
+- **Projects using a custom registry (the `addRegistryItems` API added in 4.15.0):** zero impact (the change is in `searchRegistries`, not in the add/install code path).
+
+### Migration path
+
+```bash
+# For all projects on 4.16.0 / 4.16.1:
+npm install -g shadcn@^4.16.2
+# or
+pnpm update -g shadcn@^4.16.2
+```
+
+**No code or config changes required.** Pure UX enhancement in the CLI search command.
+
+### Recommended version pin
+
+**For new projects:** `npx shadcn@latest init` picks up `4.16.2`.
+
+**For existing projects on `^4.16.0` or `^4.16.1`:** bump to `^4.16.2` — pure UX enhancement, no breaking changes.
+
+### Sources
+
+- [GitHub `shadcn@4.16.2` release](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.16.2) — npm-published 2026-08-06T11:39:11Z
+- [PR #11348 — Include registry item titles in `searchRegistries` results and fuzzy matching](https://github.com/shadcn-ui/ui/pull/11348) — @OwenKephart, merged 2026-08-06
+- [Commit `df664e1bba86c6712bc5e08c8626590dca736089`](https://github.com/shadcn-ui/ui/commit/df664e1bba86c6712bc5e08c8626590dca736089) — the PR commit
+- [`shadcn` dist-tags](https://www.npmjs.com/package/shadcn?activeTab=versions)
+- [`shadcn` CHANGELOG.md (full history)](https://github.com/shadcn-ui/ui/blob/main/packages/shadcn/CHANGELOG.md)

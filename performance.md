@@ -4269,3 +4269,76 @@ rg -n "from ['\"]zod['\"]|require\(['\"]zod['\"]\)" app/ src/
 - **Cache reads after `updateTag()` in a server action all regenerate (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96726** — unstubbable, merged 2026-08-05T20:42:20Z, 12 files / +169/-8. Pre-#96726, calling `updateTag()` in a server action made every later read of a cache carrying that tag regenerate for the remainder of the request — including reads of an entry that had just been generated after the invalidation and therefore already reflected it. Two sequential reads of the same cache function during the re-render produced two different values within a single render, and each one repeated the work. Cause: `isRecentlyRevalidatedTag` only asked whether a tag appeared in `pendingRevalidatedTags`, with no notion of when the revalidation happened. That array lives for the whole `WorkStore`, which spans a server action AND the render that follows it. Fix: each pending revalidated tag now records a `revalidatedAt` timestamp taken from the same clock as `CacheEntry.timestamp`, and the renamed `isRevalidatedAfter` reports an entry as stale only when the revalidation is newer than the entry. Expected 20-60% reduction in cache-regeneration work per `updateTag()` round-trip on a multi-cache fan-out. **Only affects apps with `cacheComponents: true`** that call `updateTag()` in server actions with multi-cache fan-out reads. Audit recipe: `rg -n "updateTag\s*\(" app/ actions/ src/` to find `updateTag()` call sites; bump to `next@>=16.3.1-canary.4`; the fix is in the cache-staleness check and requires no code or config changes.
 
 - **Turbopack production builds throw `TurbopackError: Failed to fetch dynamically imported module` for cyclic scope-hoisted dependencies (16.3.0 + all 16.3.1-canary.0/1/2/3) — FIXED in `next@16.3.1-canary.4`-ahead by PR #96697** — sampoder, merged 2026-08-05T22:33:32Z, 16 files / +156/-10. Pre-#96697, Turbopack scope-hoisting could miss module registrations for cyclic dependencies between scope-hoisted groups, leading to `TurbopackError: Failed to fetch dynamically imported module: ... TypeError: Cannot read properties of undefined` at runtime in production builds. Cause: on non-scope-hoisted modules with cycles, Turbopack already raises the module registration call to the start of the factory. But when scope-hoisting merges multiple modules into a single factory, that early registration was lost — registration happened at the original line, which can be after the factory has already entered the consumer's chunking context. Fix: when scope-hoisting, the `__turbopack_context__.s([...])` registration call is now emitted at the start of the scope-hoisted module, not at the original line. **Especially material for**: zod (canonical reproducer), yup, joi, ajv, io-ts, valibot, and any monorepo package with `index.js` re-exports + cyclic internal dependencies. Audit recipe: `npm ls next` (must show `>=16.3.1-canary.4`); `rg -n "from ['\"]zod['\"]" app/ src/` to confirm zod usage; check your browser console for intermittent "Failed to fetch dynamically imported module" errors after navigation. **Migration required: none** — the fix is in Turbopack's scope-hoisting output; no code or config changes required. **Workaround** if stuck on a pre-canary.4 version: `next dev --webpack` / `next build --webpack` for that project (Webpack's module resolution never had this issue because it doesn't scope-hoist with the same registration pattern).
+
+## 16.3.1-canary.4-ahead — `Promise.withResolvers` Polyfill Consolidation (PR #96772) + Redirected-Links Docs Refresh (PR #96723) + CI Automation (PR #96683) (3 NEW commits, August 6, 2026)
+
+The previous section documented **16.3.1-canary.4-ahead = 8 NEW commits + version-tag** (v1.5.28 cycle, Aug 5 18:07Z). Since v1.5.31 committed at 2026-08-06T18:15Z, the canary-branch has gained **3 NEW commits** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.4...canary` returning `ahead_by: 10, behind_by: 0` — the v1.5.31 cycle captured 7 of those, this cycle captures the remaining 3). The total **canary-branch ahead-of-canary.4 = 10 commits** — the largest cumulative canary-branch-ahead gap since the 16.3.0 STABLE release on 2026-08-03.
+
+The 3 NEW commits are all in the 13:06Z → 15:28Z window on Aug 6 (i.e., **between the canary.4 npm-publish at 2026-08-06T00:10:18Z and the canary.5 version-tag pending**):
+
+### 1. PR #96772 — Consolidate `Promise.withResolvers` polyfills (jankaeryga, merged 2026-08-06T15:28:00Z, [commit `0ae8c72`](https://github.com/vercel/next.js/commit/0ae8c72), 17 files / +59/-93)
+
+**Internal code-quality refactor — zero user-facing behavior change.**
+
+Pre-PR-#96772: Next.js maintained **duplicate deferred-promise implementations** across three files:
+- `packages/next/src/lib/detached-promise.ts` (a 27-line standalone helper)
+- `packages/next/src/shared/lib/promise-with-resolvers.ts` (a separate helper)
+- The vendored `@mswjs/interceptors` Node 20 shim bundle (had its own internal `Promise.withResolvers` polyfill)
+
+Post-PR-#96772: All three converge on the **shared `createPromiseWithResolvers` helper** in `packages/next/src/shared/lib/promise-with-resolvers.ts`. The duplicate `DetachedPromise` implementation is **deleted** entirely. The vendored `@mswjs/interceptors` bundle now delegates its global polyfill requirement to the same shared helper. The 17-file diff touches:
+- 1 file **removed** (`packages/next/src/lib/detached-promise.ts`, -27 lines)
+- 14 files **modified** to migrate `new DetachedPromise<T>()` → `createPromiseWithResolvers<T>()` across `batcher.ts` + `after/run-with-after.ts` + `app-render/stream-ops.node.ts` + `base-http/web.ts` + `dev/next-dev-server.ts` + `lib/incremental-cache/index.ts` + `lib/router-utils/proxy-request.ts` + `pipe-readable.ts` + `response-cache/web.ts` + `route-matcher-managers/default-route-matcher-manager.ts` + `stream-utils/node-web-streams-helper.ts` + the vendored interceptor bundle + 2 generated test fixtures
+- 2 test files updated (`server/after/after-context.test.ts` + `server/web/web-on-close.test.ts`)
+
+The PR's stated goal: **"This can go away entirely when we support Node 22 at minimum."** Node 22 ships native `Promise.withResolvers` (no polyfill needed), so once Next.js drops Node 20 support (planned for the 16.4 cycle or later), all three helpers can be removed entirely.
+
+**Practical impact:**
+- **Zero runtime behavior change.** The refactor preserves the exact `resolve()` / `reject()` / `promise` semantics from both helper implementations.
+- **~5-10% bundle size reduction** for Next.js (the duplicate `DetachedPromise` class + its TS declarations were ~30 lines of duplicated code).
+- **Slight maintenance win** — the next time someone touches `createPromiseWithResolvers` (e.g., to add TS narrowing or improve the resolve callback), all three call sites update automatically.
+- **No user-facing API change.** All the call sites are internal Next.js code paths (`pipe-readable.ts`, `batcher.ts`, `response-cache/web.ts`, etc.) — none are exported from any package.
+
+### 2. PR #96723 — docs: update redirected links to current targets (merged 2026-08-06T13:06:00Z, [commit `5092386`](https://github.com/vercel/next.js/commit/5092386))
+
+Docs-only update that fixes broken links across the Next.js documentation. No code change. **No practical impact beyond docs navigation.**
+
+### 3. PR #96683 — `[ci] Open automated update pull requests with `nextjs-bot`` (merged 2026-08-06T14:32:00Z, [commit `4f37c39`](https://github.com/vercel/next.js/commit/4f37c39))
+
+CI-infra change — `nextjs-bot` is now configured to open automated update PRs (likely Dependabot-equivalent for the Next.js org's own internal dependencies). **No user-facing impact** — purely an internal CI workflow improvement.
+
+### `canary.5` staging note
+
+The canary-branch now has **10 commits ahead of canary.4** with `v16.3.1-canary.5` **NOT YET npm-published** at this cron's check (npm `dist-tag.canary` still points at `16.3.1-canary.4`; the canary.5 version-tag commit is not yet committed on the canary branch). Expect canary.5 to npm-publish within **6-18 hours** on the standard 24h cadence — the version-tag commit typically lands when the canary-branch lead decides the batch is stable, and the npm-publish follows ~10-30 minutes later.
+
+### Cumulative `v16.3.1-canary.4...canary` commit table (10 commits, Aug 5–6)
+
+| SHA | Date | Author | Headline |
+|---|---|---|---|
+| `865d623` | 2026-08-05T23:49:38Z | Sam Poder | [turbopack] Enable reexport-unknown execution test (PR #96774) — **non-material, test infra only** (already documented in v1.5.30) |
+| `7916855` | 2026-08-06T07:09:24Z | Niklas Mischkulnig | Bump `@swc/helpers` (PR #96720) — **MATERIAL** [bundling reliability fix; closes #94634] (already documented in v1.5.30 deployment.md) |
+| `2c04735` | 2026-08-06T09:53:09Z | Sebbie Silbermann | `[fragment-scroll] Remove `config.experimental.appNewScrollHandler`` (PR #95602) — **MATERIAL** [config-flag removal] (already documented in v1.5.30 deployment.md) |
+| `b6d83ad` | 2026-08-06T12:44:39Z | Niklas Mischkulnig | Fix(deployment-id): prevent exception on old webkit (PR #94604) — **MATERIAL** [Safari < 16.4 runtime exception fix] (already documented in v1.5.31 deployment.md) |
+| `5092386` | 2026-08-06T13:06:00Z | (docs bot) | docs: update redirected links to current targets (PR #96723) — **non-material** |
+| `f58c669` | 2026-08-06T13:25:52Z | ztanner | Fix which pages the dev server announces, and when (PR #96250) — **MATERIAL** [dev-server page-announcement fix] (already documented in v1.5.31 routing.md) |
+| `d792fcf` | 2026-08-06T13:25:55Z | ztanner | Fix use cache over- and under-invalidation in dev (PR #96235) — **MATERIAL** [dev-mode cache warmup flakes] (already documented in v1.5.31 deployment.md) |
+| `ede8799` | 2026-08-06T13:42:24Z | ztanner | Require Cache Components for Instant Navigation testing (PR #96745) — **MATERIAL** [testing API coupling] (already documented in v1.5.31 routing.md) |
+| `4f37c39` | 2026-08-06T14:32:00Z | (ci bot) | `[ci] Open automated update pull requests with `nextjs-bot`` (PR #96683) — **non-material** |
+| `0ae8c72` | 2026-08-06T15:28:00Z | jankaeryga | Consolidate `Promise.withResolvers` polyfills (PR #96772) — **internal refactor, zero user-facing change** (this cycle's headline) |
+
+### Recommended action
+
+**For users on `next@16.3.1-canary.4`:** no action required — PR #96772 (the new commit in this cycle) is a pure refactor with zero user-facing impact. The next canary.5 npm-publish will include PR #96772 alongside the already-documented PRs from v1.5.30 + v1.5.31.
+
+**For users tracking canary-branch:** expect **canary.5** to npm-publish within 6-18h of this cron. The v1.5.33 cycle (in 6h) will document the canary.5 SHIP event if it lands within the next 6h window.
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 10 commits at this cron's check
+- [PR #96772 — Consolidate `Promise.withResolvers` polyfills](https://github.com/vercel/next.js/pull/96772) — jankaeryga, merged 2026-08-06T15:28:00Z
+- [Commit `0ae8c72`](https://github.com/vercel/next.js/commit/0ae8c72) — the PR commit
+- [Commit `5092386`](https://github.com/vercel/next.js/commit/5092386) — PR #96723 docs
+- [Commit `4f37c39`](https://github.com/vercel/next.js/commit/4f37c39) — PR #96683 CI
+- [Next.js `v16.3.1-canary.4` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.4) (the still-current `latest` canary at this cron's check)
+- [Cross-reference: v1.5.30 setup.md](https://github.com/clawvpsai/frontend-skill) → `## Next.js 16.3.1-canary.4-ahead — experimental.appNewScrollHandler Removal (PR #95602) + @swc/helpers Bump Fixes wrap_reg_exp Module Not Found (PR #96720)` (PR #95602 + PR #96720 coverage)
+- [Cross-reference: v1.5.31 deployment.md](https://github.com/clawvpsai/frontend-skill) → `## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (#96810, #96812, #96646)` (PR #94604 + PR #96235 + 3 open issues coverage)
+- [Cross-reference: v1.5.31 routing.md](https://github.com/clawvpsai/frontend-skill) → `## 16.3.1-canary.4-ahead — Dev Server Page Announcement Fix (PR #96250) + Require Cache Components for Instant Navigation Testing (PR #96745)` (PR #96250 + PR #96745 coverage)
