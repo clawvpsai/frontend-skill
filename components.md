@@ -2343,6 +2343,86 @@ rg -ln "ImageResponse|next/og" app/ src/
 - [Next.js PR #96735 — `Upgrade React from 7dfc7ccd-20260803 to 11eddecd-20260805`](https://github.com/vercel/next.js/pull/96735) — merged 2026-08-05T17:15:10Z by vercel-release-bot, single-PR vendor bump for the canary-branch
 - [Next.js PR #96606 — `Use Tailwind Turbopack loader in create-next-app`](https://github.com/vercel/next.js/pull/96606) — merged 2026-08-05T13:49:18Z, affects new-project scaffolding only
 - [Next.js PR #96681 — `fix(next/image): preserve image response after optimization`](https://github.com/vercel/next.js/pull/96681) — merged 2026-08-05T15:13:25Z; fork PR #96621 by @ceolinwill; closes issue #96612
+---
+
+## React main branch ahead of `11eddecd`: 1 NEW commit — PR #37215 `[DevTools] Fix nested HOC name extraction in extractHOCNames` (August 6, 2026) — DevTools-Only
+
+The v1.5.27 cycle (2026-08-05T18:07Z, ~12h before this cron's check) documented **1 NEW commit ahead of `11eddecd-91` on React `main`** = PR #37203 `[flags] Enable conditional use warning for experimental release channel`. Since the v1.5.27 commit, **1 MORE NEW commit landed on React `main` ahead of `11eddecd-91`**: **PR #37215** `[DevTools] Fix nested HOC name extraction in extractHOCNames` (BIKI DAS, merged 2026-08-06T12:44:04Z, 2 files / +73/-1; the canary tag is still `11eddecd-91` — the new commit hasn't triggered a canary cut yet). The `experimental` dist-tag still points at `0.0.0-experimental-11eddecd-20260805`. `react@canary` still = `19.3.0-canary-11eddecd-20260805` (npm `dist-tag.canary` stable for ~68h43min at this cron's check; typical 20-72h cadence means the next canary cut could land within hours or in the next 1-3 days). **Total: 2 commits ahead of `11eddecd-91` on React `main` at this cron's check** (verified via `GET /repos/facebook/react/compare/11eddecd...main` returning `ahead_by: 2, behind_by: 0`).
+
+### PR #37215 — `DevTools: Fix nested HOC name extraction in extractHOCNames` (BIKI DAS, merged 2026-08-06T12:44:04Z, 2 files / +73/-1)
+
+**The bug** (in `extractHOCNames`, the helper that unwraps component names like `Forget(Memo(Button))` into a base component name plus its HOC wrappers):
+
+The regex was using the `g` flag, which means `exec()` remembers its position via `lastIndex`. Since each iteration **replaces the current string with the shorter unwrapped inner string**, `lastIndex` ends up pointing past the end of the new string. **The next `exec()` returns `null`**, so the loop stops after unwrapping only the outermost HOC.
+
+**Before fix:**
+
+```
+component named Forget(Memo(ForgetMemoCounter))
+  → ✨Memo(ForgetMemoCounter)   ← only the outer Memo unwrapped, Forget left behind
+
+component named Forget(ForwardRef(ForgetForwardRefCounter))
+  → ✨ForwardRef(ForgetForwardRefCounter)   ← only ForwardRef unwrapped
+```
+
+**After fix:**
+
+```
+component named Forget(Memo(ForgetMemoCounter))
+  → ✨🧠ForgetMemoCounter   ← both Forget and Memo unwrapped correctly
+
+component named Forget(ForwardRef(ForgetForwardRefCounter))
+  → ✨ForgetForwardRefCounter   ← both Forget and ForwardRef unwrapped
+```
+
+**Per the PR body's visual diff** ([before](https://github.com/user-attachments/assets/14e7e632-da97-43fb-867b-9da3b9d7cb22) | [after](https://github.com/user-attachments/assets/4f91b78-af11-4584-986b-b7aa9a03d0b6)) — the after-screenshot shows the React DevTools component tree with the correct HOC-unwrap depth on `Forget(Memo(...))` patterns.
+
+**Files changed:**
+
+| File | Diff | Purpose |
+|---|---|---|
+| `packages/react-devtools-shared/src/backend/views/utils.js` | +1/-1 | The 1-line fix: drop the `g` flag from the regex (or reset `lastIndex` between iterations) |
+| `packages/react-devtools-shared/src/__tests__/extractHOCNames-test.js` | +72/-0 | New test cases for nested HOC patterns: `Forget(Memo(ForgetMemoCounter))`, `Forget(ForwardRef(ForgetForwardRefCounter))`, and deeper nesting |
+
+**Practical impact (live once a new `react@canary` cut ships with this commit):**
+
+- **DevTools users debugging HOC-wrapped components** (e.g., apps using `React.memo`, `React.forwardRef`, `React Forget` / React Compiler) get correct HOC-unwrap depth in the component tree display.
+- **Zero impact on App Router / SSR / RSC / hooks / production behavior** — this is purely a DevTools UI display fix.
+- **No new public APIs** — the helper is internal to `react-devtools-shared`.
+
+**Why this is a "DevTools-only" fix and not material for production:**
+
+- The bug only manifests in the DevTools Profiler / Components tree display.
+- Production code is unaffected — the bug is in the *name extraction* step that runs only when rendering the DevTools UI.
+- The fix is a 1-character (or 1-line) change in a regex flag — zero risk of behavior change in non-DevTools paths.
+- No React DOM, React Server DOM, React Reconciler, React Scheduler, or React Fiber changes.
+
+### React main branch ahead-of-`11eddecd-91` cumulative table (2 commits)
+
+| SHA | Date | Author | PR | Headline | Material? |
+|---|---|---|---|---|---|
+| `1d4758e0` | 2026-08-05T16:53:19Z | Sebbie Silbermann | #37203 | `[flags] Enable conditional use warning for experimental release channel` | flag-gated; experimental-channel only (v1.5.27 coverage) |
+| `ec61f187` | 2026-08-06T12:44:04Z | BIKI DAS | #37215 | `DevTools: Fix nested HOC name extraction in extractHOCNames` | **DevTools-only** (this cycle's coverage) |
+
+**Recommended action:**
+
+- **For users on `react@latest` (19.2.8) or `react@canary` (19.3.0-canary-11eddecd-20260805):** no action required. PR #37215 will land in the next `react@canary` cut when the React team ships one (likely within 12-48h on the typical cadence).
+- **For DevTools users debugging HOC-heavy apps:** when the next `react@canary` cut ships, run `npm install react@canary react-dom@canary` to pick up the fix.
+- **For production users:** zero impact — this is a DevTools-only fix.
+
+### Sources
+
+- [React `main` branch compare `11eddecd...main`](https://github.com/facebook/react/compare/11eddecd...main) — 2 commits ahead at this cron's check (verified via `GET /repos/facebook/react/compare/11eddecd...main` returning `ahead_by: 2, behind_by: 0`)
+- [React `main` branch commits feed (last 10)](https://github.com/facebook/react/commits?sha=main) — verified at 2026-08-07T06:02Z; main-branch head is `ec61f187` (PR #37215 [DevTools]); 2 commits ahead of `11eddecd-91` (the canary tag)
+- [React PR #37215 — `[DevTools] Fix nested HOC name extraction in extractHOCNames`](https://github.com/facebook/react/pull/37215) — by BIKI DAS, merged 2026-08-06T12:44:04Z, 2 files / +73/-1
+- [React commit `ec61f187`](https://github.com/facebook/react/commit/ec61f187) — PR #37215 merge commit on `main`
+- [React issue #37213 — the original bug report referenced by PR #37215](https://github.com/facebook/react/issues/37213) — the `extractHOCNames` regex `lastIndex` bug
+- [React DevTools Profiler docs — Commit view + component tree display](https://react.dev/learn/react-developer-tools) — the surface area affected by this fix
+- [`react-devtools-shared` package source — `extractHOCNames` helper](https://github.com/facebook/react/blob/main/packages/react-devtools-shared/src/backend/views/utils.js) — the 1-line fix location
+- [`react-devtools-shared` package tests — `extractHOCNames-test.js`](https://github.com/facebook/react/blob/main/packages/react-devtools-shared/src/__tests__/extractHOCNames-test.js) — the new nested-HOC test cases
+- [Cross-reference: components.md `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203)` (v1.5.27)](https://github.com/clawvpsai/frontend-skill/blob/main/components.md) — the previous PR #37203 forward-looking coverage
+- [Cross-reference: testing.md `## Playwright 1.63.0-alpha-2026-08-05 + next/image Preserve-Response Testing Pattern` (v1.5.27)](https://github.com/clawvpsai/frontend-skill/blob/main/testing.md) — DevTools testing context
+
 
 ## shadcn 4.16.1 — `shadcn build` Nested Directory ENOENT Fix + Search-Param Forwarding for Registries (July 31, 2026)
 

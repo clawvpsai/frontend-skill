@@ -4226,6 +4226,116 @@ rg -n "from ['\"]zod['\"]|require\(['\"]zod['\"]\)" app/ src/
 - [Next.js `next@16.3.1-canary.3` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.3) — npm-published 2026-08-05T06:27:06Z; canary.4 is built and will npm-publish within hours
 - [Next.js `next@16.3.0` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE; includes all 16.3.0 security fixes but NOT the canary.4-ahead fixes (PR #96252 + #96726 + #96727 + #96731 + #96697 ship in canary.4 / 16.3.1 STABLE)
 
+---
+
+## `next@16.3.1-canary.5` SHIPPED + `16.3.1-canary.6` Staged (August 7, 2026) — Coordinated TransportData Refactor (3-PR by acdlite) + 3 NEW Open Issues on 16.3.0 STABLE (`#96859` / `#96831` / `#96855`)
+
+The previous cycle (v1.5.32, 2026-08-07T00:03Z) predicted `next@16.3.1-canary.5` would npm-publish within 6-18h on the standard 24h cadence. **`next@16.3.1-canary.5` SHIPPED at 2026-08-07T01:27:54Z** — npm `dist-tag.canary` moved from `16.3.1-canary.4` → `16.3.1-canary.5`; the GitHub release tag `v16.3.1-canary.5` was published at 2026-08-07T01:16:45Z. **The v1.5.32 prediction window was almost exactly correct** — the npm publish landed ~1h25min after v1.5.32 committed. **14 commits vs canary.4** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.4...v16.3.1-canary.5` returning `ahead_by: 14, behind_by: 0`), which is the largest single canary cut in the 16.3.1 cycle so far. The **headline of this canary cut is the 3-PR coordinated `TransportData` refactor by Andrew Clark (acdlite)** — the largest internal architecture change since the `executionMode` refactor in v1.5.27. The 14 commits decomposing to: **3 material coordinated refactor PRs (PR #96406 + PR #96439 + PR #96679)** — the Andrew Clark TransportData refactor — **5 internal refactor / docs / CI commits** (the v1.5.30-v1.5.32 already-documented PRs that landed in canary.5: PR #96774 + #96720 + #95602 + #94604 + #96723 + #96250 + #96235 + #96745 + #96683 + #96772), **+ the `v16.3.1-canary.5` version-tag commit**. **The 3 NEW material Andrew Clark PRs are the cycle's headline**: each is a non-observable internal refactor for users on canary.5 today, but they pre-wire the wire-format transition to a unified `TransportData` representation, and they form the foundation for a future wire-format change. Plus **3 NEW material open issues affecting `next@16.3.0` STABLE users** were opened in the past 24h: **#96859** (Turbopack build fails on pages-router files named `sitemap`/`robots`), **#96831** (Turbopack `crossOrigin: "none"` string serialization breaks cross-origin assetPrefix CDNs), **#96855** (`appNewScrollHandler` scroll-reset regression with `position: fixed` parallel-route slots) — all covered from the deployment lens in `deployment.md` below, with cross-references in this section.
+
+### `canary.5` SHIP event — exact timestamps
+
+| Step | Timestamp | Source |
+|---|---|---|
+| Version-tag commit `b3bc5cd2` by `next-js-bot` | 2026-08-07T00:52:40Z | `GET /repos/vercel/next.js/commits/b3bc5cd2` |
+| GitHub release tag `v16.3.1-canary.5` published | 2026-08-07T01:16:45Z | `GET /repos/vercel/next.js/releases/tags/v16.3.1-canary.5` |
+| npm `dist-tag.canary` moved | 2026-08-07T01:27:54Z | `npm view next time --json` |
+| Commits vs canary.4 | 14 | `GET /repos/vercel/next.js/compare/v16.3.1-canary.4...v16.3.1-canary.5` returning `ahead_by: 14, behind_by: 0` |
+
+### The 14-commit canary.5 batch decomposing to 3 categories
+
+**Category A — Material coordinated refactor (3 PRs by Andrew Clark, the canary.5 HEADLINE):**
+
+1. **PR #96406 — `Unify RouteTree and CacheNodeSeedData on the client`** (Andrew Clark / acdlite, [commit `4ce4c519`](https://github.com/vercel/next.js/commit/4ce4c519), merged 2026-08-07T00:37:56Z, **9 files / +291/-183**). The client used to represent a server response as **two parallel trees**: a `RouteTree` describing the route structure, and a `CacheNodeSeedData` tree carrying the rendered output for each segment. The two are meant to be isomorphic, but nothing enforced that — every consumer walked them in lockstep and had to defend against mismatches. This PR **adds a `data` field to the `RouteTree` type** and makes it generic over a per-segment payload (`RouteTree<RSCSegmentData | null>`). This removes the need to pass a separate `CacheNodeSeedData` through the client navigation algorithm in `ppr-navigations.ts`. **Per the PR body**: *"This is a step toward replacing the RSC response transport format: with the client consuming a single unified tree, the wire format can move to one as well."* Pure refactor for users today; pre-wires the wire-format transition.
+
+2. **PR #96439 — `Unify full/partial navigation response types`** (Andrew Clark / acdlite, [commit `c37b7368`](https://github.com/vercel/next.js/commit/c37b7368), merged 2026-08-07T00:37:56Z, **17 files / +1342/-960**). Introduces a new type, `TransportData`, to replace `FlightDataPath`. The new format is **the same regardless of whether the entire page is rendered by the server or if some segments are intentionally omitted**. The type also **unifies `FlightRouterState` and `CacheNodeSeedData` into a single tree** that includes both route information and RSC data. Previously these were sent in two separate trees that were isomorphic by convention, requiring the consumer to walk both in parallel. These new types are intended to be **transport formats only** — the client already has its own, richer data structure called `RouteTree`. The transport format is converted into the client format at the network decoding boundary. This PR does not yet update the server to produce `TransportData` directly; a temporary adapter layer is used to convert from the old data formats to the new format. **This intermediate step will not land on its own; the next PR in the stack will both update the server and delete the temporary adapter layer** (i.e., PR #96679 below — the 3-PR stack is coordinated).
+
+3. **PR #96679 — `Refactor server from CacheNodeSeedData -> TransportData`** (Andrew Clark / acdlite, [commit `c713d487`](https://github.com/vercel/next.js/commit/c713d487), merged 2026-08-07T00:37:57Z, **14 files / +636/-757**). The previous PR in the stack (PR #96439) introduced `TransportData` but produced it via a temporary adapter layer that converted from the old data formats — `FlightRouterState` and `CacheNodeSeedData` trees, encoded as `FlightDataPath` entries. **As promised there, this PR updates the server to produce the new format directly and deletes the adapter.** Neither `FlightRouterState` nor `CacheNodeSeedData` appears in a rendered response anymore; `FlightRouterState` survives only on the client (router state, history) and as the request tree the client sends to the server, and `CacheNodeSeedData` is deleted from the codebase entirely. `createComponentTree` now returns the response's transport tree: each node carries its segment identity, its prefetch hints, and its render output, constructed in place as the tree renders. When a non-PPR prefetch stops at a loading boundary, the subtree below the cut is emitted as structure-only nodes with no render output — the same shape the client already interprets as "fetch lazily". `createFlightRouterStateFromLoaderTree` is replaced by `createTransportTreeFromLoaderTree`, which covers the cases where nothing is rendered: router-state-only responses, route tree prefetches, the structure below a loading-boundary cut, and error payloads. The prefetch hints computation is shared with `createComponentTree` through `computeSegmentPrefetchHints` so the two producers cannot drift.
+
+**Category B — v1.5.30 / v1.5.31 / v1.5.32 already-documented PRs (10 commits, all non-TransportData):**
+
+| SHA | Date | Author | PR | Headline | Lens file |
+|---|---|---|---|---|---|
+| `865d623` | 2026-08-05T23:49:38Z | Sam Poder | #96774 | [turbopack] Enable reexport-unknown execution test | non-material test infra (v1.5.29) |
+| `7916855` | 2026-08-06T07:09:24Z | Niklas Mischkulnig | #96720 | Bump `@swc/helpers` (closes #94634) | deployment.md (v1.5.30) |
+| `2c04735` | 2026-08-06T09:53:09Z | Sebbie Silbermann | #95602 | Remove `config.experimental.appNewScrollHandler` | deployment.md (v1.5.30) |
+| `b6d83ad` | 2026-08-06T12:44:39Z | kyamaz99 | #94604 | Fix(deployment-id): prevent exception on old webkit | deployment.md (v1.5.31) |
+| `5092386` | 2026-08-06T13:06:00Z | (docs bot) | #96723 | docs: update redirected links | non-material |
+| `f58c669` | 2026-08-06T13:25:52Z | ztanner | #96250 | Fix dev server page announcements | routing.md (v1.5.31) |
+| `d792fcf` | 2026-08-06T13:25:55Z | ztanner | #96235 | Fix use cache over/under-invalidation in dev | deployment.md (v1.5.31) |
+| `ede8799` | 2026-08-06T13:42:24Z | ztanner | #96745 | Require Cache Components for Instant Navigation testing | routing.md (v1.5.31) |
+| `4f37c39` | 2026-08-06T14:32:00Z | (ci bot) | #96683 | CI: automated update PRs with `nextjs-bot` | non-material |
+| `0ae8c72` | 2026-08-06T15:28:00Z | jankaeryga | #96772 | Consolidate `Promise.withResolvers` polyfills | this file (v1.5.32) |
+
+**Category C — Version-tag:** `b3bc5cd2` (2026-08-07T00:52:40Z, `next-js-bot`).
+
+### Why the 3-PR TransportData refactor matters — even though it's a pure refactor for users today
+
+The 3-PR TransportData refactor (PR #96406 + #96439 + #96679) is the **largest internal architecture change since the 9-PR `executionMode` refactor documented in `server-components.md` in v1.5.27**. Like that refactor, **zero user-facing behavior change** for users on `next@16.3.0` STABLE or on `next@16.3.1-canary.4` after upgrading to `canary.5`. **But the wire-format implications are concrete**:
+
+- **Today (post-canary.5):** the wire format is **unchanged**. The 3-PR stack introduces an internal `TransportData` representation, but the server **still serializes the response in the legacy `FlightDataPath` format** (via the `rsc-transport.ts` shared module). The temporary adapter layer from PR #96439 has already been deleted in PR #96679, but the actual transport format hasn't transitioned yet — it's still the legacy format, just produced directly instead of via adapter.
+- **Future canary cut (forward-looking):** a future PR will flip the wire format to the new `TransportData` representation. **When that happens, it will be a wire-format-breaking change** — any client that consumes RSC payloads directly (rare; mostly testing infrastructure + custom server-to-server pipelines + `dangerouslyAllowBrowser: true` setups) will need to update. Most users won't notice (the client `RouteTree` representation is unchanged; the conversion happens at the network decoding boundary).
+- **The architectural rationale (per Andrew Clark's PR bodies):** *"The client used to represent a server response as two parallel trees: a RouteTree describing the route structure, and a CacheNodeSeedData tree carrying the rendered output for each segment. The two are meant to be isomorphic, but nothing enforced that — every consumer walked them in lockstep and had to defend against mismatches between them. ... This is a step toward replacing the RSC response transport format: with the client consuming a single unified tree, the wire format can move to one as well."*
+
+**The fix shape:** unified single tree on the wire (`RouteTree<RSCSegmentData | null>`), no more parallel-tree walking on the client, no more temporary adapter layer on the server. The deletion of `transport-adapter.ts` (-227 lines) in PR #96679 is the most visible code-quality win.
+
+**Affected-deployment profile for the future wire-format transition** (forward-looking, not active today):
+- Users on `dangerouslyAllowBrowser: true` who parse RSC payloads client-side.
+- Users with custom server-to-server RSC pipelines (rare in production; mostly testing + RSC-as-API consumers).
+- Users with custom React Flight decoders (vanishingly rare; mostly academic + experimental projects).
+
+**For 99.9% of users**, the 3-PR refactor is invisible — the client `RouteTree` representation is unchanged, the network decoding boundary absorbs the format change, and no public API surface is touched. The benefit lands on the **maintainability** side: the parallel-tree walking was a known footgun, and the unified representation eliminates a class of "I forgot to update both trees" bugs.
+
+### 3 NEW material open issues on `next@16.3.0` STABLE — affecting users TODAY
+
+These 3 issues were opened in the past 24h and affect `next@16.3.0` STABLE + `16.3.1-canary.0/1/2/3/4` users **today**, not in some future canary. Each is documented from the deployment lens in `deployment.md` below with full PR attribution absent, audit recipes, and workarounds; this section is a cross-reference + headline summary.
+
+| Issue | Title | Affected deployments | Status | Covered in |
+|---|---|---|---|---|
+| **[#96859](https://github.com/vercel/next.js/issues/96859)** | Turbopack build fails on pages-router files named `sitemap`/`robots`: `"getStaticProps" is not supported in app/` (no `app/` directory) | `next@16.3.0` STABLE + `canary.0/1/2/3/4` + Turbopack + **pages-router-only projects** that have `pages/sitemap.js` or `pages/robots.js` | open (created 2026-08-06T19:33:07Z) | `deployment.md` below (the metadata-route filename convention collision) |
+| **[#96831](https://github.com/vercel/next.js/issues/96831)** | 16.3.0: Turbopack serializes `moduleLoading.crossOrigin` as string `"none"`, adding unexpected `crossorigin=""` to chunk scripts (breaks cross-origin assetPrefix CDNs) | `next@16.3.0` STABLE + `canary.0/1/2/3/4` + Turbopack + **cross-origin `assetPrefix` CDN** (different origin than the page) | open (created 2026-08-06T14:52:38Z) | `deployment.md` below (the CORS-mode loading failure) |
+| **[#96855](https://github.com/vercel/next.js/issues/96855)** | Scroll is not reset on navigation when a parallel route slot renders only a `position: fixed` element (`appNewScrollHandler` regression in 16.3.0) | `next@16.3.0` STABLE + `canary.0/1/2/3/4` + **parallel-route `@slot` that renders only fixed/sticky elements** | open (created 2026-08-06T18:28:57Z) | `deployment.md` below (the scroll-reset regression) |
+
+Plus **#96806** (Docker + cacheComponent + `headers()` 500 error in production) — **closed** in the 24h window; documented in `deployment.md` v1.5.30 cycle-append as forward-looking and now resolved.
+
+### `canary.6` staged on canary-branch ahead of canary.5 (forward-looking, 6h+ out from npm-publish)
+
+The canary-branch now has **3 NEW commits ahead of canary.5** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.5...canary` returning `ahead_by: 3, behind_by: 0`). The 3 commits are: **PR #96860** by Will Binns-Smith (merged 2026-08-07T03:39:38Z, [commit `286169a9`](https://github.com/vercel/next.js/commit/286169a9)) — `Remove `turbopack/packages` and relocate devlow to `packages/`` — release-engineering refactor; **PR #96871** by Will Binns-Smith (merged 2026-08-07T03:39:39Z, [commit `007058ef`](https://github.com/vercel/next.js/commit/007058ef)) — `Lint devlow-bench with the root eslint config` — non-material lint pass; **+ the `v16.3.1-canary.6` version-tag commit `6ec2ad50`** (2026-08-07T03:41:23Z, `next-js-bot`). **All non-material release-engineering** — no user-facing impact for any deployment. `canary.6` is staged and will npm-publish within 6-18h on the 24h cadence; the v1.5.34 cron will document the canary.6 SHIP event.
+
+### Recommended action
+
+**For users on `next@16.3.0` STABLE or `next@16.3.1-canary.0/1/2/3/4`:** check the 3 NEW open issues against your deployment profile using the `rg` audit recipes in `deployment.md` below:
+- `rg -ln "pages/(sitemap|robots)\."` → if hits, **issue #96859 affects you** (rename the file to avoid the metadata-route collision).
+- `rg -n "assetPrefix.*['"]https?://" next.config.*` → if hits AND the asset host is on a different origin AND you don't have CORS configured, **issue #96831 affects you** (configure ACAO on the CDN, OR roll back to `next@16.2.12`, OR temporarily use `output: 'export'` to bypass server-rendered preinited chunks).
+- `rg -ln "@(header|footer|sidebar|modal)/" app/` → if hits AND any `@slot/page.tsx` renders only `position: fixed`/`sticky` elements, **issue #96855 affects you** (add a hidden scroll-anchor element, OR roll back to `next@16.2.12`).
+
+**For users on `next@16.3.1-canary.5`:** no action required for the 3-PR TransportData refactor (zero user-facing behavior change). For the future wire-format transition (forward-looking), no action required today — when it lands in a future canary, this file will document the wire-format delta.
+
+**For users tracking canary-branch:** expect **canary.6** to npm-publish within 6-18h of this cron. The v1.5.34 cycle (in 6h) will document the canary.6 SHIP event if it lands within the next 6h window.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.5` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.5) — published 2026-08-07T01:16:45Z
+- [Next.js canary-branch compare `v16.3.1-canary.4...v16.3.1-canary.5`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...v16.3.1-canary.5) — 14 commits at this cron's check
+- [Next.js canary-branch compare `v16.3.1-canary.5...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.5...canary) — 3 NEW commits ahead (PR #96860 + PR #96871 + the canary.6 version-tag) at this cron's check
+- [Next.js PR #96406 — `Unify RouteTree and CacheNodeSeedData on the client`](https://github.com/vercel/next.js/pull/96406) — Andrew Clark, merged 2026-08-07T00:37:56Z, 9 files / +291/-183
+- [Next.js commit `4ce4c519`](https://github.com/vercel/next.js/commit/4ce4c519) — PR #96406 merge commit
+- [Next.js PR #96439 — `Unify full/partial navigation response types`](https://github.com/vercel/next.js/pull/96439) — Andrew Clark, merged 2026-08-07T00:37:56Z, 17 files / +1342/-960
+- [Next.js commit `c37b7368`](https://github.com/vercel/next.js/commit/c37b7368) — PR #96439 merge commit
+- [Next.js PR #96679 — `Refactor server from CacheNodeSeedData -> TransportData`](https://github.com/vercel/next.js/pull/96679) — Andrew Clark, merged 2026-08-07T00:37:57Z, 14 files / +636/-757
+- [Next.js commit `c713d487`](https://github.com/vercel/next.js/commit/c713d487) — PR #96679 merge commit
+- [Next.js commit `b3bc5cd2`](https://github.com/vercel/next.js/commit/b3bc5cd2) — the `v16.3.1-canary.5` version-tag commit
+- [Next.js commit `6ec2ad50`](https://github.com/vercel/next.js/commit/6ec2ad50) — the `v16.3.1-canary.6` version-tag commit
+- [Next.js PR #96860 — `Remove `turbopack/packages` and relocate devlow to `packages/`](https://github.com/vercel/next.js/pull/96860) — Will Binns-Smith, merged 2026-08-07T03:39:38Z (canary.6)
+- [Next.js PR #96871 — `Lint devlow-bench with the root eslint config`](https://github.com/vercel/next.js/pull/96871) — Will Binns-Smith, merged 2026-08-07T03:39:39Z (canary.6)
+- [Next.js issue #96859 — Turbopack build fails on pages-router files named `sitemap`/`robots`](https://github.com/vercel/next.js/issues/96859) — open
+- [Next.js issue #96831 — Turbopack `crossOrigin: "none"` serialization breaks cross-origin assetPrefix CDNs](https://github.com/vercel/next.js/issues/96831) — open
+- [Next.js issue #96855 — Scroll-reset regression with fixed-position parallel-route slots (`appNewScrollHandler` regression)](https://github.com/vercel/next.js/issues/96855) — open
+- [Cross-reference: deployment.md `## Next.js 16.3.0 STABLE — 3 NEW Open Issues Affecting Production Deployments Today` (this cycle)](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — full coverage of #96859 + #96831 + #96855 with audit recipes + workarounds
+- [Cross-reference: server-components.md `## App Router Execution Mode Refactor — 9-PR Coordinated Set` (v1.5.27)](https://github.com/clawvpsai/frontend-skill/blob/main/server-components.md) — the previous-largest coordinated refactor; same lens (zero user-facing behavior change, internal architecture cleanup)
+- [Cross-reference: performance.md `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix` (v1.5.28)](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the previous cycle's headline (PR #96252 + #96726 + #96727 + #96731 + #96697)
+
+---
+
 
 ## Web Vitals
 

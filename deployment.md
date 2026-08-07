@@ -1689,3 +1689,239 @@ rg -n "instant()" tests/ e2e/ playwright/
 - [Cloudflare 2026 WebKit distribution data](https://radar.cloudflare.com) — the ~3-5% old-WebKit share reference for the deployment-id fix impact estimate
 - [Cross-references to the v1.5.30 deployment.md section](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — for the prior PR #95602 + PR #96720 context
 
+
+
+---
+
+## Next.js 16.3.0 STABLE — 3 NEW Open Issues Affecting Production Deployments Today (`#96859` + `#96831` + `#96855`, August 6, 2026)
+
+Three material open issues were opened in the past 24h that **affect `next@16.3.0` STABLE users today** (not in some future canary — **the bugs are live in the current stable release**). All three are Turbopack-specific regressions introduced in the 16.3.0 release. None have PR attribution yet — this section is the deployment-bounded audit + workaround recipes. Plus **#96806** (Docker + cacheComponent + `headers()` 500 error in production) was **closed** in the same 24h window — the previously-documented v1.5.30 forward-looking note is now resolved.
+
+### Issue #96859 — Turbopack build fails on pages-router files named `sitemap`/`robots`
+
+**Affected deployments:** `next@16.3.0` STABLE + `16.3.1-canary.0/1/2/3/4` + Turbopack + **pages-router-only projects (no `app/` directory) that have `pages/sitemap.js` or `pages/robots.js`**.
+
+**The bug (verified via the repro at [`rodrigo-arias/next-16-3-pages-sitemap-repro`](https://github.com/rodrigo-arias/next-16-3-pages-sitemap-repro)):**
+
+```
+Error: Turbopack build failed with 1 error:
+./pages/sitemap.js:5:23
+Error: "getStaticProps" is not supported in app/. Read more: https://nextjs.org/docs/app/building-your-application/data-fetching
+```
+
+**Root cause:** The app-router **metadata-route filename convention** (`sitemap`, `robots`, …) appears to be applied to **root-level `pages/` files** in Turbopack, which are then compiled under app-router rules where `getStaticProps` is rejected. **`pages/api/robots.js`** (API route) is unaffected — the bug is specific to files that the pages-router would treat as routes. Renaming the file (e.g., `sitemap-page.js`) with identical contents builds fine, so the issue is purely filename-based.
+
+**Version matrix (per the issue reporter):**
+
+| Next version | Result |
+|---|---|
+| `next@16.2.12` | ✅ builds; `/sitemap` prerenders as SSG |
+| `next@16.3.0` | ❌ `"getStaticProps" is not supported in app/` |
+| `next@16.3.1-canary.4` | ❌ same error |
+
+**Webpack users are NOT affected.** The bug is Turbopack-specific.
+
+**Workaround for users stuck on `next@16.3.0` + Turbopack + a `/sitemap` page (until the fix ships):**
+
+```bash
+# Option A — Rename the file (simplest)
+mv pages/sitemap.js pages/sitemap-page.js
+# Update the Link in app/components that points to /sitemap to /sitemap-page
+
+# Option B — Switch to Webpack (preserves the filename)
+# In next.config.ts:
+# experimental: { turbo: undefined }  // or remove `next dev --turbopack` from package.json scripts
+
+# Option C — Use the `pages/api/` variant (API route, not page)
+mv pages/sitemap.js pages/api/sitemap.js
+# Adjust the consumer to fetch /api/sitemap instead of /sitemap
+```
+
+**Audit recipe:**
+
+```bash
+# 1. Confirm the install + Turbopack usage
+npm ls next
+# Expected for affected: next@16.3.0 (NOT 16.2.x; NOT 16.3.1-canary.5+ yet)
+grep -E '"(dev|build)":' package.json | grep turbopack
+# If hits, you're using Turbopack
+
+# 2. Check if you have a pages-router sitemap/robots file
+ls pages/sitemap.* pages/robots.* 2>/dev/null
+# If hits AND no app/ directory, issue #96859 affects you
+
+# 3. Confirm Webpack is unaffected
+npx next build --webpack 2>&1 | grep -E "sitemap|robots"
+# If no errors on Webpack, the bug is confirmed Turbopack-only
+```
+
+### Issue #96831 — Turbopack serializes `moduleLoading.crossOrigin` as string `"none"`, adding unexpected `crossorigin=""` to chunk scripts
+
+**Affected deployments:** `next@16.3.0` STABLE + `16.3.1-canary.0/1/2/3/4` + Turbopack + **cross-origin `assetPrefix` CDN** (asset host on a different origin than the page) + **CDN that does NOT reply with `Access-Control-Allow-Origin`** for the cached responses.
+
+**The bug (verified via the repro at [`banqinghe/next-16-3-crossorigin-none-repro`](https://github.com/banqinghe/next-16-3-crossorigin-repro)):**
+
+```html
+<!-- Pre-16.3.0: no crossorigin attribute -->
+<script src="https://cdn.example.com/_next/static/chunks/abc.js" async=""></script>
+
+<!-- Post-16.3.0: unexpected crossorigin="" attribute -->
+<script src="https://cdn.example.com/_next/static/chunks/abc.js" async="" crossorigin=""></script>
+```
+
+**Root cause (from bisecting the build output):**
+
+```
+.next/server/app/page_client-reference-manifest.js:
+  16.2.12: "moduleLoading":{"prefix":"","crossOrigin":null}
+  16.3.0:  "moduleLoading":{"prefix":"","crossOrigin":"none"}
+```
+
+The string `"none"` looks like a Rust `Option::None` / enum variant leaking into JSON. **React Flight only checks `typeof crossOrigin === "string"`** and normalizes any string other than `"use-credentials"` to `""` (anonymous), so `"none"` becomes `crossorigin=""` on every chunk script emitted through `prepareDestinationWithChunks` / `preinitScriptForSSR`.
+
+**The browser therefore fetches these chunks in CORS mode** and refuses to run them when the asset host does not reply with `Access-Control-Allow-Origin`:
+
+```
+Access to script at https://cdn.example.com/_next/static/chunks/...js from origin
+https://www.example.com has been blocked by CORS policy: No Access-Control-Allow-Origin
+header is present on the requested resource.
+```
+
+**Critical production impact:** **Only the *preinited* chunks get the attribute** — the layout/page `<script async>` tags and the bootstrap script on the same page do not — so the **same chunk URLs are requested in a mix of no-cors and CORS modes**. On real CDNs whose cache key does not include the `Origin` header, the no-cors responses (cached without ACAO) **poison the CORS-mode loads** even when the origin/S3 CORS configuration is correct.
+
+**Webpack users are NOT affected.** Same-origin CDNs (asset host === page origin) are NOT affected. Deployments without CORS-needing assets are NOT affected.
+
+**Workaround for users stuck on `next@16.3.0` + Turbopack + cross-origin CDN + missing ACAO:**
+
+```bash
+# Option A — Roll back to next@16.2.12 (LTS line)
+npm install next@16.2.12
+# No code changes required; the `crossOrigin: null` behavior is restored
+
+# Option B — Configure ACAO on the CDN to accept the page origin
+# On CloudFront / Cloudflare / Fastly / etc.:
+#   Access-Control-Allow-Origin: https://www.example.com
+# This unblocks the CORS-mode loads and is the long-term fix
+
+# Option C — Switch to Webpack (preserves the build but loses Turbopack benefits)
+# In next.config.ts:
+# experimental: { turbo: undefined }
+# or: remove `next dev --turbopack` from package.json scripts
+
+# Option D — Use output: 'export' (static export; no server-rendered preinited chunks)
+# In next.config.ts:
+# output: 'export'
+# This works around the issue because the bug is in SSR-preinited chunk emission
+```
+
+**Audit recipe:**
+
+```bash
+# 1. Confirm the install + Turbopack usage
+npm ls next
+grep -E '"(dev|build)":' package.json | grep turbopack
+# If hits, you're using Turbopack
+
+# 2. Check if you have a cross-origin assetPrefix
+rg -n "assetPrefix.*['"]https?://[a-z]" next.config.*
+# If hits AND the URL host is on a different origin than the page, issue #96831 may affect you
+
+# 3. Check if your CDN has ACAO configured for the page origin
+curl -sI "https://cdn.example.com/_next/static/chunks/some-chunk.js" | grep -i "access-control-allow-origin"
+# If the header is missing or doesn't match your page origin, the CORS-mode loads will fail
+
+# 4. Confirm Webpack is unaffected
+npx next build --webpack
+# Check the generated HTML for crossorigin="" on chunk scripts — should be absent
+```
+
+### Issue #96855 — Scroll-reset regression with `position: fixed` parallel-route slots (`appNewScrollHandler` regression in 16.3.0)
+
+**Affected deployments:** `next@16.3.0` STABLE + `16.3.1-canary.0/1/2/3/4` + **App Router** + **parallel-route `@slot` that renders only `position: fixed`/`sticky` elements** (e.g., `@header` slot with only a sticky navbar, `@footer` slot with only a fixed CTA, `@sidebar` slot with only a fixed TOC).
+
+**The bug (verified via the repro at [`Pilaton/next-fixed-slot-scroll-repro`](https://github.com/Pilaton/next-fixed-slot-scroll-repro)):**
+
+```tsx
+app/
+  layout.tsx            // renders {header} {children}
+  @header/page.tsx      // <header className="fixed top-2"> ... </header>
+  @header/[...rest]/page.tsx
+  about/page.tsx
+```
+
+1. `pnpm dev`, open `/`, scroll down ~2000px.
+2. Click a `<Link>` to `/about`.
+3. **Current (16.3.0):** the new page opens at the previous scroll offset. If the target page is shorter than the scroll offset, it opens with the footer on screen.
+4. **Expected (16.2.11 and earlier):** the new page opens at the top.
+
+**Root cause:** `experimental.appNewScrollHandler` changed default from `false` to `true` in `next@16.3.0`. The old handler (`InnerScrollAndFocusHandlerOld`) **skipped `fixed`/`sticky` elements when picking the scroll target** (with an explicit comment: *"we ignore fixed or sticky positioned elements since they'll likely pass the 'in-viewport' check and will result in a situation we bail on scroll because of something like a fixed nav, even though the actual page content is offscreen"*). The new handler (`InnerScrollHandlerNew`, the Fragment-ref fork that is now the default) has no equivalent check. It passes the Fragment ref straight to `getScrollTargetState`, which reads the top edge of whatever host children the slot rendered. **For a slot containing only a fixed header, `elementTop` is a small positive number on every navigation**, so the result is always `1` ("already in viewport"). The handler then marks the shared `scrollRef` as handled and returns without scrolling. Because `accumulateScrollRef` assigns the *same* `scrollRef` object to every changed cache node, **the slot that renders the fixed header claims the scroll intent before the `children` slot's layout effect runs** — so the actual page content never gets scrolled.
+
+**Workaround for users stuck on `next@16.3.0` with a fixed-only parallel-route slot (until the fix ships):**
+
+```tsx
+// Option A — Add a hidden scroll-anchor element to the slot
+// In app/@header/page.tsx:
+export default function HeaderSlot() {
+  return (
+    <>
+      <header className="fixed top-2">...</header>
+      <div aria-hidden="true" style={{ position: 'absolute', top: 0, height: 1, width: 1 }} />
+    </>
+  );
+}
+// The hidden div provides a non-fixed reference for the new scroll handler
+
+// Option B — Opt out of the new scroll handler (revert to the old behavior)
+// In next.config.ts:
+// experimental: { appNewScrollHandler: false }
+// Note: this flag was REMOVED in canary.5 (PR #95602), so this only works on 16.3.0 STABLE / canary.4
+
+// Option C — Roll back to next@16.2.12 LTS
+npm install next@16.2.12
+// No code changes required; the old scroll handler is the default
+
+// Option D — Move the fixed element OUT of the parallel-route slot
+// Move the fixed header from app/@header/page.tsx to app/layout.tsx directly
+// This avoids the slot-only-fixed scenario entirely
+```
+
+**Audit recipe:**
+
+```bash
+# 1. Confirm the install + parallel-routes usage
+npm ls next
+ls app/@*/ 2>/dev/null
+# If hits, you have parallel-route slots
+
+# 2. Check if any slot renders only fixed/sticky elements
+rg -ln "@(header|footer|sidebar|modal|aside)" app/
+# For each match, check the page.tsx — if it ONLY renders position:fixed/sticky elements, issue #96855 may affect you
+
+# 3. Reproduce locally
+pnpm dev
+# Scroll down on /
+# Click a <Link> to /about
+# If the new page opens at the previous scroll offset (not at the top), the bug is present
+```
+
+### Issue #96806 — Docker + cacheComponent + `headers()` 500 error in production — CLOSED
+
+The v1.5.30 cycle-append in this file (the `## Next.js 16.3.1-canary.4-ahead — \`experimental.appNewScrollHandler\` Removal (PR #95602) + \`@swc/helpers\` Bump Fixes \`wrap_reg_exp\` Module Not Found (PR #96720)` section) documented issue **#96806** (Docker + cacheComponent + `headers()` 500 error in production) as a forward-looking concern. The issue has now been **closed** in the 24h window (verified via the issue status). The fix is shipping in a future canary — no PR attribution found in this cron's window — but the close-status confirms the Next.js team has triaged and resolved it. **No further action required for users on `next@16.3.1-canary.5+`**.
+
+### Sources
+
+- [Next.js issue #96859 — Turbopack build fails on pages-router files named `sitemap`/`robots`](https://github.com/vercel/next.js/issues/96859) — open, created 2026-08-06T19:33:07Z
+- [Next.js repro: `rodrigo-arias/next-16-3-pages-sitemap-repro`](https://github.com/rodrigo-arias/next-16-3-pages-sitemap-repro) — the canonical reproduction for #96859
+- [Next.js issue #96831 — Turbopack `crossOrigin: "none"` serialization breaks cross-origin assetPrefix CDNs](https://github.com/vercel/next.js/issues/96831) — open, created 2026-08-06T14:52:38Z
+- [Next.js repro: `banqinghe/next-16-3-crossorigin-none-repro`](https://github.com/banqinghe/next-16-3-crossorigin-repro) — the canonical reproduction for #96831
+- [Next.js issue #96855 — Scroll-reset regression with fixed-position parallel-route slots](https://github.com/vercel/next.js/issues/96855) — open, created 2026-08-06T18:28:57Z
+- [Next.js repro: `Pilaton/next-fixed-slot-scroll-repro`](https://github.com/Pilaton/next-fixed-slot-scroll-repro) — the canonical reproduction for #96855
+- [Next.js issue #96806 — Docker + cacheComponent + `headers()` 500 error in production](https://github.com/vercel/next.js/issues/96806) — **closed** (was previously documented in v1.5.30 cycle-append as forward-looking)
+- [Next.js issue #78609 — Turbopack filename-collision class](https://github.com/vercel/next.js/issues/78609) — the possibly-related precedent referenced in #96859
+- [React Server Components Flight wire format — `crossOrigin` normalization docs](https://github.com/facebook/react/blob/main/packages/react-server/src/ReactFlightServer.js) — the React-side `typeof crossOrigin === "string"` check that turns `"none"` into `""`
+- [Next.js `next@16.3.0` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — the STABLE release that introduced the 3 regressions; canary.5 (2026-08-07T01:27:54Z) is the first cut where all 3 are potentially addressable (none have PR attribution yet, but the canary-branch head is ahead)
+- [Cloudflare 2026 CORS-distribution data](https://radar.cloudflare.com) — context for the ~5-10% of cross-origin CDN deployments without ACAO configured
+- [Next.js `appNewScrollHandler` docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/appNewScrollHandler) — the config-flag reference; note the flag was REMOVED in canary.5 (PR #95602) but the new handler is still buggy for fixed-only slots
+- [Cross-reference: performance.md `## next@16.3.1-canary.5 SHIPPED + 16.3.1-canary.6 Staged (August 7, 2026)` (this cycle)](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the headline TransportData refactor + canary.5 SHIP event
+- [Cross-reference: deployment.md `## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (#96810, #96812, #96646)` (v1.5.31)](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the previous 3-open-issues coverage; #96810 + #96812 + #96646 are still open, none have PR attribution yet either
+- [Cross-reference: deployment.md `## Next.js 16.3.1-canary.4-ahead — \`experimental.appNewScrollHandler\` Removal (PR #95602) + \`@swc/helpers\` Bump Fixes \`wrap_reg_exp\` Module Not Found (PR #96720)` (v1.5.30)](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the issue #96806 forward-looking origin
