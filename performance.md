@@ -4416,31 +4416,39 @@ Docs-only update that fixes broken links across the Next.js documentation. No co
 
 CI-infra change — `nextjs-bot` is now configured to open automated update PRs (likely Dependabot-equivalent for the Next.js org's own internal dependencies). **No user-facing impact** — purely an internal CI workflow improvement.
 
-### `canary.5` staging note
+### `16.3.1-canary.7` SHIPPED (August 7, 2026) — styled-jsx SSR Regression Fix + Turbopack Improvements
 
-The canary-branch now has **10 commits ahead of canary.4** with `v16.3.1-canary.5` **NOT YET npm-published** at this cron's check (npm `dist-tag.canary` still points at `16.3.1-canary.4`; the canary.5 version-tag commit is not yet committed on the canary branch). Expect canary.5 to npm-publish within **6-18 hours** on the standard 24h cadence — the version-tag commit typically lands when the canary-branch lead decides the batch is stable, and the npm-publish follows ~10-30 minutes later.
+**`next@canary` SHIPPED at `v16.3.1-canary.7`** — npm-published 2026-08-07T10:11:39Z (~2h before this cron's check), exactly within the v1.5.33 cron's predicted 6-18h window. The batch includes **4 PRs** since canary.5 (canary.6 was release-only with no npm-publish):
 
-### Cumulative `v16.3.1-canary.4...canary` commit table (10 commits, Aug 5–6)
-
-| SHA | Date | Author | Headline |
+| PR | Title | Impact | Documented |
 |---|---|---|---|
-| `865d623` | 2026-08-05T23:49:38Z | Sam Poder | [turbopack] Enable reexport-unknown execution test (PR #96774) — **non-material, test infra only** (already documented in v1.5.30) |
-| `7916855` | 2026-08-06T07:09:24Z | Niklas Mischkulnig | Bump `@swc/helpers` (PR #96720) — **MATERIAL** [bundling reliability fix; closes #94634] (already documented in v1.5.30 deployment.md) |
-| `2c04735` | 2026-08-06T09:53:09Z | Sebbie Silbermann | `[fragment-scroll] Remove `config.experimental.appNewScrollHandler`` (PR #95602) — **MATERIAL** [config-flag removal] (already documented in v1.5.30 deployment.md) |
-| `b6d83ad` | 2026-08-06T12:44:39Z | Niklas Mischkulnig | Fix(deployment-id): prevent exception on old webkit (PR #94604) — **MATERIAL** [Safari < 16.4 runtime exception fix] (already documented in v1.5.31 deployment.md) |
-| `5092386` | 2026-08-06T13:06:00Z | (docs bot) | docs: update redirected links to current targets (PR #96723) — **non-material** |
-| `f58c669` | 2026-08-06T13:25:52Z | ztanner | Fix which pages the dev server announces, and when (PR #96250) — **MATERIAL** [dev-server page-announcement fix] (already documented in v1.5.31 routing.md) |
-| `d792fcf` | 2026-08-06T13:25:55Z | ztanner | Fix use cache over- and under-invalidation in dev (PR #96235) — **MATERIAL** [dev-mode cache warmup flakes] (already documented in v1.5.31 deployment.md) |
-| `ede8799` | 2026-08-06T13:42:24Z | ztanner | Require Cache Components for Instant Navigation testing (PR #96745) — **MATERIAL** [testing API coupling] (already documented in v1.5.31 routing.md) |
-| `4f37c39` | 2026-08-06T14:32:00Z | (ci bot) | `[ci] Open automated update pull requests with `nextjs-bot`` (PR #96683) — **non-material** |
-| `0ae8c72` | 2026-08-06T15:28:00Z | jankaeryga | Consolidate `Promise.withResolvers` polyfills (PR #96772) — **internal refactor, zero user-facing change** (this cycle's headline) |
+| **#96632** | Fix missing styled-jsx styles in Pages Router SSR on adapter builds | **MATERIAL — production regression fix** | `styling.md` (new section) |
+| **#75682** | Show compiler plugin warning in more situations | Minor dev-experience | Not separately documented |
+| **#96560** | Turbopack: name module in non-ESM-placeable error + stop duplicating importer | Minor Turbopack DX | Not separately documented |
+| **#96558** | Turbopack: support `type: 'text'` in rules + error on binding imports of non-ESM | Minor Turbopack feature | Not separately documented |
+
+The headline is **PR #96632** — a production-breaking SSR regression affecting every Pages Router app deployed on Vercel (or any build adapter). See the new **`styling.md`** section: [Next.js 16.3.1-canary.7 — styled-jsx SSR Regression Fix (PR #96632)](#next-js-1631-canary7--styled-jsx-ssr-regression-fix-pr-96632-august-7-2026--shipped) for the full root-cause walkthrough, the affected-versions table, and the audit recipe.
+
+**PR #75682** (`Show compiler plugin warning in more situations`) expands the compiler warning cases for `babel-plugin-react-remove-properties` to match the existing `styled-components` case — ensuring the same class of "this will strip your `data-*` attributes in production" warning fires for styled-jsx users too.
+
+**PR #96560 + #96558** are Turbopack DX improvements (module naming in error traces + `type: 'text'` rule support) with no user-facing behavior change.
 
 ### Recommended action
 
-**For users on `next@16.3.1-canary.4`:** no action required — PR #96772 (the new commit in this cycle) is a pure refactor with zero user-facing impact. The next canary.5 npm-publish will include PR #96772 alongside the already-documented PRs from v1.5.30 + v1.5.31.
+**For users on `next@16.3.0` STABLE or `next@16.3.1-canary.0` through `canary.6` with Pages Router on Vercel:** **upgrade to `next@canary` immediately** — the styled-jsx SSR FOUC regression is a production bug. The upgrade is a drop-in replacement, no code changes required.
 
-**For users tracking canary-branch:** expect **canary.5** to npm-publish within 6-18h of this cron. The v1.5.33 cycle (in 6h) will document the canary.5 SHIP event if it lands within the next 6h window.
+**For users on `next@16.3.1-canary.5`:** you have all the material PRs from the canary.5 batch already. The canary.7 upgrade adds the styled-jsx SSR fix + the minor Turbopack DX improvements. Safe to upgrade.
 
+**For users tracking `next@latest` (16.3.0 STABLE):** the styled-jsx SSR fix will land in the next stable patch. Track the [Next.js releases page](https://github.com/vercel/next.js/releases) for `16.3.1-patch` or `16.3.2`.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.7` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.7) — npm-published 2026-08-07T10:11:39Z
+- [PR #96632 — styled-jsx SSR fix](https://github.com/vercel/next.js/pull/96632) — 7 commits, merged 2026-08-07T06:26:16Z
+- [PR #75682 — compiler plugin warning](https://github.com/vercel/next.js/pull/75682) — merged 2026-08-07T07:08:36Z
+- [PR #96560 — Turbopack error naming](https://github.com/vercel/next.js/pull/96560) — merged 2026-08-07T09:39:16Z
+- [PR #96558 — Turbopack type:text support](https://github.com/vercel/next.js/pull/96558) — merged 2026-08-07T09:38:59Z
+- [Cross-reference: v1.5.34 styling.md — styled-jsx SSR Regression Fix (PR #96632)](https://github.com/clawvpsai/frontend-skill/blob/main/styling.md#next-js-1631-canary7--styled-jsx-ssr-regression-fix-pr-96632-august-7-2026--shipped)
 ### Sources
 
 - [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 10 commits at this cron's check

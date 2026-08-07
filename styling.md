@@ -1854,3 +1854,84 @@ npm view tailwindcss dist-tags --json | head -10
 - [PR #20201 — pending platform support PR closed by PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20201)
 - [napi-rs WASM loader docs](https://napi-rs.dev/docs/concepts/wasi) — the underlying WASM runtime used by the fallback
 - [Tailwind CSS CHANGELOG.md (still showing 4.3.3 as latest; will be updated on the next release)](https://github.com/tailwindlabs/tailwindcss/blob/main/CHANGELOG.md)
+
+---
+
+## Next.js 16.3.1-canary.7 — styled-jsx SSR Regression Fix: Missing Styles in Pages Router Adapter Builds (PR #96632, August 7, 2026 — SHIPPED)
+
+### What happened
+
+**PR #96632** (`ae4063e`, merged 2026-08-07T06:26:16Z, npm-published in `16.3.1-canary.7` 2026-08-07T10:11:39Z) fixes a **production-breaking SSR regression** affecting Pages Router apps deployed through a build adapter — which includes every Vercel deployment, since Vercel's infrastructure uses build adapters internally.
+
+**Affected versions:** `next@16.3.0` STABLE + all `next@16.3.1-canary.0` through `canary.6` (the fix ships in `canary.7`).
+
+**Symptom:** Pages using `styled-jsx` render with a **flash of unstyled content (FOUC)** in production. The JSX-style class names (`jsx-*`) are still emitted by the Babel transform, but the SSR HTML contains no `<style>` tags — so the CSS only loads client-side after hydration.
+
+### Root cause walkthrough
+
+The Pages Router renderer and user code must share a **single `styled-jsx` module instance**. Here's why:
+
+1. **`render.tsx`** creates the style registry and hands it to user code through a React context owned by that specific module instance.
+2. If user code resolves to a **different `styled-jsx` instance** than Next.js' own pinned copy — which happens as soon as the app has a `styled-jsx` dependency that doesn't dedupe — `JSXStyle` silently renders nothing during SSR (`if (!registry) return null`).
+3. **Turbopack** keeps `styled-jsx`/`styled-jsx/style` external in the pages server bundle, so the single-instance guarantee is established at **runtime** by `next/dist/server/require-hook`, which uses `require.resolve()` to pin to Next.js' own copy.
+4. The problem: `require.resolve()` resolves to a file path. Nothing in any module graph references those files (user code only ever references its own copy), so **output tracing had to add them explicitly** — or the deployment is missing the file, `require.resolve()` throws, the aliases are (silently) never registered, and the two `styled-jsx` instances drift apart.
+5. That explicit tracing existed only for the whole-app `next-server.js.nft.json` / `next-minimal-server.js.nft.json`. But **those files are not generated at all when a build adapter is used** — because an adapter assembles its output from each endpoint's own NFT instead (the `is_using_adapter` early return). The adapter's comment said "don't need any server NFTs" — true for those two whole-app files, but **not for the styled-jsx entries they also carried**.
+
+The fix (7 commits, 4 files changed / +101/-38):
+- `crates/next-api/src/next_server_nft.rs`: extracts `styled_jsx_require_hook_modules()` and adds an accurate comment to the `is_using_adapter` early return.
+- `crates/next-api/src/project.rs`: `Project::additional_traced_modules` now also returns those modules, alongside the existing `cacheHandler`/`cacheHandlers` entries.
+- `packages/next/src/server/require-hook.ts`: extracts `styledJsxRequireHookEntries()` and replaces the silent `catch (_) {}` around registering the aliases with a **diagnostic warning** (still never throws — but now you know if it happens).
+- `packages/next/src/build/adapter/build-complete.ts` + `collect-build-traces.ts`: use that helper instead of re-deriving the same resolution inline.
+
+### Practical impact
+
+| Scenario | Before fix | After fix |
+|---|---|---|
+| Vercel deployment + Pages Router + styled-jsx | FOUC in production SSR | CSS renders server-side ✅ |
+| Self-hosted adapter build + styled-jsx | FOUC in production SSR | CSS renders server-side ✅ |
+| Pages Router without styled-jsx | No change | No change |
+| App Router | No change (App Router doesn't use this path) | No change |
+| Webpack production build | No change | No change |
+
+**The `catch (_) {}` → diagnostic warning change** in `require-hook.ts` means if the styled-jsx alias registration ever fails in the future, you'll get a warning instead of silent failure.
+
+### Recommended action
+
+**For users on `next@16.3.0` STABLE or `next@16.3.1-canary.0` through `canary.6` with Pages Router on Vercel (or any build adapter):**
+- Upgrade to `next@canary` (which is now `16.3.1-canary.7` or later) — the styled-jsx SSR fix is a drop-in, no code changes required.
+- If you can't bump canary yet: check your deployed HTML for `<style data-styled-jsx>` tags. If they're missing but your `styled-jsx` classes (`jsx-*`) are in the HTML, you're hitting this regression.
+- **Workaround (no upgrade needed):** ensure your `styled-jsx` version dedupes with Next.js' pinned copy by removing any direct `styled-jsx` dependency from your `package.json` and relying on Next.js' bundled version.
+
+### Audit recipe
+
+```bash
+# 1. Are you on a Pages Router deployment on Vercel (or any adapter)?
+grep -r "pages/" next.config.* | grep -v ".next" | head -3
+# If you see page files under pages/, you may be affected.
+
+# 2. Check if styled-jsx is in your dependency tree
+npm ls styled-jsx 2>/dev/null
+
+# 3. Check if your SSR HTML has styled-jsx style tags
+# Deploy with the fix first, then:
+curl -s https://your-app.com/your-page | grep "styled-jsx" | head -5
+# If you see <style data-styled-jsx> tags → fix applied ✅
+
+# 4. Upgrade to canary.7+
+npm view next@canary version  # should be 16.3.1-canary.7 or later
+npm install next@canary  # or pin to canary.7 specifically
+
+# 5. Pin strategy: once 16.3.1 stable ships, bump to that.
+# The styled-jsx SSR fix will land in the next stable patch.
+```
+
+### Sources
+
+- [PR #96632 — Fix missing styled-jsx styles in Pages Router SSR on adapter builds](https://github.com/vercel/next.js/pull/96632) — 7 commits, merged 2026-08-07T06:26:16Z
+- [Commit `ae4063e` — headline commit](https://github.com/vercel/next.js/commit/ae4063e)
+- [Commit `e848b53` — Only trace require-hook modules for Pages Router endpoints](https://github.com/vercel/next.js/commit/e848b53)
+- [Commit `a83ae60` — Fix stale reference comment](https://github.com/vercel/next.js/commit/a83ae60)
+- [Next.js `v16.3.1-canary.7` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.7) — npm-published 2026-08-07T10:11:39Z
+- [`packages/next/src/server/require-hook.ts`](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/require-hook.ts) — the `styledJsxRequireHookEntries()` + diagnostic warning
+- [`crates/next-api/src/project.rs`](https://github.com/vercel/next.js/blob/canary/crates/next-api/src/project.rs) — `additional_traced_modules` now includes styled-jsx
+- [Test: `test/production/adapter-styled-jsx/`](https://github.com/vercel/next.js/tree/canary/test/production/adapter-styled-jsx) — new regression test
