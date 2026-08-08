@@ -2997,3 +2997,67 @@ grep -A 2 'function extractHOCNames' node_modules/react/cjs/react-dom-client.dev
 - [React compare `11eddecd91...ec61f187fe`](https://github.com/facebook/react/compare/11eddecd91...ec61f187fe) — 2 commits at this cron's check (PR #37203 + PR #37215)
 - [Cross-reference: v1.5.27 `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-11eddecd-20260805-shipped--react-main-branch-enableconditionalusewarning-flag-pr-37203-august-5-2026--7dfc7ccd--11eddecd) — the 11eddecd SHIP event with PR #37203 forward-looking
 - [Cross-reference: v1.5.31 `## React main branch ahead of 11eddecd: 1 NEW commit — PR #37215 [DevTools] Fix nested HOC name extraction in extractHOCNames (August 6, 2026) — DevTools-Only`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-main-branch-ahead-of-11eddecd-1-new-commit--pr-37215-devtools-fix-nested-hoc-name-extraction-in-extract hocnames-august-6-2026--devtools-only) — the v1.5.31 forward-looking note for PR #37215 (now live in ec61f187 canary)
+
+## React Main Branch — `onBrowserBailout` Fizz Option (PR #37193, August 8, 2026 — Forward-Looking for React 19.3.x)
+
+A NEW React main branch commit landed in the 5h window since the v1.5.36 cycle: **PR #37193 `Add onBrowserBailout Fizz option`** by Josh Story (gnoff@storyposted.com), merged 2026-08-08T02:31:46Z (~3h30min before this cron's check). Verified at this cron's check via `GET /repos/facebook/react/commits?per_page=10&sha=main` returning 10 commits ahead of the latest npm-publish (the latest canary `ec61f187-20260806` is at the 9th position in the main-branch feed; PR #37193 is at position 1). **Not yet npm-published in any canary dist-tag.** The PR is 130 lines added / 24 lines deleted across 17 files (the 17 files include the Fizz SSR runtime + a comprehensive test suite).
+
+### What is `onBrowserBailout`?
+
+Fizz is React's **server-side streaming renderer** used by Next.js + Waku + other React 19 server-rendered frameworks. When a server render hits a `ReactDOM.browser()` call (the React 19.x API for "this should run on the browser, not the server") or any future API that uses the same recoverable error mechanism, Fizz can **bail out** of the server render and defer the work to the browser. The new `onBrowserBailout` option lets you observe these intentional bailouts.
+
+### API surface
+
+```typescript
+// New Fizz option (alongside `onError`, `onShellReady`, etc.)
+onBrowserBailout?: (error: unknown, errorInfo: ErrorInfo) => void
+
+// Default: noop
+// Runs only when Fizz successfully recovers by deferring work to the browser
+// Receives the original recoverable error + the ErrorInfo
+```
+
+### Behavior contract
+
+- **Recoverable consumed within Suspense** → reported through `onBrowserBailout` (NOT through `onError`).
+- **Recoverable used to abort a recoverable boundary** → reported through `onBrowserBailout` (NOT through `onError`).
+- **Bailout outside Suspense** → still fatal; reports through `onError` with the original recoverable preserved as its `cause`.
+- **Directly throwing the value** → behaves like a normal render error → reports through `onError`.
+
+### Practical impact for React 19.3.x users
+
+**Use case:** observability for server-rendered apps that intentionally bail out to the browser for client-only APIs. Without `onBrowserBailout`, the only way to detect these bailouts is to instrument every `ReactDOM.browser()` call site. With `onBrowserBailout`, a single Fizz option captures all bailout events for monitoring (Datadog, Sentry, Honeycomb, etc.).
+
+**For Next.js 16.3+ users:** Next.js uses Fizz internally for App Router SSR. The Next.js team can opt into `onBrowserBailout` to surface bailout events in the Next.js dev overlay or telemetry pipeline. **No user-facing change** in this PR — the API is opt-in via Fizz configuration.
+
+**For framework authors (Waku, React Router v7 framework mode, custom SSR setups):** this is the canonical hook for capturing intentional server-render bailouts. Use it to:
+1. **Count bailout frequency** — high bailout rates signal a code path that's too client-heavy for SSR.
+2. **Track which boundaries bail out** — `errorInfo.componentStack` tells you which component initiated the bailout.
+3. **Correlate with hydration cost** — bailouts to the browser typically add hydration latency; track them together.
+
+**Audit recipe** (for when this ships in `react@canary`):
+```bash
+# Watch for the new Fizz option
+npm view react dist-tags
+# Look for new canary cut (next expected: 19.3.0-canary-XXXXXXXX-20260XXX)
+
+# Check if you use Fizz directly (Next.js users — Fizz is used internally, no direct API exposure)
+rg "import.*fizz" --type ts --type tsx --type js --type jsx app/ src/
+# If you don't import Fizz directly, you don't need to do anything; Next.js handles Fizz config
+
+# For framework authors who wrap Fizz:
+rg "renderToReadableStream.*onError" --type ts app/ src/
+# Add onBrowserBailout alongside onError
+```
+
+**Recommendation:** no action required for Next.js users. **For framework authors** who wrap Fizz directly, add `onBrowserBailout` to your telemetry pipeline when React 19.3.x ships (expect within 1-3 weeks).
+
+### Sources
+
+- [React PR #37193 — Add `onBrowserBailout` Fizz option](https://github.com/facebook/react/pull/37193) — by Josh Story, merged 2026-08-08T02:31:46Z, 17 files / +130/-24, in the React main branch ahead of the latest canary `ec61f187-20260806`. **NOT YET in any npm-published React dist-tag.** Forward-looking for React 19.3.x (expect 19.3.0-canary-XXXXXXXX-20260XXX within 1-3 weeks).
+- [React main branch commits feed](https://github.com/facebook/react/commits/main) — 10 commits at this cron's check; PR #37193 is the most recent (ahead of the latest npm canary `ec61f187-20260806`).
+- [React `ReactDOM.browser()` API docs](https://react.dev/reference/react-dom/browser) — the React 19.x API that triggers the recoverable error mechanism that `onBrowserBailout` observes.
+- [React Fizz renderer docs (server)](https://react.dev/reference/react-dom/server/renderToReadableStream) — the Fizz streaming SSR API that `onBrowserBailout` is an option for.
+- [React 19.2 release notes (October 2025)](https://react.dev/blog/2025/10/01/react-19-2) — the React 19.2 release that introduced `ReactDOM.browser()`.
+- [Cross-reference: v1.5.35 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED (August 7, 2026) — 11eddecd → ec61f187 (PR #37203 + PR #37215 in canary bundle)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-ec61f187-20260806-shipped-august-7-2026--11eddecd--ec61f187-pr-37203--pr-37215-in-canary-bundle) — the prior React canary SHIP event that PR #37193 builds on
+

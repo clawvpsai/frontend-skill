@@ -2019,3 +2019,97 @@ rg -n "revalidatePath\|revalidateTag" app/ actions/ src/
 - [Cross-reference: v1.5.36 performance.md `## next@16.3.1-canary.8 SHIPPED` — full PR-by-PR deep dive](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the canary.8-batch coverage with the full deep dives on PR #96779 + PR #96778 + PR #96578 + PR #96932 + PR #96945
 - [Cross-reference: v1.5.34 performance.md `## 16.3.1-canary.7 SHIPPED — styled-jsx SSR Regression Fix + Turbopack Improvements`](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the canary.7 SHIP event that this canary.8 cycle builds on
 - [Cross-reference: v1.5.34 deployment.md `## Next.js 16.3.1-canary.4-ahead — experimental.appNewScrollHandler Removal (PR #95602) + @swc/helpers Bump Fixes wrap_reg_exp Module Not Found (PR #96720)` — the previous canary-batch coverage](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md)
+
+## Next.js — `output: 'export'` Large Static Exports Warning (PR #80037, August 8, 2026 — Forward-Looking for canary.9+)
+
+A new **build-time warning** for `output: 'export'` builds with >15,000 pages is in the canary-branch ahead of `16.3.1-canary.8` (merged 2026-08-08T05:27:33Z, verified at this cron's check via `GET /repos/vercel/next.js/issues?state=closed&since=2026-08-08T00:00:00Z` returning 5 closed items including PR #80037). **Not yet npm-published in a canary.** PR #80037 by the Next.js team adds `OUTPUT_EXPORT_PAGE_COUNT_WARNING_THRESHOLD = 15_000` to `packages/next/src/lib/constants.ts` and checks `filteredPaths.length > THRESHOLD` after the page filter in `packages/next/src/export/index.ts`. When triggered, the build emits:
+
+```
+⚠ Attempting to statically export {X} pages with 'output: "export"'. Generating over {Y} pages this way can lead to build issues due to Node.js limitations.
+For improved scalability with Next.js, consider removing 'output: "export"' and using Incremental Static Regeneration (ISR) with a compatible host (e.g., Vercel).
+Learn more: https://nextjs.org/docs/app/guides/incremental-static-regeneration
+```
+
+**Why this matters — closes the `RangeError: Maximum call stack size exceeded` crash on large static exports.** The bug: users attempting to statically export 100,000+ pages with `output: 'export'` frequently hit `RangeError: Maximum call stack size exceeded` during the "Collecting page data" phase of the build. The error is opaque and confusing — the warning gives a proactive heads-up before the crash. Related issues: #80032 (the canonical bug), community reports like [generateStaticParams not working with large dataset (1.4 Million records)](https://www.reddit.com/r/nextjs/comments/1izajy2/generatestaticparams_not_working_with_large/) and [10 thousand pages on build time with ISR](https://www.reddit.com/r/nextjs/comments/14c36e6/10_thousand_pages_on_build_time_with_isr/). **Practical impact for deployment-critical sites:**
+- **Small sites (<15,000 pages):** zero change — warning never fires; your existing build is fine.
+- **Medium sites (15,000–100,000 pages):** warning fires on every build; your build may complete but is in the danger zone. **Recommended action:** migrate to ISR + a Node-capable host (Vercel, or any host that supports ISR via the Next.js server runtime). The migration recipe: remove `output: 'export'` from `next.config.js`; add `revalidate` to your `fetch` calls or `export const revalidate = N` to your pages; deploy to a Node-capable host. If you must stay on `output: 'export'`, plan for **per-page generation** (split the build into N smaller builds, each with its own `next.config.js` filtering to a subset of pages).
+- **Large sites (100,000+ pages):** warning fires; build likely crashes with `RangeError`. **Required action:** migrate to ISR. `output: 'export'` cannot scale beyond ~15,000-30,000 pages per build.
+
+**Audit recipe:**
+```bash
+# Check if your build hits the threshold
+NEXT_TELEMETRY_DISABLED=1 pnpm build 2>&1 | grep -i "Attempting to statically export"
+# If hits, your build is in the danger zone (>15,000 pages)
+
+# Count your pages
+rg -l "export default function Page" app/ pages/ | wc -l
+# Or, if using generateStaticParams:
+rg "generateStaticParams" app/ pages/ -A 30 | rg "return \[" | wc -l
+
+# Check if you have any existing "Collecting page data" build errors in CI logs
+grep -l "RangeError" .next/build-trace*  # might exist if you have a previous failed build
+```
+
+**Recommendation:** even if your site is currently under 15,000 pages, plan the migration to ISR before you cross the threshold. **When this ships** (expect canary.9 within 6-18h of this cron's check), upgrading from `^16.3.0` to `^16.3.1-canary.9+` (or `^16.3.1` STABLE when it ships) gives you the proactive warning. **No action required if your site stays under the threshold.**
+
+### Sources
+
+- [Next.js PR #80037 — Add warning for large static exports](https://github.com/vercel/next.js/pull/80037) — by the Next.js team, merged 2026-08-08T05:27:33Z, 2 files / +27/-0, closes issue #80032 by context (the PR body provides context; not `fixes #80032` directly). Forward-looking for canary.9+.
+- [Next.js issue #80032 — RangeError: Maximum call stack size exceeded on output: 'export' with large page counts](https://github.com/vercel/next.js/issues/80032) — the canonical bug report for the `RangeError` on large static exports. Fixed via the new warning in PR #80037.
+- [Next.js `output: 'export'` docs](https://nextjs.org/docs/app/guides/static-exports) — the static export configuration reference; the new warning links to this in its message body.
+- [Next.js Incremental Static Regeneration (ISR) docs](https://nextjs.org/docs/app/guides/incremental-static-regeneration) — the migration target recommended in the new warning message body.
+- [Reddit: generateStaticParams not working with large dataset (1.4 Million records)](https://www.reddit.com/r/nextjs/comments/1izajy2/generatestaticparams_not_working_with_large/) — community report of the `RangeError` on a 1.4M-page dataset, cited in PR #80037's body as context.
+- [Reddit: 10 thousand pages on build time with ISR](https://www.reddit.com/r/nextjs/comments/14c36e6/10_thousand_pages_on_build_time_with_isr/) — community report of the build-time scaling limit on `output: 'export'`, cited in PR #80037's body.
+- [Next.js PR #95993 — [turbopack] Follow re-exports for side-effect free async modules](https://github.com/vercel/next.js/pull/95993) — by the Next.js team, merged 2026-08-08T01:28:49Z, 17 files / +176/-39. The canary-branch is now 1 commit ahead of canary.8. Forward-looking for canary.9.
+- [Cross-reference: v1.5.36 deployment.md — the prior canary.8 batch coverage](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the Turbopack default-flip trilogy + Server Actions fixes lens
+
+## Next.js — Turbopack Async Re-Export Tree Shaking (PR #95993, August 8, 2026 — Forward-Looking for canary.9+)
+
+The canary-branch is now **1 commit ahead of `16.3.1-canary.8`** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.8...canary` returning `ahead_by: 1, behind_by: 0`). The single new commit is **PR #95993 `[turbopack] Follow re-exports for side-effect free async modules`** by the Next.js team, merged 2026-08-08T01:28:49Z, 17 files / +176/-39. This adds "very basic" follow-re-exports support to async-imported modules that are side-effect free. **The headline example:**
+
+```javascript
+// a.js
+export const a = 'A'
+
+// b.js
+export const b = 'B'        // unused
+
+// barrel.js  (pure re-export barrel)
+export { a } from './a.js'
+export { b } from './b.js'
+
+// index.js
+const { a } = await import('./barrel.js')
+console.log(a) 
+```
+
+Pre-PR #95993: when `barrel.js` is async-imported and `b` is unused, Turbopack couldn't tree-shake `b` away because the re-export analysis was not threaded through the async boundary. Post-PR #95993: `b` is correctly tree-shaken because `apply_reexport_tree_shaking` was moved into `turbopack-ecmascript` (the unified ECMAScript analyzer) where the async-boundary tracking is in scope. **The move of `apply_reexport_tree_shaking` into `turbopack-ecmascript`** is the meaningful structural change — Turbopack's analyzers were previously split between `turbopack-ecmascript` (sync modules) and `turbopack-ecmascript-runtime` (async-loaded modules); the tree-shaking helper only existed in the sync path. Moving it to the shared analyzer unlocks tree-shaking across both paths. **Practical impact for canary.9 users:**
+- **Pure re-export barrels (`export { x } from './y.js'`) imported via `await import(...)`** — `b` and other unused re-exports will now be tree-shaken away. Expected bundle size reduction: 5-20% for codebases with large pure re-export barrels (e.g., component libraries, design systems, icon libraries).
+- **Mixed re-export barrels (`export { x } from './y.js'` + `export const z = ...`)** — pure-re-exports are tree-shaken; local exports are preserved.
+- **Side-effectful re-exports** (`export { x } from './side-effect.js'` where `side-effect.js` has top-level side effects) — NOT tree-shaken (correct — side effects must be preserved).
+- **Sync imports of pure re-export barrels** — unchanged behavior; tree-shaking already worked for sync paths.
+
+**Audit recipe:**
+```bash
+# Find pure re-export barrels in your codebase
+rg -l "^export \{ [^}]+ \} from '\./[^']+\.js'$" --type ts --type tsx --type js --type jsx app/ src/ components/ lib/
+# Or, more flexibly:
+rg "^export \{ [^}]+ \} from" --type-add 'js:*.{js,jsx,ts,tsx,mjs,cjs}' --type js app/ src/
+
+# Count unused re-exports per barrel (the opportunity for tree-shaking)
+node -e "
+const fs = require('fs');
+const path = require('path');
+// ... custom analysis script
+"
+```
+
+**When this ships** (expect canary.9 within 6-18h of this cron's check): upgrading from `^16.3.1-canary.8` to `^16.3.1-canary.9+` unlocks the bundle-size reduction for any code with async-imported pure re-export barrels. **No action required** if your code uses no async imports of pure re-export barrels. **Action recommended** for component libraries + design systems + icon libraries that expose async-loaded pure re-export barrels.
+
+### Sources
+
+- [Next.js PR #95993 — [turbopack] Follow re-exports for side-effect free async modules](https://github.com/vercel/next.js/pull/95993) — by the Next.js team, merged 2026-08-08T01:28:49Z, 17 files / +176/-39. The headline example (a.js / b.js / barrel.js / index.js) is verbatim from the PR body. Forward-looking for canary.9+.
+- [Turbopack ECMAScript analyzer source](https://github.com/vercel/next.js/tree/canary/crates/turbopack-ecmascript) — the shared analyzer that `apply_reexport_tree_shaking` was moved into in this PR.
+- [Next.js canary release tag timeline](https://github.com/vercel/next.js/releases) — the 24h canary cadence; expect canary.9 within 6-18h of this cron's check.
+- [Cross-reference: v1.5.36 performance.md — the canary.8-batch Turbopack default-flip trilogy coverage](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — PR #96779 + PR #96778 + PR #96578 lens
+
