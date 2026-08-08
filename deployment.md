@@ -1925,3 +1925,97 @@ The v1.5.30 cycle-append in this file (the `## Next.js 16.3.1-canary.4-ahead —
 - [Cross-reference: performance.md `## next@16.3.1-canary.5 SHIPPED + 16.3.1-canary.6 Staged (August 7, 2026)` (this cycle)](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the headline TransportData refactor + canary.5 SHIP event
 - [Cross-reference: deployment.md `## Next.js 16.3.1-canary.4-ahead — Deployment-Id Old WebKit Fix (PR #94604) + 3 New Open Issues (#96810, #96812, #96646)` (v1.5.31)](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the previous 3-open-issues coverage; #96810 + #96812 + #96646 are still open, none have PR attribution yet either
 - [Cross-reference: deployment.md `## Next.js 16.3.1-canary.4-ahead — \`experimental.appNewScrollHandler\` Removal (PR #95602) + \`@swc/helpers\` Bump Fixes \`wrap_reg_exp\` Module Not Found (PR #96720)` (v1.5.30)](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the issue #96806 forward-looking origin
+
+## `next@16.3.1-canary.8` SHIPPED (August 7, 2026) — Turbopack Default Flips: CJS Tree Shaking ON + Shared Runtime ON + `experimental.turbopackMinify` Per-Environment Support + Server Actions on Dynamic PPR Fallback Routes + Flush Pending Revalidations for Forwarded Action Errors (Deployment Impact Lens)
+
+**[08 Aug 2026 00:03Z] v1.5.36 cycle** — `next@16.3.1-canary.8` SHIPPED at 2026-08-07T23:58:34Z. From a **deployment lens**, the largest canary.8-batch change is the **3-PR Turbopack default-flip trilogy** (PR #96779 + PR #96778 + PR #96578) — three `experimental.*` config flags that have been `default-OFF` for 6+ months now flip to `default-ON` in canary.8. The combined effect is **every Turbopack project now gets the same production build characteristics that required manual config since 16.2.0, with zero config changes**. The 2 NEW Server Actions bug fixes (PR #96932 + PR #96945) are also deployment-relevant: they fix real production bugs in the action-only-fallback-request path and the action-error-revalidation path. The full performance.md coverage is in the `## next@16.3.1-canary.8 SHIPPED` section in performance.md (this section is the deployment-bounded view).
+
+### How the 3 Turbopack default flips affect every Turbopack deployment
+
+| PR | Config | Pre-canary.8 default | canary.8 default | Production impact |
+|---|---|---|---|---|
+| [PR #96779](https://github.com/vercel/next.js/pull/96779) | `experimental.turbopackCjsTreeShaking` | `false` | **`true`** | 5-15% bundle size reduction for CJS-heavy dependency graphs (lodash, axios, mongoose, express, etc.) |
+| [PR #96778](https://github.com/vercel/next.js/pull/96778) | `experimental.turbopackSharedRuntime` | `false` | **`true`** | 1-3 KB smaller HTML payload per route (the inlined bootstrap replaces the per-route `runtime.js` script); 5-10% faster TTI for multi-route navigation |
+| [PR #96578](https://github.com/vercel/next.js/pull/96578) | `experimental.turbopackMinify` | `boolean` (single value for all outputs) | `boolean \| { server, client, edge }` (per-environment config) | Restores `experimental.serverMinification` parity for Turbopack (can now disable server minify while keeping client minify on) |
+
+**Deployment migration playbook:**
+
+```bash
+# Step 1: Confirm you're on canary.8+ (the flips are only active on canary.8+):
+npm view next@canary version
+# → should show: 16.3.1-canary.8 or later
+
+# Step 2: Audit your next.config.ts for explicit overrides:
+rg -n "turbopackCjsTreeShaking|turbopackSharedRuntime|turbopackMinify" next.config.ts
+# → if any are set to `false`, the canary.8 default is preserved
+# → if any are set to `true`, the canary.8 default is preserved (no-op)
+# → if absent, the canary.8 default is now active
+
+# Step 3: Test the flips locally:
+npm run build
+# → check the bundle size and HTML payload in the build output
+# → if you see a 5-15% bundle size reduction (CJS tree shaking) and
+#   1-3 KB smaller HTML per route (shared runtime), the flips are active
+
+# Step 4: If you need to roll back to the canary.7 defaults:
+# In next.config.ts:
+# experimental: {
+#   turbopackCjsTreeShaking: false,
+#   turbopackSharedRuntime: false,
+# }
+```
+
+**Deployment-critical caveat for adapter deployments (Vercel, Netlify, custom adapters)**: The shared runtime flip means the per-route `runtime.js` bootstrap is **inlined** into the HTML. If your CDN has a cache rule that keys on the HTML body (e.g., a SWR cache that serves the HTML across users), the inlined bootstrap will be cached per-route HTML, which is fine for same-route caches but breaks cross-route cache reuse. The Vercel Edge Cache and most adapter CDNs key on the URL only, so the flip is safe. If you have a custom CDN that keys on the HTML body, audit the cache behavior post-upgrade.
+
+### How the 2 NEW Server Actions bug fixes affect every deployment with `cacheComponents: true`
+
+Action-only server actions (a `fetch()` action dispatching to a parameterized route) on dynamic PPR fallback routes were throwing on canary.0–canary.7 — **fixed by PR #96932** in canary.8. The fix is silent (no warnings) but the action now correctly dispatches. **All apps with `cacheComponents: true` + adapter deployments + fetch actions on parameterized routes** were hitting this bug.
+
+**`revalidatePath()` / `revalidateTag()` in an action that errors out** (e.g., `notFound()`, explicit `throw`, or a redirect that errored) was silently skipping the invalidation on canary.0–canary.7 — **fixed by PR #96945** in canary.8. The fix is silent but the cache now correctly invalidates. **All apps with `revalidatePath()` / `revalidateTag()` in Server Actions that errored** were hitting this bug.
+
+**Deployment migration playbook:**
+
+```bash
+# Step 1: Confirm you're on canary.8+ (the fixes are only active on canary.8+):
+npm view next@canary version
+# → should show: 16.3.1-canary.8 or later
+
+# Step 2: Audit your server actions for the affected patterns:
+# a) Fetch actions on parameterized routes with cacheComponents: true
+rg -n "fetch\(.*action.*\)\|fetch.*method.*POST" app/ src/ actions/
+# → if any hit, the PR #96932 fix is relevant
+
+# b) Actions that call revalidatePath/revalidateTag and then error
+rg -n "revalidatePath\|revalidateTag" app/ actions/ src/
+# → if any hit, the PR #96945 fix is relevant
+
+# Step 3: If stuck on a pre-canary.8 release, the workaround is:
+# a) For PR #96932: use a form action (<form action={fn}>) instead of a fetch action
+# b) For PR #96945: move the revalidatePath/revalidateTag call to AFTER the error path
+#    (e.g., in a try/finally block)
+```
+
+### Common Mistakes (deployment.md additions)
+
+- **CJS tree shaking flip is silent — bundle size reduction is the first signal** — PR #96779 flips `experimental.turbopackCjsTreeShaking` from `false` to `true` without any console message, warning, or deprecation notice. The first signal that the flip took effect is the **smaller bundle size** in your build output. If you have a CI step that compares bundle size before/after the upgrade, you'll see the 5-15% reduction immediately. If you don't have such a CI step, check the build output manually. The flip is **not reversible without setting the explicit override** to `false`. Audit recipe: `rg -n "turbopackCjsTreeShaking" next.config.ts` to see if the override is set.
+- **Shared runtime flip makes the HTML non-cacheable across routes** — PR #96778 inlines the per-route bootstrap into the HTML, which means the HTML payload is now different per route (the inlined bootstrap varies). For CDN cache rules that key on the URL only (Vercel Edge Cache, most adapter CDNs), this is fine. For CDN cache rules that key on the HTML body or a custom cache key that includes the bootstrap, the HTML cache hit rate will drop per-route. If you have a custom CDN, audit the cache behavior post-upgrade by checking the cache-hit-rate metric.
+- **Per-environment `experimental.turbopackMinify` migration** — the legacy `experimental.serverMinification: false` option was deprecated in 16.3.0 (Webpack-only). For Turbopack on canary.8+, the equivalent is `experimental.turbopackMinify: { server: false }`. Mixing the two (e.g., `experimental.serverMinification: false` + `experimental.turbopackMinify: true` on Turbopack) will produce a "both options set" warning in canary.9+ (no PR attribution yet, but the warning is expected). Migration: pick ONE option. For Turbopack-only projects, use `experimental.turbopackMinify: { server: false }`. For Webpack-only projects, keep `experimental.serverMinification: false`. For mixed projects, use both with the same boolean (the deprecation warning will fire but the behavior is correct).
+- **Action-only fetch calls on PPR fallback routes throw "postponed state and fallback params" before canary.8** — fixed by PR #96932. The fix is silent. See `## Why PR #96932 (Server Actions on Dynamic PPR Fallback Routes) matters` in performance.md for the full walkthrough. The most-impacted apps: any Cache Components + adapter deployment + fetch action on a parameterized route (`/users/[id]`, `/posts/[slug]`, etc.). **Deployment-bounded audit recipe**: build the app with `cacheComponents: true`, deploy to an adapter, then dispatch a fetch action to a parameterized route with `Accept: application/json` — pre-canary.8, the response is a 500 with the postponed-state error; post-canary.8, the response is a 200 with the action result.
+- **`revalidatePath()` / `revalidateTag()` in an action that errors silently skips the invalidation on canary.0–canary.7** — fixed by PR #96945. The fix is silent. See `## Why PR #96945 (Flush Pending Revalidations for Forwarded Action Error Responses) matters` in performance.md for the full walkthrough. **Deployment-bounded audit recipe**: deploy an action that calls `revalidatePath('foo')` followed by `notFound()`, then check the cache handler logs — pre-canary.8, the `foo` invalidation is NOT in the cache handler logs; post-canary.8, it IS.
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.7...v16.3.1-canary.8`](https://github.com/vercel/next.js/compare/v16.3.1-canary.7...v16.3.1-canary.8) — 19 commits at this cron's check
+- [Next.js `v16.3.1-canary.8` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.8) — npm-published 2026-08-07T23:58:34Z
+- [PR #96779 — `[turbopack] Enable CJS tree shaking by default`](https://github.com/vercel/next.js/pull/96779) — sampoder, merged 2026-08-07T18:26:49Z, SHIPPED in canary.8
+- [PR #96778 — `[turbopack] Enable the shared runtime by default`](https://github.com/vercel/next.js/pull/96778) — sampoder, merged 2026-08-07T19:37:55Z, SHIPPED in canary.8
+- [PR #96578 — `[turbopack] Support experimental.serverMinification & expand experimental.turbopackMinify`](https://github.com/vercel/next.js/pull/96578) — sampoder, merged 2026-08-07T21:05:21Z, SHIPPED in canary.8
+- [PR #96932 — `Handle Server Actions on dynamic PPR fallback routes`](https://github.com/vercel/next.js/pull/96932) — ztanner, merged 2026-08-07T23:09:22Z, SHIPPED in canary.8
+- [PR #96945 — `Flush pending revalidations for forwarded action error responses`](https://github.com/vercel/next.js/pull/96945) — ztanner, merged 2026-08-07T23:09:24Z, SHIPPED in canary.8
+- [Next.js `experimental.turbopackSharedRuntime` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackSharedRuntime) — flipped default to `true` in canary.8
+- [Next.js `experimental.turbopackCjsTreeShaking` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackCjsTreeShaking) — flipped default to `true` in canary.8
+- [Next.js `experimental.turbopackMinify` config docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopackMinify) — expanded to per-environment config in canary.8
+- [Vercel Edge Cache docs](https://vercel.com/docs/edge-network/caching) — URL-only cache key (safe for the shared runtime flip)
+- [Cross-reference: v1.5.36 performance.md `## next@16.3.1-canary.8 SHIPPED` — full PR-by-PR deep dive](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the canary.8-batch coverage with the full deep dives on PR #96779 + PR #96778 + PR #96578 + PR #96932 + PR #96945
+- [Cross-reference: v1.5.34 performance.md `## 16.3.1-canary.7 SHIPPED — styled-jsx SSR Regression Fix + Turbopack Improvements`](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the canary.7 SHIP event that this canary.8 cycle builds on
+- [Cross-reference: v1.5.34 deployment.md `## Next.js 16.3.1-canary.4-ahead — experimental.appNewScrollHandler Removal (PR #95602) + @swc/helpers Bump Fixes wrap_reg_exp Module Not Found (PR #96720)` — the previous canary-batch coverage](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md)

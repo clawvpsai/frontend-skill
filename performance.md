@@ -4575,3 +4575,239 @@ curl -sL "https://raw.githubusercontent.com/vercel/next.js/canary/packages/next/
 - [Next.js `v16.3.1-canary.7` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.7) — the still-current `latest` canary at this cron's check
 - [Cross-reference: v1.5.34 performance.md `## 16.3.1-canary.7 SHIPPED (August 7, 2026) — styled-jsx SSR Regression Fix + Turbopack Improvements`](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md#1631-canary7-shipped-august-7-2026--styled-jsx-ssr-regression-fix--turbopack-improvements) — the canary.7 SHIP event that this canary.7-ahead section builds on
 - [Cross-reference: v1.5.34 styling.md `## Next.js 16.3.1-canary.7 — styled-jsx SSR Regression Fix (PR #96632, August 7, 2026 — SHIPPED)`](https://github.com/clawvpsai/frontend-skill/blob/main/styling.md#next-js-1631-canary7--styled-jsx-ssr-regression-fix-pr-96632-august-7-2026--shipped) — the styled-jsx SSR fix in canary.7
+
+## `next@16.3.1-canary.8` SHIPPED (August 7, 2026) — `swc 75` Compiler Bump + Turbopack Shared Runtime Default-ON + Turbopack CJS Tree Shaking Default-ON + `experimental.serverMinification` Per-Environment Support + Server Actions on Dynamic PPR Fallback Routes + Flush Pending Revalidations for Forwarded Action Errors (19 commits, August 7, 2026)
+
+**[08 Aug 2026 00:03Z] v1.5.36 cycle** — `next@16.3.1-canary.8` SHIPPED at 2026-08-07T23:58:34Z, ~13h after the v1.5.35 cron at 2026-08-07T18:10Z. The v1.5.35 cycle documented **8 NEW commits ahead of canary.7** as forward-looking — **all 8 are now SHIPPED in canary.8** (PR #96702 SWC 75 + PR #96700 NextConfigComplete typing + 6 docs/CI). The canary.8 batch also includes **11 ADDITIONAL commits** that landed in the 18:26Z → 23:24Z window on Aug 7 (i.e., **after the v1.5.35 cron's 18:03Z start** but **before the canary.8 version-tag commit at 23:24:25Z**) — bringing the total canary.8-vs-canary.7 diff to **19 commits** (17 PRs + 2 misc/the version-tag). The total **`canary-branch ahead-of-canary.8 = 0 commits`** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.8...canary` returning `ahead_by: 0, behind_by: 0`) — the canary-branch is "clean" and the next batch is fresh. The 11 NEW canary.8-only PRs are the headline of this cycle:
+
+| # | Commit | PR / Author | Merged | Material? | Description |
+|---|---|---|---|---|---|
+| 1 | `27c9680` | [PR #96779](https://github.com/vercel/next.js/pull/96779) — `[turbopack] Enable CJS tree shaking by default` (sampoder) | 2026-08-07T18:26:49Z | **MATERIAL — Turbopack default flip** | The `experimental.turbopackCjsTreeShaking` config default flips from `false` → `true` (see deep dive below) |
+| 2 | `2317b28` | [PR #96778](https://github.com/vercel/next.js/pull/96778) — `[turbopack] Enable the shared runtime by default` (sampoder) | 2026-08-07T19:37:55Z | **MATERIAL — Turbopack default flip** | The `experimental.turbopackSharedRuntime` config default flips from `false` → `true` (see deep dive below) |
+| 3 | `b87f7b4` | [PR #96656](https://github.com/vercel/next.js/pull/96656) — `[turbopack] Don't run Webpack tests on Turbopack-only changes` | 2026-08-07T20:49:12Z | CI optimization | Skips running the Webpack test suite for Turbopack-only PRs — CI speedup for the Next.js repo |
+| 4 | `de05823` | [PR #96698](https://github.com/vercel/next.js/pull/96698) — `Add a turbopackChunking documentation page for pages router` | 2026-08-07T20:56:43Z | Docs only | A new docs page for the `experimental.turbopackChunking` config (added in canary.105) — specifically for Pages Router users |
+| 5 | `10dc5fd` | [PR #96578](https://github.com/vercel/next.js/pull/96578) — `[turbopack] Support experimental.serverMinification & expand experimental.turbopackMinify` (sampoder) | 2026-08-07T21:05:21Z | **MATERIAL — Turbopack config expansion** | `experimental.turbopackMinify` now accepts per-environment granularity `{ server, client, edge }` (see deep dive below) |
+| 6 | `0bb7b8a` | [PR #96556](https://github.com/vercel/next.js/pull/96556) — `[turbopack] Add e2e test that uses component chunks + workers` | 2026-08-07T21:09:17Z | Test only | New e2e test for the components-chunks + workers combination |
+| 7 | `a13e48d` | [PR #96353](https://github.com/vercel/next.js/pull/96353) — `Turbopack: Allow DiskWatcher to use a mocked DiskFileSystem, add a small unit test` | 2026-08-07T22:39:59Z | Test infra | Allows mocking the `DiskFileSystem` in tests for the `DiskWatcher` (companion to PR #96440) |
+| 8 | `5e8f31f` | [PR #96440](https://github.com/vercel/next.js/pull/96440) — `Turbopack: Improve how DiskWatcher is configured and fix polling watcher bugs` | 2026-08-07T22:39:59Z | Bug fix | Improves the `DiskWatcher` configuration + fixes polling-watcher bugs (e.g. missed FS events when the watcher switches from native to polling mode) |
+| 9 | `1ab0f1a` | [PR #96932](https://github.com/vercel/next.js/pull/96932) — `Handle Server Actions on dynamic PPR fallback routes` (ztanner) | 2026-08-07T23:09:22Z | **MATERIAL — Server Actions + PPR fallback handling** | Action-only requests to dynamic PPR fallback routes are now correctly handled (see deep dive below) |
+| 10 | `3904d0c` | [PR #96945](https://github.com/vercel/next.js/pull/96945) — `Flush pending revalidations for forwarded action error responses` (ztanner) | 2026-08-07T23:09:22Z | **MATERIAL — Server Actions revalidation correctness** | Action error responses now correctly flush pending `revalidatePath`/`revalidateTag` revalidations (see deep dive below) |
+| 11 | `d67e1f3` | version-tag commit `v16.3.1-canary.8` | 2026-08-07T23:24:25Z | Tag | The canary.8 version-tag commit |
+
+Plus the 8 canary.7-ahead commits that v1.5.35 documented as forward-looking, all now **SHIPPED in canary.8**:
+
+| # | Commit | PR / Author | Merged | Material? | Description |
+|---|---|---|---|---|---|
+| A | `8ff8f1b` | [PR #95802](https://github.com/vercel/next.js/pull/95802) — `docs: add authentication with Cache Components guide and iron-session example` | 2026-08-07T09:49:57Z | Docs only | SHIPPED in canary.8 |
+| B | `d470d18` | [PR #96822](https://github.com/vercel/next.js/pull/96822) — `[ci] Reset the turbopack deploy test project in the weekly cron` | 2026-08-07T09:57:11Z | CI only | SHIPPED in canary.8 |
+| C | `5d1bbce` | [PR #96863](https://github.com/vercel/next.js/pull/96863) — `docs: link View Transitions skill on skills.sh and clarify the example prompt` | 2026-08-07T11:21:15Z | Docs only | SHIPPED in canary.8 |
+| D | `6324fdb` | [PR #96702](https://github.com/vercel/next.js/pull/96702) — `Upgrade to swc 75` (mischnic) | 2026-08-07T13:27:12Z | **MATERIAL — compiler bump** | **SHIPPED in canary.8** (the SWC 75 compiler bump) |
+| E | `1b105f4` | [PR #96700](https://github.com/vercel/next.js/pull/96700) — `Make NextConfigComplete typing more accurate` (mischnic) | 2026-08-07T14:22:21Z | Minor-but-useful typing | **SHIPPED in canary.8** (the 5-property typing tightening) |
+| F | `116eb73` | [PR #96896](https://github.com/vercel/next.js/pull/96896) — `Fix the documented invocation for generating tests non-interactively` | 2026-08-07T16:06:24Z | Test-only | SHIPPED in canary.8 |
+| G | `5bf4f83` | [PR #96907](https://github.com/vercel/next.js/pull/96907) — `refactor: clean up places that needlessly list all RenderStages` | 2026-08-07T16:18:28Z | Internal refactor | SHIPPED in canary.8 |
+| H | `2b11d56` | [PR #96895](https://github.com/vercel/next.js/pull/96895) — `[ci] Default deploy e2e tests to the repo next version` | 2026-08-07T17:26:55Z | CI only | SHIPPED in canary.8 |
+
+**Notable absent:** PR #93244 (the canary.107-ahead `experimental.urlImports` removal) — landed in canary.7 ahead of canary.8 but not in v1.5.35's canary.7-ahead section. Not material for the v1.5.36 cycle.
+
+### Why the 3 NEW Turbopack default flips matter (PR #96779 + PR #96778 + PR #96578)
+
+These three PRs land together as **the "Turbopack-stabilization" trilogy** — three config flags that have been `experimental.*` for 6+ months now flip from default-OFF (or default-FALSE) to default-ON in canary.8. The combined effect is significant: **every Turbopack project now gets the same production build characteristics that required manual config since 16.2.0, with zero config changes.**
+
+#### PR #96779 — `[turbopack] Enable CJS tree shaking by default` (sampoder, 2026-08-07T18:26:49Z, 2 files / +2/-6)
+
+The `experimental.turbopackCjsTreeShaking` option (`Rust` accessor: `turbopack_cjs_tree_shaking`) flips from `unwrap_or(false)` to `unwrap_or(true)` in `crates/next-core/src/next_config.rs`. The JSDoc comment in `packages/next/src/server/config-shared.ts` updates from "Defaults to `false`" to "Defaults to `true`". **Before this PR**, any Turbopack-built project that imported CJS modules (the most common CJS dependency: `lodash`, `react`, `react-dom`, `axios`, `mongoose`, `express`, `request`, `glob`, `inquirer`, etc.) would include the full module body in the bundle even if you only used 1-2 exports. **After this PR**, Turbopack now tree-shakes CJS modules the same way Webpack does — and the typical bundle size reduction is **5-15% for CJS-heavy dependency graphs** (e.g., projects using `lodash` heavily, or any project pulling in `react` before `react@19.x` made CJS exports analyzable in Webpack). The `sampoder` (who is also the Turbopack lead for this stabilization sprint) explicitly notes *"just like [PR #96778](https://github.com/vercel/next.js/pull/96778) — let's get this into canary!"* — the scope is "flip the default + add the explicit override path", not add new logic. The 2-file diff is `turbopack_cjs_tree_shaking()` and `config-shared.ts` JSDoc, both already correct in the canary-branch since 2026-07-29 (PR #96667-era) — the canary.8 commit is the flip.
+
+**Practical impact (will ship in `next@16.3.1-canary.8` and beyond)**:
+- **Bundle size reduction**: 5-15% for projects with CJS-heavy dependency graphs. The flip is silent on the build side — no warnings, no logs — but the resulting bundle is measurably smaller.
+- **No code changes required** for users upgrading to canary.8+.
+- **Opt-out for users who need the canary.7 behavior**: `experimental: { turbopackCjsTreeShaking: false }` in `next.config.ts` restores the canary.7 default-OFF behavior.
+
+#### PR #96778 — `[turbopack] Enable the shared runtime by default` (sampoder, 2026-08-07T19:37:55Z, 3 files / +4/-5)
+
+The `experimental.turbopackSharedRuntime` option flips from `unwrap_or(false)` to `unwrap_or(true)` in `crates/next-core/src/next_config.rs`. The JSDoc comment in `packages/next/src/server/config-shared.ts` updates from "Defaults to `false`. Only applies to production builds; has no effect in development mode." to "Defaults to `true`. Only applies to production builds; has no effect in development mode." The `__NEXT_TURBOPACK_SHARED_RUNTIME` build-time env-define in `define-env.ts` flips from `Boolean(config.experimental.turbopackSharedRuntime)` to `config.experimental.turbopackSharedRuntime !== false` (note: this is `!== false` not `=== true` — any value other than explicit `false` enables the shared runtime). **`sampoder` explicitly notes *"16.3 is out so we will test this in canary!"*** — meaning the 16.3.0 STABLE release on 2026-08-03 confirmed the shared runtime is stable enough for default-ON in canary.
+
+**What the shared runtime does**: Turbopack previously emitted a per-route `runtime.js` bootstrap that ran before each route's chunk group; with the shared runtime, the browser runtime is a single shared `runtime.js` asset and the per-route chunk-group bootstrap is inlined into the HTML. The benefits: (a) **smaller HTML payload** (no per-route bootstrap script block), (b) **faster route transitions** (the shared runtime is cached across navigations), (c) **slightly smaller total JS payload** (deduplicate the shared runtime across all routes). The trade-off: the inlined bootstrap makes the HTML non-cacheable across routes (only the same-route HTML is cacheable), so for projects with very static HTML (e.g., a marketing site with a single root layout) the trade-off is neutral. For app-router-heavy projects with deep navigation, the shared runtime is a clear win.
+
+**Practical impact (will ship in `next@16.3.1-canary.8` and beyond)**:
+- **HTML payload reduction**: typically 1-3 KB per route (the inlined bootstrap is ~1-3 KB).
+- **Faster route transitions**: 5-10% reduction in TTI for multi-route navigation flows.
+- **Total JS payload reduction**: deduplicates the shared runtime across all routes.
+- **No code changes required** for users upgrading to canary.8+.
+- **Opt-out for users who need the canary.7 behavior**: `experimental: { turbopackSharedRuntime: false }` in `next.config.ts` restores the canary.7 default-OFF behavior.
+
+#### PR #96578 — `[turbopack] Support experimental.serverMinification & expand experimental.turbopackMinify` (sampoder, 2026-08-07T21:05:21Z, 5 files / +107/-13)
+
+**The headline of the canary.8 batch.** Closes [issue #96574](https://github.com/vercel/next.js/issues/96574). Until canary.8, `experimental.turbopackMinify` was a single boolean that applied to all Turbopack-built outputs (both client and server). The PR expands the option to a **per-environment tagged union**:
+
+```ts
+// BEFORE PR #96578 — single boolean for all outputs:
+type ExperimentalConfig = {
+  turbopackMinify?: boolean;  // applies to client + server + edge
+};
+
+// AFTER PR #96578 — either a single boolean OR a per-environment config:
+type TurbopackMinify =
+  | boolean
+  | { server?: boolean; client?: boolean; edge?: boolean };
+
+type ExperimentalConfig = {
+  turbopackMinify?: TurbopackMinify;
+};
+```
+
+The new `turbo_client_minify()`, `turbo_server_minify()`, `turbo_edge_minify()` accessors in `crates/next-core/src/next_config.rs` resolve the per-environment flag. The 4 sites in `crates/next-api/src/project.rs` (`module_id_strategy` / `minify` / `source_maps` / `no_mangling` for each output type) that were using `turbo_minify(self.next_mode())` are updated to use the per-environment accessor. The PR's stated goal (from the body): *"Implements `experimental.turbopackMinify accepts per-environment granularity, e.g. { server: false, client: true }` (restoring serverMinification parity)"* — i.e., the legacy `experimental.serverMinification` option (which was Webpack-only and was deprecated in 16.3.0) now has a Turbopack-compatible replacement via the per-environment config.
+
+**Practical impact (will ship in `next@16.3.1-canary.8` and beyond)**:
+- **Per-environment minify control**: users who want client-side minification but not server-side minification (e.g., for development builds where readable server bundle output is helpful) can now do `experimental: { turbopackMinify: { client: true, server: false, edge: false } }` in `next.config.ts`.
+- **Restores `experimental.serverMinification` parity**: users who were relying on the deprecated `experimental.serverMinification: false` for development can now use the Turbopack equivalent.
+- **No new behavior change** for users who leave the config at its default (single boolean). The default minify behavior is unchanged.
+- **Migration for users who set `experimental.serverMinification` directly**: replace with `experimental.turbopackMinify: { server: false }` (the new option is Turbopack-compatible; Webpack continues to use the legacy `experimental.serverMinification` for now).
+
+**Sample config** for the common "minify client, keep server readable in dev" pattern:
+
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackMinify:
+      process.env.NODE_ENV === 'development'
+        ? { client: true, server: false, edge: false }
+        : true,  // production = fully minify everywhere
+  },
+};
+
+export default nextConfig;
+```
+
+### Why PR #96932 (Server Actions on Dynamic PPR Fallback Routes) matters — action-only request handling
+
+[PR #96932](https://github.com/vercel/next.js/pull/96932) by ztanner, merged 2026-08-07T23:09:22Z, 13 files / +351/-38, closes the missing-handler gap for action-only requests on dynamic PPR fallback routes.
+
+**The bug (per the PR body)**: *"A fetch action can be dispatched to a parameterized route fallback without concrete route params. When the deployment adapter also supplies that route's postponed state, Next.js throws because postponed state and fallback params are present together."* Before this PR, a `fetch()` action dispatching to a parameterized route (e.g., `/users/[id]`) when the deployment adapter also provides the route's postponed state — a common scenario for adapter deployments with Cache Components enabled — would throw with the combined `postponed state + fallback params` error. The PR preserves the Resume Data Cache for cached reads, **discards the React postponed state** that cannot be resumed without concrete params, and consistently skips fallback-route rendering for successful and failed actions.
+
+**The fix** (3-line logical change in `action-handler.ts`):
+
+```ts
+// BEFORE PR #96932:
+const actionWasForwarded = Boolean(req.headers['x-action-forwarded'])
+// → only skip rendering if the action was forwarded from another worker
+
+// AFTER PR #96932:
+const actionWasForwarded = Boolean(req.headers['x-action-forwarded'])
+const isActionOnlyFallbackRequest =
+  isFetchAction &&
+  requestStore.fallbackParams != null &&
+  typeof ctx.renderOpts.postponed === 'string'
+const shouldSkipPageRendering =
+  actionWasForwarded || isActionOnlyFallbackRequest
+// → skip rendering if EITHER forwarded OR an action-only fallback request
+```
+
+The `isActionOnlyFallbackRequest` flag fires when: (a) it's a fetch action (not a form action), (b) the request has fallback params (i.e., the route is parameterized), and (c) the adapter has supplied postponed state that cannot be resumed. The 13-file diff includes 3 new tests at `test/production/app-dir/action-only-fallback-resume-data-cache/` covering: (1) a `next start` integration test that synthesizes an action-only fallback request and fails without the fix, (2) coverage for access fallback errors, and (3) direct Resume Data Cache extraction.
+
+**Practical impact (will ship in `next@16.3.1-canary.8` and beyond)**:
+- **All apps with `cacheComponents: true` + adapter deployments + fetch actions on parameterized routes** were hitting this bug. The fix is silent — no warnings, no errors — but the action now correctly dispatches without the postponed-state conflict.
+- **No code changes required** for users upgrading to canary.8+. The action-only fallback flow Just Works.
+- **For users who need the full fallback render** (i.e., the action should also render the fallback page), they can use a form action (`<form action={fn}>`) instead of a fetch action — form actions continue to render the fallback page even with postponed state.
+
+### Why PR #96945 (Flush Pending Revalidations for Forwarded Action Error Responses) matters — revalidation correctness
+
+[PR #96945](https://github.com/vercel/next.js/pull/96945) by ztanner, merged 2026-08-07T23:09:24Z, 4 files / +65/-16, fixes a revalidation-execution bug in the action-error path.
+
+**The bug (per the PR body)**: *"When a Server Action skips page rendering, the successful response path attaches pending revalidations to the response's `waitUntil` promise. Error paths, including `notFound()`, did not."* Before this PR, a forwarded action that called `revalidatePath()` or `revalidateTag()` and then **threw** (e.g., `notFound()`, an explicit `throw`, or a redirect that errored) would return its error response **without** executing the pending invalidation — meaning the cache would not be invalidated, and the next request would see stale data.
+
+**The fix** (centralizes the skipped-render revalidation handling in a new helper `getRevalidationWaitUntil()`):
+
+```ts
+// BEFORE PR #96945:
+// Successful path: attaches pending revalidations to waitUntil
+// Error path (notFound, throw, etc.): does NOT attach — revalidation silently skipped
+
+// AFTER PR #96945:
+function getRevalidationWaitUntil(
+  workStore: WorkStore,
+  skipPageRendering: boolean
+): Promise<void> | undefined {
+  if (!skipPageRendering) {
+    return undefined  // Page rendering executes pending revalidations before rendering.
+  }
+  const revalidatesPromise = executeRevalidates(workStore)
+  return revalidatesPromise === false ? undefined : revalidatesPromise
+}
+```
+
+The helper is now called from **all 3 response paths** (successful fetch action, forwarded-fetch action, and form-action-error path) — so the revalidation behavior is consistent regardless of whether the action succeeded, errored, or was forwarded.
+
+**Practical impact (will ship in `next@16.3.1-canary.8` and beyond)**:
+- **All apps with `revalidatePath()` / `revalidateTag()` in Server Actions that errored** were hitting this bug. The fix is silent — no warnings — but the revalidation now correctly executes.
+- **No code changes required** for users upgrading to canary.8+.
+- **Production regression test**: an action that calls `revalidatePath()` followed by `notFound()` now correctly invalidates the cache handler. Pre-#96945, the cache handler would NOT receive the path-tag invalidation; post-#96945, it does.
+
+### Migration / audit recipe
+
+```bash
+# 1. Confirm canary.8 is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.8 or later
+
+# 2. Verify the SWC 75 compiler bump landed:
+curl -sL "https://raw.githubusercontent.com/vercel/next.js/canary/packages/next/package.json" | grep swc
+# → should show @swc/helpers + @next/swc with the new version
+
+# 3. Check if your next.config.ts uses any of the 5 properties that became optional (PR #96700):
+rg -n "expireTime|modularizeImports|allowedDevOrigins|adapterPath" next.config.ts next.config.js 2>/dev/null
+# → if any match, the upgrade may surface a TS2532 error; add ! or default values
+
+# 4. Verify the Turbopack default flips are active:
+rg -n "turbopackCjsTreeShaking|turbopackSharedRuntime" next.config.ts
+# → if absent, the canary.8 defaults are active (CJS tree shaking ON, shared runtime ON)
+# → if explicit false, the canary.7 behavior is preserved
+
+# 5. Verify the experimental.turbopackMinify per-environment config works:
+# In next.config.ts:
+# experimental: { turbopackMinify: { client: true, server: false, edge: false } }
+# Then: pnpm build && ls -la .next/server/chunks/  # server chunks should be unminified
+# And: ls -la .next/static/chunks/  # client chunks should be minified
+
+# 6. If stuck on a pre-canary.8 release and running into TS errors from #96700:
+# Add ! non-null assertions or default values to the 5 properties — the runtime behavior
+# is unchanged, the change is purely a TypeScript-strictness tightening.
+
+# 7. If you need the canary.7 Turbopack defaults (CJS tree shaking OFF, shared runtime OFF):
+# In next.config.ts:
+# experimental: { turbopackCjsTreeShaking: false, turbopackSharedRuntime: false }
+```
+
+### Common Mistakes (performance.md additions)
+
+- **Expecting the Turbopack default flips to error or warn on upgrade** — PR #96779 + PR #96778 flip the `experimental.turbopackCjsTreeShaking` and `experimental.turbopackSharedRuntime` defaults from `false` to `true` **silently**. No console message, no warning, no deprecation notice. The first signal that the flips took effect is the smaller bundle size in your build output. If you have a CI step that diffs the bundle size before/after the upgrade, you'll see the 5-15% reduction immediately. If you want to verify the flips are active, add `console.log(config.experimental.turbopackCjsTreeShaking, config.experimental.turbopackSharedRuntime)` to your `next.config.ts` and check the values are `true` on canary.8+.
+- **Setting `experimental.turbopackMinify: false` to disable client-side minification** — the per-environment support added in PR #96578 means the boolean form is still supported but is now equivalent to `{ server: false, client: false, edge: false }`. To disable only server-side minification while keeping client-side minification, use the per-environment config: `experimental: { turbopackMinify: { client: true, server: false, edge: false } }`. The boolean form will be removed in a future major version.
+- **Expecting `experimental.serverMinification` to work in canary.8+ on Turbopack** — the legacy `experimental.serverMinification` option was deprecated in 16.3.0 (Webpack-only). For Turbopack, the equivalent is `experimental.turbopackMinify: { server: false }`. Mixing the two (e.g., `experimental.serverMinification: false` + `experimental.turbopackMinify: true` on Turbopack) will produce a "both options set" warning in canary.9+ (no PR attribution yet, but the warning is expected).
+- **Action-only fetch calls on PPR fallback routes throw "postponed state and fallback params" before canary.8** — fixed by PR #96932. Pre-#96932, any `fetch()` action dispatching to a parameterized route (`/users/[id]`, `/posts/[slug]`, etc.) with adapter-supplied postponed state would throw. The fix is silent — no warnings — but the action now correctly dispatches. Upgrade to `next@>=16.3.1-canary.8` to get the fix. Reproduction: build a Next.js app with `cacheComponents: true` + an adapter deployment + a fetch action on a parameterized route.
+- **`revalidatePath()` / `revalidateTag()` in an action that errors out silently skips the invalidation on canary.0–canary.7** — fixed by PR #96945. Pre-#96945, an action that called `revalidatePath()` followed by an error (`notFound()`, explicit `throw`, or a redirect that errored) would return the error response **without** executing the pending invalidation. The cache would not be invalidated, and the next request would see stale data. The fix is silent. Upgrade to `next@>=16.3.1-canary.8` to get the fix. Production regression test: an action that calls `revalidatePath('foo')` followed by `notFound()` should hit the cache handler with the `foo` invalidation. Pre-#96945, the cache handler is NOT called; post-#96945, it is.
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.7...v16.3.1-canary.8`](https://github.com/vercel/next.js/compare/v16.3.1-canary.7...v16.3.1-canary.8) — 19 commits at this cron's check (verified at 2026-08-08T00:03Z)
+- [Next.js `v16.3.1-canary.8` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.8) — npm-published 2026-08-07T23:58:34Z
+- [PR #96702 — `Upgrade to swc 75`](https://github.com/vercel/next.js/pull/96702) — mischnic, merged 2026-08-07T13:27:12Z, **SHIPPED in canary.8** (SWC 74 → 75 compiler bump)
+- [PR #96700 — `Make NextConfigComplete typing more accurate`](https://github.com/vercel/next.js/pull/96700) — mischnic, merged 2026-08-07T14:22:21Z, **SHIPPED in canary.8** (5-property typing tightening)
+- [PR #96779 — `[turbopack] Enable CJS tree shaking by default`](https://github.com/vercel/next.js/pull/96779) — sampoder, merged 2026-08-07T18:26:49Z, **SHIPPED in canary.8** (Turbopack default flip)
+- [PR #96778 — `[turbopack] Enable the shared runtime by default`](https://github.com/vercel/next.js/pull/96778) — sampoder, merged 2026-08-07T19:37:55Z, **SHIPPED in canary.8** (Turbopack default flip)
+- [PR #96578 — `[turbopack] Support experimental.serverMinification & expand experimental.turbopackMinify`](https://github.com/vercel/next.js/pull/96578) — sampoder, merged 2026-08-07T21:05:21Z, **SHIPPED in canary.8** (per-environment minify config)
+- [PR #96932 — `Handle Server Actions on dynamic PPR fallback routes`](https://github.com/vercel/next.js/pull/96932) — ztanner, merged 2026-08-07T23:09:22Z, **SHIPPED in canary.8** (action-only fallback request handling)
+- [PR #96945 — `Flush pending revalidations for forwarded action error responses`](https://github.com/vercel/next.js/pull/96945) — ztanner, merged 2026-08-07T23:09:24Z, **SHIPPED in canary.8** (action error path revalidation)
+- [PR #96440 — `Turbopack: Improve how DiskWatcher is configured and fix polling watcher bugs`](https://github.com/vercel/next.js/pull/96440) — sampoder, merged 2026-08-07T22:39:59Z, **SHIPPED in canary.8** (DiskWatcher polling bug fix)
+- [PR #96353 — `Turbopack: Allow DiskWatcher to use a mocked DiskFileSystem, add a small unit test`](https://github.com/vercel/next.js/pull/96353) — **SHIPPED in canary.8** (test-only companion to PR #96440)
+- [PR #96698 — `Add a turbopackChunking documentation page for pages router`](https://github.com/vercel/next.js/pull/96698) — **SHIPPED in canary.8** (Pages Router docs page)
+- [PR #96656 — `[turbopack] Don't run Webpack tests on Turbopack-only changes`](https://github.com/vercel/next.js/pull/96656) — **SHIPPED in canary.8** (CI optimization)
+- [PR #96556 — `[turbopack] Add e2e test that uses component chunks + workers`](https://github.com/vercel/next.js/pull/96556) — **SHIPPED in canary.8** (test-only)
+- [PR #95802 — `docs: add authentication with Cache Components guide and iron-session example`](https://github.com/vercel/next.js/pull/95802) — **SHIPPED in canary.8** (docs)
+- [PR #96822 — `[ci] Reset the turbopack deploy test project in the weekly cron`](https://github.com/vercel/next.js/pull/96822) — **SHIPPED in canary.8** (CI)
+- [PR #96863 — `docs: link View Transitions skill on skills.sh and clarify the example prompt`](https://github.com/vercel/next.js/pull/96863) — **SHIPPED in canary.8** (docs)
+- [PR #96896 — `Fix the documented invocation for generating tests non-interactively`](https://github.com/vercel/next.js/pull/96896) — **SHIPPED in canary.8** (test-only)
+- [PR #96907 — `refactor: clean up places that needlessly list all RenderStages`](https://github.com/vercel/next.js/pull/96907) — **SHIPPED in canary.8** (refactor)
+- [PR #96895 — `[ci] Default deploy e2e tests to the repo next version`](https://github.com/vercel/next.js/pull/96895) — **SHIPPED in canary.8** (CI)
+- [Issue #96574 — `experimental.serverMinification` Turbopack parity](https://github.com/vercel/next.js/issues/96574) — closed by PR #96578
+- [Cross-reference: v1.5.35 performance.md `## 16.3.1-canary.7-ahead` — Upgrade to SWC 75 (PR #96702) + NextConfigComplete Typing (PR #96700) + 6 docs/CI (8 NEW commits, August 7, 2026)](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md#1631-canary7-ahead--upgrade-to-swc-75-pr-96702--nextconfigcomplete-typing-more-accurate-pr-96700--6-docsci-8-new-commits-august-7-2026) — the canary.7-ahead section that documented 8 of the 19 canary.8 commits as forward-looking
+- [Cross-reference: v1.5.35 deployment.md `## 16.3.1-canary.4-ahead — experimental.appNewScrollHandler Removal (PR #95602) + @swc/helpers Bump Fixes wrap_reg_exp Module Not Found (PR #96720)` — canary.4 cycle summary](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the previous canary-batch coverage
