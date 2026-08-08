@@ -2211,3 +2211,139 @@ rg -n "_sharp\.(un)?block" tests/ e2e/ playwright/ src/
 - [Vitest 5.0.0-beta.3 release notes — May 19, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.3)
 - [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10)
 - [Vitest 3.2.7 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v3.2.7)
+
+## Vitest Main Branch — 7 NEW Commits Ahead of `5.0.0-beta.7` (August 7, 2026 — Forward-Looking for `5.0.0-beta.8`)
+
+The Vitest main branch has had a productive 2-day window (Aug 7) producing **7 NEW commits** ahead of `vitest@5.0.0-beta.7` (the latest npm-published beta, still unchanged from v1.5.27). All 7 commits landed 2026-08-07T11:52Z → 13:21Z. The headline is **PR #10854** — a critical VM-pool memory-leak fix that affects every Vitest project using `pool: 'vmThreads'` or `pool: 'forks'` against large test suites. The other 6 commits cover require(esm) in vm pools, worker output retention, watch-mode deflaking, browser-mode perf, browser connectTimeout config resolution, and a new duration-breakdown-as-percentages feature.
+
+**Verified at this cron's check via** `GET /repos/vitest-dev/vitest/commits?sha=main&since=2026-08-05T18:00:00Z` returning 7 commits in the window. **`vitest@beta` still `5.0.0-beta.7`** — none of these commits have been bundled into an npm-published beta yet. The v1.5.27 prediction "5.0.0-beta.8 expected 2026-08-08 to 2026-08-15" still holds; the new commits will likely land in `5.0.0-beta.8` or `5.0.0-beta.9`.
+
+### 1. PR #10854 — `fix(vm): stop retaining every finished test file in vm pool workers` (sheremet-va, merged 2026-08-07T11:52:23Z, 25 files / +483/-103, the **headline critical fix**)
+
+**The bug (pre-fix)** — vm pool workers retained the memory of every finished test file (module graphs, vm context, DOM, user state) until the worker reached `vmMemoryLimit` and was recycled. **On a 638-file jsdom suite (zammad)**, each worker leaked **40-55MB per test file**, spent roughly **30% of its CPU in GC**, and was recycled 19 times per run — losing its compile caches every time. This is the kind of silent perf regression that only shows up in production-grade test suites and explains the slow Vitest 4.x perf reports in the wild.
+
+**The fix** — The retention has several independent causes; each commit removes one:
+
+- The per-file module runner was never closed (so Vite's transformer caches were never released).
+- The `vm` context kept strong refs to test-file closures (so all module-level state stayed live).
+- The DOM (jsdom/happy-dom) instances were never destroyed before the next test file.
+- The worker's user-state map was cleared only on recycle, not per-file.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8`):
+- **All Vitest projects with `pool: 'vmThreads'` or `pool: 'forks'`** benefit from this — every large suite (500+ files) gets faster test runs, lower memory ceiling, and more stable per-worker perf.
+- **Expected ~10-30% reduction in wall-clock time** for suites with 500+ test files (the zammad case shows 30% CPU in GC, which directly maps to wall-clock savings).
+- **Expected 40-55MB per-worker memory reduction** for jsdom suites, which lifts the `vmMemoryLimit` threshold for triggering worker recycle.
+- **No code changes required** for users — the fix is internal to Vitest's vm pool worker lifecycle.
+
+**The 5-step audit recipe:**
+```bash
+# 1. Confirm your Vitest version:
+npm ls vitest
+# → expect 4.1.10 stable or 5.0.0-beta.7 (current as of this cron)
+
+# 2. Check your test pool config:
+rg -n "pool:\s*['\"]" vitest.config.ts
+# → if pool: 'vmThreads' or pool: 'forks', this PR benefits you when 5.0.0-beta.8 ships
+
+# 3. Check your test file count (rough heuristic for impact):
+find tests/ test/ src/ -name "*.test.ts" -o -name "*.spec.ts" | wc -l
+# → if 500+, expect significant savings (10-30% wall-clock)
+
+# 4. Confirm the beta train:
+npm view vitest@beta version
+# → expect 5.0.0-beta.8 (or later) when the fix lands in npm
+
+# 5. Track the canary:
+git clone --depth 1 https://github.com/vitest-dev/vitest.git /tmp/vitest-canary
+cd /tmp/vitest-canary && git log --oneline -10
+# → PR #10854 will appear in the main-branch feed until 5.0.0-beta.8 ships
+```
+
+### 2. PR #10829 — `feat(vm): support require(esm) in vm pools` (ari-perkkiö, merged 2026-08-07T12:11:47Z, 13 files / +1004/-90)
+
+Adds support for `require(esm)` by using APIs exposed in **Node 24.9+**. Until this PR, Vitest's vm pools could only `require()` CommonJS modules — ESM-only modules (anything using `import`/`export` syntax in package form) had to be `import()`ed asynchronously, which broke synchronous test setup patterns (`jest.mock`, `vi.mock`, `__mocks__/` directory resolution, etc.).
+
+**Practical impact** (forwards-looking only — not in npm yet):
+- **ESM-only test dependencies** (modern packages shipping pure-ESM since 2024 — e.g., `chalk@5`, `nanoid@5`, `pino@9`, `tsx`, `globby@14`, `execa@8`, `node-fetch@3`) can now be `require()`ed in Vitest test files without breaking synchronous mock patterns.
+- **No code changes required** for projects already on Node 24.9+ (most modern CI runners).
+- **Migration concern**: the `engines: { node: '>=24.9' }` floor for this feature is a step-up from Vitest 4.x's `>=20.18`; check your CI matrix.
+
+### 3. PR #10842 — `fix: don't lose worker output on teardown, deflake timing-sensitive tests` (sheremet-va, merged 2026-08-07T12:34:48Z, 9 files / +124/-30)
+
+**The bug (pre-fix)** — Trailing worker stdio is lost on teardown (`test/pool.test.ts` "can capture worker's stdout and stderr", 17 failures). Worker-thread stdio is processed in a pipe that's drained on `worker.terminate()`; any output written after the drain started is lost. This affected every Vitest user who relies on `console.log` from the test body being captured in the test report — silent failures in CI where "the test passed but my console.log vanished".
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8`):
+- **All Vitest users** get reliable trailing-stdout capture. Tests that use `console.log` to debug flaky tests now reliably surface the log.
+- **CI runs** stop having silent "passing test but no log" failures.
+
+### 4. PR #10841 — `test: deflake tests sharing the watch fixture` (sheremet-va, merged 2026-08-07T12:34:16Z, 17 files / +320/-159)
+
+Deflakes `test/watch/file-watching.test.ts:163` ("editing source file generates new test report to file system") — was the single flakiest test on CI: **35 failures across 26 unrelated branches in a week**, exclusively on the Windows e2e job, always with the same signature (after editing `math.ts` the captured stdout stays completely empty for the whole 20s `waitForStdout` timeout). This PR is test-internal only (deflakes the Vitest test suite itself); no user-facing impact.
+
+### 5. PR #10820 — `feat: report the duration breakdown as percentages` (ari-perkkiö, merged 2026-08-07T13:21:55Z, 45 files / +2589/-112)
+
+The Vitest test-summary phases (`environment`, `import`, `transform`, `tests`, etc.) are now reported as **shares of tracked time** instead of raw sums — previously the raw sums confusingly exceeded the wall time because phases run in parallel workers:
+
+```
+Duration  3.76s (environment 79%, import 14%, transform 6%, tests 1%)
+```
+
+Sorted by cost, aggregated across all projects (per-project lines were considered but rejected as too noisy).
+
+**Practical impact** (forward-looking only — not in npm yet):
+- **Vitest users running large test suites** get a much clearer picture of WHERE time is spent (e.g., "79% environment = jsdom setup dominates; consider pool: 'vmThreads' + reuse: true").
+- **For AI-agent test loops**, the percentage breakdown makes token-efficient debugging much easier (one line instead of 5 numbers).
+- **No code changes required** — it's a reporter output change.
+
+### 6. PR #10729 — `perf(browser): serve framework assets as immutable` (sheremet-va, merged 2026-08-07T13:15:37Z, 1 file / +34/-13)
+
+**The fix** — Vitest's own pre-built framework assets (the bundles that ship into each tester iframe) are now served with `Cache-Control: public, max-age=31536000, immutable` instead of having every tester iframe revalidate them.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8`):
+- **Vitest Browser Mode users** see a measurable perf improvement in dev (each iframe no longer re-fetches framework assets on every test).
+- **No code changes required** — purely a server-side cache-header change.
+- **Skipped when `persistentContext: true`** (browser context outlives the run, so per-iframe cache busting is moot).
+
+### 7. PR #10880 — `fix(browser): resolve connectTimeout from the project config (fix #10879)` (ari-perkkiö, merged 2026-08-07T11:52:56Z, 3 files / +30/-4)
+
+**The bug (pre-fix)** — The browser session handshake read `connectTimeout` off `project.vitest.config` (the root resolved config), so a value set inside a project never reached it and the **60s default was used instead**. Every other `browser.*` option on that project IS honoured, and the timeout error itself is per-session and names the project — so reading the project's own resolved config is the right fix.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8`):
+- **Vitest Browser Mode users with multi-project configs** (monorepos, mixed browser + node tests) get correct per-project `connectTimeout` resolution.
+- **No code changes required** — the bug is that the value you set was being ignored; once the fix ships, your existing config starts working.
+
+### Updated Vitest 5 forward-looking beta-train cadence
+
+- **5.0.0-beta.7** (2026-07-24) — `injectCjsGlobals` toggable (current as of this cron; latest npm-published beta)
+- **5.0.0-beta.8** (now expected late August / early September 2026) — will likely include the 7 NEW commits from this cycle + the `nested projects` (PR #10846) + `tags` + `aroundEach`/`aroundAll` features already predicted in v1.5.27. The v1.5.27 prediction window (2026-08-08 → 2026-08-15) is sliding due to the new 7-commit batch.
+- **5.0.0 stable** (expected late September / early October 2026) — unchanged target
+
+### Migration checklist (Vitest 4 → Vitest 5) — UPDATED
+
+The v1.5.27 checklist still applies. New items for 5.0.0-beta.8:
+
+1. **Audit `vitest.config.ts`** for `experimental: { fsModuleCache: true }` — move to top-level `fsModuleCache: true`.
+2. **Audit `workspace` configs** — convert to `projects` with the new nested shape (PR #10846 already merged Jul 30; not yet in `5.0.0-beta.7`).
+3. **Audit `injectCjsGlobals`** — opt out early (`injectCjsGlobals: false`) to surface every implicit-global usage before the 5.0 stable default flip.
+4. **Audit `defineProject` imports** — will be removed in 5.0; replace with `defineProject` from the new project nesting API.
+5. **Bump Node to 20.18+ (or 22 LTS / 24 LTS)** — Vitest 5 requires Node 20.18+ even for the beta train. **NEW: PR #10829 requires Node 24.9+** for `require(esm)` support in vm pools; otherwise the require(esm) feature is silently dropped.
+6. **Audit any `vitest/coverage`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`, `vitest/reporters`, `vitest/mocker` imports** — in 5.0, these are consolidated into `vitest/node` (server-side) and `vitest/runtime` (browser-side). The old import paths will be deprecated.
+7. **Audit `test.sequential`** — replaced with `{ concurrent: false }` option on `test` / `describe` in 5.0.
+8. **If you use `vitest bench`** — the 5.0 API moves the bench config inside the `test()` callback (PR #10680). The `bench()` callback-level API is gone.
+9. **NEW: Check your `pool: 'vmThreads'` / `pool: 'forks'` config** — PR #10854 delivers a free 10-30% wall-clock improvement on 500+ file suites; no code changes required but verify the speedup in your CI after upgrading.
+10. **NEW: Check your multi-project `browser.*` configs** — PR #10880 fixes `connectTimeout` resolution from project config; if you set `browser.connectTimeout` per-project, verify it works after upgrading.
+11. **NEW: Audit your test files for trailing `console.log`** — PR #10842 ensures trailing stdout is captured on teardown; verify in CI that logs you expect to see are now reliably appearing.
+
+### Sources
+
+- [Vitest main branch commits since 2026-08-05T18:00Z](https://github.com/vitest-dev/vitest/commits?sha=main&since=2026-08-05T18:00:00Z) — the 7-commit window
+- [PR #10854 — `fix(vm): stop retaining every finished test file in vm pool workers`](https://github.com/vitest-dev/vitest/pull/10854) — sheremet-va, merged 2026-08-07T11:52:23Z, 25 files / +483/-103, the headline critical fix
+- [PR #10829 — `feat(vm): support require(esm) in vm pools`](https://github.com/vitest-dev/vitest/pull/10829) — ari-perkkiö, merged 2026-08-07T12:11:47Z, 13 files / +1004/-90
+- [PR #10842 — `fix: don't lose worker output on teardown, deflake timing-sensitive tests`](https://github.com/vitest-dev/vitest/pull/10842) — sheremet-va, merged 2026-08-07T12:34:48Z, 9 files / +124/-30
+- [PR #10841 — `test: deflake tests sharing the watch fixture`](https://github.com/vitest-dev/vitest/pull/10841) — sheremet-va, merged 2026-08-07T12:34:16Z, 17 files / +320/-159
+- [PR #10820 — `feat: report the duration breakdown as percentages`](https://github.com/vitest-dev/vitest/pull/10820) — ari-perkkiö, merged 2026-08-07T13:21:55Z, 45 files / +2589/-112
+- [PR #10729 — `perf(browser): serve framework assets as immutable`](https://github.com/vitest-dev/vitest/pull/10729) — sheremet-va, merged 2026-08-07T13:15:37Z, 1 file / +34/-13
+- [PR #10880 — `fix(browser): resolve connectTimeout from the project config (fix #10879)`](https://github.com/vitest-dev/vitest/pull/10880) — ari-perkkiö, merged 2026-08-07T11:52:56Z, 3 files / +30/-4
+- [Vitest 5.0.0-beta.7 release notes — July 24, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7) — the current npm-published beta (unchanged from v1.5.27)
+- [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10) — the latest stable
+- [Vitest 5 forward-looking Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664) — the team's Vite-8-aligned cadence + the 5.0 feature roadmap

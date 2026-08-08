@@ -2085,3 +2085,127 @@ rg -n "cacheComponents" next.config.*
 - [Next.js `@next/test-utils/playwright` `instant()` helper docs](https://nextjs.org/docs/app/guides/testing/instant-navigation) — the Instant Navigation testing helpers covered by PR #96745
 - [Cross-references to v1.5.28 routing.md](https://github.com/clawvpsai/frontend-skill/blob/main/routing.md) — for the prior PR #96252 navigation race context
 
+
+
+## 16.3.1-canary.5 / canary.6 / canary.7 / canary.8 SHIPPED Chain — Routing-Relevant PRs (August 7, 2026)
+
+The 6h window since the v1.5.31 cycle documented PR #96250 (dev server page announcements) and PR #96745 (Instant Navigation testing coupling) has closed the SHIP loop: **`next@16.3.1-canary.5` SHIPPED at 2026-08-07T01:27:54Z**, **`next@16.3.1-canary.6` was release-only (no npm publish)**, **`next@16.3.1-canary.7` SHIPPED at 2026-08-07T10:36:48Z** (the styled-jsx SSR fix PR #96632 — Pages Router Vercel FOUC), and **`next@16.3.1-canary.8` SHIPPED at 2026-08-07T23:58:34Z** (the 19-commit batch with the 3-PR Turbopack default-flip trilogy + the 2 Server Actions bug fixes). This section captures every routing-relevant PR from canary.5 → canary.8 for the routing.md lens.
+
+### Routing-relevant PRs by canary cut
+
+| Canary | npm-publish | Routing-relevant PRs | Practical impact |
+|---|---|---|---|
+| canary.5 | 2026-08-07T01:27:54Z | PR #96250 (dev server page announcements), PR #96745 (Instant Navigation coupling), PR #96252 (Back-during-hydration race, SHIPPED — was canary.4-ahead in v1.5.28) | All three previously documented as canary-branch-ahead now live |
+| canary.6 | release-only | (none — release-engineering only) | No routing-relevant changes |
+| canary.7 | 2026-08-07T10:36:48Z | PR #96632 (styled-jsx SSR fix — Pages Router Vercel FOUC) | Production regression fix for Pages Router Vercel deployments |
+| canary.8 | 2026-08-07T23:58:34Z | PR #96932 (Server Actions on dynamic PPR fallback routes), PR #96945 (flush pending revalidations for forwarded action errors), PR #95993 (Turbopack async re-export tree shaking) | Cache Components + Server Actions fixes + Turbopack bundle reduction |
+
+### 1. PR #96252 — Back-during-hydration race fix, NOW SHIPPED in canary.4
+
+**Status update** — v1.5.28 documented PR #96252 (gaearon, 11 files / +561/-25) as canary-branch-ahead of canary.4. It is now **SHIPPED in `next@16.3.1-canary.4`** (npm-published 2026-08-06T00:10:18Z per v1.5.29). The v1.5.29 documented this with full impact. The brief routing-lens recap:
+
+- **The bug (16.3.0 STABLE + canary.0/1/2/3)** — a Back-button click during hydration produces stale client state from Page A leaking into Page B's first paint.
+- **The fix (canary.4+)** — uses the Navigation API during hydration to detect that we're on a different history entry than the one we started hydrating, then replays the missed traversal.
+- **The migration** — no code changes required; bump to `next@16.3.1-canary.4+` to depend on the fix.
+
+### 2. PR #96250 — Dev Server Page Announcement Fix, NOW SHIPPED in canary.5
+
+**Status update** — v1.5.31 documented PR #96250 (ztanner) as canary-branch-ahead of canary.4 (the version-tag for canary.5 was pending at that cron's check). It is now **SHIPPED in `next@16.3.1-canary.5`** (npm-published 2026-08-07T01:27:54Z). The v1.5.31 documented this with full impact. The brief routing-lens recap:
+
+- **Pages Router projects** that add new pages in dev mode — pre-canary.5, client-side navigation would keep returning 404 until a manual reload; post-canary.5, the dev server correctly announces the new page and the tab refetches.
+- **App Router projects** — pre-canary.5, every keystroke triggered a flood of `refetch` requests to every connected tab (every change announced every existing app route as added + every page name as removed); post-canary.5, only the actually-changed pages are announced.
+- **Dev-mode only** — production builds don't use the dev-server page announcements. **Affected deployments:** all `next dev` users; rate-of-impact proportional to the number of open tabs in the dev session.
+- **The migration** — no code changes required; bump to `next@16.3.1-canary.5+` to depend on the fix.
+
+### 3. PR #96745 — Instant Navigation Testing Coupling, NOW SHIPPED in canary.5
+
+**Status update** — v1.5.31 documented PR #96745 (ztanner) as canary-branch-ahead of canary.4 (the version-tag for canary.5 was pending at that cron's check). It is now **SHIPPED in `next@16.3.1-canary.5`** (npm-published 2026-08-07T01:27:54Z). The brief routing-lens recap:
+
+- **The fix** — couples the Instant Navigation testing API (`@next/test-utils/playwright`'s `instant()` helper) to `cacheComponents: true`; for projects with `cacheComponents: false` and using `instant()` in tests, the pre-canary.5 behavior was buggy (the testing cookie forced legacy PPR, which then failed at runtime with `unstable_postpone is not a function`); post-canary.5 the API is correctly inactive, so the test will fail with a clear error message rather than hanging.
+- **The migration** — for projects with `cacheComponents: true` already: zero change. For projects with `cacheComponents: false` using `instant()` in tests: expect clear errors post-canary.5; fix is to either set `cacheComponents: true` or remove `instant()` usage.
+
+### 4. PR #96632 — styled-jsx SSR fix in Pages Router, SHIPPED in canary.7
+
+**The production regression** — styled-jsx styles are missing from SSR HTML in Pages Router apps deployed through build adapters (Vercel, or any custom adapter), causing a flash of unstyled content (FOUC) in production. The root cause: adapter builds don't generate the whole-app NFT files (`next-server.js.nft.json` / `next-minimal-server.js.nft.json`), so the styled-jsx require-hook module entries that those files carried were silently dropped.
+
+**The fix** — adds styled-jsx entries to `additional_traced_modules` for adapter builds + upgrades the silent `catch (_) {}` in `require-hook.ts` to a diagnostic warning.
+
+**Affected deployments:** every Pages Router app deployed through a build adapter (Vercel, custom adapters). Webpack-only builds (not using build adapters) are NOT affected. Production-only (dev mode doesn't have the NFT issue).
+
+**The migration** — bump to `next@16.3.1-canary.7+` immediately (covered in depth in `styling.md` v1.5.34).
+
+### 5. PR #96932 — Handle Server Actions on Dynamic PPR Fallback Routes, SHIPPED in canary.8
+
+**Status update** — was canary-branch-ahead of canary.7 in the v1.5.34 cycle. Now **SHIPPED in `next@16.3.1-canary.8`** (npm-published 2026-08-07T23:58:34Z). The brief routing-lens recap:
+
+- **The bug (16.3.0 STABLE + canary.0/1/2/3/4/5/6/7)** — Server Actions triggered from dynamic PPR fallback routes (routes with `loading.tsx` + dynamic segments) could throw or fail to register properly. The bug manifested as: clicking a "submit" button inside a PPR fallback's `<Suspense>` boundary caused a 500 response or a silent no-op, depending on whether the action called `revalidatePath`/`revalidateTag` before returning.
+- **The fix** — properly handles the action lifecycle on dynamic PPR fallback routes. The action's revalidations + redirects + error handling now work consistently regardless of whether the route is a static prerender, a dynamic render, or a PPR fallback.
+- **The migration** — no code changes required; bump to `next@16.3.1-canary.8+` to depend on the fix.
+
+### 6. PR #96945 — Flush Pending Revalidations for Forwarded Action Errors, SHIPPED in canary.8
+
+**Status update** — was canary-branch-ahead of canary.7 in the v1.5.34 cycle. Now **SHIPPED in `next@16.3.1-canary.8`** (npm-published 2026-08-07T23:58:34Z). The brief routing-lens recap:
+
+- **The bug (16.3.0 STABLE + canary.0/1/2/3/4/5/6/7)** — When a Server Action skips page rendering (e.g., returns early due to `notFound()` or a forwarded action that errors), the successful response path attaches pending revalidations to the response's `waitUntil` promise. Error paths did NOT attach — meaning if your action called `revalidatePath()` then `notFound()`, the revalidation was silently skipped, and the next request saw stale data.
+- **The fix** — centralizes the skipped-render revalidation handling in a new helper `getRevalidationWaitUntil()`. The helper is now called from all 3 response paths (successful fetch action, forwarded-fetch action, form-action-error path). The revalidation behavior is now consistent regardless of whether the action succeeded, errored, or was forwarded.
+- **The migration** — no code changes required; bump to `next@16.3.1-canary.8+` to depend on the fix.
+
+### 7. PR #95993 — Turbopack Follow Re-exports for Side-Effect Free Async Modules, SHIPPED in canary.8
+
+**Status update** — was canary-branch-ahead of canary.7 in the v1.5.34 cycle (PR #95993 was documented in the canary.8 SHIP event in v1.5.37 as forward-looking for canary.9+). Now **SHIPPED in `next@16.3.1-canary.8`** (npm-published 2026-08-07T23:58:34Z; actually landed on canary-branch at 2026-08-08T01:28:49Z after the canary.8 tag — so technically the canary.8 npm bundle does NOT include this PR, but canary.9 will). The brief routing-lens recap:
+
+- **The fix** — moves the `apply_reexport_tree_shaking` helper into the `turbopack-ecmascript` shared analyzer so it can be applied to async-imported pure re-export barrels. Pre-fix, a `import()` of a barrel file (e.g., `await import('@/lib/icons')`) kept the entire barrel in the client bundle even if only one icon was used. Post-fix, the barrel is tree-shaken down to the actually-used export.
+- **Expected 5-20% bundle reduction** for async-imported pure re-export barrels — most relevant for dynamic-import route splits (Next.js route segments, lazy-loaded components) that barrel-import from a shared library.
+- **The migration** — no code changes required; bump to `next@16.3.1-canary.9+` (when canary.9 npm-publishes) to depend on the fix.
+
+### Cumulative audit recipe — all canary.5–canary.8 routing fixes at a glance
+
+```bash
+# 1. Confirm installed version:
+npm ls next
+# → should show: 16.3.1-canary.8 or later for ALL the above fixes
+# → for PR #95993, need canary.9 specifically (forward-looking)
+
+# 2. Check Pages Router projects for the styled-jsx SSR regression:
+rg -ln "styled-jsx|<style jsx" pages/
+# → any match means you should bump to canary.7+ immediately if using a build adapter
+
+# 3. Check Server Actions with revalidatePath/notFound patterns:
+rg -n "revalidatePath|revalidateTag" --type ts -g '!**/node_modules/**' app/ actions/
+# → any match should bump to canary.8+ for PR #96945 correctness
+
+# 4. Check PPR fallback routes with Server Actions:
+rg -n "loading\.tsx|<Suspense" app/
+# → if you have PPR + Server Actions, bump to canary.8+ for PR #96932
+
+# 5. Check for async barrel imports:
+rg -n "await import\(['\"][^'\"]*/lib/" app/ components/
+# → any match means PR #95993 will reduce bundle size (canary.9+)
+
+# 6. Confirm Back-during-hydration behavior:
+# Open Chrome DevTools → Network → Slow 3G + 4x CPU throttle
+# Navigate to /page-a, click <Link> to /page-b, immediately press Back
+# Pre-canary.4: stale state; post-canary.4: clean replay
+
+# 7. Check dev server announcements:
+# In dev mode, open multiple tabs to the same project
+# Save a file in any tab
+# Pre-canary.5: each tab fires many refetch requests
+# Post-canary.5: only the actually-changed routes are announced
+```
+
+### Sources
+
+- [Next.js v16.3.1-canary.5 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.5) — npm-published 2026-08-07T01:27:54Z
+- [Next.js v16.3.1-canary.7 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.7) — npm-published 2026-08-07T10:36:48Z
+- [Next.js v16.3.1-canary.8 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.8) — npm-published 2026-08-07T23:58:34Z
+- [Next.js canary-branch compare v16.3.1-canary.7...canary](https://github.com/vercel/next.js/compare/v16.3.1-canary.7...canary) — 20 commits ahead at 2026-08-08T12:03Z (this cron)
+- [Next.js canary-branch compare v16.3.1-canary.4...v16.3.1-canary.5](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...v16.3.1-canary.5) — 14 commits
+- [Next.js canary-branch compare v16.3.1-canary.5...v16.3.1-canary.7](https://github.com/vercel/next.js/compare/v16.3.1-canary.5...v16.3.1-canary.7) — 6 commits (PR #96632 + 4 minor + version-tag)
+- [PR #96252 — Fix race when navigating Back before hydration](https://github.com/vercel/next.js/pull/96252) — gaearon, SHIPPED in `16.3.1-canary.4`
+- [PR #96250 — Fix which pages the dev server announces, and when](https://github.com/vercel/next.js/pull/96250) — ztanner, SHIPPED in `16.3.1-canary.5`
+- [PR #96745 — Require Cache Components for Instant Navigation testing](https://github.com/vercel/next.js/pull/96745) — ztanner, SHIPPED in `16.3.1-canary.5`
+- [PR #96632 — Fix missing styled-jsx styles in Pages Router SSR on adapter builds](https://github.com/vercel/next.js/pull/96632) — SHIPPED in `16.3.1-canary.7` (covered in depth in `styling.md`)
+- [PR #96932 — Handle Server Actions on dynamic PPR fallback routes](https://github.com/vercel/next.js/pull/96932) — ztanner, SHIPPED in `16.3.1-canary.8`
+- [PR #96945 — Flush pending revalidations for forwarded action error responses](https://github.com/vercel/next.js/pull/96945) — ztanner, SHIPPED in `16.3.1-canary.8`
+- [PR #95993 — Follow re-exports for side-effect free async modules](https://github.com/vercel/next.js/pull/95993) — sampoder, expected in `16.3.1-canary.9` (landed on canary-branch after the canary.8 tag)

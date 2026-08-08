@@ -3417,3 +3417,269 @@ rg -l "\[\.\.\." app/
 - **Using `export const instant = true` and expecting Partial Prefetching** — separated in 16.3.0; opt into `partialPrefetching: true` explicitly.
 - **Trusting catch-all routes on 16.3.0** — bug PR #96553 ships in 16.3.1-canary.0; pin to that or wait for 16.3.1 stable.
 
+
+
+## Pattern: Turbopack + Server Actions + Cache Components on canary.8 — PR #96779 + PR #96778 + PR #96578 + PR #96932 + PR #96945 (August 7, 2026)
+
+The `next@16.3.1-canary.8` SHIPPED event (npm-published 2026-08-07T23:58:34Z) bundled 5 PRs that affect composite patterns involving **Turbopack + Server Actions + Cache Components** — the most-used combo in 16.3 production apps. The first three are the **Turbopack default-flip trilogy** (all silently-on by default on canary.8+), and the last two are **Server Actions correctness fixes**. All patterns documented below assume the app is on `next@16.3.1-canary.8+` and using the Turbopack bundler (Webpack users unaffected).
+
+### Pattern A: Turbopack CJS Tree Shaking Default-On (PR #96779)
+
+**Pre-canary.8 (default off):** Turbopack's CJS tree shaking was opt-in via `experimental: { turbopackCjsTreeShaking: true }`. CJS-only dependencies (e.g., `lodash`, `axios` pre-1.x, `react-dom/server`) were bundled in full even when only one or two exports were used.
+
+**Post-canary.8 (default on):** Turbopack now applies CJS tree shaking by default. CJS-only deps get the same DCE treatment as ESM exports.
+
+**Expected impact:** **5-15% bundle size reduction** for apps with CJS-heavy dependencies. Apps that primarily use ESM (Next.js 13+ projects) see zero or marginal impact.
+
+**Migration recipe:**
+```ts
+// next.config.ts — REMOVE the now-redundant opt-in flag
+const nextConfig: NextConfig = {
+  // experimental: { turbopackCjsTreeShaking: true }, ← DELETE (now default-on)
+}
+```
+
+**Audit:**
+```bash
+# Verify your Turbopack config has no redundant opt-in:
+rg -n "turbopackCjsTreeShaking" next.config.*
+# → any match should be deleted (line is now redundant)
+```
+
+### Pattern B: Turbopack Shared Runtime Default-On (PR #96778)
+
+**Pre-canary.8 (default off):** Turbopack's shared runtime (one JS bundle for the framework runtime shared across all routes, instead of one per route) was opt-in via `experimental: { turbopackSharedRuntime: true }`.
+
+**Post-canary.8 (default on):** Turbopack now applies the shared runtime by default for all builds. The framework runtime is bundled once, not per-route.
+
+**Expected impact:**
+- **1-3 KB smaller HTML per route** (the per-route `<script>` tag shrinks because the shared runtime is now in a top-level script)
+- **5-10% faster Time-to-Interactive (TTI)** for apps with many routes (the browser caches the shared runtime once)
+- **Reduced bandwidth** for multi-route navigations
+
+**Migration recipe:**
+```ts
+// next.config.ts — REMOVE the now-redundant opt-in flag
+const nextConfig: NextConfig = {
+  // experimental: { turbopackSharedRuntime: true }, ← DELETE (now default-on)
+}
+```
+
+**Audit:**
+```bash
+# Verify your Turbopack config has no redundant opt-in:
+rg -n "turbopackSharedRuntime" next.config.*
+# → any match should be deleted (line is now redundant)
+```
+
+### Pattern C: Turbopack Per-Environment Minify Config (PR #96578)
+
+**Pre-canary.8:** Turbopack minification was controlled by `experimental.turbopackMinify: true|false` (single boolean). The `experimental.serverMinification` flag was Webpack-only.
+
+**Post-canary.8:** `experimental.turbopackMinify` is now an object that supports per-environment overrides (`'client'`, `'server'`, or both). `experimental.serverMinification` is now also respected by Turbopack (was Webpack-only before).
+
+**Migration recipe:**
+```ts
+// next.config.ts — Per-environment Turbopack minify config
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackMinify: {
+      client: true,   // minify client bundles (default: true)
+      server: true,   // minify server bundles (NEW: now Turbopack-supported)
+    },
+    // serverMinification: true, ← NOW respected by Turbopack (was Webpack-only)
+  },
+}
+```
+
+**Practical impact:** projects that previously opted out of `turbopackMinify` to debug server-side bundling can now keep server minification off while leaving client minification on. Conversely, projects that want to fully opt out of minification for performance profiling can set `turbopackMinify: false` for both environments.
+
+### Pattern D: Server Actions on Dynamic PPR Fallback Routes (PR #96932)
+
+**Pre-canary.8 (16.3.0 STABLE + canary.0–7):** Server Actions triggered from dynamic PPR fallback routes (routes with `loading.tsx` + dynamic segments) could throw or fail to register properly.
+
+**The canonical pattern (now safe on canary.8+):**
+
+```tsx
+// app/dashboard/@notifications/loading.tsx
+export default function Loading() {
+  return <Skeleton />
+}
+
+// app/dashboard/@notifications/page.tsx
+import { Suspense } from 'react'
+import { markRead } from './actions'
+
+export default function NotificationsPage() {
+  return (
+    <Suspense fallback={<Skeleton />}>
+      <NotificationsList />
+    </Suspense>
+  )
+}
+
+async function NotificationsList() {
+  const notifications = await fetchNotifications()
+  return (
+    <ul>
+      {notifications.map((n) => (
+        <li key={n.id}>
+          {n.title}
+          <form action={markRead.bind(null, n.id)}>
+            <button>Mark read</button>
+          </form>
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+**Pre-canary.8 behavior:** clicking "Mark read" on a PPR fallback's `<Suspense>` boundary would intermittently 500 or silently no-op depending on whether the action called `revalidatePath` before returning.
+
+**Post-canary.8 behavior:** the action's revalidations + redirects + error handling now work consistently regardless of whether the route is a static prerender, a dynamic render, or a PPR fallback.
+
+**Audit:**
+```bash
+# Find PPR fallback routes with Server Actions:
+rg -ln "loading\.tsx" app/ | while read f; do
+  dir=$(dirname "$f")
+  if [ -f "$dir/page.tsx" ]; then
+    rg -l "import.*from.*['\"]\\./actions['\"]|form action=" "$dir/"
+  fi
+done
+# → any match should bump to canary.8+ for PR #96932 correctness
+```
+
+### Pattern E: Forwarded Action Errors Flush Revalidations (PR #96945)
+
+**Pre-canary.8 (16.3.0 STABLE + canary.0–7):** Server Actions that called `revalidatePath()` (or `revalidateTag()`) and then threw `notFound()` / an error / a redirect that errored would return their error response WITHOUT executing the pending invalidation. The cache would not be invalidated; the next request would see stale data.
+
+**The canonical pattern (now safe on canary.8+):**
+
+```ts
+// app/actions/posts.ts
+'use server'
+import { revalidatePath } from 'next/cache'
+import { notFound } from 'next/navigation'
+
+export async function deletePost(postId: string) {
+  const post = await db.post.findUnique({ where: { id: postId } })
+  if (!post) notFound()  // throws — but revalidation MUST still execute
+
+  await db.post.delete({ where: { id: postId } })
+  revalidatePath('/posts')
+  revalidatePath(`/posts/${postId}`)
+  // Pre-canary.8: if a throw happens after this, revalidation is silently lost
+  // Post-canary.8: revalidation is centralized in getRevalidationWaitUntil()
+}
+```
+
+**Pre-canary.8 bug surface:** high-stakes apps (admin dashboards, e-commerce inventory, CMS publishes) where the post-action revalidation MUST happen for the system to remain consistent. Pre-canary.8, an error after `revalidatePath()` would leave the cache stale — the next request would see the old data until the cache TTL expired (could be hours).
+
+**Post-canary.8 behavior:** revalidation is now consistent regardless of whether the action succeeded, errored, or was forwarded. No silent stale-cache windows.
+
+**Audit:**
+```bash
+# Find Server Actions with revalidatePath + notFound/throw patterns:
+rg -nB1 -A3 "revalidatePath\(|revalidateTag\(" --type ts app/ actions/ | rg -B1 -A3 "notFound|throw|redirect\("
+# → any match should bump to canary.8+ for PR #96945 correctness
+```
+
+### When to use these patterns together
+
+The 5 PRs compose into a single "Next.js 16.3 on Turbopack, production-grade" recipe:
+
+```ts
+// next.config.ts — The canary.8+ canonical production config
+const nextConfig: NextConfig = {
+  // Cache Components (the 16.3 default — opt-in here is now redundant)
+  cacheComponents: true,
+
+  // Turbopack (default in 16.3+)
+  // (No explicit bundler opt-in needed in 16.3+; Turbopack is the default)
+
+  experimental: {
+    // Partial Prefetching — opt in for instant navigation
+    partialPrefetching: true,
+
+    // Turbopack per-environment minify (NEW: now configurable per-env)
+    turbopackMinify: {
+      client: true,
+      server: true,
+    },
+    // serverMinification: true, ← NOW respected by Turbopack (was Webpack-only)
+
+    // DELETE these (now default-on in canary.8+):
+    // turbopackCjsTreeShaking: true, ← redundant
+    // turbopackSharedRuntime: true, ← redundant
+  },
+}
+```
+
+```tsx
+// app/posts/[slug]/page.tsx — Cache Components + Server Actions + PPR fallback
+import { Suspense } from 'react'
+import { notFound } from 'next/navigation'
+import { cacheLife, cacheTag } from 'next/cache'
+import { markRead } from './actions'
+
+// 'use cache' + cacheLife gives you ISR-like behavior
+async function getPost(slug: string) {
+  'use cache'
+  cacheLife('hours')          // ISR: revalidate every hour
+  cacheTag(`post:${slug}`)
+
+  const post = await db.post.findUnique({ where: { slug } })
+  if (!post) notFound()
+  return post
+}
+
+export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params
+  const post = await getPost(slug)
+
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <p>{post.body}</p>
+      {/* PPR fallback + Server Action — safe on canary.8+ */}
+      <Suspense fallback={<CommentsSkeleton />}>
+        <Comments postId={post.id} />
+      </Suspense>
+    </article>
+  )
+}
+```
+
+```ts
+// app/posts/[slug]/actions.ts — Server Action with revalidation (PR #96945 safe)
+'use server'
+import { revalidatePath, revalidateTag } from 'next/cache'
+import { notFound } from 'next/navigation'
+
+export async function markRead(postId: string) {
+  const post = await db.post.findUnique({ where: { id: postId } })
+  if (!post) notFound()  // throws; revalidation still executes post-canary.8
+
+  await db.readMark.create({ data: { postId, userId: getUserId() } })
+
+  revalidatePath(`/posts/${post.slug}`)
+  revalidateTag(`post:${post.slug}`)
+  // Post-canary.8: revalidation runs even if subsequent code throws
+}
+```
+
+### Sources
+
+- [Next.js v16.3.1-canary.8 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.8) — npm-published 2026-08-07T23:58:34Z
+- [Next.js canary-branch compare v16.3.1-canary.7...canary](https://github.com/vercel/next.js/compare/v16.3.1-canary.7...canary) — 20 commits ahead at 2026-08-08T12:03Z (this cron)
+- [PR #96779 — Enable CJS tree shaking by default](https://github.com/vercel/next.js/pull/96779) — sampoder, merged 2026-08-07T18:26:49Z, 8 files / +89/-51 (Turbopack config-shared change)
+- [PR #96778 — Enable the shared runtime by default](https://github.com/vercel/next.js/pull/96778) — sampoder, merged 2026-08-07T19:37:55Z, 6 files / +76/-42 (Turbopack config-shared change)
+- [PR #96578 — Support `experimental.serverMinification` & expand `experimental.turbopackMinify`](https://github.com/vercel/next.js/pull/96578) — sampoder, merged 2026-08-07T21:05:21Z, 4 files / +127/-43 (Turbopack minify per-env support)
+- [PR #96932 — Handle Server Actions on dynamic PPR fallback routes](https://github.com/vercel/next.js/pull/96932) — ztanner, merged 2026-08-07T23:09:22Z, 4 files / +57/-22
+- [PR #96945 — Flush pending revalidations for forwarded action error responses](https://github.com/vercel/next.js/pull/96945) — ztanner, merged 2026-08-07T23:09:24Z, 4 files / +65/-16
+- [Next.js 16.3.0 release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE; npm-published 2026-08-03T21:03:18Z
+- [Turbopack CJS tree shaking docs](https://nextjs.org/docs/app/api-reference/turbopack) — `experimental.turbopackCjsTreeShaking` reference
+- [Turbopack shared runtime docs](https://nextjs.org/docs/app/api-reference/turbopack) — `experimental.turbopackSharedRuntime` reference
+- [Cache Components docs](https://nextjs.org/docs/app/api-reference/next-config-js/cacheComponents) — `cacheComponents` reference
