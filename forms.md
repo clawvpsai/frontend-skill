@@ -1707,6 +1707,8 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 
 - **RHF 8: test breaking changes before upgrading** — v8 beta is not production-stable; the `useForm` API has breaking changes including `id`→`key` rename, `keyName` removal, `names`→`name` in Watch, `watch` callback→`subscribe`, and `setValue` no longer updating field arrays
 
+- **RHF 7.85.0: `<Form>` + `<input type="file">` silently drops every uploaded file from the FormData** — pre-7.86.0, `flatten()` recurses into anything with `typeof value === 'object'`, so a `File` / `Blob` / `FileList` is walked as if it were a plain object — those objects expose no enumerable own properties, so the recursion returns `{}` and the key is dropped from the output. `jsonToFormData()` is built out of `flatten()`, so every file in a form silently disappears. The bug is silent — no warnings, no errors, the form submits successfully with HTTP 200, the server-side handler receives the FormData with the file fields missing. Production symptoms: avatar/profile photo upload forms drop the photo silently, resume/CV upload forms send no resume, KYC document upload forms fail silently with no files, bulk multi-file uploads drop every file. **Fix lands in RHF v7.86.0 via PR #13652** (bluebill1049, merged 2026-08-08T22:51:24Z, 3 files / +61/-1). Workarounds for v7.85.0 users (until 7.86.0 ships): Option A — bypass `<Form>` + `jsonToFormData()` entirely with `useRef` + `new FormData()` + `Array.from(fileInputRef.current.files).forEach`; Option B — pre-process form data in onSubmit with `instanceof File || instanceof Blob || instanceof FileList` checks; Option C — drop `<Form>` for `<form onSubmit>` direct with `encType="multipart/form-data"`. NOT affected: `<form onSubmit={handleSubmit(...)}>` direct (no `<Form>` wrapper) — onSubmit gets the validated form data object and File values flow through correctly; `new FormData(event.target)` — browser-native FormData handles files correctly; `useController` + manual file ref; manual `setValue('avatar', file)` storage. See the new `## RHF Master Branch — NEW PR #13652 flatten() File/Blob Fix (August 8, 2026)` section below for the full walkthrough.
+
 - **RHF 7.83: keeping a `JSON.stringify` workaround on `formState.dirtyFields`** — the reference is now stable across interactions; you can compare with `===` instead of serializing, and Zustand/React Query keys built from `dirtyFields` will stop invalidating on every keystroke
 - **RHF 7.83: not re-running `npx tsc --noEmit` after bumping to 7.83.0** — the 10-level recursion hard cap (PR #13529) is a measurable `tsc` win on deeply-typed forms; verify it landed by timing the type-check before/after
 - **RHF 7.83: massaging `e.target.files` manually on `<input type="file">` registered via `register()`** — `getEventValue` (PR #13289) now yields an `Array<File>`; the manual `FileList → Array` conversion can be dropped
@@ -1984,17 +1986,18 @@ Removes the `tinybench` dependency from the bench harness. **Zero practical impa
 
 Removes dead code (unused exports, internal helpers) and the stale API Extractor report. **Zero practical impact** for users; zero behavior change. May reduce bundle size by ~1-2 KB on deeply-nested form states.
 
-### 3 NEW forward-looking commits for v7.86.0 (merged Aug 8 in a tight 41-minute window)
+### 4 NEW forward-looking commits for v7.86.0 (PR #13648 + #13649 + #13650 in a tight 41-minute window + PR #13652 ~17h55min later)
 
-The v1.5.36 cycle did not capture these (they were merged between the v1.5.36 commit at 00:03Z Aug 8 and this cron's check at 06:02Z Aug 8 — all 3 in the 04:16Z → 04:57Z window):
+The v1.5.36 cycle did not capture #13648/#13649/#13650 (they were merged between the v1.5.36 commit at 00:03Z Aug 8 and this cron's check at 06:02Z Aug 8 — all 3 in the 04:16Z → 04:57Z window). The v1.5.37 + v1.5.38 cycles added them to the table. **PR #13652 landed on master at 2026-08-08T22:51:24Z (~16h after the v1.5.38 cycle commit) and is the most material of the 4 — see the new `## RHF Master Branch — NEW PR #13652 flatten() File/Blob Fix (August 8, 2026)` section below for the full deep dive.**
 
 | # | PR | Title | Date | Note |
 |---|---|---|---|---|
 | 1 | #13648 | 🫯 perf: improve `createFormControl` | 2026-08-08T04:16:59Z | Performance — reduces per-form-control init overhead |
 | 2 | #13649 | 🚗 perf: improve clone object check | 2026-08-08T04:23:04Z | Performance — faster deep-clone short-circuit |
 | 3 | #13650 | fix: field array update leaving stale errors and touched state at updated index | 2026-08-08T04:57:42Z | Field array fix — touched/dirty errors persist at the updated index after `swap`, `move`, `replace` |
+| 4 | #13652 | 🐞 fix(flatten): preserve File and Blob values as leaf nodes | 2026-08-08T22:51:24Z | **MATERIAL** — `<Form>` file uploads silently disappear from FormData (see deep dive below); 3 files / +61/-1, by bluebill1049 |
 
-All 3 will land in **v7.86.0** (expected within 2-3 weeks). For users on `^7.85.0` who hit any of these issues, the workaround is: (a) for PR #13648/#13649 perf — no workaround; upgrade when 7.86.0 ships; (b) for PR #13650 field array — manually reset errors via `setError(name, { shouldFocus: false })` after the field array action. The v1.5.31 cycle's three open PRs (PR #13639 `getErrors`, PR #13616 `validationScope`, PR #13642 stale-render re-classified as PR #13644 merged) remain open: PR #13639 is the closest to landing (now non-draft per `GET /repos/react-hook-form/react-hook-form/pulls/13639` returning `draft: False`); PR #13616 is open but the validationScope feature is still in design.
+All 4 will land in **v7.86.0** (expected within 2-3 weeks). For users on `^7.85.0` who hit any of these issues, the workaround is: (a) for PR #13648/#13649 perf — no workaround; upgrade when 7.86.0 ships; (b) for PR #13650 field array — manually reset errors via `setError(name, { shouldFocus: false })` after the field array action; (c) for PR #13652 flatten File/Blob — manual workaround is to NOT use `jsonToFormData()` and instead manually iterate the form fields and re-append any File/Blob fields via `formData.append(name, file)` (see deep dive below); the canonical workaround is to upgrade to ^7.86.0 when it ships. For users on `^7.85.0` who hit any of these issues, the workaround is: (a) for PR #13648/#13649 perf — no workaround; upgrade when 7.86.0 ships; (b) for PR #13650 field array — manually reset errors via `setError(name, { shouldFocus: false })` after the field array action. The v1.5.31 cycle's three open PRs (PR #13639 `getErrors`, PR #13616 `validationScope`, PR #13642 stale-render re-classified as PR #13644 merged) remain open: PR #13639 is the closest to landing (now non-draft per `GET /repos/react-hook-form/react-hook-form/pulls/13639` returning `draft: False`); PR #13616 is open but the validationScope feature is still in design.
 
 ### Recommended version pin after this cycle
 
@@ -2070,3 +2073,162 @@ rg -n "useFieldArray" app/ src/ | rg -i "FieldArray"
 - [v7.84.0...v7.85.0 compare](https://github.com/react-hook-form/react-hook-form/compare/v7.84.0...v7.85.0) — confirms 11 commits at this cron's check (verified at 2026-08-08T06:02Z)
 - [v7.85.0...master compare](https://github.com/react-hook-form/react-hook-form/compare/v7.85.0...master) — confirms 4 NEW commits on master ahead of 7.85.0 at this cron's check (verified at 2026-08-08T06:02Z): CHANGELOG.md update + PR #13648 + PR #13649 + PR #13650
 
+
+## RHF Master Branch — NEW PR #13652 flatten() File/Blob Fix (August 8, 2026) — `<Form>` File Uploads Silently Disappear Pre-7.86.0
+
+**PR #13652** [`🐞 fix(flatten): preserve File and Blob values as leaf nodes`](https://github.com/react-hook-form/react-hook-form/pull/13652) by bluebill1049 (the RHF maintainer), merged 2026-08-08T22:51:24Z (between the v1.5.38 cycle commit at 12:07Z Aug 8 and this cron's check at 00:03Z Aug 9), 3 files / +61/-1. This is a **silent data-loss bug fix** for users of RHF's `<Form>` component + `<input type="file">` — without this fix, every file uploaded via `<Form>` disappears from the FormData request body without any warning or error. **Will ship in `react-hook-form@7.86.0`** (expected within 2-3 weeks, on the typical 7-14 day v7.x→v7.x cadence from the v7.85.0 SHIP event at 2026-08-08T01:10:31Z).
+
+### The bug
+
+`flatten()` is the internal helper that walks a nested object structure to produce a flat key-value map. It recurses into anything with `typeof value === 'object'` — so a `File`, `Blob`, or `FileList` is walked as if it were a plain object. Those objects expose no enumerable own properties, so the recursion returns `{}` and the key is dropped from the output entirely.
+
+**`jsonToFormData()`** — the helper that builds the `FormData` that `<Form>` submits — is built out of `flatten()`. So every file in a form silently disappears from the request body:
+
+```javascript
+const resume = new File(['content'], 'resume.pdf');
+
+[...jsonToFormData({ name: 'bill', resume }).keys()];
+// ['name'] — resume is gone
+```
+
+A `FileList` (which is what `register()` stores for `<input type="file" />`) collapses the same way: `flatten()` recurses into the list, then into each `File`, and every entry vanishes.
+
+### Why the fix uses a `Blob`/`File` test instead of relying on `instanceof`
+
+The fix tests `Blob` and `File` separately rather than relying on `File extends Blob`. The PR body explains: *"in this repo's own jsdom test environment `new File([], 'a.txt') instanceof Blob` is `false`, so a `Blob`-only check would still drop files there."* The jsdom test env's globals don't share a prototype chain between `File` and `Blob`, so the explicit `instanceof File` + `instanceof Blob` dual-check is required.
+
+### The fix
+
+The fix follows the same shape as the v7.85.0 PR #13644 fix for `Date`: file-like values are treated as **leaf nodes** in `flatten()`. Files now reach `FormData.append()` as files, and a `FileList` flattens to `avatar.0`, `avatar.1`, … — consistent with how `flatten()` already handles arrays. The diff is 3 files (`src/logic/flatten.ts` + tests + CHANGELOG.md update).
+
+### Practical impact for v7.85.0 users (will be FIXED in 7.86.0)
+
+**Any form using `<Form>` + `<input type="file">` is silently losing uploaded files pre-7.86.0.** The bug is silent — no warnings, no errors, the form submits successfully with HTTP 200, the server-side handler receives the FormData with the file fields missing. Production symptoms:
+- **Avatar/profile photo upload forms** — server logs show the avatar field as missing, default avatar is rendered, user wonders why their photo didn't upload
+- **Resume/CV upload forms** — recruiter receives an applicant with no resume file
+- **Document upload forms** (KYC, ID verification, contracts) — server-side document processing fails silently with no files
+- **Bulk file upload forms** (multi-file `input[type=file][multiple]`) — every file is dropped
+
+**Who is affected:** any RHF user who:
+1. Uses `<Form>` (the `react-hook-form` exported Form component) **OR** uses `jsonToFormData()` directly, **AND**
+2. Has at least one `File`, `Blob`, or `FileList` field in the form
+
+**Who is NOT affected:**
+- Forms using `<form onSubmit={handleSubmit(...)}>` directly (no `<Form>` wrapper) — the onSubmit handler is called with the validated form data object, and File values flow through correctly
+- Forms that manually construct FormData with `new FormData(event.target)` — the browser's FormData constructor handles files correctly
+- Forms using `useController` + a manual `<input type="file">` ref — the file is in the ref, not in the form values
+- Forms using `react-hook-form`'s file upload helpers (`Controller` + `setValue` + manual File handling) — `setValue('avatar', file)` stores the File directly in the form state
+
+### Workarounds for v7.85.0 users (until 7.86.0 ships)
+
+**Option A — bypass `<Form>` + `jsonToFormData()` entirely** (recommended):
+
+```tsx
+import { useForm } from 'react-hook-form';
+import { useRef } from 'react';
+
+function ResumeUploadForm() {
+  const { register, handleSubmit, formState: { errors } } = useForm<{
+    name: string;
+    resume: FileList;
+  }>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onSubmit = async (data: { name: string }) => {
+    // Build FormData manually — bypass jsonToFormData() entirely
+    const formData = new FormData();
+    formData.append('name', data.name);
+    if (fileInputRef.current?.files) {
+      // FileList → iterate and append each file
+      Array.from(fileInputRef.current.files).forEach((file) => {
+        formData.append('resume', file);
+      });
+    }
+    await fetch('/api/upload', { method: 'POST', body: formData });
+  };
+
+  return (
+    <form onSubmit={handleSubmit(onSubmit)}>
+      <input {...register('name')} />
+      {/* Do NOT use {...register('resume')} — that triggers the bug */}
+      <input type="file" ref={fileInputRef} multiple />
+      <button type="submit">Upload</button>
+    </form>
+  );
+}
+```
+
+**Option B — pre-process the form data before submission:**
+
+```tsx
+const onSubmit = async (data) => {
+  // Get the file values from refs (not from form data)
+  const formData = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value instanceof File || value instanceof Blob) {
+      formData.append(key, value);
+    } else if (value instanceof FileList) {
+      Array.from(value).forEach((file) => formData.append(key, file));
+    } else {
+      formData.append(key, String(value));
+    }
+  });
+  await fetch('/api/upload', { method: 'POST', body: formData });
+};
+```
+
+**Option C — drop `<Form>` and use `<form onSubmit>` directly:**
+
+```tsx
+import { Form, useForm } from 'react-hook-form';
+// Before:
+<Form ... onSubmit={handleSubmit(onSubmit)}>
+  <input type="file" {...register('resume')} />
+</Form>
+// After:
+<form onSubmit={handleSubmit(onSubmit)} encType="multipart/form-data">
+  <input type="file" {...register('resume')} />
+</form>
+```
+
+The `<form>` element with `encType="multipart/form-data"` handles file uploads natively in the browser — no `jsonToFormData()` flattening needed.
+
+### Audit recipe
+
+```bash
+# 1. Confirm installed version
+npm ls react-hook-form
+
+# 2. Find all uses of the <Form> component (the buggy path)
+rg -n "from 'react-hook-form'" app/ src/ | xargs grep -l "import.*Form"
+rg -n "<Form " app/ src/
+
+# 3. Find all uses of jsonToFormData (the buggy path)
+rg -n "jsonToFormData" app/ src/
+
+# 4. Find all <input type="file"> in the codebase
+rg -n "type=['\"]file['\"]" app/ src/
+
+# 5. Cross-reference: any form that has BOTH <Form> + <input type="file"> is affected
+# (the intersection of rg #2 and rg #4 is the bug surface)
+
+# 6. If you have a <Form> + <input type="file"> form:
+# - Pre-7.86.0: files are silently lost
+# - Workaround: see Option A/B/C above
+# - Post-7.86.0: files flow through correctly
+
+# 7. Watch for 7.86.0 release
+npm view react-hook-form dist-tags
+# Expect: latest: 7.86.0 when it ships (currently still 7.85.0)
+```
+
+### Sources
+
+- [react-hook-form PR #13652 — 🐞 fix(flatten): preserve File and Blob values as leaf nodes](https://github.com/react-hook-form/react-hook-form/pull/13652) — by bluebill1049, merged 2026-08-08T22:51:24Z, 3 files / +61/-1. **FORWARD-LOOKING for v7.86.0**. The verbatim bug walkthrough + the File/Blob instanceof check rationale are from the PR body.
+- [react-hook-form PR #13644 — fix #13641 stale render re-creating field array path (closes #13642)](https://github.com/react-hook-form/react-hook-form/pull/13644) — the precedent for "treat file-like as leaf" pattern (Date → leaf). PR #13644 closes issue #13642; merged 2026-08-07T10:05:00Z, SHIPPED in 7.85.0.
+- [react-hook-form CHANGELOG.md](https://github.com/react-hook-form/react-hook-form/blob/master/CHANGELOG.md) — full per-version history; 7.86.0 will include PR #13652's flatten File/Blob fix
+- [react-hook-form issue #13566 — prior `Date` flatten bug (fixed in 7.85.0 era)](https://github.com/react-hook-form/react-hook-form/issues/13566) — the precedent that PR #13652 follows
+- [MDN — `FormData` constructor](https://developer.mozilla.org/en-US/docs/Web/API/FormData/FormData) — the `new FormData(form)` constructor handles file inputs natively; the workaround Option A uses this pattern
+- [MDN — `<input type="file">`](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/file) — the `multiple` attribute + the `files` property that returns a `FileList`
+- [v7.85.0...master compare](https://github.com/react-hook-form/react-hook-form/compare/v7.85.0...master) — confirms 5 NEW commits on master ahead of 7.85.0 at this cron's check (verified at 2026-08-09T00:03Z): CHANGELOG.md update + PR #13648 + PR #13649 + PR #13650 + **PR #13652** (NEW)
+- [Cross-reference: v1.5.37 forms.md `## React Hook Form 7.85.0 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/forms.md) — the previous cycle's coverage of the 9 SHIPPED + 3 NEW forward-looking commits

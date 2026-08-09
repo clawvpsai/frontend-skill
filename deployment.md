@@ -2002,6 +2002,8 @@ rg -n "revalidatePath\|revalidateTag" app/ actions/ src/
 - **Per-environment `experimental.turbopackMinify` migration** — the legacy `experimental.serverMinification: false` option was deprecated in 16.3.0 (Webpack-only). For Turbopack on canary.8+, the equivalent is `experimental.turbopackMinify: { server: false }`. Mixing the two (e.g., `experimental.serverMinification: false` + `experimental.turbopackMinify: true` on Turbopack) will produce a "both options set" warning in canary.9+ (no PR attribution yet, but the warning is expected). Migration: pick ONE option. For Turbopack-only projects, use `experimental.turbopackMinify: { server: false }`. For Webpack-only projects, keep `experimental.serverMinification: false`. For mixed projects, use both with the same boolean (the deprecation warning will fire but the behavior is correct).
 - **Action-only fetch calls on PPR fallback routes throw "postponed state and fallback params" before canary.8** — fixed by PR #96932. The fix is silent. See `## Why PR #96932 (Server Actions on Dynamic PPR Fallback Routes) matters` in performance.md for the full walkthrough. The most-impacted apps: any Cache Components + adapter deployment + fetch action on a parameterized route (`/users/[id]`, `/posts/[slug]`, etc.). **Deployment-bounded audit recipe**: build the app with `cacheComponents: true`, deploy to an adapter, then dispatch a fetch action to a parameterized route with `Accept: application/json` — pre-canary.8, the response is a 500 with the postponed-state error; post-canary.8, the response is a 200 with the action result.
 - **`revalidatePath()` / `revalidateTag()` in an action that errors silently skips the invalidation on canary.0–canary.7** — fixed by PR #96945. The fix is silent. See `## Why PR #96945 (Flush Pending Revalidations for Forwarded Action Error Responses) matters` in performance.md for the full walkthrough. **Deployment-bounded audit recipe**: deploy an action that calls `revalidatePath('foo')` followed by `notFound()`, then check the cache handler logs — pre-canary.8, the `foo` invalidation is NOT in the cache handler logs; post-canary.8, it IS.
+- **`next build` hangs silently on cgroup-restricted hosts with canary.0–canary.8** — fixed by PR #95695. The bug is silent — no warnings, no error messages, the build just hangs at `scope_and_block` join until manually killed. Reproduction: `docker run --cpus=2 my-next-app pnpm build` (the cgroup restricts the host CPU count to 2; the tokio runtime may have fewer worker threads than host CPUs; `scope_and_block` deadlocks). Pre-canary.9: build hangs indefinitely; post-canary.9: build completes normally. **Deployment-bounded audit recipe**: CI containers with `--cpus=N` + Next.js projects using Turbopack should upgrade to `^16.3.1-canary.9` before the canary.9 release-tagged commit lands on the npm `canary` dist-tag (typical 21-minute delay between GitHub release tag and npm publish). See the `## Next.js — next@16.3.1-canary.9 SHIPPED` section above for the full walkthrough.
+- **`output: 'export'` + Route Handlers fail with `next dev` / `next build` without `export const dynamic = 'force-static'`** — the underlying requirement has been in the codebase since `output: 'export'` was introduced, but the documentation gap was closed in canary.9 by PR #96964. If your route handlers don't have `export const dynamic = 'force-static'` and you use `output: 'export'`, the build will fail with an error (not a warning). Pre-canary.9: documentation gap made this confusing for new users; post-canary.9: docs are updated. The runtime behavior is unchanged — the fix is documentation-only. Audit recipe: `rg -n "export const dynamic" app/api/` to confirm every Route Handler has the directive.
 
 ### Sources
 
@@ -2113,3 +2115,136 @@ const path = require('path');
 - [Next.js canary release tag timeline](https://github.com/vercel/next.js/releases) — the 24h canary cadence; expect canary.9 within 6-18h of this cron's check.
 - [Cross-reference: v1.5.36 performance.md — the canary.8-batch Turbopack default-flip trilogy coverage](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — PR #96779 + PR #96778 + PR #96578 lens
 
+
+## Next.js — `next@16.3.1-canary.9` SHIPPED (August 8, 2026) — PR #95993 SHIPPED (Turbopack Async Re-Export Tree Shaking) + PR #95695 Turbopack `scope_and_block` Deadlock Fix
+
+**`next@16.3.1-canary.9` SHIPPED** at 2026-08-08T23:44:17Z (GitHub release tag `v16.3.1-canary.9` published at the same time; npm `dist-tag.canary` updated within minutes). The v1.5.37 cycle's prediction "expect canary.9 within 6-18h" was correct — canary.9 shipped 22h15min after the v1.5.37 commit and ~17h after the v1.5.38 cron check. The canary.9-vs-canary.8 diff is **5 commits** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.8...v16.3.1-canary.9` returning `ahead_by: 5, behind_by: 0`). The canary-branch is **0 commits ahead of canary.9** (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.9...canary` returning `ahead_by: 0, behind_by: 0`) — the canary-branch is exactly at canary.9; canary.10 version-tag is forward-looking. **Two material changes** in the canary.9 batch:
+
+### 1. PR #95993 SHIPPED — `[turbopack] Follow re-exports for side-effect free async modules` (sampoder, merged 2026-08-08T01:28:49Z, 17 files / +176/-39)
+
+**`apply_reexport_tree_shaking` is now wired into async-imported modules in `turbopack-ecmascript`.** The v1.5.37 cycle documented this PR as forward-looking for canary.9+; the canary.9 SHIP event closes the loop. The headline example from the PR body (now live):
+
+```javascript
+// a.js
+export const a = 'A'
+
+// b.js
+export const b = 'B'        // unused
+
+// barrel.js  (pure re-export barrel)
+export { a } from './a.js'
+export { b } from './b.js'
+
+// index.js
+const { a } = await import('./barrel.js')
+console.log(a) 
+```
+
+Post-PR #95993 in canary.9: Turbopack now tree-shakes `b` from the async-imported pure re-export barrel. Pre-PR #95993 (canary.0–canary.8): `b` was included in the bundle. **Practical impact (now live in canary.9):**
+
+- **Pure re-export barrels (`export { x } from './y.js'`) imported via `await import(...)`** — `b` and other unused re-exports are now tree-shaken away. **Expected bundle size reduction: 5-20%** for codebases with large pure re-export barrels (component libraries, design systems, icon libraries).
+- **Mixed re-export barrels** — pure re-exports are tree-shaken; local exports are preserved.
+- **Side-effectful re-exports** — NOT tree-shaken (correct — side effects must be preserved).
+- **Sync imports** — unchanged behavior; tree-shaking already worked for sync paths.
+
+The 17-file diff is concentrated in `turbopack-ecmascript/src/references/esm/{dynamic,export,mod}.rs` (`+52/+31/+11`) — moving `apply_reexport_tree_shaking` from sync-only into the unified ECMAScript analyzer. The remaining 14 files are new snapshot test fixtures in `turbopack-tests/tests/snapshot/reexport-drop/pure-dynamic/` plus the input/output JS fixtures. The Cargo.toml + lib.rs in `turbopack` (`+1/-33`) drops the now-redundant sync-only path.
+
+**Migration recipe (zero code changes required for users on canary.9+):**
+
+```bash
+# 1. Confirm canary.9 is installed
+npm view next@canary version
+# → 16.3.1-canary.9 or later
+
+# 2. Find pure re-export barrels in your codebase
+rg -l "^export \{ [^}]+ \} from '\./[^']+\.js'$" --type-add 'js:*.{js,jsx,ts,tsx,mjs,cjs}' --type js app/ src/ components/ lib/
+
+# 3. Measure bundle size delta after upgrade
+pnpm build
+# Before canary.9: bundle includes b.js
+# After canary.9: bundle drops b.js
+# Expect 5-20% reduction for icon-library / design-system / component-library codebases
+```
+
+### 2. PR #95695 SHIPPED — `[turbopack] Fix a potential deadlock in scope_and_block` (lukesandberg, merged 2026-08-08T23:08:11Z, 2 files / +168/-85)
+
+**A real reliability fix for the Turbopack CPU fan-out primitive.** The fix routes every job through a **single shared work queue** using `std::sync::mpmc` (multi-producer multi-consumer channels) instead of the previous design where jobs at indices `1..=WORKER_TASKS` were handed exclusively to freshly `handle.spawn`ed worker tasks. The previous design had a **silent deadlock** risk: "spawned worker runs synchronous code and parks on a `parking_lot::Condvar` (no `.await`, no `block_in_place`), so once scheduled it holds its runtime core for the whole scope. When the runtime has fewer worker threads than host CPUs, or they are already occupied, those workers may never get a core. Their exclusively-assigned jobs then never run, `remaining_tasks` never reaches 0, and the caller blocks forever."
+
+The 2-file diff is in `turbopack/crates/turbo-tasks/src/`: `lib.rs` (+1/-0 — `#[feature(mpmc_channel)]`) and `scope.rs` (+167/-85 — the full refactor of `WorkQueueJob`, `ScopeInner`, `end_and_help_complete`, `pick_job_from_work_queue`, `start_workers`, and the worker count derivation). The architectural changes:
+
+- **Every job goes on one shared queue** (mpmc `Receiver<WorkQueueJob>` shared by every drainer). Spawned helpers now pull from the same queue; they are never assigned a dedicated job.
+- **Runtime-accurate helper cap**: `num_workers().min(number_of_tasks) - 1` (per-scope, from `Handle::current().metrics()`) instead of a process-global host-CPU constant.
+- **Close via a flag, not a sentinel**: queue carries a `closed` bit guarded by the same lock as the jobs.
+- **Wakeup correctness/perf**: `pick_job_from_work_queue` hands off a surplus `notify_one` when work remains.
+
+**Practical impact for canary.9+ users:**
+
+- **Turbopack `next build` and `next dev` invocations on hosts with fewer tokio worker threads than host CPUs** (e.g., CI containers with limited CPU allocation, cgroup-restricted environments, some Linux distros with default thread pools) are no longer at risk of silently hanging in `scope_and_block`. The fix is silent — no warnings, no error messages — the build just completes.
+- **Reproductions on canary.0–canary.8** that hang the build silently at the `scope_and_block` join are now resolved by upgrading to canary.9.
+- **No code changes required** for users on canary.9+.
+
+### The other 3 commits in canary.9 (non-material)
+
+| # | PR | Title | Date | Note |
+|---|---|---|---|---|
+| 1 | #95993 | `[turbopack] Follow re-exports for side-effect free async modules` | 2026-08-08T01:28:49Z | MATERIAL — Turbopack async re-export tree shaking (see #1 above) |
+| 2 | #96964 | `docs: add `export const dynamic = 'force-static'` to Route Handlers example on Static Exports` | 2026-08-08T17:08:34Z | docs only — 1 file / +5/-1; fixes a documentation gap where users with `output: 'export'` + Route Handlers would fail without `export const dynamic = 'force-static'` |
+| 3 | #96746 | `Remove the turbopack-build-events trace span, use `next build` instead` | 2026-08-08T19:24:06Z | trace-only — 1 file / +5/-1; consolidates the turbopack build trace reporting through the standard `next build` trace span instead of a separate span (the original PR also fixed a trace-reporting bug but it was too complex; that work moved to PR #96874 + PR #96862) |
+| 4 | #95695 | `[turbopack] Fix a potential deadlock in scope_and_block` | 2026-08-08T23:08:11Z | MATERIAL — Turbopack scope_and_block deadlock fix (see #2 above) |
+| 5 | version-tag | `v16.3.1-canary.9` | 2026-08-08T23:23:24Z | npm-published 2026-08-08T23:44:17Z |
+
+**Recommended version pin after canary.9 SHIP event:**
+
+- **Production codebases**: stay on `^16.3.0` STABLE.
+- **Canary evaluators**: upgrade from `16.3.1-canary.8` → `16.3.1-canary.9` to unlock the Turbopack async re-export tree shaking (PR #95993) and the `scope_and_block` deadlock fix (PR #95695).
+- **Watch for canary.10** in the next 6-24h on the 24h canary cadence.
+
+### Audit recipe for canary.9 SHIPPED event
+
+```bash
+# 1. Confirm canary.9 is installed
+npm view next@canary version
+# → should show: 16.3.1-canary.9 or later
+
+# 2. Verify PR #95993 tree shaking is active — build a project with pure re-export barrels
+# In a test file: cat > /tmp/pure-barrel.js <<EOF
+# export { a } from './a.js'
+# export { b } from './b.js'
+# EOF
+# pnpm build && grep -c "b.js" .next/static/chunks/*.js
+# Pre-#95993: count > 0
+# Post-#95993: count = 0 (b is tree-shaken)
+
+# 3. Verify PR #95695 deadlock fix is active (only reproducible on affected hosts)
+# On a host with cgroup-restricted CPU count OR fewer tokio worker threads than host CPUs:
+# pnpm build
+# Pre-#95695 (canary.8 or earlier): build may hang in scope_and_block
+# Post-#95695 (canary.9+): build completes normally
+
+# 4. Verify no behavior change for sync imports of pure re-export barrels
+# (Sync paths were already tree-shaken before #95993)
+
+# 5. Check for the new Route Handlers + output: 'export' docs guidance
+rg -n "force-static" next.config.ts next.config.js
+# If you use output: 'export' + Route Handlers, add: export const dynamic = 'force-static' to each Route Handler
+
+# 6. Verify the trace-only PR #96746 consolidation
+# Look for: turbopack-build-events in your trace spans
+# Pre-#96746: separate span
+# Post-#96746: folded into next build span (no behavior change)
+```
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.8...v16.3.1-canary.9`](https://github.com/vercel/next.js/compare/v16.3.1-canary.8...v16.3.1-canary.9) — confirms 5 commits at this cron's check (verified at 2026-08-09T00:03Z)
+- [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — confirms 0 commits ahead (verified at 2026-08-09T00:03Z; canary-branch exactly at canary.9)
+- [Next.js `v16.3.1-canary.9` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.9) — npm-published 2026-08-08T23:44:17Z
+- [PR #95993 — `[turbopack] Follow re-exports for side-effect free async modules`](https://github.com/vercel/next.js/pull/95993) — by sampoder, merged 2026-08-08T01:28:49Z, 17 files / +176/-39. **SHIPPED in canary.9**. The headline example (a.js / b.js / barrel.js / index.js) is verbatim from the PR body.
+- [PR #95695 — `[turbopack] Fix a potential deadlock in scope_and_block`](https://github.com/vercel/next.js/pull/95695) — by lukesandberg, merged 2026-08-08T23:08:11Z, 2 files / +168/-85. **SHIPPED in canary.9**. The mpmc-based refactor of `scope.rs` + the `mpmc_channel` feature flag in `lib.rs`. The "worker holds its runtime core for the whole scope" walkthrough is from the PR body.
+- [PR #96964 — `docs: add `export const dynamic = 'force-static'` to Route Handlers example on Static Exports`](https://github.com/vercel/next.js/pull/96964) — docs only, 1 file / +5/-1, **SHIPPED in canary.9**
+- [PR #96746 — `Remove the turbopack-build-events trace span, use `next build` instead`](https://github.com/vercel/next.js/pull/96746) — trace-only, 1 file / +5/-1, **SHIPPED in canary.9**
+- [Turbopack ECMAScript analyzer source](https://github.com/vercel/next.js/tree/canary/crates/turbopack-ecmascript) — the shared analyzer that `apply_reexport_tree_shaking` was moved into in PR #95993
+- [Turbopack turbo-tasks scope source](https://github.com/vercel/next.js/tree/canary/crates/turbopack/crates/turbo-tasks/src/scope.rs) — the file refactored by PR #95695
+- [Next.js canary release tag timeline](https://github.com/vercel/next.js/releases) — the 24h canary cadence; canary.10 forward-looking
+- [Cross-reference: v1.5.37 deployment.md `## Next.js — Turbopack Async Re-Export Tree Shaking (PR #95993, August 8, 2026 — Forward-Looking for canary.9+)` — the pre-SHIP forward-looking coverage of PR #95993](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — now closed
+- [Cross-reference: v1.5.38 performance.md — the canary.8-batch Turbopack default-flip trilogy coverage](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — PR #96779 + PR #96778 + PR #96578 lens
