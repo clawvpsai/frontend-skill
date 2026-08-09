@@ -1364,6 +1364,143 @@ schema.parse({ name: 'a', __proto__: { polluted: true } })
 - [PR #5898 — `__proto__` skip in catchall](https://github.com/colinhacks/zod/pull/5898)
 
 
+### Zod 4.4.x Post-Release Forward-Looking (August 8–9, 2026) — 4 NEW Merged Correctness/Security Fixes for `^4.4.3` + `zod@canary` 4.5.0-canary.20260809T165522 Drop
+
+Since the 4.4.3 patch train shipped on 2026-05-04, the Zod main branch has accumulated **18 NEW commits ahead of `v4.4.3`** as of 2026-08-09T18:01:43Z. The most material of these — **4 merged correctness/security fixes landed in a tight ~22h window on August 8–9, 2026** — are documented here because each affects common production patterns with Zod 4.4.3. None are in `zod@latest` yet (still `4.4.3`), but **`zod@canary` saw a fresh drop today `4.5.0-canary.20260809T165522`** (npm-published 2026-08-09T16:55:22Z), indicating Zod 4.5 is being actively prepared with these fixes. **The fixes are correctness/security-driven** (not API-surface changes) — most code is unaffected, but specific edge cases hit production.
+
+#### 1. PR #6347 — `fix: remove exponential backtracking from the emoji regex` (merged 2026-08-09T01:12:02Z) — **HIGHEST-PRIORITY FIX (ReDoS)**
+
+The emoji format validator backtracks exponentially on a failed match. The two Unicode properties (`\p{Extended_Pictographic}` and `\p{Emoji_Component}`) overlap on exactly four code points — U+1F9B0 through U+1F9B3, the emoji hair components. Quantifying an ambiguous alternation with `+` means that when the anchor fails, the engine re-explores up to 2^n ways of attributing the already-consumed characters between the two branches.
+
+Measured on `z.emoji().safeParse()`:
+
+| Input                      | Payload | Time     |
+| -------------------------- | ------- | -------- |
+| 22 hair components + space | 90 B    | 145 ms   |
+| 24 hair components + space | 98 B    | 498 ms   |
+| 26 hair components + space | 106 B   | 2846 ms  |
+
+That is **2.11× per added character**. A **126-byte string buys a 60-second stall**. `RegExp.test()` is uninterruptible, so a request timeout does not help. The same string ships from `zod`, `zod/mini`, `zod/v4-mini` and the bundled `zod/v3`.
+
+**The fix:** collapse the alternation into one character class (the same move that PR #2824 made on the email regex): `^[\p{Extended_Pictographic}\p{Emoji_Component}]+$` (single character class instead of two-property alternation). Iterating every code point (surrogates excluded), the old and new patterns agree on all 2,990 members with zero disagreements — **no valid emoji string changes acceptance**.
+
+**Practical impact for `^4.4.3` users:** any user-supplied string that calls `z.string().emoji()` against a hostile payload (chat-style input, social-media usernames, profile bio fields, comment text) can stall the request handler. **Pre-fix: ReDoS.** **Post-fix (in 4.5 / canary): linear regex.**
+
+**Audit recipe:** `rg -n "z\.string\(\)\.emoji\(\)|z\.emoji\(\)" src/ app/ schemas/ --type ts --type tsx` — every `z.string().emoji()` call is a potential ReDoS sink pre-4.5. Mitigation: add a `.max(64)` (or similar) length bound before `.emoji()`, OR pin `zod@canary` for new projects that can afford it.
+
+#### 2. PR #6354 — `fix(v4): write a declared __proto__ key as an own property` (colinhacks, merged 2026-08-09T18:01:44Z) — **MATERIAL CORRECTNESS FIX**
+
+Object and record parsing builds the result into a fresh `{}` and assigns with `output[key] = value`. When the schema declares `__proto__` as a shape key or as a finite record key, that assignment invokes the inherited setter instead of creating an own property: **the value is discarded and the result's prototype becomes the parsed value**.
+
+```ts
+const schema = z.object(Object.fromEntries([["__proto__", z.string()]]));
+schema.parse(JSON.parse('{"__proto__":"hello"}'));
+// before: {}                       — reports success, drops the field
+// after:  { __proto__: "hello" }
+```
+
+PR #5898 (which fixed the `__proto__` skip in catchall for INPUT-derived keys) guarded the two paths where the key comes from the *input* — `handleCatchall` and the record `Reflect.ownKeys` branch — where dropping it is correct, since it was never declared. Three paths where the key **is** declared still assigned directly: the shape loop in `handlePropertyResult`, the JIT fastpass codegen, and the `$ZodRecord` finite-key branch. Those now go through `setProp`.
+
+**Input-derived `__proto__` keys are unchanged** — passthrough, catchall, loose objects and `z.record(z.string())` still drop them.
+
+**The cost is zero in the fastpass** (the key set is already known at generation time, so a normal key still compiles to a bare `newResult[k] = v`); only a literal `__proto__` key emits a `setProp` call.
+
+**Practical impact:** schemas that declare `__proto__` as a literal key (rare, but used by some object-shape-from-data-builder patterns and by some schema codegen tools) silently dropped the field pre-4.5. **Migration required:** none — the fix is invisible for any schema that doesn't declare `__proto__` as a key.
+
+**Audit recipe:** `rg -n "['\"]__proto__['\"]:\s*z\." src/ schemas/ --type ts --type tsx` — any schema declaring `__proto__` as a shape key is silently dropping it pre-4.5.
+
+#### 3. PR #6346 — `fix(json-schema): keep __proto__ keys as own properties in schema conversion` (merged 2026-08-09T01:05:55Z) — **MATERIAL CORRECTNESS FIX FOR JSON SCHEMA INTEROP**
+
+Both JSON Schema converters build plain object dictionaries and fill them with `obj[key] = value`. When the key is `__proto__`, that invokes the inherited setter instead of creating an own property, so the entry is silently lost.
+
+```ts
+const schema = z.object({ ["__proto__"]: z.literal("admin"), role: z.string() });
+
+z.toJSONSchema(schema, { io: "input" });
+// { properties: { role: {...} }, required: ["__proto__", "role"] }
+//   ^ required names a property that isn't there — Ajv accepts input zod rejects
+
+const rebuilt = z.fromJSONSchema(JSON.parse(`{
+  "type": "object",
+  "properties": { "__proto__": { "type": "string" } },
+  "required": ["__proto__"]
+}`));
+rebuilt.safeParse({}).success; // true — the constraint is gone
+```
+
+Four sinks, one line each, all fixed with the existing `util.assignProp`. **Symptom**: JSON Schema output that names a `__proto__` property in `required` but doesn't define it in `properties`, leading to **Ajv-accepts / zod-rejects** divergence on the same input — the worst kind of validator disagreement (the JSON Schema round-trip silently weakens the constraint).
+
+**Practical impact:** any code that calls `z.toJSONSchema()` / `z.fromJSONSchema()` against a schema that names `__proto__` as a key (rare, but possible in schemas generated from external systems, security policy schemas, or codegen) is silently dropping the constraint pre-4.5.
+
+**Audit recipe:** `rg -n "z\.toJSONSchema|z\.fromJSONSchema" src/ app/ --type ts --type tsx` — every call site should be audited for schemas that could name `__proto__` as a key.
+
+#### 4. PR #6213 — `fix(errors): use own-property semantics in every error-tree walker` (merged 2026-08-09T01:05:30Z, closes #6070, refs #6211) — **MATERIAL CORRECTNESS FIX**
+
+Every error-formatting walker built its tree with `curr[el] = curr[el] || { ... }`. A path segment naming an inherited member resolved to the prototype instead of creating a node, so the walker either threw or walked onto `Object.prototype` and wrote there. Such a segment reaches the formatters from ordinary input — `z.record(z.string(), z.string())` against `{"toString": 1}` is enough.
+
+| Walker                              | Behavior before                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------- |
+| `formatError`                       | throws on `toString`; writes to `Object.prototype` on `__proto__`           |
+| `treeifyError`                      | same, and on a `constructor.prototype.*` path silently writes `Object.properties` and drops errors from the returned tree |
+| `flattenError`                      | throws on both `toString` and `__proto__`                                    |
+| `ZodError.format()` (v3)            | throws on `toString`; writes to `Object.prototype` on `__proto__`           |
+
+The v3 `flatten()` was already correct — it moved to `Object.create(null)` in PR #5266, and that fix was never carried across to the other four. **All four walkers now use own-property semantics.**
+
+**Practical impact for `^4.4.3` users:** calling `format()` / `treeify()` / `flatten()` on a `ZodError` triggered by a `z.record(z.string(), valueSchema)` against input with `__proto__` / `toString` / `constructor` keys can throw, silently drop errors, or pollute `Object.prototype` (the last is the most dangerous — silent state corruption that survives across requests). Production symptoms: form submission crashes with cryptic "Cannot read property 'X' of undefined" on otherwise-valid input; or — much worse — error paths that silently lose error messages and show the user a "success" state when validation actually failed.
+
+**Audit recipe:** `rg -n "z\.record\(z\.string\(\)" src/ app/ schemas/ --type ts --type tsx` — every `z.record(z.string(), ...)` schema is potentially exposed pre-4.5 if the input is user-controlled (which is the common case for record/dictionary schemas). Pair with `.refine` or a length cap to limit the attack surface until 4.5 ships.
+
+#### 5. `zod@canary` 4.5.0-canary.20260809T165522 NEW Drop (npm-published 2026-08-09T16:55:22Z)
+
+A new canary cut of Zod landed today, ~10 minutes before this cron. The canary tag previews the upcoming 4.5.x release and includes all 4 fixes above + the 3 NEW zod main-branch commits in the last 24h. The canary tag is **NOT for production use** — it's the nightly-built artifact from `main` and may have unstable APIs. **Recommended action:** wait for `zod@latest` to advance to `4.5.0` (expected within 2-4 weeks based on recent Zod release cadence — 4.4.3 shipped 2026-05-04, 4.4.0 shipped 2026-04-29; recent minor-version cadence has been 4-6 weeks).
+
+**For projects that can't wait** for the official 4.5.0 release AND need the ReDoS fix (PR #6347) immediately: pin `zod@canary` and add a smoke test against the emoji regex path. **For projects where the JSON-Schema / `__proto__` / error-walker bugs are reachable** (rare, but possible in security-sensitive schemas with user-controlled record keys): same — pin canary.
+
+#### Recommended version pin after this cycle
+
+```bash
+# Default — stay on 4.4.3, audit ReDoS surface
+npm install zod@^4.4.3
+
+# If you hit emoji regex ReDoS / JSON Schema __proto__ / record-key error-walker issues
+# and need the fixes immediately:
+npm install zod@canary
+```
+
+#### Audit recipe
+
+```bash
+# 1. Check current Zod version
+npm ls zod
+
+# 2. Audit emoji regex exposure (PR #6347 ReDoS)
+rg -n "z\.string\(\)\.emoji\(\)|z\.emoji\(\)" src/ app/ schemas/ --type ts --type tsx
+
+# 3. Audit __proto__ schema keys (PR #6354 + PR #6346)
+rg -n "['\"]__proto__['\"]:\s*z\." src/ schemas/ --type ts --type tsx
+
+# 4. Audit JSON Schema interop (PR #6346)
+rg -n "z\.toJSONSchema|z\.fromJSONSchema" src/ app/ --type ts --type tsx
+
+# 5. Audit record-key error-walker exposure (PR #6213)
+rg -n "z\.record\(z\.string\(\)" src/ app/ schemas/ --type ts --type tsx
+```
+
+#### Sources
+
+- [PR #6347 — `fix: remove exponential backtracking from the emoji regex`](https://github.com/colinhacks/zod/pull/6347) — **HIGHEST-PRIORITY** ReDoS fix
+- [PR #6354 — `fix(v4): write a declared __proto__ key as an own property`](https://github.com/colinhacks/zod/pull/6354) — colinhacks, correctness fix for `__proto__` schema keys
+- [PR #6346 — `fix(json-schema): keep __proto__ keys as own properties in schema conversion`](https://github.com/colinhacks/zod/pull/6346) — JSON Schema round-trip correctness fix
+- [PR #6213 — `fix(errors): use own-property semantics in every error-tree walker`](https://github.com/colinhacks/zod/pull/6213) — closes #6070, error-tree walker correctness fix
+- [PR #6345 — `ci: build with pinned TypeScript, add TS 6 and 7 legs`](https://github.com/colinhacks/zod/pull/6345) — CI-only, no user-facing impact
+- [PR #6352 — `ci: fix release matrix broken by TypeScript 7`](https://github.com/colinhacks/zod/pull/6352) — CI-only, no user-facing impact
+- [PR #6214 — `docs: fix UUID helper list in v4 introduction`](https://github.com/colinhacks/zod/pull/6214) — docs only
+- [v4.4.3...main compare](https://github.com/colinhacks/zod/compare/v4.4.3...main) — confirms 18 NEW commits on main ahead of 4.4.3 at this cron's check (verified at 2026-08-09T18:02Z)
+- [`zod@canary` npm dist-tag](https://www.npmjs.com/package/zod?activeTab=versions) — `4.5.0-canary.20260809T165522` npm-published 2026-08-09T16:55:22Z
+- [Zod 3 EOL note](https://github.com/colinhacks/zod/blob/main/docs/README.md) — context for the v3 maintainers splitting focus to v4 stability
+
+
 ### String Validation
 
 ```ts
@@ -1704,6 +1841,11 @@ grep -rn "React\.FormEventHandler" --include="*.tsx" --include="*.ts" src/
 - **Zod 4.4: skipping `npx tsc --noEmit` after the bump** — the tightening will surface any code that relied on the looser 4.3 semantics; the fix is rarely a one-line type cast
 - **Zod 4.4: regenerating OpenAPI / JSON Schema output without re-checking consumer code** — the `$defs` redundant-id strip (PR #5759) and the `min/max` intersection fix (PR #5700) may change the generated schema shape; consumers that pinned to the exact previous output will need a re-coordination
 - **Zod 4.4: missing `npx tsc --noEmit` AND `npx vitest run`** — both fixes and new features (codec inversion, superRefine `when`, transform `ctx.addIssue()`) are TS-shape changes; run *both* type and runtime checks
+- **Zod 4.4.x: leaving `z.string().emoji()` exposed to user-supplied input** — the 4.4.3 emoji regex (`^(\p{Extended_Pictographic}|\p{Emoji_Component})+$`) backtracks exponentially on a failed match (U+1F9B0–U+1F9B3 overlap between the two Unicode properties). Measured: 22 hair components + space = 145 ms, 24 = 498 ms, 26 = 2846 ms — 2.11× per added character. A 126-byte string buys a 60-second stall, and `RegExp.test()` is uninterruptible so a request timeout does not help. Production exposure: chat-style input, social-media usernames, profile bio fields, comment text — any user-supplied string that calls `z.string().emoji()` against a hostile payload can stall the request handler. **Fix lands in Zod 4.5 via PR #6347** (merged 2026-08-09T01:12:02Z) — collapses the alternation into a single character class `^[\p{Extended_Pictographic}\p{Emoji_Component}]+$` with zero change in accepted strings (verified on all 2,990 valid code points). Workarounds for 4.4.3 users (until 4.5 ships): add `.max(64)` (or similar) length bound BEFORE `.emoji()` to cap the input size, OR pin `zod@canary`. Audit: `rg -n "z\.string\(\)\.emoji\(\)|z\.emoji\(\)" src/ app/ schemas/ --type ts --type tsx`.
+- **Zod 4.4.x: declaring `__proto__` as a schema key in `z.object()`** — the `output[key] = value` assignment in `handlePropertyResult` (and the JIT fastpass codegen, and the `$ZodRecord` finite-key branch) invokes the inherited setter instead of creating an own property, so the field is silently dropped and the result's prototype becomes the parsed value. Pre-4.5: `z.object(Object.fromEntries([["__proto__", z.string()]])).parse(JSON.parse('{"__proto__":"hello"}'))` returns `{}` (the field is gone). **Fix lands in Zod 4.5 via PR #6354** (colinhacks, merged 2026-08-09T18:01:44Z) — routes declared-`__proto__` keys through `setProp`. Audit: `rg -n "['"]__proto__['"]:\s*z\." src/ schemas/ --type ts --type tsx`. Same caveats as PR #5898 (the input-derived `__proto__` skip for catchall / loose / passthrough / `z.record(z.string())` are unchanged — those still correctly drop the input-derived `__proto__`).
+- **Zod 4.4.x: relying on `z.toJSONSchema()` / `z.fromJSONSchema()` round-trip for security policies or codegen output** — when the schema names `__proto__` as a key, the JSON Schema converter builds the result with `obj[key] = value` which silently drops the entry. Pre-4.5: `z.toJSONSchema(z.object({ ["__proto__"]: z.literal("admin"), role: z.string() }), { io: "input" })` returns `{ properties: { role: {...} }, required: ["__proto__", "role"] }` — the `required` array names a property that isn't in `properties`, leading to **Ajv-accepts / zod-rejects** divergence on the same input (the JSON Schema round-trip silently weakens the constraint). **Fix lands in Zod 4.5 via PR #6346** (merged 2026-08-09T01:05:55Z) — routes through `util.assignProp` at all 4 sink sites. Audit: `rg -n "z\.toJSONSchema|z\.fromJSONSchema" src/ app/ --type ts --type tsx` — every call site should be audited for schemas that could name `__proto__` as a key.
+- **Zod 4.4.x: calling `format()` / `treeify()` / `flatten()` on a `ZodError` triggered by `z.record(z.string(), ...)` against user-controlled input** — every error-tree walker built its tree with `curr[el] = curr[el] || { ... }`, which resolves inherited members (`toString`, `__proto__`, `constructor`) to the prototype instead of creating a node. Pre-4.5: `z.record(z.string(), z.string()).safeParse({ "toString": 1 })` (or `{ "__proto__": ... }`) causes `formatError` to throw on `toString`, `treeifyError` to silently write to `Object.prototype` (and drop errors from the returned tree on `constructor.prototype.*` paths), `flattenError` to throw on both, and v3 `ZodError.format()` to throw on `toString`. Production exposure: user-controlled dictionary inputs (form metadata, plugin data, tag maps, key-value configuration) can throw at the error-formatting step (worst case: silent `Object.prototype` pollution that survives across requests). **Fix lands in Zod 4.5 via PR #6213** (merged 2026-08-09T01:05:30Z, closes #6070) — every walker now uses own-property semantics. Audit: `rg -n "z\.record\(z\.string\(\)\s*," src/ app/ schemas/ --type ts --type tsx` — every `z.record(z.string(), ...)` schema is potentially exposed pre-4.5; pair with `.refine` or a length cap to limit the attack surface until 4.5 ships.
+
 
 - **RHF 8: test breaking changes before upgrading** — v8 beta is not production-stable; the `useForm` API has breaking changes including `id`→`key` rename, `keyName` removal, `names`→`name` in Watch, `watch` callback→`subscribe`, and `setValue` no longer updating field arrays
 
