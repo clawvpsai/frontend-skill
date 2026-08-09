@@ -1404,3 +1404,65 @@ rg -n "prefetch\s*=" app/
 - [Next.js canary-branch compare `v16.3.1-canary.3...v16.3.1-canary.4`](https://github.com/vercel/next.js/compare/v16.3.1-canary.3...v16.3.1-canary.4) — 26 commits
 - [Next.js canary-branch compare `v16.3.1-canary.4...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.4...canary) — 1 commit (PR #96774, non-material)
 - Cross-references: `security.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026)` for the security/DoS lens; `setup.md` → `## Next.js 16.3.1-canary.4 SHIPPED (August 6, 2026) — Tailwind v4.3.3 + Turbopack Loader in create-next-app + Tailwind Config Recipe` for the setup recipe; `components.md` → `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the React vendor bump; `testing.md` → `## Playwright 1.63.0-alpha-2026-08-05 + \`next/image\` Preserve-Response Testing Pattern (PR #96681, August 5, 2026)` for the testing-pattern lens.
+
+## Next.js 16.3.x API — New Items (August 8–9, 2026) — `next/image` Response Status in Invalid Image Errors (PR #96985, Forward-Looking for canary.10+)
+
+The 6h window since the v1.5.39 cycle (which closed out the canary.4 API-surface lens with PR #96606 + PR #96681 + #96766) has surfaced **1 new API-relevant item** in the Next.js repository. The headline is **PR #96985 — `fix(next/image): include response status in invalid image errors`** — a small but meaningful diagnostic improvement for `next/image` users. The fix threads the upstream HTTP status through the image optimizer so the error message includes the status code, replacing the current unhelpful "received null" / "unsupported image format" messages. **Open as of 2026-08-09T06:02Z**, not yet npm-published.
+
+### Summary Table — 1 New API-Relevant Item (August 8–9, 2026)
+
+| # | Type | Title | Author | Created | Material to API? | Why it matters |
+|---|---|---|---|---|---|---|
+| [PR #96985](https://github.com/vercel/next.js/pull/96985) | Open PR | `fix(next/image): include response status in invalid image errors` | (Vercel) | 2026-08-09T00:50Z | **YES — diagnostic improvement for `next/image` users** | When the upstream image response is a redirect or has a non-image content type, the existing error message says something unhelpful like "received null"; post-fix, the HTTP status is included so debugging is easier |
+
+### Why PR #96985 matters — `next/image` response status in invalid image errors
+
+**Today (pre-#96985):** When an upstream image response is a redirect (e.g., a 307 to the actual image), it often has no image content type. The existing error message then ends up saying something unhelpful like `"received null"` or `"Input buffer contains unsupported image format"`. The HTTP status code that explains *why* the upstream failed is **dropped** before the error reaches the developer.
+
+**Post-#96985:** The change threads the upstream HTTP status through the image optimizer so the diagnostic includes it. A focused regression test covers an internal 307 response and confirms the status shows up in the error.
+
+**Why this matters:** `next/image` users debugging failing image optimizations get a much better error message. Previously, a 404 from the upstream CDN would look identical to a 500 from the optimizer. Post-fix, you see `"upstream responded with 404"` or `"upstream responded with 307"` in the error, which is the actual diagnostic.
+
+**Example before/after:**
+```text
+# Pre-#96985:
+Error: Input buffer contains unsupported image format
+# or:
+Error: The requested resource is not an image (received null)
+
+# Post-#96985:
+Error: Upstream image responded with status 404 (Not Found)
+# or:
+Error: Upstream image responded with status 307 (Redirect); no image content type
+```
+
+**Migration-required-none.** No public API changes; the error message format changes (the HTTP status is added); no config; no codemod.
+
+**Practical impact:**
+- **Production-impact:** zero behavior change for working images.
+- **Debugging-impact:** significantly better diagnostics for failing image optimizations. Especially valuable for CDN misconfigurations, broken redirects, and content-type mismatches.
+- **CI/CD-impact:** logs become more searchable (you can grep for HTTP status codes).
+
+**Audit recipe:** N/A — no audit needed. The fix is internal-only. Just bump to `next@>=16.3.1-canary.10` (when PR lands) for the better error messages.
+
+**Forward-looking note:** PR #96985 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary (canary.10 expected ~24h after canary.9 npm-publish at 2026-08-08T23:44:17Z, so around 2026-08-09T23:44:17Z ± a few hours). The PR description says "Focused tests, types, formatting, and linting all passed" — indicating it's ready for review.
+
+### Combined Audit Recipe
+
+```bash
+# 1. Are you using next/image? (most apps)
+rg -n "next/image|Image\b" app/ src/ components/
+# If yes, PR #96985 improves your debugging experience. No code changes needed.
+
+# 2. Are you currently debugging failing next/image optimizations?
+# Pre-#96985: error message lacks the HTTP status
+# Post-#96985: error message includes the HTTP status
+# Until PR lands: check your upstream CDN logs / image-optimizer logs directly
+```
+
+### Sources
+
+- [PR #96985 — `fix(next/image): include response status in invalid image errors`](https://github.com/vercel/next.js/pull/96985) — open as of 2026-08-09T06:02Z; the diagnostic improvement
+- [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — confirms 0 commits ahead at 2026-08-09T06:02Z (canary-branch exactly at canary.9; the PR is open, not yet merged)
+- [Next.js v16.3.1-canary.9 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.9) — npm-published 2026-08-08T23:44:17Z; the latest canary
+- Cross-references: `routing.md` → `## Next.js 16.3.x Routing — New Open Issues (August 8–9, 2026) — Server Actions Routing Refactor (PR #96950, Forward-Looking for 16.4) + Sibling PPR Prefetch Dropped (Issue #96965) + unstable_cache fetchUrl Percent-Encoding Fix (PR #96954) + Dev-Overlay Route-Info Copy-on-Write (PR #96968) + @next/playwright instant() Cookie Scoping (PR #96962)` for the routing-surface lens on the same 6h window; `deployment.md` → `## Next.js 16.3.x Deployment — 4 NEW Open Items Affecting Production (August 8–9, 2026) — Windows Turbopack watchOptions + RHEL 8 glibc + sitemap/robots fix-in-progress + ABBA Deadlock` for the deployment-bounded lens

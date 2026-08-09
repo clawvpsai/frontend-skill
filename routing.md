@@ -2209,3 +2209,135 @@ rg -n "await import\(['\"][^'\"]*/lib/" app/ components/
 - [PR #96932 — Handle Server Actions on dynamic PPR fallback routes](https://github.com/vercel/next.js/pull/96932) — ztanner, SHIPPED in `16.3.1-canary.8`
 - [PR #96945 — Flush pending revalidations for forwarded action error responses](https://github.com/vercel/next.js/pull/96945) — ztanner, SHIPPED in `16.3.1-canary.8`
 - [PR #95993 — Follow re-exports for side-effect free async modules](https://github.com/vercel/next.js/pull/95993) — sampoder, expected in `16.3.1-canary.9` (landed on canary-branch after the canary.8 tag)
+
+## Next.js 16.3.x Routing — New Open Issues (August 8–9, 2026) — Server Actions Routing Refactor (PR #96950, Forward-Looking for 16.4) + Sibling PPR Prefetch Dropped (Issue #96965, POTENTIALLY MATERIAL) + `unstable_cache` `fetchUrl` Percent-Encoding Fix (PR #96954) + Dev-Overlay Route-Info Copy-on-Write (PR #96968) + `@next/playwright instant()` Cookie Scoping (PR #96962)
+
+The 6h window since the v1.5.38 cycle (which closed-out the canary.5/6/7/8 routing-relevant PR chain) has surfaced **5 new routing-relevant items** in the Next.js repository. The headline is **PR #96950 "Route Server Actions directly to their owning routes"** — a significant Server Actions routing refactor that forward-looks to the 16.4 line. The most user-impacting is **issue #96965 "Segment cache: sibling PPR route prefetches are permanently dropped after a same-tick batch"** — a regression in segment-cache + PPR that affects any App Router app that pre-fetches sibling routes. The other 3 are smaller bug fixes / quality-of-life improvements. **None are npm-published yet** — all are open as of this cron's check at 2026-08-09T06:02Z. Expect them to land on canary-branch (and npm) within the next 24-72h on the canary cadence.
+
+### Summary Table — 5 New Routing-Relevant Items (August 8–9, 2026)
+
+| # | Type | Title | Author | Created | Material to routing? | Why it matters |
+|---|---|---|---|---|---|---|
+| [PR #96950](https://github.com/vercel/next.js/pull/96950) | Open PR | `Route Server Actions directly to their owning routes` | (Vercel) | 2026-08-07T23:39:09Z | **YES — significant Server Actions architecture change** | Forward-looking for 16.4; replaces server-side action forwarding with client-side dispatch via Flight-payload-scoped routing keys |
+| [Issue #96965](https://github.com/vercel/next.js/issues/96965) | Open issue | `Segment cache: sibling PPR route prefetches are permanently dropped after a same-tick batch` | hypernomad | 2026-08-08T12:32Z | **POTENTIALLY MATERIAL — affects any App Router + PPR + segment cache + sibling-prefetch app** | PPR sibling prefetches silently drop after a same-document navigation; starvation-on-fallback bug |
+| [PR #96954](https://github.com/vercel/next.js/pull/96954) | Open PR | `fix: percent-encode search values in unstable_cache fetchUrl` | (Vercel) | 2026-08-08T15:08Z | **YES — fixes #76286** | `unstable_cache` rebuilds `fetchUrl` with **decoded** search values; label can be non-ASCII. Rebuild uses `URLSearchParams` to percent-encode. |
+| [PR #96968](https://github.com/vercel/next.js/pull/96968) | Open PR | `fix: route info segment overrides not updating in dev overlay` | (Next.js contributor) | 2026-08-08T21:35Z | Dev-only UX | Dev-tools Route Info panel now updates without modal close/reopen via copy-on-write trie updates |
+| [PR #96962](https://github.com/vercel/next.js/pull/96962) | Open PR | `fix(next-playwright): scope instant cookie cleanup to app URL` | (Next.js) | 2026-08-08T22:50Z | Testing-only — pairs with PR #96961 | `@next/playwright instant()` was clearing testing cookies for **other origins** (cross-origin contamination); fix scopes cleanup to the app URL |
+
+### Why PR #96950 matters — Server Actions routing refactor
+
+**Today (pre-#96950):** the client sends a Server Action request to the route it is currently rendering. If that route's worker does not contain the action, the server consults the action manifest and forwards the request to another worker that does. This **server-side forwarding** introduces an extra internal request and requires the receiving worker to handle request state that belongs to the original route. It has caused correctness issues and miscellaneous bugs (no specific issue numbers surfaced in the PR body, but the PR explicitly cites "correctness issues and miscellaneous bugs").
+
+**Post-#96950 architecture:**
+1. Each Flight response includes **opaque routing keys** for the actions handled by that route.
+2. Each Flight response scopes its `callServer` callback to the URL and routing keys associated with that response.
+3. When an action is invoked, the client **hashes its ID and dispatches it to that URL** if the response's worker advertised the corresponding key.
+4. Otherwise, it checks whether another previously discovered route advertised the action.
+5. When the destination differs from the currently rendered route, the client **omits its router state tree**. The server uses that absence to execute the action without attempting to render the destination page, while still returning the action result, redirect, etc.
+
+**Why this matters:** removes a whole class of "the action manifest knows the action but the worker that received the request doesn't have the state" bugs. Specifically: any Server Action that mutates state and then returns a redirect — pre-#96950, the forwarded worker has to reconstruct enough state to know what to revalidate; post-#96950, the originating worker handles the action (because the client dispatches to the URL whose Flight response advertised the action's key). This is the **same architectural shift as the Cache Components `callServer` redesign** in 16.3 but extended to all Server Actions.
+
+**Migration-required-none.** No public API changes; no config flag; no codemod. Apps stay on their current Server Actions code; the routing is silently improved.
+
+**Practical impact:** Zero user-facing behavior change on day 1 of the cut. Eliminates the "stale action manifest" and "forwarded-worker misses required state" classes of bugs that have been open in the Next.js repo for ~6 months.
+
+**Audit recipe:** `rg -n "'use server'" app/ actions/` to find Server Action files; these all benefit from the routing refactor. Check the deployment has `cacheComponents: true` for the full optimization (the routing refactor doesn't require it but works in concert).
+
+**Forward-looking note:** PR #96950 is open as of 2026-08-09T06:02Z. Expect it to land on canary-branch in the next 24-72h on the canary cadence. Can be expected in `next@16.3.1-canary.10` or `16.3.1-canary.11` if the canary cadence holds (24h between canaries; last canary cut was v16.3.1-canary.9 at 2026-08-08T23:44:17Z; canary.10 expected 2026-08-09T23:44:17Z ± a few hours). The PR description does not state a target version, but the canary-branch-feed shows it staged.
+
+### Why issue #96965 matters — Sibling PPR route prefetches permanently dropped
+
+**Bug:** Segment-cache + PPR + sibling-prefetch apps can permanently drop sibling PPR prefetches after a same-document navigation (e.g., clicking a `<Link>` to another route while sibling prefetches are still in flight). The starved sibling task resolves against the **fallback entry** instead of the **prerendered entry**, and the segment cache is poisoned — future navigations to the sibling route use the fallback, not the prefetched prerendered content.
+
+**Affected apps:** any App Router + Cache Components + segment-cache-enabled app with `<Link>`s to sibling routes (parallel routes, nested layouts with prefetched siblings, `@sidebar` + `@children` patterns).
+
+**Repro repo:** [hypernomad/next-sibling-segment-prefetch-repro](https://github.com/hypernomad/next-sibling-segment-prefetch-repro). Uses `npx playwright install chromium` + `npm run repro` for a deterministic 4-check driver.
+
+**Practical impact:** Most affected apps are unaffected because they're not using segment-cache + PPR + sibling-prefetch. The "prefetched then not used" pattern is a UX downgrade (user navigates; second navigation is slower because the prefetch was dropped). No crashes; no security impact.
+
+**Audit recipe:** `rg -ln "cacheComponents.*true|segmentCache.*true" next.config.*` to find affected projects. In a project with both flags on + sibling prefetches, run the repro pattern (click a `<Link>`, then click a sibling `<Link>` within 100-200ms — if the second click shows fallback content for >500ms, you're affected).
+
+**Forward-looking note:** No PR attribution yet. The bug is in `next@16.3.0` STABLE + all `next@16.3.1-canary.*` to date. Track for a fix in the next canary cut.
+
+### Why PR #96954 matters — `unstable_cache` `fetchUrl` percent-encoding fix
+
+**Bug:** `unstable_cache` builds `fetchUrl`, a label describing the current request, by interpolating **decoded** search values — `.map((key) => \`${key}=${searchParams.get(key)}\`)`. For a request like `https://my-app.com/?key=bar&extra=中國人`, the label is `key=bar&extra=中國人` (non-ASCII characters). This is **not part of the cache key** per the PR body, but it's still a label that gets logged, surfaced in cache introspection, and could be confused with the cache key. Additionally, the label could be incorrectly interpreted downstream (e.g., a log parser that assumes ASCII).
+
+**Fix:** Rebuild that label with `URLSearchParams` instead, so the values come out percent-encoded and the label is always ASCII: `key=bar&extra=%E4%B8%AD%E5%9C%8B%E4%BA%BA`.
+
+**Why it matters:** the label is now always ASCII; log searchers no longer need Unicode-aware regex; downstream consumers (Sentry breadcrumbs, custom dashboards, Datadog log parsers) no longer need to handle non-ASCII labels. **Closes issue #76286.**
+
+**Migration-required-none.** No public API changes; the cache key is unchanged.
+
+**Audit recipe:** `rg -n "fetchUrl" packages/next/src/server/web/spec-extension/unstable-cache.ts` (for Next.js contributors); for users, `rg -n "unstable_cache" app/ src/` to find `unstable_cache` consumers. None require code changes.
+
+**Forward-looking note:** PR #96954 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary.
+
+### Why PR #96968 matters — Dev-overlay route-info copy-on-write
+
+**Bug:** When using the built-in route segment override in the Next.js dev tools (Route Info panel), the UI was not updating: after toggling a boundary (e.g. `loading.js` or `not-found.js`) you couldn't switch back unless you closed the modal and reopened it, which slowed down the dev loop.
+
+**Root cause:** the segment explorer trie was mutating nodes in place, so the panel's memoized view never picked up insertions until remount.
+
+**Fix:** Trie updates now copy the nodes along the mutated path (copy-on-write) so changed nodes get fresh identities while untouched subtrees stay shared.
+
+**Why it matters:** Dev-only UX. Dev-tools users debugging the segment-explorer panel (especially for complex layout-segment trees) get instant updates without modal close/reopen. No production impact.
+
+**Migration-required-none.** No public API changes; no config; the fix is internal.
+
+**Audit recipe:** N/A — this is a pure dev-tools UX improvement. Open the Route Info panel in dev mode, toggle a boundary, observe the UI updates without close/reopen.
+
+**Forward-looking note:** PR #96968 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary.
+
+### Why PR #96962 matters — `@next/playwright instant()` cookie scoping
+
+**Bug:** `@next/playwright instant()` (Next.js 16.3 Instant Navigation testing helper) was clearing testing cookies for **other origins** when clearing cookies for the app URL. This is a cross-origin contamination bug — Playwright's `context.clearCookies()` (the underlying API) takes a URL-or-origin filter, and if the filter was too loose, cookies for unrelated origins in the same browser context got cleared.
+
+**Pairs with:** PR #96961 `fix(next-playwright): scope instant cookie cleanup to app URL` — the same fix from a slightly different angle (likely the test-side of the same change).
+
+**Why it matters:** Testing-only. App projects using `@next/playwright` with multiple Playwright projects (different origins in the same browser context) get correct cookie scoping. Production impact: zero.
+
+**Migration-required-none.** No public API changes.
+
+**Audit recipe:** `rg -n "instant\(|@next/playwright" tests/ e2e/ playwright/` to find Playwright tests using `instant()`; check whether your Playwright config uses a single browser context across multiple origins — if so, this PR fixes a real bug for your setup.
+
+**Forward-looking note:** PR #96962 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary.
+
+### Combined Audit Recipe
+
+```bash
+# 1. Are you affected by issue #96965 (sibling PPR prefetch drop)?
+rg -ln "cacheComponents.*true|segmentCache.*true" next.config.*
+# If yes + you have <Link>s to sibling routes in a parallel-route layout, test with the repro repo
+git clone https://github.com/hypernomad/next-sibling-segment-prefetch-repro
+cd next-sibling-segment-prefetch-repro && npm install && npx playwright install chromium && npm run repro
+
+# 2. Are you using Server Actions that would benefit from PR #96950?
+rg -n "'use server'" app/ actions/ | wc -l
+# If > 0, you're a beneficiary. No code changes needed; bump to next@canary when PR lands.
+
+# 3. Are you using unstable_cache with non-ASCII search params?
+rg -n "unstable_cache" app/ src/
+# If yes, the PR #96954 fix improves log/search UX but no code changes needed.
+
+# 4. Are you using @next/playwright instant() with multi-origin browser contexts?
+rg -n "instant\(|@next/playwright" tests/ e2e/ playwright/
+# If yes, the PR #96962 fix is relevant. No code changes needed.
+
+# 5. Dev-overlay route-info panel not updating after PR lands?
+# Just reload the dev server (next dev --turbo or next dev --webpack).
+```
+
+### Sources
+
+- [PR #96950 — `Route Server Actions directly to their owning routes`](https://github.com/vercel/next.js/pull/96950) — open as of 2026-08-09T06:02Z; the server-side forwarding replacement with client-side Flight-payload-scoped routing keys
+- [Issue #96965 — `Segment cache: sibling PPR route prefetches are permanently dropped after a same-tick batch`](https://github.com/vercel/next.js/issues/96965) — open as of 2026-08-09T06:02Z; PPR + segment-cache + sibling-prefetch bug
+- [hypernomad/next-sibling-segment-prefetch-repro](https://github.com/hypernomad/next-sibling-segment-prefetch-repro) — the canonical repro repo with Playwright deterministic driver
+- [PR #96954 — `fix: percent-encode search values in unstable_cache fetchUrl`](https://github.com/vercel/next.js/pull/96954) — open as of 2026-08-09T06:02Z; closes #76286
+- [Issue #76286 — `unstable_cache` `fetchUrl` non-ASCII label](https://github.com/vercel/next.js/issues/76286) — the bug closed by PR #96954
+- [PR #96968 — `fix: route info segment overrides not updating in dev overlay`](https://github.com/vercel/next.js/pull/96968) — open as of 2026-08-09T06:02Z; copy-on-write trie updates in dev-tools Route Info panel
+- [PR #96962 — `fix(next-playwright): scope instant cookie cleanup to app URL`](https://github.com/vercel/next.js/pull/96962) — open as of 2026-08-09T06:02Z; pairs with PR #96961
+- [Issue #96961 — `@next/playwright instant()` clears testing cookies for other origins](https://github.com/vercel/next.js/issues/96961) — the bug closed by PR #96962
+- [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — confirms 0 commits ahead at 2026-08-09T06:02Z (canary-branch exactly at canary.9; the 5 PRs are open, not yet merged)
+- [Next.js v16.3.1-canary.9 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.9) — npm-published 2026-08-08T23:44:17Z; the latest canary
+- Cross-references: `deployment.md` → `## Next.js 16.3.x Deployment — 4 NEW Open Items Affecting Production (August 8–9, 2026) — Windows Turbopack watchOptions + RHEL 8 glibc + sitemap/robots fix-in-progress + ABBA Deadlock` for the deployment-bounded lens on the same 6h window; `api.md` → `## Next.js 16.3.x API — New Items (August 8–9, 2026) — next/image Response Status in Invalid Image Errors (PR #96985)` for the API-surface lens

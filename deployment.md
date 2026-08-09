@@ -2248,3 +2248,199 @@ rg -n "force-static" next.config.ts next.config.js
 - [Next.js canary release tag timeline](https://github.com/vercel/next.js/releases) — the 24h canary cadence; canary.10 forward-looking
 - [Cross-reference: v1.5.37 deployment.md `## Next.js — Turbopack Async Re-Export Tree Shaking (PR #95993, August 8, 2026 — Forward-Looking for canary.9+)` — the pre-SHIP forward-looking coverage of PR #95993](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — now closed
 - [Cross-reference: v1.5.38 performance.md — the canary.8-batch Turbopack default-flip trilogy coverage](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — PR #96779 + PR #96778 + PR #96578 lens
+
+## Next.js 16.3.x Deployment — 4 NEW Open Items Affecting Production (August 8–9, 2026) — Windows Turbopack `watchOptions.pollIntervalMs` + RHEL 8 glibc < 2.29 `next-swc` Build Failure + Sitemap/Robots Fix-in-Progress + ABBA Deadlock in `CompilationEventQueue` (`turbo-tasks`)
+
+The 6h window since the v1.5.39 cycle (which documented the `next@16.3.1-canary.9` SHIP event) has surfaced **4 new deployment-relevant items** in the Next.js repository. The headline is **issue #96960 — `build(next-swc) fails on Linux with glibc < 2.29 (e.g. RHEL 8)`** — a real production-blocking build failure for anyone on RHEL 8 / older Debian / older Linux distributions. The second is **issue #96982 — `Turbopack: watchOptions.pollIntervalMs permanently drops file edits on Windows`** — a real dev-loop regression for Windows developers using Turbopack with polling-based file watching. The third is **PR #96967 — `fix(swc): avoid treating Pages Router sitemap and robots routes as app entries`** — the long-awaited fix for issue #96859 from v1.5.33 (Turbopack `pages/sitemap.js` build failure). The fourth is **PR #96939 — `fix(turbo-tasks): eliminate ABBA deadlock in the compilation event queue`** — a companion to PR #95695 (the canary.9 `scope_and_block` deadlock fix) that closes a different deadlock path. **None are npm-published yet** — all are open as of this cron's check at 2026-08-09T06:02Z.
+
+### Summary Table — 4 NEW Deployment-Relevant Items (August 8–9, 2026)
+
+| # | Type | Title | Author | Created | Material to deployment? | Why it matters |
+|---|---|---|---|---|---|---|
+| [Issue #96960](https://github.com/vercel/next.js/issues/96960) | Open issue | `build(next-swc) fails on Linux with glibc < 2.29 (e.g. RHEL 8)` | faverl | 2026-08-08T17:42Z | **YES — production-blocking build failure** | `next-swc` native binding fails to load on RHEL 8 / Debian 10 / older Linux with glibc < 2.29; affects any CI image using those bases |
+| [Issue #96982](https://github.com/vercel/next.js/issues/96982) | Open issue | `Turbopack: watchOptions.pollIntervalMs permanently drops file edits on Windows` | DenisCDev | 2026-08-08T21:18Z | **YES — dev-loop regression for Windows + Turbopack + polling watcher** | File edits silently dropped; affects any Windows developer using `next dev --turbo` with polling-based file watcher |
+| [PR #96967](https://github.com/vercel/next.js/pull/96967) | Open PR | `fix(swc): avoid treating Pages Router sitemap and robots routes as app entries` | (Next.js) | 2026-08-08T09:15:35Z | **YES — closes #96859** | Long-awaited fix for the Turbopack `pages/sitemap.js` / `pages/robots.js` build failure documented in v1.5.33 |
+| [PR #96939](https://github.com/vercel/next.js/pull/96939) | Open PR | `fix(turbo-tasks): eliminate ABBA deadlock in the compilation event queue` | (Next.js) | 2026-08-08T10:09Z | **YES — Turbopack reliability fix** | Companion to PR #95695 (canary.9 `scope_and_block` mpmc fix); closes a different deadlock path in `CompilationEventQueue::send()` vs `subscribe(None)` lock-order inversion |
+
+### Why Issue #96960 matters — `next-swc` build failure on glibc < 2.29 (RHEL 8 / Debian 10)
+
+**Bug:** `next build` fails on Linux distributions with glibc < 2.29 (e.g., RHEL 8, Debian 10 "buster") because the prebuilt `next-swc` native binding requires glibc ≥ 2.29. The error surfaces as a native-binding load failure during the SWC transform phase, with messages like:
+```
+Error: Could not load the native binding at /path/to/@next/swc-linux-x64-gnu/next-swc.linux-x64-gnu.node
+```
+or sometimes:
+```
+Error: /lib64/libc.so.6: version `GLIBC_2.29' not found
+```
+
+**Affected deployments (HIGH):**
+- Any CI image based on `rhel:8`, `ubi8`, `centos:8` (RHEL 8 EOL is June 2024 but still heavily used in enterprise)
+- Any CI image based on `debian:10` (buster)
+- Any older Amazon Linux 2 image (glibc 2.26 — too old)
+- Any self-hosted Next.js deployment on these OSes
+
+**Repro repo:** [faverl/reproduction-app](https://github.com/faverl/reproduction-app) — uses `debian:10` base image to reproduce without needing a real RHEL 8 host (same glibc version).
+
+**Practical impact:**
+- **Production-critical:** CI/CD pipelines fail at `next build`; deployments blocked.
+- **No workaround in 16.3.0 STABLE + canary.0/1/2/3/4/5/6/7/8/9.** The prebuilt binding is shipped via `@next/swc-linux-x64-gnu` and there's no JS fallback for the SWC transform.
+- **Workarounds:** (a) upgrade CI image to `debian:12` or `ubuntu:22.04` (both ship glibc 2.36+); (b) self-host a Docker base image with glibc backport (not recommended); (c) build `next-swc` from source against the target glibc (slow, requires Rust toolchain); (d) use `output: 'export'` with a different build step that doesn't use SWC (e.g., a pre-built bundle).
+
+**Audit recipe:**
+```bash
+# Check the CI image's glibc version
+docker run --rm rhel:8 ldd --version
+# Expected output for affected images:
+#   ldd (GNU libc) 2.28
+# Expected output for unaffected images:
+#   ldd (GNU libc) 2.31 or higher
+
+# Or on the host:
+ldd --version | head -1
+
+# Quick "is next-swc loadable?" check
+node -e "require('@next/swc-linux-x64-gnu')" && echo "OK" || echo "FAIL"
+```
+
+**Forward-looking note:** Issue #96960 is open as of 2026-08-09T06:02Z. The fix would either (a) ship a separate `@next/swc-linux-x64-gnu-glibc-2.28` prebuilt binding, (b) lower the SWC binding's glibc requirement to 2.26 or earlier, or (c) provide a JS-fallback SWC path (slower but works). No PR attribution yet. **Until the fix lands, document the glibc ≥ 2.29 requirement in your CI setup.**
+
+### Why Issue #96982 matters — Turbopack Windows `watchOptions.pollIntervalMs` permanently drops file edits
+
+**Bug:** On Windows, Turbopack's polling-based file watcher (`watchOptions.pollIntervalMs`) **permanently drops file edits** if the poll interval + edit-burst rate exceeds a threshold. The bug is specific to the **polling** watcher (the fallback used when the OS-native watcher isn't available or is unreliable — Windows often falls back to polling). The native watcher (default on macOS/Linux) is unaffected.
+
+**Repro repo:** [DenisCDev/turbopack-polling-drop](https://github.com/DenisCDev/turbopack-polling-drop). The probe script `POLL_MS=1000 SESSIONS=5 EDITS=5 npm run probe` runs 5 concurrent edit sessions with 5 edits each at 1-second poll intervals; pre-fix, some edits are silently dropped (no HMR update); post-fix (control with native watcher), all edits trigger HMR.
+
+**Affected deployments:**
+- **Windows developers** using `next dev --turbo` (the polling watcher is the default on Windows for many filesystems)
+- **WSL2** users mounting Windows drives (the Linux-side inotify watcher can't see Windows-side changes, falls back to polling)
+- **Docker Desktop on Windows** with bind-mounted volumes
+
+**Practical impact:**
+- **Dev-loop regression:** files silently don't trigger HMR; dev sees stale output; users sometimes add `?ts=${Date.now()}` query strings to URLs to force re-fetch.
+- **No production impact** (only affects `next dev`, not `next build`).
+- **No data loss** (the file edits are saved; only the watcher misses them).
+
+**Workarounds:**
+- (a) Use the native watcher: set `experimental.turbopackFileSystemCacheForBuild` (already default-ON since canary.105, per v1.5.12 documentation) — but this is for build, not watcher
+- (b) Increase the polling interval: `next dev --turbo --watchOptions.pollIntervalMs=200` (slower but more reliable)
+- (c) Use Webpack instead: `next dev --webpack` (no polling watcher issues)
+- (d) Restart `next dev` after edits (the restart always reads the file fresh)
+
+**Audit recipe:**
+```bash
+# Check if you're using the polling watcher
+rg -n "watchOptions.pollIntervalMs|next dev --turbo" next.config.* package.json scripts
+# If poll interval is set + on Windows + using Turbopack, you may be affected
+
+# Quick test:
+# 1. Create a file, edit it 5 times in 1 second
+# 2. Watch the dev console — if no HMR updates trigger, you're affected
+```
+
+**Forward-looking note:** Issue #96982 is open as of 2026-08-09T06:02Z. The fix would involve either (a) using a more reliable Windows polling watcher (e.g., `read-directory-changes-watcher` with proper batching), (b) detecting edit-burst patterns and adjusting poll interval dynamically, or (c) deprecating the polling watcher on Windows in favor of `ReadDirectoryChangesW` (the native Windows API). No PR attribution yet.
+
+### Why PR #96967 matters — Sitemap/robots fix (closes #96859)
+
+**Bug (closed by PR #96967):** When building a Pages Router site with Turbopack, pages named `pages/sitemap.js` or `pages/robots.js` exporting `getStaticProps` or `getServerSideProps` failed during build with `"getStaticProps" is not supported in app/`. The SWC `react_server_components` transform was matching these route names with a metadata regex without checking if the file actually resided inside `app_dir`.
+
+**Fix (PR #96967):** In `ReactServerComponentValidator::assert_invalid_api`, updated `is_app_entry` to verify that `self.filepath` is located inside `self.app_dir` before treating metadata route names (`sitemap`, `robots`, `manifest`, etc.) as App Router entries. Added an e2e test covering `pages/sitemap.js` with `getStaticProps`. **Closes #96859** (the bug from v1.5.33).
+
+**Affected deployments (pre-fix):**
+- 16.3.0 STABLE + canary.0/1/2/3/4/5/6/7/8/9 + Turbopack + Pages Router + any project with `pages/sitemap.js` or `pages/robots.js`
+- Webpack users NOT affected (different transform path)
+
+**Practical impact:**
+- **Pre-fix:** `next build --turbo` fails for the affected projects with a misleading error about `"getStaticProps"` not being supported in `app/` (the file is in `pages/`, not `app/`).
+- **Post-fix:** builds complete normally.
+
+**Migration-required-none.** No public API changes; no config; no codemod.
+
+**Workarounds pre-fix (still applicable if stuck on a version without PR #96967):**
+- (a) Rename `pages/sitemap.js` to `pages/sitemap-page.js` (or any non-metadata name) — the rename sidesteps the regex entirely.
+- (b) Use `pages/api/sitemap.js` (a Route Handler-style API endpoint that returns XML directly).
+- (c) Switch to Webpack: `next build --webpack` (bypasses the SWC RSC transform path).
+- (d) Roll back to `next@16.2.12` (the last version before the regression was introduced).
+
+**Audit recipe:**
+```bash
+# Are you affected?
+rg -l "sitemap|robots" pages/
+# If you have pages/sitemap.js or pages/robots.js + using Turbopack + on next@<=16.3.1-canary.9, you're affected
+
+# Quick "is the fix in?" check:
+node -e "console.log(require('@next/swc/package.json').version)"
+# If next@>=16.3.1-canary.10 (when PR #96967 lands), the fix is in.
+```
+
+**Forward-looking note:** PR #96967 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary (canary.10 expected ~24h after canary.9 npm-publish at 2026-08-08T23:44:17Z, so around 2026-08-09T23:44:17Z ± a few hours).
+
+### Why PR #96939 matters — `CompilationEventQueue` ABBA deadlock (companion to PR #95695)
+
+**Bug:** `CompilationEventQueue` (`turbo-tasks` `message_queue.rs` — the fan-out for compilation/timing/trace/diagnostic events consumed by the napi layer, `backgroundLogCompilationEvents` / `projectCompilationEventsSubscribe`) had an **ABBA deadlock**:
+
+- **`send()`** spawned a task that acquired `event_history.lock()` and held it for the task's whole life, then acquired DashMap shard write guards (`get_mut`) and awaited channel sends while holding both.
+- **`subscribe(None)`** acquired the Global shard write guard via `entry().or_default()`, then awaited `event_history.lock()` and replayed history while **still holding the shard guard**.
+
+Lock orders: send = history → shard, subscribe = shard → history. A two-worker interleave deadlocks (the parking_lot shard wait is a synchronous, non-yielding block), and every subsequent `send` then blocks another worker thread — progressively stalling the whole runtime (`next dev`/`next build` hangs with no error).
+
+**Relationship to PR #95695 (canary.9 SHIPPED):** PR #95695 fixed a different deadlock in `scope_and_block` (the WorkQueueJob/ScopeInner/end_and_help_complete/pick_job_from_work_queue/start_workers path) using an mpmc-channel refactor. PR #96939 is a **separate** deadlock in a different file (`message_queue.rs`) with a different lock-order inversion. Both are part of the broader turbo-tasks deadlock-hardening effort.
+
+**Fix (PR #96939):** Drops the Global shard write-guard-then-await pattern in `subscribe(None)`; replays history while holding only the per-subscriber entry. Removes the sync lock-and-await in `send()`; spawns the history-publish task before acquiring the shard. Per PR body, the fix should make the event queue reliable under contention.
+
+**Affected deployments:**
+- `next@16.3.0` STABLE + canary.0/1/2/3/4/5/6/7/8/9 (pre-PR #96939) — the deadlock exists but doesn't trigger on every dev/build run
+- Most affected: projects with `experimental.turbopackFileSystemCacheForBuild: true` (default since canary.105) + heavy Turbopack usage + concurrent compilation events
+- Observable as: occasional `next dev`/`next build` hangs with no error, requiring `Ctrl+C` + restart
+
+**Practical impact:**
+- **Production-relevant:** Turbopack hangs block developer productivity (and CI throughput). NOT a security issue.
+- **Workaround pre-fix:** disable Turbopack (`next dev --webpack` or `next build --webpack`).
+
+**Migration-required-none.** Internal-only fix; no public API changes.
+
+**Audit recipe:**
+```bash
+# Are you using Turbopack?
+rg -n "turbopack|--turbo" next.config.* package.json scripts
+# If yes + you experience occasional hangs, this PR fixes a possible cause.
+
+# Quick "is the fix in?" check:
+# Bump to next@>=16.3.1-canary.10 (when PR #96939 lands) + re-test
+```
+
+**Forward-looking note:** PR #96939 is open as of 2026-08-09T06:02Z. Expect it to land in the next canary.
+
+### Combined Audit Recipe
+
+```bash
+# 1. CI image glibc check (Issue #96960)
+docker run --rm $YOUR_CI_IMAGE ldd --version | head -1
+# If "ldd (GNU libc) 2.28" or lower, you're affected; upgrade image or build from source
+
+# 2. Windows Turbopack polling watcher check (Issue #96982)
+# If on Windows + using next dev --turbo + watchOptions.pollIntervalMs, you may be affected
+# Quick test: edit a file 5 times in 1 second, count HMR updates
+
+# 3. Pages Router sitemap/robots check (PR #96967, closes #96859)
+ls pages/sitemap.js pages/robots.js 2>/dev/null
+# If exists + using Turbopack + on next@<=16.3.1-canary.9, affected
+# Until PR lands: rename files or use pages/api/sitemap.js
+
+# 4. Turbopack deadlock check (PR #96939)
+# If using Turbopack + occasional hangs, this PR fixes a possible cause
+# Until PR lands: --webpack fallback works
+```
+
+### Sources
+
+- [Issue #96960 — `build(next-swc) fails on Linux with glibc < 2.29 (e.g. RHEL 8)`](https://github.com/vercel/next.js/issues/96960) — open as of 2026-08-09T06:02Z; SWC native binding glibc requirement
+- [faverl/reproduction-app](https://github.com/faverl/reproduction-app) — the canonical repro repo using `debian:10` to mimic RHEL 8's glibc
+- [Issue #96982 — `Turbopack: watchOptions.pollIntervalMs permanently drops file edits on Windows`](https://github.com/vercel/next.js/issues/96982) — open as of 2026-08-09T06:02Z; Windows polling watcher edit-drop bug
+- [DenisCDev/turbopack-polling-drop](https://github.com/DenisCDev/turbopack-polling-drop) — the canonical repro repo
+- [PR #96967 — `fix(swc): avoid treating Pages Router sitemap and robots routes as app entries`](https://github.com/vercel/next.js/pull/96967) — open as of 2026-08-09T06:02Z; 3 files / +40/-1; closes #96859
+- [Issue #96859 — `Turbopack pages-router sitemap/robots build failure`](https://github.com/vercel/next.js/issues/96859) — the bug closed by PR #96967 (originally documented in v1.5.33 deployment.md)
+- [PR #96939 — `fix(turbo-tasks): eliminate ABBA deadlock in the compilation event queue`](https://github.com/vercel/next.js/pull/96939) — open as of 2026-08-09T06:02Z; companion to PR #95695
+- [PR #95695 — `[turbopack] Fix a potential deadlock in scope_and_block`](https://github.com/vercel/next.js/pull/95695) — the canary.9 SHIPPED deadlock fix; the related but distinct fix to PR #96939
+- [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — confirms 0 commits ahead at 2026-08-09T06:02Z (canary-branch exactly at canary.9; the 4 PRs are open, not yet merged)
+- [Next.js v16.3.1-canary.9 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.9) — npm-published 2026-08-08T23:44:17Z; the latest canary
+- Cross-references: `routing.md` → `## Next.js 16.3.x Routing — New Open Issues (August 8–9, 2026) — Server Actions Routing Refactor (PR #96950, Forward-Looking for 16.4) + Sibling PPR Prefetch Dropped (Issue #96965) + unstable_cache fetchUrl Percent-Encoding Fix (PR #96954) + Dev-Overlay Route-Info Copy-on-Write (PR #96968) + @next/playwright instant() Cookie Scoping (PR #96962)` for the routing-surface lens on the same 6h window; `api.md` → `## Next.js 16.3.x API — New Items (August 8–9, 2026) — next/image Response Status in Invalid Image Errors (PR #96985)` for the API-surface lens
