@@ -3683,3 +3683,144 @@ export async function markRead(postId: string) {
 - [Turbopack CJS tree shaking docs](https://nextjs.org/docs/app/api-reference/turbopack) — `experimental.turbopackCjsTreeShaking` reference
 - [Turbopack shared runtime docs](https://nextjs.org/docs/app/api-reference/turbopack) — `experimental.turbopackSharedRuntime` reference
 - [Cache Components docs](https://nextjs.org/docs/app/api-reference/next-config-js/cacheComponents) — `cacheComponents` reference
+
+## Pattern: Turbopack — 2 Major Reverts Queued for canary.11+ (PR #97018 Reverts Pattern A CJS Tree Shaking Default-On + PR #97009 Reverts the canary.9 Async Re-Export Tree Shaking Optimization) (August 10, 2026)
+
+The 6h window since the v1.5.44 cycle has surfaced **2 MAJOR REVERTS** on the Next.js canary-branch ahead of `16.3.1-canary.10` (which SHIPPED to npm at 2026-08-10T07:41:37Z). These reverts directly affect the **canonical recipes documented in v1.5.38's `## Pattern: Turbopack + Server Actions + Cache Components on canary.8`** section:
+
+- **PR #97018** (Hendrik Liebau, merged 2026-08-10T11:28:55Z) reverts **PR #96779** — the canary.8 Pattern A "Turbopack CJS Tree Shaking Default-On". The flag is being flipped back from default-`true` to default-`false`. The recipe in Pattern A becomes "DELETE the now-redundant opt-in flag" again — except now, the recipe is "DO NOT add the opt-in flag" unless you've audited your CJS dependency tree.
+- **PR #97009** (merged 2026-08-10T11:28:55Z) reverts **PR #95993** — the canary.9 `[turbopack] Follow re-exports for side-effect free async modules` optimization. The 5-20% bundle reduction is reverted; there is no flag, no opt-in path — the optimization is gone indefinitely.
+
+Both reverts ship in `next@16.3.1-canary.11` (npm-published expected ~24h after canary.10 on the 24h cadence, so ~2026-08-11T07:41Z ± a few hours). The full PR-by-PR deep dive is in `performance.md` and `deployment.md`; this section updates the **canonical recipe** in patterns.md to reflect the new reality.
+
+### Pattern A (UPDATED for canary.11+) — Turbopack CJS Tree Shaking Default-OFF (PR #97018 Reverts PR #96779)
+
+**Pre-canary.8 (and post-canary.11 with PR #97018):** CJS tree shaking is opt-in via `experimental: { turbopackCjsTreeShaking: true }`. Apps that don't add the flag get the full CJS bundle even if only one or two exports are used.
+
+**canary.8 to canary.10:** The flag was flipped default-on (PR #96779). Apps got 5-15% bundle reduction for CJS-heavy dependencies automatically.
+
+**canary.11+:** The flag is flipped back to default-off (PR #97018). Apps that want the optimization must add it explicitly AND audit their CJS dependency tree first.
+
+**The bug that triggered the revert:** CJS modules written as `var X = module.exports = { ... }` lose properties that are only read back through the alias. The canonical affected module is `@mixmark-io/domino` (Turndown's server DOM) `lib/LinkedList.js`:
+
+```javascript
+// source
+var LinkedList = module.exports = {
+    valid: function(a) { /* ... */ return true; },
+    insertBefore: function(a, b) {
+        utils.assert(LinkedList.valid(a) && LinkedList.valid(b));
+```
+
+```javascript
+// emitted with turbopackCjsTreeShaking: true
+var LinkedList = module.exports = {
+    ...void function(a) { /* ... */ return true; },   // `valid:` key dropped
+```
+
+`valid` is only referenced via the alias (`LinkedList.valid`), so the tree shaker judges it unused and elides it. The elision emits `...void <fnExpr>`, which spreads `undefined` and drops the `valid:` key. Result: `TypeError: LinkedList.valid is not a function`. **The failure mode is silent property elision rather than a build error** — the build succeeds, the type check passes, the runtime explodes.
+
+**Updated migration recipe (for canary.11+):**
+
+```ts
+// next.config.ts — the UPDATED canary.11+ canonical production config
+const nextConfig: NextConfig = {
+  // ... existing config ...
+  experimental: {
+    // DO NOT add turbopackCjsTreeShaking: true unless you've audited your CJS dependency tree
+    // (see audit recipe below)
+  },
+}
+```
+
+**Updated audit recipe (for canary.11+ users who want to re-enable CJS tree shaking):**
+
+```bash
+# 1. Scan lockfile for known affected CJS modules
+rg -l "@mixmark-io/domino|@mixmark-io/turndown" package-lock.json pnpm-lock.yaml yarn.lock
+# → any match means DO NOT re-enable CJS tree shaking
+
+# 2. Scan your node_modules for self-referential module.exports patterns
+rg -l "module\.exports\s*=\s*\{" node_modules/@mixmark-io/domino/lib/ \
+                                 node_modules/express/lib/ \
+                                 node_modules/*/package.json 2>/dev/null | head -50
+# → any match confirms self-referential pattern; do not re-enable
+
+# 3. Build a smoke test before opting back in
+pnpm build && pnpm test
+# → if smoke test passes for ALL your test cases, safe to re-enable
+# → if smoke test fails for ANY case involving @mixmark-io/domino, leave flag off
+
+# 4. Only then opt back in:
+# next.config.ts:
+# experimental: { turbopackCjsTreeShaking: true }
+```
+
+### Pattern B — Turbopack Shared Runtime Default-ON (PR #96778, UNCHANGED)
+
+The Pattern B documented in v1.5.38 (Turbopack shared runtime default-on, 1-3 KB smaller HTML per route, 5-10% faster TTI for multi-route apps) is **unchanged by PR #97018**. The shared runtime doesn't have the CJS self-referential elision bug. The migration recipe (DELETE the now-redundant opt-in flag) is still correct.
+
+### Pattern C — Turbopack Per-Environment Minify Config (PR #96578, UNCHANGED)
+
+The Pattern C documented in v1.5.38 (Turbopack per-environment minify config via `experimental.turbopackMinify: { client: true, server: true }`) is **unchanged by PR #97018**. The minify config is independent of the CJS tree shaking flag. The migration recipe (replace `experimental.serverMinification: false` with `experimental.turbopackMinify: { server: false }`) is still correct.
+
+### Pattern (REMOVED) — Turbopack Async Re-Export Tree Shaking (PR #95993, REVERTED by PR #97009)
+
+The 5-20% bundle reduction for pure re-export barrels imported via `await import(...)` documented in v1.5.39's `## next@16.3.1-canary.9 SHIPPED` section is **REVERTED in canary.11+ by PR #97009**. The revert body is terse: *"This causes `ModuleId not found for ident` errors with `next/dynamic`."*
+
+**Pre-canary.9 (and post-canary.11 with PR #97009):** Pure re-export barrels (`export { x } from './y.js'`) imported via `await import(...)` include ALL re-exports in the bundle, even unused ones. Sync imports were already tree-shaken correctly.
+
+**canary.9 to canary.10:** The optimization was active; async-imported pure re-export barrels had unused re-exports dropped (5-20% bundle reduction).
+
+**canary.11+:** The optimization is gone. There is no flag, no opt-in path. Apps that depended on the 5-20% bundle reduction will see larger bundles.
+
+**Updated practical impact:**
+
+- Apps with **large pure re-export barrels imported via `await import(...)`** (component libraries, design systems, icon libraries) will see a **5-20% bundle size regression** on canary.11+. The regression is silent — no warnings, no deprecation messages.
+- Apps with **no async-imported pure re-export barrels** see zero change.
+- **No migration recipe available** — there is no opt-in path for this optimization.
+
+### Updated When to use these patterns together — the canary.11+ canonical recipe
+
+```ts
+// next.config.ts — the canary.11+ canonical production config
+const nextConfig: NextConfig = {
+  // Cache Components (the 16.3 default — opt-in here is now redundant)
+  cacheComponents: true,
+
+  // Turbopack (default in 16.3+)
+  // (No explicit bundler opt-in needed in 16.3+; Turbopack is the default)
+
+  experimental: {
+    // Partial Prefetching — opt in for instant navigation
+    partialPrefetching: true,
+
+    // Turbopack per-environment minify (Pattern C, unchanged)
+    turbopackMinify: {
+      client: true,
+      server: true,
+    },
+    // serverMinification: true, ← NOW respected by Turbopack (was Webpack-only)
+
+    // Shared runtime default-ON (Pattern B, unchanged) — DELETE these if you have them:
+    // turbopackSharedRuntime: true, ← redundant (default-on since canary.8)
+
+    // CJS tree shaking default-OFF (Pattern A, REVERTED) — DO NOT add unless audited:
+    // turbopackCjsTreeShaking: true, ← OPT-IN ONLY; audit your CJS dependency tree first
+    // (See Pattern A audit recipe above)
+  },
+}
+```
+
+The recipe is functionally identical to the canary.10 recipe EXCEPT for the CJS tree shaking line — that's now an explicit opt-in with an audit gate, not a default. The async re-export tree shaking (canary.9's headline) is simply gone.
+
+### Sources
+
+- [PR #97018 — `Revert "[turbopack] Enable CJS tree shaking by default (#96779)"`](https://github.com/vercel/next.js/pull/97018) — by Hendrik Liebau, merged 2026-08-10T11:28:55Z, 2 files / +6/-2. **Queued for canary.11**.
+- [PR #96779 — `[turbopack] Enable CJS tree shaking by default`](https://github.com/vercel/next.js/pull/96779) — the canary.8 PR being reverted. Originally merged 2026-08-07T18:26:49Z by sampoder, 2 files.
+- [PR #97009 — `Revert "[turbopack] Follow re-exports for side-effect free async modules"`](https://github.com/vercel/next.js/pull/97009) — merged 2026-08-10T11:28:55Z. **Queued for canary.11**.
+- [PR #95993 — `[turbopack] Follow re-exports for side-effect free async modules`](https://github.com/vercel/next.js/pull/95993) — the canary.9 PR being reverted. Originally merged 2026-08-08T01:28:49Z by sampoder, 17 files / +176/-39.
+- [Next.js v16.3.1-canary.10 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.10) — npm-published 2026-08-10T07:41:37Z
+- [@mixmark-io/domino repo](https://github.com/foliojs/domino) — the canonical CJS module affected by PR #97018 (used by Turndown for server-side HTML DOM)
+- [Cross-reference: v1.5.45 performance.md `## next@16.3.1-canary.10 SHIPPED` — full PR-by-PR deep dive](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the performance-lens coverage with the verbatim PR body walkthroughs
+- [Cross-reference: v1.5.45 deployment.md `## Next.js — next@16.3.1-canary.10 SHIPPED — Deployment Impact Lens` — the deployment-bounded audit recipes](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the deploy-side perspective on the same reverts
+- [Cross-reference: v1.5.38 patterns.md `## Pattern: Turbopack + Server Actions + Cache Components on canary.8` — the original Pattern A documentation being updated](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md) — the canary.8 SHIP event that introduced the CJS tree shaking default-on

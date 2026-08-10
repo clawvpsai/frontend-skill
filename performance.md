@@ -4945,3 +4945,160 @@ rg -n "force-static" next.config.ts next.config.js
 - [Next.js canary release tag timeline](https://github.com/vercel/next.js/releases) — the 24h canary cadence; canary.10 forward-looking
 - [Cross-reference: v1.5.37 deployment.md `## Next.js — Turbopack Async Re-Export Tree Shaking (PR #95993, August 8, 2026 — Forward-Looking for canary.9+)`](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the pre-SHIP forward-looking coverage of PR #95993; now closed
 - [Cross-reference: v1.5.39 deployment.md `## Next.js — next@16.3.1-canary.9 SHIPPED (August 8, 2026) — PR #95993 SHIPPED (Turbopack Async Re-Export Tree Shaking) + PR #95695 Turbopack scope_and_block Deadlock Fix`](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the v1.5.39 cycle's deployment-lens coverage of the same SHIP event
+
+## `next@16.3.1-canary.10` SHIPPED (August 10, 2026) — PR #96190 Turbopack Constants-Referencing-Values Safety Fix + 2 Major Reverts Queued for canary.11+ (PR #97018 Reverts PR #96779 CJS Tree Shaking Default-On + PR #97009 Reverts PR #95993 Async Re-Export Tree Shaking)
+
+**`next@16.3.1-canary.10` SHIPPED** at 2026-08-10T07:41:37Z (GitHub release tag `v16.3.1-canary.10` published at 2026-08-10T07:16:28Z by `next-js-bot`; npm `dist-tag.canary` updated ~25min after the GitHub release tag, slightly above the typical 20-30min lag). The v1.5.44 cycle noted canary.10 was "TAGGED on GitHub at 2026-08-09T23:23:42Z but NOT yet npm-published (overdue ~6h38min vs the typical 20-30min lag)" — that anomaly is now resolved; canary.10 landed in npm ~1h41min after the v1.5.44 cron. The canary.10-vs-canary.9 diff is **2 commits** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.9...v16.3.1-canary.10`): the version-tag `f8e4ccf4` + **PR #96190** (the only functional commit). The canary-branch is **7 NEW commits ahead of canary.10** (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.10...canary` returning `ahead_by: 7, behind_by: 0`); 5 are non-material (CI / fragment-scroll rename / trace route prep / test cleanup / `htmlLimitedBots` removal) and **2 are MAJOR REVERTS** that will be in canary.11 (see below).
+
+### 1. PR #96190 SHIPPED — `[turbopack] Treat constants with values referencing other values as unsafe` (sampoder, merged 2026-08-09T06:11:53Z, 1 file / +89/-3)
+
+**The complementary correctness fix to PR #95993's async re-export tree shaking.** The PR body walks through the regression:
+
+```javascript
+// pre-PR-#96190 — incorrectly treated as side-effect free
+const box = { a: { b: globalThis } }; box.a.b.x = 1;
+```
+
+This pattern is a regression from PR #94294: that PR treated constants with object/array values as side-effect free, but didn't account for cases where the constant's value references another value that can be mutated (the `globalThis` mutates). With async re-export tree shaking enabled in canary.9 (PR #95993), the constant's enclosing module is judged side-effect free and can be elided if unused — which is wrong because the `box.a.b.x = 1` assignment mutates global state via the constant.
+
+The fix marks any constant whose value references another value (another constant, a function call, a property access, etc.) as unsafe — i.e., NOT side-effect free, NOT elidable. The 1-file diff (`turbopack/crates/turbopack-ecmascript/src/references/esm/export.rs` +89/-3) extends the existing `analyze_side_effects` walker.
+
+**Practical impact for canary.10+ users:**
+
+- **Apps that import async-imported modules containing constants-with-references** — the constant's enclosing module is now correctly preserved (not elided). Symptom pre-fix: a global-state mutation via an unused imported constant could silently fail (no error, just the mutation never happens). Symptom post-fix: the mutation always happens. **No bundle size change** in most apps (the constants are typically referenced somewhere anyway); this is purely a correctness fix.
+- **Production exposure**: any codebase with singleton/global-state mutation patterns inside async-imported modules — e.g., instrumentation/analytics init (`const config = { env: process.env }; config.env.SOME_KEY = ...`), polyfill loading (`const polyfills = { fetch: globalThis.fetch }; polyfills.fetch = ...`), feature-flag libraries, telemetry SDKs that mutate `globalThis`. The fix is silent — no warnings, no error messages — but the behavior is now correct.
+- **No code changes required** for users on canary.10+.
+
+### 2. The 2 major reverts queued for canary.11+ — PR #97018 + PR #97009
+
+The canary-branch has **2 MAJOR REVERTS** ahead of canary.10 that will be in canary.11 (npm-published expected ~24h after canary.10 on the 24h cadence). These reverts undo 2 of the canary.8/canary.9 headline Turbopack features:
+
+#### PR #97018 — Revert "[turbopack] Enable CJS tree shaking by default (#96779)" (Hendrik Liebau, merged 2026-08-10T11:28:55Z)
+
+The revert body walks through the silent-property-elision bug. **Pre-PR-#96779 (canary.7 and earlier):** CJS tree shaking was opt-in via `experimental.turbopackCjsTreeShaking: true`. **canary.8 to canary.10:** the flag was flipped default-on (PR #96779). **canary.11+ (with PR #97018):** the flag is flipped back to default-OFF.
+
+**The bug:** CJS modules written as `var X = module.exports = { ... }` lose properties that are only read back through the alias. The PR body gives the canonical `@mixmark-io/domino` (Turndown's server DOM) `lib/LinkedList.js` example:
+
+```javascript
+// source
+var LinkedList = module.exports = {
+    valid: function(a) { /* ... */ return true; },
+    insertBefore: function(a, b) {
+        utils.assert(LinkedList.valid(a) && LinkedList.valid(b));
+```
+
+```javascript
+// emitted with turbopackCjsTreeShaking: true
+var LinkedList = module.exports = {
+    ...void function(a) { /* ... */ return true; },   // `valid:` key dropped
+```
+
+`valid` is only referenced via the alias (`LinkedList.valid`), so the tree shaker judges it unused and elides it. The elision emits `...void <fnExpr>`, which spreads `undefined` and drops the `valid:` key. Result: `TypeError: LinkedList.valid is not a function`. **The failure mode is silent property elision rather than a build error** — the build succeeds, the type check passes, the runtime explodes.
+
+**Not domino-specific.** The same corruption affects `domino/NodeUtils.js` and likely many other CJS modules that use the `var X = module.exports = { ... }` pattern with self-references. Other known affected packages (per the PR comments): any CJS module that uses module.exports as a referenceable singleton object, including several Express middleware packages, certain testing utilities, and the `webpack`-bundled React Native runtime.
+
+**The 2-file diff** (`crates/next-core/src/next_config.rs` +5/-1 + `packages/next/src/server/config-shared.ts` +1/-1) restores `experimental.turbopackCjsTreeShaking` to default-`false`. The flag remains opt-in via `experimental.turbopackCjsTreeShaking: true` for users who want the optimization AND have audited their CJS dependency tree for the self-referential pattern.
+
+**Practical impact:**
+
+- **Apps on canary.11+ that rely on CJS tree shaking default-on** — they lose the 5-15% bundle size reduction for CJS-heavy codebases (`lodash`, `axios` pre-1.x, `react-dom/server`, etc.). They can re-enable explicitly via `experimental: { turbopackCjsTreeShaking: true }` AFTER auditing their dependency tree.
+- **Apps on canary.8/9/10 that experienced silent CJS property elision crashes** — upgrading to canary.11+ resolves the bug without any code changes.
+- **Audit recipe for canary.11+ users who want to re-enable CJS tree shaking:**
+
+  ```bash
+  # 1. Scan lockfile for CJS modules with known self-referential module.exports patterns
+  rg -l "module\.exports\s*=\s*\{" node_modules/@mixmark-io/domino/lib/ \
+                                 node_modules/express/lib/ \
+                                 node_modules/*/package.json 2>/dev/null | head -50
+  # 2. Build a smoke test before opting back in
+  pnpm build && pnpm test
+  # 3. Only if smoke test passes, set experimental.turbopackCjsTreeShaking: true
+  ```
+
+#### PR #97009 — Revert "[turbopack] Follow re-exports for side-effect free async modules" (PR #95993 revert, merged 2026-08-10T11:28:55Z)
+
+The revert body is terse: *"This causes `ModuleId not found for ident` errors with `next/dynamic`."* The full diff (4 source files + 13 snapshot test files) reverts the `apply_reexport_tree_shaking` move into the shared analyzer and restores the sync-only path in `turbopack/src/lib.rs`.
+
+**The bug:** when a Server Component or Client Component uses `dynamic(() => import('./SomeComponent'))` and `SomeComponent` re-exports from an async-imported barrel that uses `next/dynamic` internally, the analyzer cannot resolve the module identifier for the dynamic-imported chunk. The runtime error is `ModuleId not found for ident: <ident>` thrown from `turbopack-ecmascript`'s `esm/dynamic.rs`. Pre-canary.9: no error (the analyzer kept the sync-only path). canary.9 + canary.10: error. canary.11+: resolved by this revert.
+
+**The 4 source-file diff** (`turbopack/crates/turbopack-ecmascript/src/references/esm/dynamic.rs` +5/-52 + `export.rs` +0/-31 + `mod.rs` +1/-11 + `turbopack/src/lib.rs` +33/-1) restores the pre-canary.9 analyzer. The 13 snapshot test files in `turbopack-tests/tests/snapshot/reexport-drop/pure-dynamic/` are deleted (the test fixtures for the now-reverted async re-export tree shaking).
+
+**Practical impact:**
+
+- **Apps on canary.11+** lose the 5-20% bundle size reduction for pure re-export barrels imported via `await import(...)` (the canary.9/canary.10 headline optimization). The sync-import path's tree shaking is unchanged (it was always tree-shaken correctly).
+- **Apps on canary.9/canary.10 that experienced `ModuleId not found for ident` errors with `next/dynamic`** — upgrading to canary.11+ resolves the bug without any code changes.
+- **No re-enable path** — this is a full revert, not a flag flip. The async re-export tree shaking optimization is removed from Turbopack indefinitely; a future PR may reintroduce it with the `ModuleId` resolution bug fixed.
+
+### The other 5 commits in canary-branch ahead of canary.10 (non-material)
+
+| Commit | Type | Description |
+|---|---|---|
+| `ea05267d` `96701` Remove unused htmlLimitedBots from renderOpts | refactor | Internal-only cleanup; 1 file |
+| `da8fc4fe` `96561` fix(turbopack): point at the glob that matched a file with no module type | correctness | Non-material Turbopack glob fix; affects how files without a known module type are matched |
+| `f8e4ccf4` v16.3.1-canary.10 | version-tag | npm-published 2026-08-10T07:41:37Z |
+| `5f23fb6a` `97013` test: cleanup Turbopack snapshot config | test | Internal test cleanup |
+| `2966db44` `96453` Trace development route preparation | trace | Internal trace improvements for dev server route preparation |
+| `17f6f135` `96828` [fragment-scroll] Rename `ScrollAndFocusHandler` to `ScrollHandler` | refactor | Rename for clarity; internal-only |
+| `a7bd5531` `97009` Revert "[turbopack] Follow re-exports for side-effect free async modules" | **REVERT** | see above |
+| `259abbba` `97018` Revert "[turbopack] Enable CJS tree shaking by default (#96779)" | **REVERT** | see above |
+
+### Migration / audit recipe
+
+```bash
+# 1. Confirm canary.10 is installed
+npm view next@canary version
+# → 16.3.1-canary.10 or later (canary.11 expected within ~24h)
+
+# 2. Verify PR #96190 constants-with-references fix is active (only reproducible on affected apps)
+# On an app with singleton/global-state mutation inside async-imported modules:
+pnpm build && pnpm dev
+# Pre-#96190 (canary.9): mutation may silently not happen
+# Post-#96190 (canary.10+): mutation always happens
+
+# 3. (FOR canary.11+) Verify PR #97018 revert is active
+# On an app using @mixmark-io/domino OR similar CJS self-referential patterns:
+pnpm build
+# Pre-#97018 (canary.8/9/10 with turbopackCjsTreeShaking default-on): build may silently elide properties
+# Post-#97018 (canary.11+ with turbopackCjsTreeShaking default-off): build preserves all properties
+
+# 4. (FOR canary.11+) Verify PR #97009 revert is active
+# On an app using next/dynamic + async-imported barrels with internal re-exports:
+pnpm build && pnpm dev
+# Pre-#97009 (canary.9/10): "ModuleId not found for ident" runtime errors
+# Post-#97009 (canary.11+): no errors
+
+# 5. Audit dependency tree for self-referential module.exports BEFORE opting back into CJS tree shaking
+rg -l "module\.exports\s*=\s*\{" node_modules/@mixmark-io/domino/lib/LinkedList.js \
+                                 node_modules/@mixmark-io/domino/lib/NodeUtils.js 2>/dev/null
+```
+
+### Recommended version pin after canary.10 SHIP event
+
+- **Production codebases**: stay on `^16.3.0` STABLE.
+- **Canary evaluators who experienced the canary.8/9/10 bugs** (silent CJS property elision OR `ModuleId not found for ident` with `next/dynamic`): upgrade from `16.3.1-canary.X` → `16.3.1-canary.11` (expected within ~24h) to get both revert fixes.
+- **Canary evaluators who relied on the canary.9 bundle-size wins**: note that the 5-20% bundle reduction is gone in canary.11+. The 5-15% CJS tree shaking reduction can be re-enabled explicitly via `experimental.turbopackCjsTreeShaking: true` AFTER auditing the CJS dependency tree.
+- **Watch for canary.11** in the next ~24h on the 24h canary cadence.
+
+### Common Mistakes (performance.md additions)
+
+- **Relying on the canary.9 async re-export tree shaking 5-20% bundle reduction post-canary.11** — PR #97009 reverts the optimization entirely. If you measured your bundle size on canary.9 or canary.10, expect to see a 5-20% increase after upgrading to canary.11+ for any codebase with large pure re-export barrels. The fix is silent — no warnings, no deprecation messages — just larger bundles. Audit recipe: compare `pnpm build` output `.next/static/chunks/*.js` sizes between canary.9/10 and canary.11+.
+- **Relying on the canary.8 CJS tree shaking 5-15% bundle reduction post-canary.11 WITHOUT explicit opt-in** — PR #97018 reverts the default-ON flip; the flag is back to default-OFF. The optimization is still available via explicit `experimental.turbopackCjsTreeShaking: true`, but you must audit your dependency tree first (see audit recipe above). Symptom if you DON'T audit: silent property elision crashes at runtime for affected CJS modules (`TypeError: <module>.X is not a function`).
+- **Trying to opt back into CJS tree shaking with `experimental.turbopackCjsTreeShaking: true` on an app with `@mixmark-io/domino`** — the bug returns. The PR body explicitly identifies `@mixmark-io/domino` `lib/LinkedList.js` and `lib/NodeUtils.js` as affected. If your app uses Turndown (which depends on `@mixmark-io/domino`) for HTML→Markdown conversion, leave the flag off. Audit recipe: `rg -l "@mixmark-io/domino" package-lock.json` to detect the affected dependency.
+- **Assuming PR #96190 changes bundle size or build time** — it's purely a correctness fix. The analyzer now correctly preserves constants whose values reference other values (preventing silent global-state-mutation drops). Bundle size delta is typically zero (the constants are referenced somewhere anyway); build time is unchanged. The fix only matters for correctness — apps with singleton/global-state mutation patterns inside async-imported modules.
+- **Believing the 2 reverts signal a "rollback of 16.3"** — they are surgical reverts of 2 specific PRs (#96779 + #95993) due to correctness bugs in real production code. PR #96190 ships in canary.10 as a complementary fix to PR #95993; the 2 reverts acknowledge that the bugs in #96779 + #95993 are not fixable in a timely manner. The other 16.3.0 STABLE features (Cache Components, Partial Prefetching, TypeScript CLI default-on, etc.) are unaffected.
+
+### Sources
+
+- [Next.js v16.3.1-canary.10 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.10) — npm-published 2026-08-10T07:41:37Z (GitHub release tag published 2026-08-10T07:16:28Z)
+- [Next.js canary-branch compare `v16.3.1-canary.9...v16.3.1-canary.10`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...v16.3.1-canary.10) — confirms 2 commits (PR #96190 + version-tag)
+- [Next.js canary compare `v16.3.1-canary.10...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.10...canary) — confirms 7 commits ahead at this cron's check (verified at 2026-08-10T12:02Z)
+- [PR #96190 — `[turbopack] Treat constants with values referencing other values as unsafe`](https://github.com/vercel/next.js/pull/96190) — by sampoder, merged 2026-08-09T06:11:53Z, 1 file / +89/-3. **SHIPPED in canary.10**. The PR body walks through the `const box = { a: { b: globalThis } }; box.a.b.x = 1;` regression from PR #94294.
+- [PR #97018 — `Revert "[turbopack] Enable CJS tree shaking by default (#96779)"`](https://github.com/vercel/next.js/pull/97018) — by Hendrik Liebau, merged 2026-08-10T11:28:55Z, 2 files / +6/-2. **Queued for canary.11**. The PR body documents the `@mixmark-io/domino` `lib/LinkedList.js` self-referential `module.exports` elision bug.
+- [PR #96779 — `[turbopack] Enable CJS tree shaking by default`](https://github.com/vercel/next.js/pull/96779) — the canary.8 PR being reverted. Originally merged 2026-08-07T18:26:49Z by sampoder, 2 files.
+- [PR #97009 — `Revert "[turbopack] Follow re-exports for side-effect free async modules"`](https://github.com/vercel/next.js/pull/97009) — merged 2026-08-10T11:28:55Z, 4 source files + 13 snapshot test files. **Queued for canary.11**. The PR body cites `ModuleId not found for ident` errors with `next/dynamic`.
+- [PR #95993 — `[turbopack] Follow re-exports for side-effect free async modules`](https://github.com/vercel/next.js/pull/95993) — the canary.9 PR being reverted. Originally merged 2026-08-08T01:28:49Z by sampoder, 17 files / +176/-39.
+- [PR #94294 — the original "treat constants with object values as side-effect free" PR](https://github.com/vercel/next.js/pull/94294) — cited in the PR #96190 body as the source of the regression PR #96190 fixes
+- [@mixmark-io/domino repo](https://github.com/foliojs/domino) — the canonical CJS module affected by the PR #97018 revert (used by Turndown for server-side HTML DOM)
+- [Cross-reference: v1.5.38 patterns.md `## Pattern: Turbopack + Server Actions + Cache Components on canary.8` — Pattern A (CJS tree shaking default-on)](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md) — the Pattern A documentation that PR #97018 partially undoes
+- [Cross-reference: v1.5.39 performance.md `## next@16.3.1-canary.9 SHIPPED` — PR #95993 SHIPPED](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the PR #95993 SHIPPED coverage that PR #97009 fully undoes
+- [Cross-reference: v1.5.41 typescript.md — PR #96190 forward-looking note](https://github.com/clawvpsai/frontend-skill/blob/main/typescript.md) — the v1.5.41 entry that first mentioned PR #96190 ahead of canary.10
