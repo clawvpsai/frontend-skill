@@ -1364,9 +1364,9 @@ schema.parse({ name: 'a', __proto__: { polluted: true } })
 - [PR #5898 — `__proto__` skip in catchall](https://github.com/colinhacks/zod/pull/5898)
 
 
-### Zod 4.4.x Post-Release Forward-Looking (August 8–9, 2026) — 4 NEW Merged Correctness/Security Fixes for `^4.4.3` + `zod@canary` 4.5.0-canary.20260809T165522 Drop
+### Zod 4.4.x Post-Release Forward-Looking (August 8–9, 2026) — 4 NEW Merged Correctness/Security Fixes for `^4.4.3` + `zod@canary` 4.5.0-canary.20260809T180500 Drop (First Can With All 4 Fixes)
 
-Since the 4.4.3 patch train shipped on 2026-05-04, the Zod main branch has accumulated **18 NEW commits ahead of `v4.4.3`** as of 2026-08-09T18:01:43Z. The most material of these — **4 merged correctness/security fixes landed in a tight ~22h window on August 8–9, 2026** — are documented here because each affects common production patterns with Zod 4.4.3. None are in `zod@latest` yet (still `4.4.3`), but **`zod@canary` saw a fresh drop today `4.5.0-canary.20260809T165522`** (npm-published 2026-08-09T16:55:22Z), indicating Zod 4.5 is being actively prepared with these fixes. **The fixes are correctness/security-driven** (not API-surface changes) — most code is unaffected, but specific edge cases hit production.
+Since the 4.4.3 patch train shipped on 2026-05-04, the Zod main branch has accumulated **18 NEW commits ahead of `v4.4.3`** as of 2026-08-09T18:01:43Z. The most material of these — **4 merged correctness/security fixes landed in a tight ~22h window on August 8–9, 2026** — are documented here because each affects common production patterns with Zod 4.4.3. None are in `zod@latest` yet (still `4.4.3`), but **`zod@canary` saw its SECOND drop today `4.5.0-canary.20260809T180500`** (npm-published 2026-08-09T18:10:14Z) — this is the FIRST canary cut that contains all 4 material fixes (PR #6347 + PR #6354 + PR #6346 + PR #6213) because PR #6354 (merged 2026-08-09T18:01:44Z) only landed AFTER the earlier canary drop `4.5.0-canary.20260809T165522` (npm-published 2026-08-09T16:55:22Z, ~1h6min before PR #6354). **The fixes are correctness/security-driven** (not API-surface changes) — most code is unaffected, but specific edge cases hit production.
 
 #### 1. PR #6347 — `fix: remove exponential backtracking from the emoji regex` (merged 2026-08-09T01:12:02Z) — **HIGHEST-PRIORITY FIX (ReDoS)**
 
@@ -1451,11 +1451,11 @@ The v3 `flatten()` was already correct — it moved to `Object.create(null)` in 
 
 **Audit recipe:** `rg -n "z\.record\(z\.string\(\)" src/ app/ schemas/ --type ts --type tsx` — every `z.record(z.string(), ...)` schema is potentially exposed pre-4.5 if the input is user-controlled (which is the common case for record/dictionary schemas). Pair with `.refine` or a length cap to limit the attack surface until 4.5 ships.
 
-#### 5. `zod@canary` 4.5.0-canary.20260809T165522 NEW Drop (npm-published 2026-08-09T16:55:22Z)
+#### 5. `zod@canary` — Two August 9 Drops in Sequence; See 5a. for the All-Fixes-First Drop
 
-A new canary cut of Zod landed today, ~10 minutes before this cron. The canary tag previews the upcoming 4.5.x release and includes all 4 fixes above + the 3 NEW zod main-branch commits in the last 24h. The canary tag is **NOT for production use** — it's the nightly-built artifact from `main` and may have unstable APIs. **Recommended action:** wait for `zod@latest` to advance to `4.5.0` (expected within 2-4 weeks based on recent Zod release cadence — 4.4.3 shipped 2026-05-04, 4.4.0 shipped 2026-04-29; recent minor-version cadence has been 4-6 weeks).
+Two canary drops of Zod landed on Aug 9, 2026 — see **5a. below for the canonical "first canary with all 4 fixes" reference (`4.5.0-canary.20260809T180500`)**. The earlier drop `4.5.0-canary.20260809T165522` (npm-published 2026-08-09T16:55:22Z, ~10 minutes before the v1.5.42 cron at 18:03Z) contained 3 of the 4 material fixes (PR #6347 ReDoS + PR #6346 JSON Schema round-trip + PR #6213 error-tree walker) plus 14 other commits — but NOT PR #6354, which merged 1h6min later at 2026-08-09T18:01:44Z. The canary tag is **NOT for production use** — it's the nightly-built artifact from `main` and may have unstable APIs. **Recommended action:** wait for `zod@latest` to advance to `4.5.0` (expected within 2-4 weeks based on recent Zod release cadence — 4.4.3 shipped 2026-05-04, 4.4.0 shipped 2026-04-29; recent minor-version cadence has been 4-6 weeks).
 
-**For projects that can't wait** for the official 4.5.0 release AND need the ReDoS fix (PR #6347) immediately: pin `zod@canary` and add a smoke test against the emoji regex path. **For projects where the JSON-Schema / `__proto__` / error-walker bugs are reachable** (rare, but possible in security-sensitive schemas with user-controlled record keys): same — pin canary.
+**For projects that can't wait** for the official 4.5.0 release AND need any of the 4 fixes immediately: pin `zod@canary` to **the `4.5.0-canary.20260809T180500` drop or later** (the first canary with all 4 fixes) and add a smoke test against the relevant surface. Pinning the earlier `4.5.0-canary.20260809T165522` drop gives you only 3 of the 4 fixes — you will still hit the PR #6354 declared-`__proto__`-schema-key bug. **For projects where the JSON-Schema / `__proto__` / error-walker bugs are reachable** (rare, but possible in security-sensitive schemas with user-controlled record keys): same — pin canary, but pin the 180500 drop, not the 165522 one.
 
 #### Recommended version pin after this cycle
 
@@ -1497,8 +1497,34 @@ rg -n "z\.record\(z\.string\(\)" src/ app/ schemas/ --type ts --type tsx
 - [PR #6352 — `ci: fix release matrix broken by TypeScript 7`](https://github.com/colinhacks/zod/pull/6352) — CI-only, no user-facing impact
 - [PR #6214 — `docs: fix UUID helper list in v4 introduction`](https://github.com/colinhacks/zod/pull/6214) — docs only
 - [v4.4.3...main compare](https://github.com/colinhacks/zod/compare/v4.4.3...main) — confirms 18 NEW commits on main ahead of 4.4.3 at this cron's check (verified at 2026-08-09T18:02Z)
-- [`zod@canary` npm dist-tag](https://www.npmjs.com/package/zod?activeTab=versions) — `4.5.0-canary.20260809T165522` npm-published 2026-08-09T16:55:22Z
+- [`zod@canary` npm dist-tag](https://www.npmjs.com/package/zod?activeTab=versions) — `4.5.0-canary.20260809T180500` npm-published 2026-08-09T18:10:14Z (FIRST drop to include all 4 material fixes from this section; previous drop `4.5.0-canary.20260809T165522` npm-published 2026-08-09T16:55:22Z predates PR #6354 by ~1h6min)
 - [Zod 3 EOL note](https://github.com/colinhacks/zod/blob/main/docs/README.md) — context for the v3 maintainers splitting focus to v4 stability
+
+#### 5a. `zod@canary` Canary Drop Sequencing — `4.5.0-canary.20260809T180500` Is the FIRST Can That Includes All 4 Material Fixes (npm-published 2026-08-09T18:10:14Z)
+
+A v1.5.43 cron correction to the v1.5.42 description above: **the earlier `4.5.0-canary.20260809T165522` drop (npm-published 2026-08-09T16:55:22Z, which the v1.5.42 entry called out as "previews the 4.5.x release with all 4 fixes above") did NOT actually contain PR #6354** — PR #6354 ("fix(v4): write a declared `__proto__` key as an own property") was merged at **2026-08-09T18:01:44Z**, which is **~1h6min AFTER** the 165522 canary drop was npm-published. The 165522 canary drop was a pre-PR-#6354 build that contained **3 of the 4 material fixes** (PR #6347 ReDoS + PR #6346 JSON Schema round-trip + PR #6213 error-tree walker) plus 14 other commits — but NOT PR #6354. The v1.5.42 wording was a close-but-inaccurate description because v1.5.42 ran at 2026-08-09T18:03Z (1m19s after PR #6354 merged) but before the new canary drop landed.
+
+**The correct first-canary-with-all-4-fixes is `4.5.0-canary.20260809T180500`** (npm-published 2026-08-09T18:10:14Z, ~7 minutes after v1.5.42 cron ran). The Zod main-branch commits in the ~1h15min window between the two canary drops:
+
+| Commit | Merged | PR | Type |
+|---|---|---|---|
+| `24b4cc7a` | 2026-08-09T16:51:57Z | PR #6352 (CI: release matrix broken by TS 7) | CI-only |
+| `c58764c5` | 2026-08-09T17:41:44Z | PR #6214 (docs: UUID helper list) | docs only |
+| `ead9fcb3` | 2026-08-09T18:01:44Z | PR #6354 (declared `__proto__` schema key fix) | **CORRECTNESS** (in 180500) |
+
+**For projects pinning `zod@canary` to get all 4 fixes immediately:** use `4.5.0-canary.20260809T180500`, NOT `4.5.0-canary.20260809T165522`. The npm dist-tag (`zod@canary`) currently resolves to whichever is most recently published; if you pin a specific version string, pin `4.5.0-canary.20260809T180500` or later.
+
+**For projects pinning to `^4.4.3` (the default recommendation):** no change — `zod@latest` is still `4.4.3` and `^4.4.3` excludes all `4.5.0-*` canary tags.
+
+**Why this matters:** if you upgraded `zod@canary` on Aug 9 between 17:00Z (when 165522 published) and 18:10Z (when 180500 published) and assumed you had the PR #6354 `__proto__` schema key fix, you did NOT. The fix only landed in canary builds published at or after 18:10:14Z. Pin explicitly to `4.5.0-canary.20260809T180500` or later.
+
+#### Sources (canary-drop sequencing)
+
+- [`zod@canary` npm dist-tag](https://www.npmjs.com/package/zod?activeTab=versions) — current canary = `4.5.0-canary.20260809T180500` (npm-published 2026-08-09T18:10:14Z)
+- [Zod main-branch commit log (16:50Z → 18:15Z Aug 9)](https://github.com/colinhacks/zod/commits/main) — 3 commits in the canary-inter-drop window (PR #6352 CI + PR #6214 docs + PR #6354 `__proto__` schema key)
+- [Zod PR #6354 — `fix(v4): write a declared __proto__ key as an own property`](https://github.com/colinhacks/zod/pull/6354) — colinhacks, merged 2026-08-09T18:01:44Z; the missing fix from the earlier 165522 canary drop
+
+
 
 
 ### String Validation
