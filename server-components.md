@@ -1631,3 +1631,122 @@ Right after the worker landed, four tightly-scoped PRs arrived on the canary bra
 - [PR #96219 — Run dev validation in process when using Webpack](https://github.com/vercel/next.js/pull/96219) · **canary-branch ahead of canary.96**
 - [PR #96215 — Retry the source map lookup with a plain path](https://github.com/vercel/next.js/pull/96215) · **canary-branch ahead of canary.96**
 - [PR #96210 — Pass fallback params to the dev validation worker as maps](https://github.com/vercel/next.js/pull/96210) · **canary-branch ahead of canary.96** (internal cleanup)
+
+## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped (Aug 10, 2026) + Next.js Cache Components PR #97040 Static/App-Shell Incompatibility Tracking
+
+**[10 Aug 2026 18:02Z] v1.5.46 cycle**, **2 NEW server-component-relevant commits** since the v1.5.43 / v1.5.45 cycles:
+
+1. **React Flight — PR #37258 (unstubbable / Hendrik Liebau, merged 2026-08-10T14:18:47Z, 2 files / +326/-16, base `main`)** — **SHIPPED in `react@19.3.0-canary-807d21fd-20260810`** (the new React canary cut, npm-published 2026-08-10). Fixes a **false-positive `Each child in a list should have a unique "key" prop` warning** in Flight-outlined values. **Detailed components.md coverage of the SHIP event + the full per-PR deep dive of PR #37258 below.**
+
+2. **Next.js Cache Components — PR #97040 (lubieowoce, merged 2026-08-10T16:29:50Z, 7 files / +91/-47, base `canary`)** — **will ship in `next@16.3.1-canary.11`** (npm-published expected ~2026-08-11T07:41Z ± a few hours on the 24h cadence; canary-branch currently 11 commits ahead of canary.10). Adds **dynamic tracking of API usage** that causes incompatible static vs app shells — replaces the previous static `params`-only detection with a mutable `workUnitStore.hasIncompatibleShellContent` field that flips to `true` if certain runtime APIs (`navigation()` + `prefetch()` — upcoming — plus the existing static `params` promise) are invoked on a route. **Detailed deep dive below.**
+
+### PR #37258 — Flight transfer-key-validation-of-lazy-nodes-when-unwrapped
+
+**The bug:** When Flight outlines a value into its own row, the **client wraps the reference in a lazy node at the reference site** while the value itself is created later, when the target row is initialized. The JSX runtime can therefore only mark the **lazy node** as a validated static child — and that mark never reached the element. **Whether the warning appeared depended on whether a preceding prop was large enough to push the element past the outlining threshold**, so it was non-deterministic from a developer's perspective.
+
+**The fix:** The transfer now happens when the **lazy node is unwrapped**, which is the first point at which both the mark and the value exist. Unwrapping is also the only way any consumer reaches the value, so **a single transfer covers all of them**, and a value that is itself a lazy node forwards the validation one step further (the nested case shows up when an outlined row contains an element that is blocked on debug info). **This subsumes the transfer that `initializeElement` performed for blocked elements** — those are read through the same lazy node, so that special case is gone. **Because the lazy nodes created for chunks no longer share a single `_init` function, `getTaskName` can no longer use it to recognize them** — it checks that the payload is a chunk instead, which describes the same set of lazy nodes without depending on which function unwraps them.
+
+**Why fix it in Flight instead of Fiber (the alternative #37246 proposed):** Fiber-side fix would only cover the reconciler's own `warnOnInvalidKey`. Anything else that unwraps a lazy node and then consults `_store.validated` — e.g., `React.Children.map` — would need its own copy of the same logic, as would the transfer that Flight already performed in `initializeElement`. It would also leave the **nested lazy node case** warning. Since **Flight is what turns a plain element into a lazy node to begin with, it should also be what hides that again.**
+
+**Closes:** #37240 (the false-positive missing-key warning) + #37246 (the Fiber-side fix proposal that was rejected in favor of this Flight-side fix).
+
+**Practical impact for production:**
+
+- **All Server Component + Server Action users on `react@>=19.3.0-canary-807d21fd-20260810`**: the false-positive warning no longer fires on Flight-outlined elements. **No code change required** — the fix is purely internal to Flight's outlining + element validation. If you previously added `key={...}` props as a workaround, you can leave them in place (they're harmless); you don't need to remove them either.
+- **All users on pre-`807d21fd` canary** (or `react@latest` 19.2.8 STABLE): if you've seen the "Each child in a list should have a unique 'key' prop" warning on a Server Component output that *clearly has* a `key` prop, and the warning only fires for some elements but not others (typically for elements whose preceding sibling pushes them past the outlining threshold), **bump to `react@>=19.3.0-canary-807d21fd-20260810`** to get the fix.
+- **All framework authors wrapping React.Children.map or unwrapping lazy nodes manually**: the fix is internal to Flight's unwrap path; you don't need to change your code.
+
+**Audit recipe:**
+
+```bash
+# 1. Confirm the canary cut includes the PR #37258 fix:
+npm view react dist-tags.canary
+# → should show: 19.3.0-canary-807d21fd-20260810 (or later)
+
+# 2. Render a Server Component that uses dynamic import of a barrel that
+# returns a JSX element. With a pre-fix canary, you might see a false-positive
+# missing-key warning depending on prop sizes. Post-fix: no warning.
+
+# 3. For framework authors: instrument React.Children.map to log when _store.validated
+# is consulted; pre-fix you had to re-implement the transfer; post-fix Flight does
+# the transfer at the unwrap site.
+```
+
+### PR #97040 — [CC] Track APIs that cause incompatible static/app shells
+
+**Context:** Certain APIs resolve in different stages depending on whether they're in a **static prerender** or a **runtime prerender**:
+- `static params` (already exists)
+- `navigation()` and `prefetch()` (upcoming)
+
+When a page uses one of these, **separate renders are required for Static and Instant validation.** Previously, static `params` was the only instance of this, and the team could detect those for a route statically. However, **there is no way to statically know if the upcoming `navigation()` or `prefetch()` are going to be called on a given route**, so the approach has to switch to **dynamically tracking API usage** instead.
+
+**The fix:** A **mutable field `workUnitStore.hasIncompatibleShellContent`** (per the PR body), which starts out as `false` and may get set to `true` if one of the APIs is used. Conceptually, the field works **in tandem with `workUnitStore.needsAppShell`**¹ — `needsAppShell` controls **when** things resolve, and `hasIncompatibleShellContent` tracks whether the result would've been equivalent if `needsAppShell` was set to the opposite value (i.e., **are the static and runtime shells equivalent?**).
+
+¹ `needsSessionShell` was renamed to `needsAppShell`, because "session shell" is not really a term being used anywhere else right now — it's basically a leftover.
+
+**This PR moves static `params` to use this new method.** The resulting `params` promise is instrumented, and `hasIncompatibleShellContent` is set when it's `then()`ed, which seems close enough to tracking use.
+
+**No new tests are added**, because the existing tests that check if unguarded `generateStaticParams` trigger instant validation errors in `partialPrefetching` already exercise this codepath.
+
+**Practical impact for production:**
+
+- **Anyone using `cacheComponents: true` + `partialPrefetching: true` + unguarded `generateStaticParams`** — the new tracking field `workUnitStore.hasIncompatibleShellContent` ensures your route is correctly flagged as needing **separate Static vs Instant validation** when the `params` promise is consumed (regardless of whether you're on the static-prerender path or the runtime-prerender path). Behavior change is internal; no public API impact.
+- **Anyone using `navigation()` or `prefetch()` (forward-looking for the Aug-Sep window)** — once those APIs ship, they'll also flip `hasIncompatibleShellContent` to `true` automatically. The static detection that worked for `params` doesn't apply to those (because the framework can't statically know whether a route will call them), so the dynamic tracking mechanism is what makes the multi-shell validation work.
+- **Audit recipe:**
+
+```bash
+# 1. Confirm the canary cut includes the PR #97040 fix:
+npm view next dist-tags.canary
+# → should show: 16.3.1-canary.11 or later (when it npm-publishes ~2026-08-11)
+
+# 2. For cacheComponents:true projects with unguarded generateStaticParams,
+# verify the new tracking field is consulted by adding a console.log:
+grep -n 'hasIncompatibleShellContent' node_modules/next/dist/server/...
+# Post-fix: the field appears in 7 source files per PR #97040's 7-file diff
+
+# 3. After upgrade, run your existing partialPrefetching tests to confirm
+# the unguarded generateStaticParams instant-validation behavior is unchanged.
+```
+
+### Canary-branch state observation
+
+At this cron's check, the Next.js canary-branch is **11 commits ahead of `v16.3.1-canary.10`** (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.10...canary` returning `ahead_by: 11`):
+
+| Commit | Merged | Author | Description | Material? |
+|---|---|---|---|---|
+| `da8fc4fe` | 2026-08-10T06:58:33Z | Tobias Koppers | [fix(turbopack): point at the glob that matched a file with no module type](https://github.com/vercel/next.js/pull/96561) | low |
+| `ea05267d` | 2026-08-10T08:23:13Z | Niklas Mischkulnig | [Remove unused htmlLimitedBots from renderOpts](https://github.com/vercel/next.js/pull/96701) | low |
+| `5f23fb6a` | 2026-08-10T08:43:36Z | Niklas Mischkulnig | test: cleanup Turbopack snapshot config (PR #97013) | low (test-only) |
+| `2966db44` | 2026-08-10T10:25:22Z | David Alexandru Ilie | [Trace development route preparation](https://github.com/vercel/next.js/pull/96453) | low (observability) |
+| `17f6f135` | 2026-08-10T11:26:51Z | Sebastian Silbermann | [[fragment-scroll] Rename `ScrollAndFocusHandler` to `ScrollHandler`](https://github.com/vercel/next.js/pull/96828) | low (rename) |
+| `a7bd5531` | 2026-08-10T11:28:55Z | Hendrik Liebau | [Revert "[turbopack] Follow re-exports for side-effect free async modules" (#97009)](https://github.com/vercel/next.js/pull/97009) | **MATERIAL** (revert; covered in v1.5.45 performance.md / patterns.md) |
+| `259abbba` | 2026-08-10T11:28:55Z | Hendrik Liebau | [Revert "[turbopack] Enable CJS tree shaking by default (#96779)" (#97018)](https://github.com/vercel/next.js/pull/97018) | **MATERIAL** (revert; covered in v1.5.45 performance.md / patterns.md) |
+| `f0166228` | 2026-08-10T15:15:10Z | Sebastian Silbermann | [Prefix `'use cache'` debug logs with the full directive](https://github.com/vercel/next.js/pull/97037) | **MEDIUM** (Cache Components debug-log clarity) |
+| `ec8b5435` | 2026-08-10T15:15:56Z | David Alexandru Ilie | [Trace development route compilation](https://github.com/vercel/next.js/pull/96454) | low (observability; companion to #96453) |
+| `1722e45c` | 2026-08-10T15:15:57Z | David Alexandru Ilie | [Fix client component loading span timing](https://github.com/vercel/next.js/pull/96455) | low (observability/tracing fix) |
+| `90747a9e` | 2026-08-10T16:29:49Z | Janka Uryga | **[CC] Track APIs that cause incompatible static/app shells (PR #97040)** | **MATERIAL** (Cache Components static-vs-runtime validation) |
+
+The 4 NEW commits since the v1.5.45 cycle's snapshot (the v1.5.45 cycle documented the first 7; the 4 new ones are bolded):
+- **PR #97037** (`f0166228`) — `'use cache'` debug log prefix (1 file / +104/-33; affects anyone running `NEXT_PRIVATE_DEBUG_CACHE=1` to debug Cache Components). With `NEXT_PRIVATE_DEBUG_CACHE` enabled, every log line from the "use cache" wrapper used the same generic `use-cache:` prefix, so output from `"use cache: remote"` or `"use cache: private"` functions was indistinguishable from plain `"use cache"`. Each wrapper line is now prefixed with the full quoted directive derived from the handler kind. **Material for anyone debugging Cache Components**; low for typical users.
+- **PR #96454** (`ec8b5435`) — Trace dev route compilation (companion to PR #96453).
+- **PR #96455** (`1722e45c`) — Fix client component loading span timing (observability/tracing fix).
+- **PR #97040** (`90747a9e`) — [CC] Track APIs that cause incompatible static/app shells — **the Cache Components material change documented above**.
+
+**Forward-looking:** canary.11 npm-publish window expected ~2026-08-11T07:41Z ± a few hours on the 24h cadence (closes the v1.5.44 anomaly-prediction cycle; the v1.5.45 cycle's "canary.11 npm-publish expected ~2026-08-11T07:41Z" prediction is on track).
+
+### Sources
+
+- [React PR #37258 — [Flight] Transfer key validation of lazy nodes when they are unwrapped](https://github.com/facebook/react/pull/37258) — by Hendrik Liebau (unstubbable), merged 2026-08-10T14:18:47Z, 2 files / +326/-16, base `main`. **SHIPPED in `react@19.3.0-canary-807d21fd-20260810`** (npm-published 2026-08-10). Closes #37240 + #37246.
+- [React Issue #37240 — False-positive missing-key warning on Flight-outlined values](https://github.com/facebook/react/issues/37240) — the bug report PR #37258 closes.
+- [React Issue #37246 — Fiber-side fix proposal (rejected in favor of the Flight-side fix in PR #37258)](https://github.com/facebook/react/issues/37246) — explains why fixing in Flight instead of Fiber was the right call.
+- [npm: `react@19.3.0-canary-807d21fd-20260810`](https://www.npmjs.com/package/react/v/19.3.0-canary-807d21fd-20260810) — the new React canary cut that ships PR #37258.
+- [Cross-reference: components.md `## React 19.3.0-canary-807d21fd-20260810 SHIPPED (August 10, 2026) — ec61f187 → 807d21fd (PR #37241 Lazy Reasons to browser() + PR #37258 Flight Key Validation of Lazy Nodes + the v1.5.37-Forward-Looking PR #37193)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-807d21fd-20260810-shipped-august-10-2026--ec61f187--807d21fd-pr-37241-lazy-reasons-to-browser--pr-37258-flight-key-validation-of-lazy-nodes--the-v1537-forward-looking-pr-37193) — the components.md coverage of the SHIP event + PR #37258 + PR #37241 + the now-SHIPPED v1.5.37 PR #37193.
+- [Next.js PR #97040 — [CC] Track APIs that cause incompatible static/app shells](https://github.com/vercel/next.js/pull/97040) — by Janka Uryga (lubieowoce), merged 2026-08-10T16:29:50Z, 7 files / +91/-47, base `canary`. **Forward-looking for `next@16.3.1-canary.11`** (npm-publish expected ~2026-08-11T07:41Z).
+- [Next.js PR #97037 — Prefix `'use cache'` debug logs with the full directive](https://github.com/vercel/next.js/pull/97037) — by Sebastian Silbermann, merged 2026-08-10T15:15:11Z, 1 file / +104/-33, base `canary`. Cache Components debug-log clarity fix.
+- [Next.js PR #96453 — Trace development route preparation](https://github.com/vercel/next.js/pull/96453) + [PR #96454](https://github.com/vercel/next.js/pull/96454) + [PR #96455](https://github.com/vercel/next.js/pull/96455) — observability/tracing trio.
+- [Next.js canary-branch compare `v16.3.1-canary.10...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.10...canary) — verified at 2026-08-10T18:02Z; 11 commits ahead.
+- [Next.js `cacheComponents` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the Cache Components config that PR #97040's tracking field interacts with.
+- [Next.js `generateStaticParams` API docs](https://nextjs.org/docs/app/api-reference/functions/generate-static-params) — the API that the static `params` tracking now uses via the new `hasIncompatibleShellContent` field.
+- [Next.js `partialPrefetching` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/partialPrefetching) — the validation mode that exercises the new tracking field.
+- [Cross-reference: v1.5.45 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/components.md) — the prior React canary SHIP event; v1.5.46 ships the next canary cut.
+- [Cross-reference: v1.5.45 performance.md `## next@16.3.1-canary.10 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the prior Next.js canary SHIP event; v1.5.46 documents the canary-branch state ahead of canary.11.

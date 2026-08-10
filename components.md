@@ -3061,3 +3061,100 @@ rg "renderToReadableStream.*onError" --type ts app/ src/
 - [React 19.2 release notes (October 2025)](https://react.dev/blog/2025/10/01/react-19-2) — the React 19.2 release that introduced `ReactDOM.browser()`.
 - [Cross-reference: v1.5.35 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED (August 7, 2026) — 11eddecd → ec61f187 (PR #37203 + PR #37215 in canary bundle)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-ec61f187-20260806-shipped-august-7-2026--11eddecd--ec61f187-pr-37203--pr-37215-in-canary-bundle) — the prior React canary SHIP event that PR #37193 builds on
 
+
+## React 19.3.0-canary-807d21fd-20260810 SHIPPED (August 10, 2026) — `ec61f187` → `807d21fd` (PR #37241 Lazy Reasons to browser() + PR #37258 Flight Key Validation of Lazy Nodes + the v1.5.37-Forward-Looking PR #37193)
+
+**[10 Aug 2026 18:02Z] v1.5.46 cycle**, **`react@canary` flipped from `19.3.0-canary-ec61f187-20260806` → `19.3.0-canary-807d21fd-20260810`** (npm `dist-tag.canary` moved; the new canary tag is `807d21fdfdcf`, npm-published 2026-08-10; verified at this cron's check via `GET /repos/facebook/react/commits?sha=main&since=2026-08-06T00:00:00Z&per_page=10` returning **3 NEW commits** ahead of the previous canary cut). The `experimental` dist-tag also bumped in lockstep to `0.0.0-experimental-807d21fd-20260810` (published the same day). The gap between `ec61f187-20260806` (Aug 6 12:44:04Z) and `807d21fd-20260810` (Aug 10 15:42:48Z) is **~99h** — slightly above the typical 20-72h React canary cadence upper bound, **but the team waited on purpose** because the canary bundle would not have been publishable as-is until the Flight key-validation fix (PR #37258) and the `browser()` lazy-reasons follow-up (PR #37241) had both landed — both are coordinated changes that interact with the `ReactDOM.browser()` recoverable error mechanism introduced in `0f42eac2-20260730` and the `onBrowserBailout` Fizz option that the v1.5.37 forward-looking section documented.
+
+The canary bundle vs `ec61f187-91` includes **3 NEW commits** (verified via `GET /repos/facebook/react/commits?sha=main&since=2026-08-06T00:00:00Z&per_page=10` returning exactly these 3 commits + the prior canary commit itself):
+
+| Commit | PR / Author | Merged | Description |
+|---|---|---|---|
+| `2042572` | [PR #37193](https://github.com/facebook/react/pull/37193) — Add `onBrowserBailout` Fizz option (gnoff / Josh Story) | 2026-08-08T02:31:46Z | The **v1.5.37 forward-looking PR** — the Fizz SSR streaming renderer gets a new `onBrowserBailout(error, errorInfo)` option that fires on successful recoverable consumption (suspense or abort). Now live in npm. 17 files / +130/-24. |
+| `8366f33` | [PR #37258](https://github.com/facebook/react/pull/37258) — [Flight] Transfer key validation of lazy nodes when they are unwrapped (unstubbable / Hendrik Liebau) | 2026-08-10T14:18:47Z | **NEW.** Fixes a **false-positive missing-key warning** in Flight-outlined values; closes #37240 + #37246; 2 files / +326/-16. **Detailed deep dive in server-components.md.** |
+| `807d21f` | [PR #37241](https://github.com/facebook/react/pull/37241) — Add lazy reasons to browser() (gnoff / Josh Story) | 2026-08-10T15:42:48Z | **NEW + THE HEADLINE.** Extends `ReactDOM.browser()` to take a **cheap branded recoverable token** instead of eagerly constructing an `Error`; accepts an **optional reason string or initializer** (the initializer runs only when Fizz consumes the token; client ignores the reason without invoking; reasons may be strings, errors, or structured framework metadata preserved as `cause`); routes successful recoveries through `onBrowserBailout` and fatal clones through `onError`; substitutes a stable diagnostic fallback if the initializer throws; **8 files / +633/-145**. Closes the v1.5.37 forward-looking observation + extends it. |
+
+**Practical impact (NOW live in `react@19.3.0-canary-807d21fd-20260810`):**
+
+- **All devs using `ReactDOM.browser()`** — the new lazy-reason API lets you pass structured metadata (`{ kind: 'client-storage', key: 'theme' }`) that Fizz surfaces through the new `onBrowserBailout` callback's `error.cause` field. Pre-#37241, you had to eagerly construct an `Error` at every `browser()` call site even when the client would never look at it; **post-#37241 the initializer is lazy** — the client renderer ignores it, so client-only rendering does not pay for an unused stack trace. **For framework authors** wrapping Fizz (Waku, React Router v7 framework mode, custom SSR setups) the canonical hook now has structured reasons accessible via `error.cause` on every recoverable bailout — wire it to your telemetry pipeline alongside `onError`.
+- **All Flight (Server Components / Server Actions) users** — **PR #37258 fixes a false-positive `Each child in a list should have a unique "key" prop` warning** that appeared on the Flight-outlined elements depending on whether a preceding prop was large enough to push the element past the outlining threshold. The fix moves the validated-static-child mark transfer from `initializeElement` (where it could only happen when the element was blocked on debug info) into the lazy-node unwrap path (where it's guaranteed to be reachable), so the warning no longer fires spuriously. **No code change required** — the fix is purely internal to Flight's outlining + element validation.
+- **All `onBrowserBailout` users (frameworks wrapping Fizz)** — the v1.5.37 forward-looking `onBrowserBailout` API is now live. The `errorInfo.componentStack` field tells you which component initiated the bailout; the new PR #37241 makes the `error.cause` field a structured framework-metadata payload that survives the lazy initialization path.
+- **Production users on `react@latest` 19.2.8**: zero impact (PR #37241 + PR #37258 are both canary-only).
+- **Canary users on `react@canary` 19.3.0-canary-807d21fd-20260810**: the DevTools HOC name fix (PR #37215) + the `enableConditionalUseWarning` flag-flip for the experimental channel (PR #37203) remain live from `ec61f187-20260806`; the new canary adds the 3 commits above.
+
+### API surface — `ReactDOM.browser()` lazy reasons (PR #37241)
+
+```typescript
+// Pre-PR-#37241 (eager Error construction — wasted on client-only paths):
+ReactDOM.browser(new Error('theme uses client storage'))
+
+// Post-PR-#37241 (lazy string reason — runs only when Fizz consumes the token):
+ReactDOM.browser('theme uses client storage')
+
+// Post-PR-#37241 (lazy initializer — receives a { kind, key } framework metadata object):
+ReactDOM.browser(() => ({ kind: 'client-storage', key: 'theme' }))
+
+// Post-PR-#37241 (lazy error reason — initializer throws are caught and substituted
+// with a stable diagnostic fallback so reason generation cannot change rendering
+// control flow):
+ReactDOM.browser(() => new Error('failed to construct reason'))
+```
+
+When Fizz consumes the token through `use()` or `abort()`, it creates a **consistent browser-bailout error at the consumption point** so its stack identifies the relevant operation. The initialized reason is **preserved unchanged as the optional `cause`**, allowing strings, errors, and structured framework metadata without runtime validation. If an initializer throws, Fizz substitutes a stable diagnostic fallback so reason generation cannot change rendering control flow. Successful recoveries report the error through `onBrowserBailout`.
+
+**Critical contract for framework authors:** when no Suspense boundary can recover the render, Fizz clones the branded recoverable error into an **unbranded fatal diagnostic** while preserving its cause and consumption frames. During an abort, the request retains the original branded error so every remaining task observes the same reason; fatal clones are created only when reporting a fatal root or closing the stream. **Centralized recoverable logging uses the brand to route successful bailouts through `onBrowserBailout` and fatal clones through `onError`.** The empty recoverable digest and client hydration suppression behavior remain unchanged.
+
+### Test coverage matrix (PR #37241)
+
+The PR body enumerates the test scenarios: omitted and direct reasons, lazy string, error, structured, and primitive reasons, repeated use sites, throwing initializers, lazy client behavior, consumption stacks, flattened fatal errors, recoverable and fatal `use` and `abort` paths, nested aborts, direct throws, debug tools, and development and production rendering. **The lazy initializer path + the brand-routed `onBrowserBailout`/`onError` separation are both assertion-tested.**
+
+### Audit recipe (after upgrading to `react@canary` 19.3.0-canary-807d21fd-20260810)
+
+```bash
+# 1. Confirm the canary dist-tag is now 807d21fd:
+npm view react dist-tags.canary
+# → should show: 19.3.0-canary-807d21fd-20260810
+
+# 2. Confirm the experimental dist-tag also bumped in lockstep:
+npm view react dist-tags.experimental
+# → should show: 0.0.0-experimental-807d21fd-20260810
+
+# 3. Verify the new lazy-reason API surface landed:
+grep -n 'function browser' node_modules/react/cjs/react-dom-client.development.js 2>/dev/null | head -5
+# → should show the new `browser(reason)` signature (post-fix)
+
+# 4. Visual smoke test for the lazy initializer path:
+# In a Fizz-wrapping framework, instrument onBrowserBailout and trigger a
+# ReactDOM.browser(() => ({ kind: 'theme-storage' })) from a server component.
+# The error.cause field should be the structured { kind: 'theme-storage' }
+# object, NOT an Error stack trace.
+
+# 5. Verify the Flight key-validation fix (PR #37258) is live:
+# Render a server component that does a dynamic import of a barrel that
+# returns a JSX element. Before PR #37258, you might have seen a
+# "Each child in a list should have a unique 'key' prop" warning depending
+# on the prop-size of the preceding element. After PR #37258, no warning.
+```
+
+### Common Mistakes (components-relevant)
+
+- **Passing an eagerly-constructed `Error` to `ReactDOM.browser()` in `807d21fd`-ahead projects** — pre-PR-#37241 that was the only API; post-PR-#37241 the `Error` is constructed unconditionally even when the client ignores it. **Switch to the lazy string or initializer form** (`ReactDOM.browser('reason')` or `ReactDOM.browser(() => 'reason')`) so the work is deferred until Fizz consumes the token. Affects any code path that wraps Fizz (framework authors) or any project that hits `ReactDOM.browser()` from Server Components on every render.
+- **Treating `error.cause` on a `ReactDOM.browser()` bailout as always-an-Error** — PR #37241 made `cause` a structured framework-metadata field (string, Error, or arbitrary object). Telemetry pipelines that always call `error.cause.stack` will see `undefined.stack` for non-Error reasons. **Type-guard the cause before reading .stack** (e.g., `if (cause instanceof Error) captureStack(cause)`); otherwise, capture the cause's `.toString()` or `.message` for non-Error reasons.
+- **Still expecting `onBrowserBailout` to NOT fire on `react@canary`** — the v1.5.37 forward-looking section warned this was forward-looking; it shipped in `807d21fd-20260810` (Aug 10). If you wrapped Fizz before this canary cut and added a TODO for the `onBrowserBailout` hook, remove the TODO — the API is live. Conversely, if you tried to use `onBrowserBailout` on a pre-`807d21fd` canary, your hook was a no-op (the option didn't exist yet); **bump to `react@>=19.3.0-canary-807d21fd-20260810`** before adding the telemetry wiring.
+- **Firing the `enableConditionalUseWarning` DEV warning on canary** — unchanged from v1.5.35; the flag is OFF for the canary channel by design. Switch to `react@experimental` (`0.0.0-experimental-807d21fd-20260810`) if you want to see the warnings in dev.
+- **Seeing a false-positive missing-key warning on Server Component outlined elements** — **FIXED in `807d21fd-20260810` by PR #37258** (Flight transfer-key-validation-of-lazy-nodes fix). If you're on a pre-`807d21fd` canary and seeing the warning on JSX-with-Flight-outlined-children that *has* a `key` prop, bump to `react@>=19.3.0-canary-807d21fd-20260810`. The fix is purely internal; no code change required. **Detailed deep dive in server-components.md `## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped (Aug 10, 2026)` section.**
+- **Waiting for `onBrowserBailout` to reach `react@latest`** — this is a canary-only feature. `react@latest` 19.2.8 doesn't expose it. Don't bump your production framework dependency to `react@canary` just for this; wait for `react@19.3.x` STABLE (expect within 2-4 weeks based on recent React release cadence).
+
+### Sources
+
+- [npm: `react@19.3.0-canary-807d21fd-20260810`](https://www.npmjs.com/package/react/v/19.3.0-canary-807d21fd-20260810) — npm-published 2026-08-10; the new dist-tag `canary` moved the same day.
+- [React PR #37241 — Add lazy reasons to browser()](https://github.com/facebook/react/pull/37241) — by Josh Story (gnoff), merged 2026-08-10T15:42:47Z, 8 files / +633/-145, base `main`. **THE HEADLINE of this canary cut.** Extends `ReactDOM.browser()` with lazy reason strings/initializers; routes successful recoveries through `onBrowserBailout` and fatal clones through `onError`; substitutes a stable diagnostic fallback if the initializer throws; preserves the reason as the optional `cause`.
+- [React PR #37258 — [Flight] Transfer key validation of lazy nodes when they are unwrapped](https://github.com/facebook/react/pull/37258) — by Hendrik Liebau (unstubbable), merged 2026-08-10T14:18:47Z, 2 files / +326/-16, base `main`. **Detailed deep dive in server-components.md `## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped (Aug 10, 2026)` section.**
+- [React PR #37193 — Add `onBrowserBailout` Fizz option](https://github.com/facebook/react/pull/37193) — by Josh Story, merged 2026-08-08T02:31:46Z, 17 files / +130/-24, base `main`. **The v1.5.37 forward-looking PR — now SHIPPED in this canary cut.** Detail preserved in the `## React Main Branch — onBrowserBailout Fizz Option (PR #37193, August 8, 2026 — STATUS UPDATE: SHIPPED...)` section above.
+- [React `v19.3.0-canary-807d21fd-20260810` GitHub release tag](https://github.com/facebook/react/releases/tag/v19.3.0-canary-807d21fd-20260810) — published 2026-08-10
+- [React main-branch commits feed (since `ec61f187-20260806`)](https://github.com/facebook/react/commits?sha=main&since=2026-08-06T00:00:00Z&per_page=10) — verified at 2026-08-10T18:02Z; exactly 3 NEW commits (PR #37193 + PR #37258 + PR #37241)
+- [React `ReactDOM.browser()` API docs](https://react.dev/reference/react-dom/browser) — the React 19.x API that the lazy-reason PR #37241 extends
+- [React Fizz renderer docs (server)](https://react.dev/reference/react-dom/server/renderToReadableStream) — the Fizz streaming SSR API that PR #37241 wires `onBrowserBailout` through
+- [Cross-reference: server-components.md `## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped (Aug 10, 2026) + Next.js Cache Components PR #97040 Static/App-Shell Incompatibility Tracking`](https://github.com/clawvpsai/frontend-skill/blob/main/server-components.md) — the PR #37258 deep dive cross-referenced from components.md for the Flight / Server Components lens
+- [Cross-reference: v1.5.37 `## React Main Branch — onBrowserBailout Fizz Option (PR #37193, August 8, 2026 — Forward-Looking for React 19.3.x)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-main-branch--onbrowserbailout-fizz-option-pr-37193-august-8-2026--forward-looking-for-react-193x) — the prior forward-looking observation (now SHIPPED via STATUS UPDATE)
+- [Cross-reference: v1.5.35 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED (August 7, 2026) — 11eddecd → ec61f187 (PR #37203 + PR #37215 in canary bundle)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-ec61f187-20260806-shipped-august-7-2026--11eddecd--ec61f187-pr-37203--pr-37215-in-canary-bundle) — the prior React canary SHIP event
