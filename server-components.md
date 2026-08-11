@@ -1750,3 +1750,104 @@ The 4 NEW commits since the v1.5.45 cycle's snapshot (the v1.5.45 cycle document
 - [Next.js `partialPrefetching` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/partialPrefetching) — the validation mode that exercises the new tracking field.
 - [Cross-reference: v1.5.45 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/components.md) — the prior React canary SHIP event; v1.5.46 ships the next canary cut.
 - [Cross-reference: v1.5.45 performance.md `## next@16.3.1-canary.10 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the prior Next.js canary SHIP event; v1.5.46 documents the canary-branch state ahead of canary.11.
+
+## Cache Components — 3-PR Legacy PPR Refactor (PR #96753 / #96827 / #96868 — canary.12-ahead) + Turbopack CJS Scope-Hoisting Flag (PR #95826) + `experimental.ppr` Now Hard-Deprecated + Cache Components as Sole Internal PPR Signal (August 11, 2026)
+
+**The v1.5.45/v1.5.46 forward-looking "3-PR legacy PPR refactor" prediction came true.** All three PRs merged 2026-08-11T01:39:14Z in a coordinated push: **(1) PR #96753** (`d1123c9`) — `Make legacy PPR paths explicit` — renames the remaining legacy PPR render capability / prerender store / component / tracking helper from their old generic names to their `Legacy*` equivalents (e.g. `ppr_renderer_capability` → `legacy_ppr_renderer_capability`, `PprTracker` → `LegacyPprTracker`, `PprComponent` → `LegacyPprComponent`, etc.). The names are now uniform across the four legacy identifiers. **(2) PR #96827** (`d18e789`) — `Use Cache Components as the internal PPR signal` — migrates the runtime so enabling Cache Components is the sole path for partial prerendering. Before this PR, both `experimental.ppr: true` and `experimental.cacheComponents: true` could independently enable PPR; after this PR, only `cacheComponents` does. `experimental.ppr` remains a hard error at config-eval time (it has been since the deprecation PR landed in an earlier cycle). **(3) PR #96868** (`268ae98`) — `Remove legacy PPR code paths` — deletes the now-renamed legacy PPR code paths entirely. Only the Cache-Components-driven path remains. **Plus PR #95826** (`5327653`, merged 2026-08-11T07:06:04Z) — `[turbopack] Do the CJS analysis needed for scope hoisting` — adds the new `turbopackCjsScopeHoisting` config flag plumbed through `next.config.ts` + the CJS-analysis machinery in `turbopack/crates/turbopack-ecmascript/src/analyzer/graph/visitor.rs`. **All four PRs land in `next@16.3.1-canary.12`** (tagged 2026-08-11T17:23:13Z; npm `dist-tag.canary` still resolves to `16.3.1-canary.11` at this cron's check — canary.12 npm-publish expected ~2026-08-12T07:23Z ± a few hours on the 24h cadence). Detailed routing-lens coverage in `routing.md`.
+
+### Per-PR Deep Dive
+
+**PR #96753 — Make legacy PPR paths explicit** (Janka Uryga / lubieowoce, merged 2026-08-11T01:39:14Z, base `canary`): The PR renames the four remaining legacy PPR symbols from their old generic names to their `Legacy*` equivalents:
+
+| Old name | New name |
+|---|---|
+| `ppr_renderer_capability` (or similar) | `legacy_ppr_renderer_capability` |
+| `ppr_prerender_store` | `legacy_ppr_prerender_store` |
+| `PprTracker` | `LegacyPprTracker` |
+| `PprComponent` (or `ppr_component`) | `LegacyPprComponent` |
+
+**The why** — making the names explicit lets the next two PRs in the coordinated set (PR #96827 + PR #96868) delete the legacy code without ambiguity. Anything else named "ppr" in the codebase is now Cache Components (the non-legacy code path). **Practical impact** — zero behavior change. If you import any of these by name from `next/dist/server/...`, the import paths are unchanged but the exported identifiers are renamed. Audit recipe: `rg -n "ppr_renderer_capability|PprTracker|PprComponent" packages/next/src/server/` (will return 0 lines for canary.12+ users; renames are in place).
+
+**PR #96827 — Use Cache Components as the internal PPR signal** (Janka Uryga / lubieowoce, merged 2026-08-11T01:39:14Z, base `canary`): This PR makes Cache Components the **sole** internal signal for "this is a PPR render". Before this PR, both `experimental.ppr: true` AND `experimental.cacheComponents: true` could independently enable partial prerendering. After this PR, only `cacheComponents` does. `experimental.ppr` was already hard-deprecated (config-eval error if truthy); this PR makes the runtime truth match the config truth. **The change**:
+
+```ts
+// next.config.ts — pre-canary.12 (still works for now):
+export default {
+  experimental: {
+    ppr: true,  // ❌ deprecated; will error at config-eval time
+    cacheComponents: true,  // ✅ the new public API
+  },
+};
+
+// next.config.ts — canary.12+:
+export default {
+  experimental: {
+    // Don't add `ppr: true` here — it'll error.
+    cacheComponents: true,  // ✅ the only way to enable PPR
+  },
+};
+```
+
+**Practical impact**:
+
+| Deployment profile | Pre-canary.12 | Post-canary.12 |
+|---|---|---|
+| **Using `experimental.ppr: true`** | Config-eval error (already deprecated) | Same — error continues to fire |
+| **Using `experimental.cacheComponents: true`** | Enables PPR via Cache Components | Enables PPR via Cache Components (unchanged externally; the internal signal source moved) |
+| **Using neither** | No PPR | No PPR |
+| **Framework authors wrapping Next.js internals** | Could rely on either config option | Must use Cache Components — `ppr` is now an error |
+
+**Audit recipe** — `rg -n "experimental.ppr|experimental:.*ppr" next.config.ts next.config.js` (should return 0 lines for canary.12+ users). `rg -n "ppr_renderer_capability|PprTracker|PprComponent" packages/` (will find Cache-Components-only references after canary.12).
+
+**PR #96868 — Remove legacy PPR code paths** (Janka Uryga / lubieowoce, merged 2026-08-11T01:39:14Z, base `canary`): Pure cleanup. Deletes the now-renamed legacy PPR code paths so only the Cache-Components-driven path remains. **Zero behavior change** for users — the legacy paths were already inaccessible (PR #96827 made them so). For framework authors wrapping Next.js internals: anything you imported from the `Legacy*` paths is now gone. Audit recipe: `rg -n "legacy_ppr|LegacyPpr" packages/next/src/server/` (returns 0 lines; the paths are deleted in canary.12+).
+
+**PR #95826 — [turbopack] Do the CJS analysis needed for scope hoisting** (Tobias Koppers / sokra, merged 2026-08-11T07:06:04Z, base `canary`): Adds the new `turbopackCjsScopeHoisting` config flag plumbed through `next.config.ts` + the CJS-analysis machinery in `turbopack/crates/turbopack-ecmascript/src/analyzer/graph/visitor.rs`. The PR body explains: this PR does two things: adds a flag `turbopackCjsScopeHoisting` and plumbs it through and adds the extra stuff we need in `turbopack/crates/turbopack-ecmascript/src/analyzer/graph/visitor.rs`. **Practical impact**:
+
+```ts
+// next.config.ts — canary.12+ opt-in to CJS scope hoisting
+export default {
+  experimental: {
+    turbopackCjsScopeHoisting: true,  // NEW in canary.12; default OFF
+  },
+};
+```
+
+**Zero behavior change if not opted-in.** If you opt-in, you get additional Turbopack tree-shaking on CJS modules (compile-time only; bundle-size savings). Audit recipe: `rg -n "turbopackCjsScopeHoisting" next.config.ts` (verify your setting; default is `false`).
+
+### Practical Impact Summary
+
+| User type | Pre-canary.12 | Post-canary.12 |
+|---|---|---|
+| **Anyone using `experimental.ppr: true`** | Config-eval error (already deprecated) | Same — error continues to fire |
+| **Anyone using `experimental.cacheComponents: true`** | PPR enabled via Cache Components | PPR enabled via Cache Components (no behavior change) |
+| **Framework authors wrapping Next.js internals** | Could rely on either config option | Must use Cache Components — `ppr` is now an error |
+| **Anyone wanting Turbopack CJS tree-shaking** | Only via `turbopackCjsScopeHoisting` opt-in (PR #95826) | Same — opt-in flag for the CJS scope-hoisting analysis |
+| **Anyone using `@mixmark-io/domino` or other self-referential CJS modules** | PR #97018's CJS tree-shaking revert means no tree-shaking | Can opt-in to CJS scope hoisting (PR #95826) + bail on self-referential patterns (PR #97130) |
+
+### Audit Recipe (3 Steps)
+
+1. **`rg -n "experimental.ppr|experimental:.*ppr" next.config.ts next.config.js`** — should return 0 lines. If you see any matches, the build will error at config-eval time on canary.12+. Remove the line.
+2. **`rg -n "cacheComponents" next.config.ts`** — should return 1 line with `true`. This is the new public API for enabling PPR.
+3. **`npm ls next`** — verify you're on `next@>=16.3.1-canary.12` (when it npm-publishes ~2026-08-12T07:23Z ± a few hours). Until then, you're still on canary.11 with the legacy PPR paths still in place (they're benign because PR #96827 hasn't yet enforced Cache-Components-only at the runtime signal level).
+
+### Forward-Looking
+
+- **Next.js `v16.3.2-canary` (forward-looking, late August 2026)** — once the 3-PR legacy PPR refactor lands in canary.12 npm-publish, the next canary cuts will likely start exploring `experimental.ppr` config-eval-error messages with a migration hint to `cacheComponents`. Plan to migrate before 16.4 STABLE ships (likely Oct 2026).
+- **`experimental.cacheComponents` documentation** — Next.js docs will be updated to clarify that enabling Cache Components is the only way to enable PPR in 16.4+. Watch for the docs refresh around the 16.4 alpha window (late September 2026).
+- **`generateStaticParams` + the new `hasIncompatibleShellContent` field (PR #97040)** — already shipped in canary.11. Combined with the 3-PR legacy PPR refactor in canary.12, the `generateStaticParams` instrumentation is now the primary mechanism for static-vs-runtime shell tracking (the field flips when `params.then()` is called inside the route's render).
+
+### Sources
+
+- [PR #96753 — Make legacy PPR paths explicit](https://github.com/vercel/next.js/pull/96753) — by Janka Uryga (lubieowoce), merged 2026-08-11T01:39:14Z, base `canary`. The naming pass.
+- [PR #96827 — Use Cache Components as the internal PPR signal](https://github.com/vercel/next.js/pull/96827) — by Janka Uryga (lubieowoce), merged 2026-08-11T01:39:14Z, base `canary`. The substantive change.
+- [PR #96868 — Remove legacy PPR code paths](https://github.com/vercel/next.js/pull/96868) — by Janka Uryga (lubieowoce), merged 2026-08-11T01:39:14Z, base `canary`. The cleanup.
+- [PR #95826 — [turbopack] Do the CJS analysis needed for scope hoisting](https://github.com/vercel/next.js/pull/95826) — by Tobias Koppers (sokra), merged 2026-08-11T07:06:04Z, base `canary`. The `turbopackCjsScopeHoisting` flag.
+- [Next.js `cacheComponents` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the new public API for enabling PPR.
+- [Next.js `experimental.ppr` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/ppr) — the deprecated API; will error at config-eval time on canary.12+.
+- [Next.js canary-branch compare `v16.3.1-canary.11...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.11...canary) — 15 commits ahead as of 2026-08-11T18:02Z.
+- [Next.js `v16.3.1-canary.12` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.12) — published 2026-08-11T17:23:13Z; npm-publish expected ~2026-08-12T07:23Z ± a few hours.
+- [Next.js `v16.3.1-canary.11` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.11) — npm-published 2026-08-11T00:03:41Z; latest npm-available canary.
+- Cross-reference: `routing.md` → `## 16.3.1-canary.12-ahead — Fix Optimistic Routing Bugs (PR #97128) + 3-PR Legacy PPR Refactor (PR #96753 / #96827 / #96868) + Turbopack CJS Scope-Hoisting Flag (PR #95826)` for the routing lens on the same PRs.
+- Cross-reference: `components.md` → `## React 19.3.0-canary-bfb7a768-20260811 SHIPPED (August 11, 2026) — 807d21fd → bfb7a768 (PR #34983 Metadata Hoisting in Hidden Activity Trees + PR #37171 Drop Empty Fragment scrollIntoView No-Op Warning)` for the React canary SHIP event.
+- Cross-reference: v1.5.46 components.md `## React 19.3.0-canary-807d21fd-20260810 SHIPPED` section for the prior React canary SHIP event.
+

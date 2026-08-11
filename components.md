@@ -3158,3 +3158,70 @@ grep -n 'function browser' node_modules/react/cjs/react-dom-client.development.j
 - [Cross-reference: server-components.md `## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped (Aug 10, 2026) + Next.js Cache Components PR #97040 Static/App-Shell Incompatibility Tracking`](https://github.com/clawvpsai/frontend-skill/blob/main/server-components.md) — the PR #37258 deep dive cross-referenced from components.md for the Flight / Server Components lens
 - [Cross-reference: v1.5.37 `## React Main Branch — onBrowserBailout Fizz Option (PR #37193, August 8, 2026 — Forward-Looking for React 19.3.x)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-main-branch--onbrowserbailout-fizz-option-pr-37193-august-8-2026--forward-looking-for-react-193x) — the prior forward-looking observation (now SHIPPED via STATUS UPDATE)
 - [Cross-reference: v1.5.35 components.md `## React 19.3.0-canary-ec61f187-20260806 SHIPPED (August 7, 2026) — 11eddecd → ec61f187 (PR #37203 + PR #37215 in canary bundle)`](https://github.com/clawvpsai/frontend-skill/blob/main/components.md#react-1930-canary-ec61f187-20260806-shipped-august-7-2026--11eddecd--ec61f187-pr-37203--pr-37215-in-canary-bundle) — the prior React canary SHIP event
+
+## React 19.3.0-canary-bfb7a768-20260811 SHIPPED (August 11, 2026) — 807d21fd → bfb7a768 (PR #34983 [Fiber] Prevent Metadata Hoisting in Hidden `<Activity>` Trees + PR #37171 [DOM] Drop Empty Fragment `scrollIntoView` No-Op Warning)
+
+**`react@canary` SHIPPED new version** — npm `dist-tag.canary` flipped from `19.3.0-canary-807d21fd-20260810` to `19.3.0-canary-bfb7a768-20260811` at **2026-08-11T16:29:33Z** (~1h33min before this cron's 18:02Z start); npm `dist-tag.experimental` bumped to `0.0.0-experimental-bfb7a768-20260811` in lockstep at 2026-08-11T16:30:59Z; the new canary tag is `bfb7a76884b4ec54b9e29ddc7a0b7e4993d5ecea`. **Exactly 2 NEW commits in the canary bundle vs `807d21fd-20260810`** (verified at this cron's check via `GET /repos/facebook/react/commits?sha=main&since=2026-08-10T16:30:00Z&per_page=20` returning exactly 2 commits):
+
+**(1) PR #34983 — [Fiber] Prevent metadata hoisting in hidden `<Activity>` trees** ([Rickard Andersson /rick](https://github.com/rickhanlonii), merged 2026-08-11T09:40:26Z, **4 files / +635/-17**, base `main`; fixes #34738). **The bug** — In React 19.2, metadata tags (`<title>`) are automatically hoisted to the document `<head>`. However, these tags were **incorrectly being hoisted even when inside hidden `<Activity>` components**, causing the browser's document title to be set by hidden content. The user-visible symptom: when a `<title>` tag was rendered inside an `<Activity>` boundary that wasn't currently active (e.g., a `mode="hidden"` Activity), the browser's document title would change to the hidden Activity's title — making the tab title reflect content the user couldn't see. The PR's reference reproduction is at [nilshartmann/react-activity-title](https://github.com/nilshartmann/react-activity-title). **The fix** — making the hoisting logic Activity-aware in two ways: (a) **check `offscreenSubtreeIsHidden` before mounting hoistables during the initial commit phase** to prevent hoisting in hidden Activities; (b) **move mounting of Hoistables to Layout phase** which is already traversed recursively when switching Activity modes. There's a tradeoff: earlier sibling Layout Effects would not observe the new title, but that matches the existing tradeoff for Host Singletons. **Practical impact**:
+
+| Deployment profile | Pre-#34983 | Post-#34983 |
+|---|---|---|
+| **Apps using `<Activity mode="hidden">` + `<title>` inside** | Document title reflects hidden content; tab title changes unexpectedly | Document title only reflects visible Activity's content; tab title is correct |
+| **Apps using `<Activity>` for prerendered/modals** | Metadata from inactive Activity tabs leaks into document head | Only active Activity's metadata is hoisted |
+| **Apps not using `<Activity>`** | Not affected (no metadata hoisting from Activities to begin with) | Not affected |
+| **Apps using `<title>` only in Server Components / top-level Client Components** | Not affected (no Activity boundary) | Not affected |
+
+**The `<Activity>` API itself** — `Activity` is React 19.2's "pre-render but don't display" boundary. It's commonly used for prerendering modals, tab content, or content that should be ready to swap in without re-rendering. The `mode="hidden"` Activity keeps its tree mounted but visually hidden. **All `<Activity>` users benefit from this fix** even if they don't use `<title>` directly — the fix applies to all hoistable metadata (any tag that gets hoisted to `<head>`). **Audit recipe**: `rg -n "<Activity[^>]*mode" app/ src/` (find Activity boundaries); `rg -n "<title|<meta" app/` (find metadata tags inside those boundaries); if any match the pattern, bump to `react@>=19.3.0-canary-bfb7a768-20260811` when you ship to canary.
+
+**(2) PR #37171 — [DOM] Drop empty Fragment `scrollIntoView` no-op warning** ([Rickard Andersson](https://github.com/rickhanlonii), merged 2026-08-11T03:49:01Z, **1 file / +0/-6**, base `main`). **The change** — removes the warning that fires when `Element.scrollIntoView()` is called on an empty `<>...</>` Fragment. **The why** — the warning "isn't actionable and should noop" (verbatim from the PR body). Calling `.scrollIntoView()` on a Fragment that's empty or has no DOM elements has no observable effect, and warning developers about it adds noise without a fix path. **Practical impact**:
+
+- **Apps that intentionally call `scrollIntoView()` on a Fragment ref** (e.g., for future-proofing when the Fragment might gain children) — the spurious DEV warning no longer fires in `bfb7a768-20260811+`. **Zero production behavior change** (the warning was DEV-only).
+- **Apps seeing "Fragment is not scrollable" warnings in the console** — **the warning is now silently dropped** on canary+. If you were relying on the warning to detect a code smell (calling `scrollIntoView` on something that has no scrollable content), you'll need to add a manual check.
+- **Audit recipe**: `rg -n "scrollIntoView\(\)" app/ src/` (find all `scrollIntoView` calls); cross-reference with Fragment refs to find ones that might have been warning. After bumping, the warnings will disappear and you can confirm they were the empty-Fragment kind.
+
+### React Main-Branch State Observation
+
+React main branch is now **2 commits ahead of `807d21fd-20260810`** (verified at this cron's check via `GET /repos/facebook/react/commits?sha=main&since=2026-08-10T16:30:00Z&per_page=20`). Both commits landed in the new canary cut. **Forward-looking** for the next React canary cut (expect within 20-72h on the typical cadence; possibly later if the team is waiting on a coordinated change).
+
+### Practical Impact Table
+
+| User type | Pre-`bfb7a768` | Post-`bfb7a768` |
+|---|---|---|
+| **All `ReactDOM.browser()` users** | Lazy-reason API from PR #37241 (already SHIPPED in `807d21fd`) | Same as before — no change in this canary |
+| **All Flight users** | False-positive missing-key warning fix from PR #37258 (already SHIPPED in `807d21fd`) | Same as before — no change in this canary |
+| **All `<Activity mode="hidden">` users with `<title>` inside** | Hidden content's title leaks into document `<head>` | Only active Activity's metadata is hoisted; tab title is correct |
+| **All apps calling `scrollIntoView()` on empty Fragments** | Spurious DEV warning fires | Warning silently dropped (DEV-only) |
+| **Production users on `react@latest` 19.2.8** | Zero impact (canary-only material) | Zero impact (canary-only material) |
+| **Canary users** | Cumulative DevTools HOC name fix from PR #37215 + the experimental-channel `enableConditionalUseWarning` flag-flip from PR #37203 + the 3 commits in `807d21fd` + the 2 NEW commits in `bfb7a768` | Cumulative + 2 NEW commits |
+
+### Audit Recipe (4 Steps)
+
+1. **`npm view react dist-tags.canary`** — confirm the canary bump from `807d21fd-20260810` to `bfb7a768-20260811` (npm-published 2026-08-11T16:29:33Z). The gitHead SHA is `bfb7a76884b4ec54b9e29ddc7a0b7e4993d5ecea`.
+2. **`npm view react dist-tags.experimental`** — confirm the lockstep bump to `0.0.0-experimental-bfb7a768-20260811` (npm-published 2026-08-11T16:30:59Z).
+3. **For Activity + metadata fix (PR #34983)** — search your codebase for `<Activity ... mode="hidden"` (or `<Activity ... mode={...}` where the mode is dynamic) + `<title>` inside; if any matches, the fix is live after the canary bump.
+4. **For empty Fragment scrollIntoView warning drop (PR #37171)** — search your codebase for `.scrollIntoView()` calls; cross-reference with Fragment refs to confirm if any were firing the now-dropped warning. If you were suppressing the warning with a console filter, you can remove the filter after the bump.
+
+### Common Mistakes Section Grows — 2 New Bullets
+
+The Common Mistakes section (already extensive) grows **2 new bullets**:
+
+- **`<title>` (or any hoistable metadata) inside `<Activity mode="hidden">` leaks into the document `<head>` (pre-`bfb7a768-20260811`) — FIXED in `react@19.3.0-canary-bfb7a768-20260811` by PR #34983** — React 19.2 hoists metadata from all rendered trees to the document head, regardless of Activity visibility. With the fix, only the visible Activity's metadata is hoisted. Symptom: your tab title changes when an Activity becomes hidden, or vice versa. Fix: bump to `react@>=19.3.0-canary-bfb7a768-20260811`. If you can't bump yet, use a `useEffect` that reads the active Activity's title and sets `document.title` manually (instead of relying on metadata hoisting).
+- **Spurious "Fragment is not scrollable" DEV warning from calling `.scrollIntoView()` on an empty Fragment (pre-`bfb7a768-20260811`) — DROPPED in `react@19.3.0-canary-bfb7a768-20260811` by PR #37171** — DEV-only noise; no production impact. If you were using the warning to detect a code smell, add a manual check (e.g., `if (ref.current instanceof Element && ref.current.scrollHeight > 0) ref.current.scrollIntoView()`). Audit recipe: `rg -n "scrollIntoView" app/ src/`.
+
+### Sources
+
+- [npm: `react@19.3.0-canary-bfb7a768-20260811`](https://www.npmjs.com/package/react/v/19.3.0-canary-bfb7a768-20260811) — npm-published 2026-08-11T16:29:33Z; the new dist-tag `canary`. gitHead `bfb7a76884b4ec54b9e29ddc7a0b7e4993d5ecea`.
+- [npm: `react@0.0.0-experimental-bfb7a768-20260811`](https://www.npmjs.com/package/react/v/0.0.0-experimental-bfb7a768-20260811) — npm-published 2026-08-11T16:30:59Z; lockstep bump with `canary`.
+- [React PR #34983 — [Fiber] Prevent metadata hoisting in hidden `<Activity>` trees](https://github.com/facebook/react/pull/34983) — by Rickard Andersson, merged 2026-08-11T09:40:26Z, **4 files / +635/-17**, base `main`. Fixes #34738. The substantive change in this canary cut.
+- [React Issue #34738 — `<title>` inside `<Activity mode="hidden">` leaks into document title](https://github.com/facebook/react/issues/34738) — the bug report closed by PR #34983.
+- [nilshartmann/react-activity-title](https://github.com/nilshartmann/react-activity-title) — the canonical reference reproduction for PR #34983.
+- [React PR #37171 — [DOM] Drop empty Fragment `scrollIntoView` no-op warning](https://github.com/facebook/react/pull/37171) — by Rickard Andersson, merged 2026-08-11T03:49:01Z, **1 file / +0/-6**, base `main`. The "isn't actionable and should noop" cleanup.
+- [React `v19.3.0-canary-bfb7a768-20260811` GitHub release tag](https://github.com/facebook/react/releases/tag/v19.3.0-canary-bfb7a768-20260811) — published 2026-08-11.
+- [React main-branch commits feed (since `807d21fd-20260810`)](https://github.com/facebook/react/commits?sha=main&since=2026-08-10T16:30:00Z&per_page=10) — verified at 2026-08-11T18:02Z; exactly 2 NEW commits (PR #34983 + PR #37171).
+- [React `<Activity>` API docs (19.2)](https://react.dev/reference/react/Activity) — the "pre-render but don't display" boundary that PR #34983 makes metadata-hoisting-aware.
+- [React `scrollIntoView()` API docs (DOM)](https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollIntoView) — the DOM API that PR #37171 drops the Fragment no-op warning for.
+- Cross-reference: `server-components.md` → `## Cache Components — 3-PR Legacy PPR Refactor (PR #96753 / #96827 / #96868 — canary.12-ahead) + Turbopack CJS Scope-Hoisting Flag (PR #95826)` for the Next.js canary.12-ahead lens on the same window.
+- Cross-reference: `routing.md` → `## 16.3.1-canary.12-ahead — Fix Optimistic Routing Bugs (PR #97128) + 3-PR Legacy PPR Refactor + Turbopack CJS Scope-Hoisting Flag` for the routing-lens on the same canary.12-ahead content.
+- Cross-reference: v1.5.46 `## React 19.3.0-canary-807d21fd-20260810 SHIPPED` section for the prior React canary SHIP event.
+
