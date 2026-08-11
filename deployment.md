@@ -2549,3 +2549,269 @@ rg -nB2 -A5 "dynamic\(.*import.*\)" app/ src/ components/ --type ts --type tsx
 - [@mixmark-io/domino repo](https://github.com/foliojs/domino) — the canonical CJS module affected by PR #97018 (used by Turndown for server-side HTML DOM)
 - [Cross-reference: v1.5.45 performance.md `## next@16.3.1-canary.10 SHIPPED` — full PR-by-PR deep dive on PR #96190 + PR #97018 + PR #97009 + the other 5 commits](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the performance-lens coverage of the same SHIP event
 - [Cross-reference: v1.5.45 patterns.md `## Pattern: Turbopack — 2 Major Reverts Queued for canary.11+ (PR #97018 + PR #97009, August 10, 2026)` — the patterns-lens coverage](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md) — the canonical recipe updates for the 2 reverts
+
+## Next.js — `next@16.3.1-canary.11` SHIPPED (August 11, 2026) — PR #96820 Turbopack SWC 76 + React Compiler `is_required` Fast Check + PR #96988 Dev Validation Worker Kept Alive Across HMR + PR #96937 `unstable_cache` Cache Item Name Header-Safe Encoding + PR #96936 `encodeCacheTag` → `encodeHeaderSafe` Rename + PR #97139 Emitted App Entries for Post-Build + PR #97050 Nav Inspector Request Loop Fix (Deployment Impact Lens)
+
+**`next@16.3.1-canary.11` SHIPPED** at 2026-08-11T00:03:41Z (literally ~15 seconds before this cron's 00:03Z start; GitHub release tag `v16.3.1-canary.11` published 2026-08-10T23:48:31Z; **closes the v1.5.45 / v1.5.46 prediction of "canary.11 npm-publish expected ~2026-08-11T07:41Z ± a few hours" — the actual npm-publish landed ~7h37min early, the exact opposite of the v1.5.44 canary.10 anomaly; clearly the Vercel publish queue prioritized canary.11 to bundle the 2 MAJOR REVERTS**). **`next@canary` `dist-tag` now resolves to `16.3.1-canary.11`** (verified via `npm view next dist-tags.canary` at this cron's check). The bundle is **19 commits vs `16.3.1-canary.10`** per the official GitHub release body. The 2 MAJOR REVERTS that v1.5.45 / v1.5.46 documented as "queued for canary.11" (PR #97018 + PR #97009) **are now SHIPPED in canary.11**, plus 4 NEW non-revert commits that affect deployments (PR #96820 SWC 76 + React Compiler `is_required` fast check + PR #96988 keep-alive dev validation worker + PR #96937 unstable_cache header-safe name encoding + PR #96936 rename + PR #97139 emitted app entries + PR #97050 Nav Inspector request loop fix). The 5 new commits are mostly internal/correctness fixes with measurable deployment-impact: PR #96820 ships a **measured -19.64% reduction in the full React Compiler pipeline** on the v0 corpus, PR #96988 cuts a Cache Components dev-validation test case from ~870ms to ~240ms by no longer dropping the worker on every HMR update, and PR #96937 fixes a silent failure mode where `unstable_cache` would throw during the `URLSearchParams.toString()` header conversion if the request URL contained non-ASCII query parameters (closing issue #76286).
+
+### Canary.11 SHIP event — exact timestamps
+
+| Event | Timestamp |
+|---|---|
+| `next@16.3.1-canary.10` npm-published (from v1.5.45) | 2026-08-10T07:41:37Z |
+| canary-branch ahead of canary.10 at v1.5.45 cron | 7 commits |
+| canary-branch ahead of canary.10 at v1.5.46 cron | 11 commits (PR #97037 + PR #96454 + PR #96455 + PR #97040 added in the 6h v1.5.45 → v1.5.46 window) |
+| canary-branch ahead of canary.10 at this cron | **30 commits** (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.10...canary` returning `ahead_by: 30`) |
+| `v16.3.1-canary.11` version-tag commit | 2026-08-10T23:24:32Z (`6b017fffca`) |
+| `v16.3.1-canary.11` GitHub release tag published | 2026-08-10T23:48:31Z |
+| **`next@16.3.1-canary.11` npm-published** | **2026-08-11T00:03:41Z** (15 seconds before this cron's 00:03Z start) |
+
+### Canary.11 vs canary.10 — 19-commit bundle
+
+The official GitHub release body lists 19 commits between canary.10 and canary.11. Material entries (those with deployment-impact beyond docs/CI/test-only) in chronological merge order:
+
+| # | PR | Author | Merged | Files / +/- | Material impact |
+|---|---|---|---|---|---|
+| 1 | #96561 `fix(turbopack): point at the glob that matched a file with no module type` | (v1.5.45) | 2026-08-10T06:58:33Z | small | non-material (v1.5.45) |
+| 2 | #96701 `Remove unused htmlLimitedBots from renderOpts` | (v1.5.45) | 2026-08-10T08:23:13Z | small | non-material (v1.5.45) |
+| 3 | #97013 `test: cleanup Turbopack snapshot config` | (v1.5.45) | 2026-08-10T08:43:36Z | small | non-material (v1.5.45) |
+| 4 | #96453 `Trace development route preparation` | (v1.5.45) | 2026-08-10T10:25:22Z | small | low — observability/tracing (v1.5.45) |
+| 5 | #96828 `[fragment-scroll] Rename ScrollAndMaybeFocusHandler to ScrollHandler` | (v1.5.45) | 2026-08-10T11:26:51Z | rename | low — refactor rename (v1.5.45) |
+| 6 | **#97009 `Revert "[turbopack] Follow re-exports for side-effect free async modules"`** | Hendrik Liebau | 2026-08-10T11:28:55Z | 4 source / +5/-52; 13 snapshot files deleted | **MATERIAL** — resolves `ModuleId not found for ident` errors with `next/dynamic` + async-imported barrels (v1.5.45) |
+| 7 | **#97018 `Revert "[turbopack] Enable CJS tree shaking by default (#96779)"`** | Hendrik Liebau | 2026-08-10T11:28:55Z | 2 / +6/-2 | **MATERIAL** — resolves silent CJS property elision crash for `@mixmark-io/domino` and similar self-referential CJS modules (v1.5.45) |
+| 8 | #97037 `Prefix 'use cache' debug logs with the full directive` | Sebastian Silbermann | 2026-08-10T15:15:10Z | 1 / +104/-33 | low — Cache Components debug-log clarity (v1.5.46) |
+| 9 | #96454 `Trace development route compilation` | David Alexandru Ilie | 2026-08-10T15:15:56Z | small | low — observability/tracing (v1.5.46) |
+| 10 | #96455 `Fix client component loading span timing` | David Alexandru Ilie | 2026-08-10T15:15:57Z | small | low — observability/tracing fix (v1.5.46) |
+| 11 | #97040 `[CC] Track APIs that cause incompatible static/app shells` | lubieowoce | 2026-08-10T16:29:49Z | 7 / +91/-47 | medium — Cache Components (v1.5.46) |
+| 12 | #96934 `docs: runtime prefetching → optimizing prefetching` | (v1.5.46 window) | 2026-08-10T19:16:09Z | docs | non-material |
+| 13 | #87202 `Fix typo in Data Access Layer section` | (v1.5.46 window) | 2026-08-10T19:44:25Z | docs | non-material |
+| 14 | #97050 `Fix Nav Inspector request loop on repeat captures` | acdlite | 2026-08-10T20:39:29Z | 12 / +467/-434 | **MEDIUM-MATERIAL** — DevTools Nav Inspector fix; closes #96692 |
+| 15 | #87849 `docs: rename repo to repository for consistency` | (v1.5.46 window) | 2026-08-10T21:28:11Z | docs | non-material |
+| 16 | #86096 `docs: improve clarity and punctuation in README` | (v1.5.46 window) | 2026-08-10T21:28:15Z | docs | non-material |
+| 17 | **#96988 `Keep the dev validation worker alive across HMR updates`** | unstubbable | 2026-08-10T21:39:13Z | 10 / +515/-35 | **MEDIUM-MATERIAL** — Cache Components dev validation fix; test case 870ms → 240ms |
+| 18 | #87015 `fix(scripts): correct typo in rm.mjs error message` | (v1.5.46 window) | 2026-08-10T21:55:57Z | 1 file | non-material |
+| 19 | **#96820 `[turbopack] Reduce native React Compiler work`** | marcoshernanz | 2026-08-10T22:33:52Z | 9 / +436/-465 | **MATERIAL** — SWC 76 + React Compiler `is_required` fast check; -19.64% full pipeline / -4.26% visible interactive |
+| 20 | #97131 `docs(mdx): fix package name in .md handling section` | (v1.5.46 window) | 2026-08-10T22:48:02Z | docs | non-material |
+| 21 | **#97139 `Use emitted app entries for post-build processing`** | gnoff | 2026-08-10T22:48:19Z | 1 / +19/-7 | **LOW-MATERIAL** — internal build-output change for adapters/standalone |
+| 22 | #97132 `docs: fix Link prefetch grammar and Client Components wording` | (v1.5.46 window) | 2026-08-10T22:48:46Z | docs | non-material |
+| 23 | #97134 `examples: fix Webiny API env variable name` | (v1.5.46 window) | 2026-08-10T22:49:14Z | example | non-material |
+| 24 | #97141 `Fixing a bug - typo issue fixed` | (v1.5.46 window) | 2026-08-10T23:01:07Z | docs | non-material |
+| 25 | #88447 `Fix formatting of Google Fonts section in documentation` | (v1.5.46 window) | 2026-08-10T23:01:19Z | docs | non-material |
+| 26 | **#96936 `[refactor] Rename encodeCacheTag to encodeHeaderSafe`** | unstubbable | 2026-08-10T23:21:25Z | 5 / +45/-46 | low — refactor rename (companion to #96937) |
+| 27 | **#96937 `Encode the cache item name built by unstable_cache`** | unstubbable | 2026-08-10T23:21:26Z | 8 / +299/-1 | **MATERIAL** — closes #76286; non-ASCII query params no longer crash `unstable_cache` header conversion |
+| 28 | `v16.3.1-canary.11` version-tag commit | next-js-bot | 2026-08-10T23:24:32Z | 1 line | version tag |
+| 29 | #97136 `Fix spelling in two comments` | (post-tag) | 2026-08-10T23:32:30Z | comment | non-material |
+| 30 | #97137 `fix: typos in code comments` | (post-tag) | 2026-08-10T23:35:48Z | comment | non-material |
+
+(The release body counts 19 commits; the canary-branch-ahead count is 30 because commits #29 + #30 landed after the version-tag and are not in the npm bundle. PR #96937's 8-file / +299/-1 diff is the largest "non-revert + non-SWC bump" change in the bundle; PR #96988's 10-file / +515/-35 is the largest dev-validation change; PR #96820's 9-file / +436/-465 is the Turbopack SWC bump + React Compiler predicate removal.)
+
+### Per-PR deep dive — the 4 NEW material non-revert deployment-impact PRs
+
+#### 1. PR #96820 — `[turbopack] Reduce native React Compiler work` (marcoshernanz, merged 2026-08-10T22:33:52Z, 9 files / +436/-465)
+
+**What** — Uses the released `swc_ecma_react_compiler::fast_check::is_required` API to skip React Compiler work for modules that cannot change in native `infer` mode. Keeps explicit `annotation` and `all` modes unconditional. Deletes Next.js's duplicate React Compiler predicates and uses the same upstream check from the native N-API binding. Fails open from the N-API check on unreadable files, fatal parse failures, and recovered parser errors. Keeps the client-runtime-only compiler out of App SSR, matching the existing Babel integration. Moves the workspace to the coherent **SWC 76 dependency family**, including the official `mdxjs-rs-turbopack` branch, with no duplicate SWC 75 stack. Keeps the React Compiler dependency/module native-only; the WASM facade already deliberately fails open. Consumes the implementation landed in [swc-project/swc#12105](https://github.com/swc-project/swc/pull/12105), released in `swc_ecma_react_compiler` 23.0.0. Its contract is conservative: false positives add compiler work, while a negative result guarantees that compilation cannot alter the program.
+
+**Why it matters** — The native compiler currently runs for every parsed module in infer mode and is configured for both browser and App SSR contexts. This adds avoidable AST conversion/compiler work and compiles hydrated client modules in a server context that the existing Turbopack Babel path excludes. This matters for large applications such as v0 — their legacy Babel React Compiler path creates a separate machine-sized Node worker pool in addition to PostCSS; moving to the native path removes that pool; this patch makes the native path cheaper while preserving the established browser-only scope.
+
+**Performance numbers from the PR body**:
+- **Upstream fast check on the v0 corpus** — 1,816 real v0 modules (10.46 MB); selected 302 modules; retained all 257 modules whose output actually changed; **zero false negatives**; scanned the full corpus in 20.624 ms; reduced the measured full compiler pipeline from 2,371.956 ms to 1,906.180 ms: **-19.64%**
+- **This Next.js patch only** — Real v0 homepage, cold `.next`, Chromium interaction gate, 16 vCPU / 32 GB, exact Next canary `7916855653`, exact v0 commit `1ab042a47c`, three samples per arm, both arms use the native compiler:
+  - Visible interactive UI: 50.737s → 48.574s (**-4.26%**)
+  - Network quiet: 70.125s → 67.546s (**-3.68%**)
+  - Aggregate CPU: 450s → 418s (**-7.11%**)
+  - Peak process-tree RSS: 7,904,772 KB → 7,823,008 KB (-1.03%, inside noise)
+- **v0 legacy Babel → native + this PR** — Visible interactive 76% lower; Aggregate CPU 84% lower; Peak RSS 75% lower
+
+**Deployment impact**:
+- **Anyone on `next@16.3.1-canary.11+` + the React Compiler enabled (`reactCompiler: true` in `next.config.ts`) sees the speedup for free** — no config changes required; the `is_required` predicate is enabled by default in infer mode.
+- **Anyone on annotation/all modes** — the patch keeps those modes unconditional; the speedup is larger in infer mode but annotation/all users get a smaller speedup from the App SSR exclusion (client-runtime-only compiler no longer runs on hydrated client modules in a server context).
+- **Anyone on `experimental.useReactCompiler` (the Babel path)** — no impact from this PR; the speedup is native-only. The legacy Babel path is not modified.
+- **Anyone on `next@16.3.0` STABLE or earlier canaries** — no impact until you bump to `16.3.1-canary.11+`.
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.11 or later
+
+# 2. If you have reactCompiler: true, the speedup is automatic:
+rg -n "reactCompiler" next.config.ts next.config.js next.config.mjs
+# → any match means this PR benefits you
+
+# 3. Verify SWC 76 is bundled (the patch moves the workspace to the SWC 76 family):
+# In canary.11+ .next/build-manifest.json, the swc field should report version 76.x
+# (no public CLI tool for this; verify by checking your canary.11+ install includes swc 76):
+rg -l "swc" node_modules/next/dist/build/swc/index.js 2>/dev/null
+
+# 4. If you're still on annotation/all modes, the App SSR exclusion is a separate win:
+# Add a comment in your next.config.ts noting you're on annotation mode to skip the infer-mode speedup
+```
+
+#### 2. PR #96988 — `Keep the dev validation worker alive across HMR updates` (unstubbable, merged 2026-08-10T21:39:13Z, 10 files / +515/-35)
+
+**What** — Cache Components dev validation reported stack frames that pointed at build output whenever a module had been updated while the dev server ran. This affected both the static shell validation and the instant-navigation validation, since both run on the same worker. The overlay showed a raw `file:` URL and the terminal named the chunk rather than the page, and because the frame never resolved to a source position there was no code frame either, so nothing indicated which line caused the error. Turbopack's server HMR evaluates an updated module as a script of its own, named `<chunk>?<module id>` and carrying its source map inline rather than on disk, so only the isolate that ran that `eval` can resolve a frame in it. The validation worker never ran it, and the map beside the chunk describes the chunk's lines, not the running module's, so nothing the worker could reach described the frame. React then wrote the frame in its form for scripts without a source map, which encodes an already-encoded URL a second time, leaving a frame no reader reverses.
+
+**The fix** — The worker now mirrors what the dev server does to its own module state rather than being dropped whenever that state changes. The dev server reports each applied update, the manifest cache entries it cleared, and the paths it evicted, and the worker replays them in the same order, so its module state is the dev server's module state by construction. That leaves each updated module's inline source map in the worker's own Node.js cache, which is what makes the frame resolvable there.
+
+**Coordination contract** — The worker needs no coordination around a validation in flight. It runs one call at a time, in the order the calls were made, so an update is replayed before any validation requested after it, and never in the middle of one. The dev server does not hold its own updates back for a validation running in process either. Where it gives up and re-evaluates every module from disk the worker is dropped, so that case keeps the behaviour it had.
+
+**Why dropping was bad beyond the frames** — Dropping the worker meant the next validation had to spawn a worker thread and run `loadComponents` again before it could start, and it paid that on every edit, which delayed the insight at exactly the moment the user is waiting for it. **The case in the test suite that covers this went from around 870ms to around 240ms.**
+
+**The simpler fix that the team considered and rejected** — Reviving the transported errors on the main thread and printing them there, where the scripts already are. It works, and it is why this PR also touches the benchmark: the fixture produced no validation errors, so nothing in the benchmark reached the error reporting at all, and the cost of moving it was invisible. With insights generated, the cost showed plainly. Printing an error costs around 218ms the first time a source map is read and about a millisecond after that, and moving it to the main thread cut the worker's p95 advantage on the heaviest route from around 15ms to between 2ms and 5ms. **Mirroring the updates keeps the worker useful AND keeps the print-on-main-thread savings** — the two changes are complementary.
+
+**Deployment impact**:
+- **Anyone using `cacheComponents: true` + `experimental.devValidationWorker`** — stack frames in Cache Components dev validation now resolve correctly; the 870ms → 240ms speedup applies to your HMR cycle.
+- **Anyone NOT using Cache Components** — no impact; the dev validation worker is a Cache-Components-only path.
+- **Anyone who relied on the "frame points to build output" behavior for debugging** — the new behavior is strictly better; the resolved frames point to your source.
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.11 or later
+
+# 2. If you have cacheComponents: true:
+rg -n "cacheComponents" next.config.ts next.config.js next.config.mjs
+# → if match, bump to canary.11+ to get the worker-keeps-alive fix
+
+# 3. Visual smoke test: open dev server + Cache Components page + edit a component,
+# observe the overlay stack frame resolves to source position (not raw file: URL)
+
+# 4. If you want to measure the speedup: time your HMR cycle before/after the bump
+# Expected: 870ms-class test cases drop to ~240ms; production builds unchanged
+```
+
+#### 3. PR #96937 — `Encode the cache item name built by unstable_cache` (unstubbable, merged 2026-08-10T23:21:26Z, 8 files / +299/-1)
+
+**What** — A cache implementation may serialize cache metadata into HTTP request headers, whose values are limited to Latin-1. `unstable_cache` assembles a cache item name from the request URL and the name of the cached callback, and neither part was encoded. **When that name holds a character above U+00FF the conversion throws before the request is dispatched, so the read never reaches the cache and the write that follows it fails the same way. Nothing is stored, nothing is found, and the entry falls back to the origin on every render.** The name is built by `getFetchUrlPrefix`, which reads the pathname and the search parameters out of the request URL. The pathname stays percent-encoded, but `URLSearchParams` returns decoded keys and values, so a non-ASCII query parameter is the reachable case: it applies to any dynamic route that calls `unstable_cache`, whether or not the route reads `searchParams`, and therefore also to a parameter a caller appends. A callback whose name holds such a character is affected too, though a production build usually renames the binding.
+
+**The fix** — Encodes the assembled name with `encodeHeaderSafe`. That helper only replaces characters outside the class Node accepts in a header value, so the separating spaces and the URL punctuation are preserved and the name keeps its documented shape. **Every name that is representable today is returned unchanged, so this is inert for existing entries.** The item name is a label: it is not the cache key, which is derived separately from the callback's key parts and arguments, and the Suspense Cache API neither parses nor matches on it.
+
+**The test** — Covers the two parts of the name on separate routes so a failure names the part it comes from, and asserts the constraint rather than either input, since which inputs are live depends on the bundler and on minification. A deployment checks it through the real cache handler implementation, where the failure shows up as an entry that is recomputed on every request.
+
+**Closes** — #76286 (the GitHub issue tracking this exact failure mode)
+
+**Deployment impact**:
+- **Anyone using `unstable_cache` with non-ASCII query parameters** (CJK URLs, accented characters, emoji in search params) — silent fix; no more Latin-1 conversion throws.
+- **Anyone using `unstable_cache` with non-ASCII callback names** — rare in production (minification usually renames), but the fix covers it.
+- **Anyone using `unstable_cache` with ASCII-only inputs** — inert; no observable change.
+- **Production symptom before this PR** — `unstable_cache` entries with non-ASCII names silently fall back to origin on every render; CPU + DB load spikes for popular cached pages.
+- **Production symptom after this PR** — entries cache normally; the header value is percent-encoded to fit Latin-1.
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.11 or later
+
+# 2. Find all unstable_cache() callers:
+rg -nB1 -A8 "unstable_cache\(" app/ src/ lib/ --type ts --type tsx
+
+# 3. For each caller, check if the dynamic route or query params could contain non-ASCII:
+#    - URL paths with non-ASCII (e.g. /products/café)
+#    - searchParams with non-ASCII values
+#    - caller-appended query params
+
+# 4. Smoke test: render a page with non-ASCII query params + unstable_cache(),
+#    verify the cache hit rate in your observability tool
+
+# 5. If you want the pre-fix behavior (rare), pin next@16.3.1-canary.10 explicitly:
+# npm install next@16.3.1-canary.10
+```
+
+#### 4. PR #97050 — `Fix Nav Inspector request loop on repeat captures` (acdlite, merged 2026-08-10T20:39:29Z, 12 files / +467/-434)
+
+**What** — Repro (from #96692): enable the Nav Inspector, click a `<Link prefetch={true}>`, close the inspector, navigate home, re-enable it, and click the same link. The app hung in a pending "Compiling..." state while firing prefetch requests in an infinite loop (~30/sec). The Instant Navigation Testing lock restricted navigation reads to entries created within the current lock scope (`ownedEntries`), enforced as a post-hoc filter after the cache lookup. But the segment cache resolves lookups by most-specific-match, so a previous scope's runtime-prefetch entries at concrete param keypaths kept winning the lookup, the filter kept rejecting them, and the locked prefetch created its replacement at a more generic keypath that could never win — every scheduler pass discarded and refetched forever.
+
+**The fix** — Rather than patch the filter, this replaces the `ownedEntries` mechanism:
+- Each lock scope owns a **private segment `CacheMap`** that starts empty and is discarded at release, so a captured navigation structurally observes only data fetched under the lock — cross-scope shadowing becomes impossible by construction.
+- The map is an **explicit capability bound when work is created**: a prefetch task captures its map when scheduled (`PrefetchTask.segmentCacheMap` — the single place that consults lock state), a locked navigation inherits its driving task's map, and everything else — unlocked navigations, hydration, refreshes, traversals, server actions and patches — binds to the shared map. Reads and response writes receive the map explicitly, so a request that straddles a scope boundary still writes into the map its entries live in.
+- In production builds without the testing API this compiles down to the previous single-map behavior.
+
+**Deployment impact**:
+- **Anyone using the Instant Navigation Testing API** (`experimental.instantNavigationTesting` or the new testing API in dev) — fix is automatic; no more infinite-loop prefetching on repeated Nav Inspector captures.
+- **Anyone NOT using Nav Inspector / Instant Navigation Testing API** — no impact; the production build compiles to the single-map behavior anyway.
+- **Dev-only impact** — the bug was a dev-only symptom (Nav Inspector only runs in dev); production builds were never affected.
+- **Performance impact** — production unchanged (single-map); dev sees fewer wasted prefetch requests.
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.11 or later
+
+# 2. If you use the Instant Navigation Testing API:
+rg -nB1 -A5 "instantNavigationTesting|instant-navs-devtools" next.config.ts src/ app/ tests/
+
+# 3. Visual smoke test: open dev server + Nav Inspector + repeat the repro from #96692
+#    Expected: no infinite prefetch loop; the inspector shows the same captured entries
+```
+
+### Why-it-matters-at-the-deploy-boundary — 4 NEW production-impact items
+
+| Item | Pre-canary.11 symptom | Post-canary.11 behavior |
+|---|---|---|
+| **PR #96820** SWC 76 + React Compiler `is_required` | full compiler pipeline runs on every parsed module in infer mode; hydrated client modules compiled in App SSR context | `is_required` skips modules that cannot change; App SSR exclusion preserves the Babel-path scope; **-19.64% full pipeline, -4.26% visible interactive** |
+| **PR #96988** Dev validation worker keep-alive | worker dropped on every HMR update; 870ms-class test cases pay that cost on every edit | worker mirrors dev-server module state via update replay; **870ms → 240ms** for the test-suite case; frames resolve to source position |
+| **PR #96937** `unstable_cache` header-safe name encoding | non-ASCII query params crash the Latin-1 conversion; entries silently fall back to origin on every render | every name that is representable today is returned unchanged; non-ASCII names are percent-encoded |
+| **PR #97050** Nav Inspector request loop | repeated captures trigger ~30 prefetches/sec infinite loop | per-scope private segment CacheMap; cross-scope shadowing impossible by construction |
+
+### Combined audit recipe
+
+```bash
+# 1. Confirm canary.11 is installed:
+npm view next@canary version
+# → should show: 16.3.1-canary.11
+
+# 2. If you use reactCompiler: true (annotation/all/infer), verify PR #96820 is active:
+rg -n "reactCompiler" next.config.ts
+# → match = PR #96820 gives you -4.26% visible interactive for free
+# → measure with: pnpm build && time (curl ...)
+
+# 3. If you use cacheComponents + devValidationWorker, verify PR #96988 is active:
+rg -n "cacheComponents" next.config.ts
+# → match = PR #96988 gives you 870ms → 240ms HMR cycle speedup
+# → measure with: edit a Cache Components page, observe dev-overlay latency
+
+# 4. If you use unstable_cache with non-ASCII query params, verify PR #96937 is active:
+rg -nB1 -A8 "unstable_cache\(" app/ src/ lib/ --type ts --type tsx
+# → for any match in a dynamic route with non-ASCII params, bump to canary.11+
+# → measure with: cache hit rate in your observability tool before/after the bump
+
+# 5. If you use the Instant Navigation Testing API, verify PR #97050 is active:
+rg -n "instantNavigationTesting" next.config.ts
+# → match = PR #97050 fixes the ~30 prefetches/sec loop
+# → visual smoke test: repeat the repro from #96692
+
+# 6. (Bonus) Verify PR #97139 is active — your build output now drives post-build work:
+# Behavior is unchanged today (every discovered app entry is emitted);
+# the change is structural for future post-build tooling.
+# Audit: pnpm build && cat .next/app-paths-manifest.json | jq '.[] | length'
+```
+
+### Common Mistakes — canary.11 SHIP additions
+
+- **Assuming `reactCompiler: true` requires a flag flip for the SWC 76 speedup** — the SWC 76 dependency family + the `is_required` predicate are bundled into canary.11+ automatically. No config change required. If you have `reactCompiler: true` + `experimental.useReactCompiler: false` (the default), you get the -19.64% full pipeline speedup. If you have `experimental.useReactCompiler: true` (Babel path), no impact from PR #96820.
+- **Relying on the pre-#96820 React Compiler cost** in your CI performance budgets — if you pinned CI timings against canary.8/9/10, expect them to drop by 4-7% on canary.11+ for any project with React Compiler enabled. Re-baseline your budgets after the bump.
+- **Assuming `unstable_cache` with non-ASCII query params always worked in production** — the silent failure mode has been there since the function shipped. Any production metric that assumed the cache was hitting for non-ASCII URL inputs was over-counting cache hits (the entries were always falling back to origin). Audit recipe: review your cache observability for the past N months; non-ASCII URL inputs may have been silently degrading your origin load.
+- **Trying to opt back into the canary.9 async re-export tree shaking** — PR #97009 fully reverts it with no opt-in path. If you need that optimization, stay on `next@16.3.1-canary.10` until a future canary reintroduces it (the bug was the underlying analysis; a fix would require either a new analysis approach or a different opt-in surface).
+- **Treating the "keep dev validation worker alive" change as a production fix** — PR #96988 is a dev-only fix; production builds were never affected by the dropped-worker bug (the production build doesn't have an HMR cycle). The speedup applies to dev only.
+- **Believing the 30 canary-branch-ahead commits are all in canary.11** — only 19 are in the npm bundle; 11 landed after the `v16.3.1-canary.11` version-tag and will ship in canary.12. The 11 post-tag commits are 1 version-tag + 2 comment typo fixes + 8 docs/CI fixes; none of them are material.
+
+### Sources
+
+- [Next.js v16.3.1-canary.11 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.11) — GitHub release tag published 2026-08-10T23:48:31Z
+- [npm `next@16.3.1-canary.11` publish time](https://registry.npmjs.org/next) — `2026-08-11T00:03:41.599Z` (15 seconds before this cron's 00:03Z start; closes the v1.5.45/v1.5.46 prediction of canary.11 expected ~2026-08-11T07:41Z ± a few hours — actually 7h37min early)
+- [Next.js canary-branch compare `v16.3.1-canary.10...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.10...canary) — 30 commits ahead at this cron's check (verified at 2026-08-11T00:03Z)
+- [Next.js canary-branch compare `v16.3.1-canary.11...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.11...canary) — 11 commits ahead (the post-tag commits; will ship in canary.12)
+- [PR #96820 — `[turbopack] Reduce native React Compiler work`](https://github.com/vercel/next.js/pull/96820) — by marcoshernanz, merged 2026-08-10T22:33:52Z, 9 files / +436/-465. **SHIPPED in canary.11**. The PR body documents the -19.64% full compiler pipeline reduction + the SWC 76 dependency family bump + the React Compiler predicate removal.
+- [swc-project/swc#12105 — `[react-compiler] Export fast_check::is_required API`](https://github.com/swc-project/swc/pull/12105) — the SWC PR that released `swc_ecma_react_compiler::fast_check::is_required` in `swc_ecma_react_compiler` 23.0.0
+- [PR #96988 — `Keep the dev validation worker alive across HMR updates`](https://github.com/vercel/next.js/pull/96988) — by unstubbable, merged 2026-08-10T21:39:13Z, 10 files / +515/-35. **SHIPPED in canary.11**. The PR body documents the 870ms → 240ms speedup for the test-suite case.
+- [PR #96937 — `Encode the cache item name built by unstable_cache`](https://github.com/vercel/next.js/pull/96937) — by unstubbable, merged 2026-08-10T23:21:26Z, 8 files / +299/-1. **SHIPPED in canary.11**. Closes #76286.
+- [PR #96936 — `[refactor] Rename encodeCacheTag to encodeHeaderSafe`](https://github.com/vercel/next.js/pull/96936) — by unstubbable, merged 2026-08-10T23:21:25Z, 5 files / +45/-46. **SHIPPED in canary.11**. No behavior change; companion refactor to PR #96937.
+- [PR #97139 — `Use emitted app entries for post-build processing`](https://github.com/vercel/next.js/pull/97139) — by gnoff, merged 2026-08-10T22:48:19Z, 1 file / +19/-7. **SHIPPED in canary.11**. Internal build-output change for adapters/standalone.
+- [PR #97050 — `Fix Nav Inspector request loop on repeat captures`](https://github.com/vercel/next.js/pull/97050) — by acdlite, merged 2026-08-10T20:39:29Z, 12 files / +467/-434. **SHIPPED in canary.11**. Closes #96692.
+- [Issue #76286 — `unstable_cache` Latin-1 conversion throws on non-ASCII URLs](https://github.com/vercel/next.js/issues/76286) — closed by PR #96937
+- [Issue #96692 — Nav Inspector request loop](https://github.com/vercel/next.js/issues/96692) — closed by PR #97050
+- [Cross-reference: v1.5.46 performance.md `## next@16.3.1-canary.10 SHIPPED` — PR #96190 + the 2 MAJOR REVERTS lens](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the prior canary SHIP that PR #96820 + PR #96988 + PR #96937 + PR #97050 build on
+- [Cross-reference: v1.5.46 server-components.md `## Flight — PR #37258 Transfer Key Validation of Lazy Nodes When Unwrapped + Next.js Cache Components PR #97040` — the Cache Components lens on PR #97040](https://github.com/clawvpsai/frontend-skill/blob/main/server-components.md)

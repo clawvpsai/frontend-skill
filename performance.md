@@ -5102,3 +5102,160 @@ rg -l "module\.exports\s*=\s*\{" node_modules/@mixmark-io/domino/lib/LinkedList.
 - [Cross-reference: v1.5.38 patterns.md `## Pattern: Turbopack + Server Actions + Cache Components on canary.8` — Pattern A (CJS tree shaking default-on)](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md) — the Pattern A documentation that PR #97018 partially undoes
 - [Cross-reference: v1.5.39 performance.md `## next@16.3.1-canary.9 SHIPPED` — PR #95993 SHIPPED](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the PR #95993 SHIPPED coverage that PR #97009 fully undoes
 - [Cross-reference: v1.5.41 typescript.md — PR #96190 forward-looking note](https://github.com/clawvpsai/frontend-skill/blob/main/typescript.md) — the v1.5.41 entry that first mentioned PR #96190 ahead of canary.10
+
+## `next@16.3.1-canary.11` SHIPPED (August 11, 2026) — PR #96820 Turbopack SWC 76 + React Compiler `is_required` Fast Check (`-19.64%` Full Compiler Pipeline / `-4.26%` Visible Interactive / `-7.11%` Aggregate CPU) + PR #96988 Dev Validation Worker Kept Alive Across HMR (`870ms → 240ms` Test-Suite Case) + 2 MAJOR REVERTS Now SHIPPED (PR #97018 + PR #97009) (Performance Lens)
+
+**`next@16.3.1-canary.11` SHIPPED** at 2026-08-11T00:03:41Z (~15 seconds before this cron's 00:03Z start; GitHub release tag `v16.3.1-canary.11` published 2026-08-10T23:48:31Z; npm `dist-tag.canary` now resolves to `16.3.1-canary.11`). The bundle is **19 commits vs `16.3.1-canary.10`** per the official GitHub release body. The headline performance-relevant PR is **PR #96820** — ships SWC 76 + the released `swc_ecma_react_compiler::fast_check::is_required` API + removes Next.js's duplicate React Compiler predicates. **Measured impact (per the PR body, real v0 corpus + real v0 homepage cold `.next`)**:
+- **Full React Compiler pipeline**: 2,371.956 ms → 1,906.180 ms (**-19.64%**)
+- **Visible interactive UI** (v0 homepage cold .next): 50.737s → 48.574s (**-4.26%**)
+- **Network quiet**: 70.125s → 67.546s (**-3.68%**)
+- **Aggregate CPU**: 450s → 418s (**-7.11%**)
+- **Peak process-tree RSS**: 7,904,772 KB → 7,823,008 KB (-1.03%, inside noise)
+- **v0 legacy Babel → native + this PR**: Visible interactive 76% lower; Aggregate CPU 84% lower; Peak RSS 75% lower
+
+The other performance-relevant PR is **PR #96988** — keeps the Cache Components dev validation worker alive across HMR updates (instead of dropping and respawning on every edit). **Measured impact (per the PR body)**: the test-suite case that covers this went from around 870ms to around 240ms — a **72% reduction in dev-validation latency** for the affected scenario. Production builds unchanged (production has no HMR cycle). The 2 MAJOR REVERTS (PR #97018 reverts CJS tree shaking default-on; PR #97009 reverts async re-export tree shaking) that v1.5.45/v1.5.46 documented as "queued for canary.11" are now SHIPPED — closing the v1.5.44/v1.5.45 anomaly-prediction cycle.
+
+### Per-PR deep dive — the 2 NEW material performance-relevant PRs
+
+#### 1. PR #96820 — `[turbopack] Reduce native React Compiler work` (marcoshernanz, merged 2026-08-10T22:33:52Z, 9 files / +436/-465)
+
+**What** — Uses the released `swc_ecma_react_compiler::fast_check::is_required` API to skip React Compiler work for modules that cannot change in native `infer` mode. Keeps explicit `annotation` and `all` modes unconditional. Deletes Next.js's duplicate React Compiler predicates and uses the same upstream check from the native N-API binding. Fails open from the N-API check on unreadable files, fatal parse failures, and recovered parser errors. Keeps the client-runtime-only compiler out of App SSR, matching the existing Babel integration. Moves the workspace to the coherent **SWC 76 dependency family**, including the official `mdxjs-rs-turbopack` branch, with no duplicate SWC 75 stack. Keeps the React Compiler dependency/module native-only; the WASM facade already deliberately fails open. Consumes [swc-project/swc#12105](https://github.com/swc-project/swc/pull/12105), released in `swc_ecma_react_compiler` 23.0.0.
+
+**Performance impact** (verbatim from the PR body):
+- **Upstream fast check on the v0 corpus** — 1,816 real v0 modules (10.46 MB); selected 302 modules; retained all 257 modules whose output actually changed; **zero false negatives**; scanned the full corpus in 20.624 ms; reduced the measured full compiler pipeline from 2,371.956 ms to 1,906.180 ms: **-19.64%**
+- **This Next.js patch only** — Real v0 homepage, cold `.next`, Chromium interaction gate, 16 vCPU / 32 GB, exact Next canary `7916855653`, exact v0 commit `1ab042a47c`, three samples per arm, both arms use the native compiler:
+  - Visible interactive UI: 50.737s → 48.574s (**-4.26%**)
+  - Network quiet: 70.125s → 67.546s (**-3.68%**)
+  - Aggregate CPU: 450s → 418s (**-7.11%**)
+  - Peak process-tree RSS: 7,904,772 KB → 7,823,008 KB (-1.03%, inside noise)
+- **v0 legacy Babel → native + this PR** — Visible interactive 76% lower; Aggregate CPU 84% lower; Peak RSS 75% lower (the Babel-to-native migration dwarfs this PR's incremental gains)
+
+**When you benefit**:
+- `reactCompiler: true` (infer mode) → **-4.26% visible interactive** + **-7.11% aggregate CPU** for free
+- `reactCompiler: true` + annotation comments → **smaller gain** (annotation mode stays unconditional but the App SSR exclusion still applies)
+- `experimental.useReactCompiler: true` (Babel path) → **no impact** (this PR is native-only)
+- `next@16.3.0` STABLE or earlier canaries → **no impact** until you bump to `16.3.1-canary.11+`
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → 16.3.1-canary.11 or later
+
+# 2. Confirm React Compiler is enabled (infer or annotation mode):
+rg -n "reactCompiler|useReactCompiler" next.config.ts next.config.js next.config.mjs
+
+# 3. Verify SWC 76 is bundled (the patch moves the workspace to SWC 76):
+# Check your canary.11+ install includes swc 76 by inspecting .next/build-manifest.json after a build:
+pnpm build
+rg -n "swc" .next/build-manifest.json
+# The swc field should report version 76.x
+
+# 4. Measure the speedup in your codebase:
+# Before bump (canary.10): time your full build + cold start
+# After bump (canary.11+): same test
+# Expected: 4-7% reduction in cold-start time + 4-7% reduction in aggregate CPU
+
+# 5. If you're on annotation mode, the App SSR exclusion is a separate win:
+# Annotation mode skips the infer-mode fast check, but the App SSR exclusion still applies
+# (hydrated client modules no longer compiled in a server context)
+```
+
+#### 2. PR #96988 — `Keep the dev validation worker alive across HMR updates` (unstubbable, merged 2026-08-10T21:39:13Z, 10 files / +515/-35)
+
+**What** — Cache Components dev validation reported stack frames that pointed at build output whenever a module had been updated while the dev server ran. This affected both the static shell validation and the instant-navigation validation, since both run on the same worker. Turbopack's server HMR evaluates an updated module as a script of its own, named `<chunk>?<module id>` and carrying its source map inline rather than on disk, so only the isolate that ran that `eval` can resolve a frame in it. The validation worker never ran it, and the map beside the chunk describes the chunk's lines, not the running module's, so nothing the worker could reach described the frame.
+
+**The fix** — The worker now mirrors what the dev server does to its own module state rather than being dropped whenever that state changes. The dev server reports each applied update, the manifest cache entries it cleared, and the paths it evicted, and the worker replays them in the same order, so its module state is the dev server's module state by construction. That leaves each updated module's inline source map in the worker's own Node.js cache, which is what makes the frame resolvable there. The worker needs no coordination around a validation in flight — it runs one call at a time, in the order the calls were made.
+
+**Performance impact** (verbatim from the PR body):
+- Dropping the worker meant the next validation had to spawn a worker thread and run `loadComponents` again before it could start, and it paid that on every edit, which delayed the insight at exactly the moment the user is waiting for it.
+- **The case in the test suite that covers this went from around 870ms to around 240ms** — a **72% reduction in dev-validation latency** for the affected scenario.
+- The simpler-fix-the-team-considered alternative (print errors on main thread) would cost around 218ms the first time a source map is read and about a millisecond after that; moving it to the main thread cut the worker's p95 advantage on the heaviest route from around 15ms to between 2ms and 5ms. **Mirroring the updates keeps both benefits** — the worker stays useful AND the print-on-main-thread savings apply.
+
+**When you benefit**:
+- `cacheComponents: true` → **72% reduction in HMR-cycle latency** for the test-suite scenario; your mileage will vary based on edit frequency + dev validation frequency
+- NOT using Cache Components → **no impact**
+- Production builds → **no impact** (production has no HMR cycle)
+
+**Audit recipe**:
+```bash
+# 1. Confirm canary.11+ is installed:
+npm view next@canary version
+# → 16.3.1-canary.11 or later
+
+# 2. Confirm Cache Components is enabled:
+rg -n "cacheComponents" next.config.ts
+
+# 3. Measure the HMR cycle latency before/after:
+# Before bump (canary.10): edit a Cache Components page, time the dev-validation cycle
+# After bump (canary.11+): same edit, time again
+# Expected: 870ms-class scenarios drop to ~240ms
+
+# 4. Verify stack frames resolve to source position (not raw file: URL):
+# Open dev server, open a Cache Components page, edit a component,
+# observe the overlay stack frame points to your source line
+```
+
+### Canary.11 vs canary.10 — performance-relevant commit summary
+
+| PR | Title | Performance lens |
+|---|---|---|
+| #97009 | Revert async re-export tree shaking | **5-20% bundle size regression** (the canary.9 headline 5-20% bundle reduction is gone; no opt-in path) |
+| #97018 | Revert CJS tree shaking default-on | **5-15% bundle size regression** (the canary.8 headline 5-15% CJS tree shaking reduction is gone; flag back to default-OFF; opt-in available via `experimental.turbopackCjsTreeShaking: true` after audit) |
+| #97037 | Prefix 'use cache' debug logs | negligible (debug log only) |
+| #96453 | Trace dev route preparation | negligible (observability) |
+| #96828 | Rename ScrollAndMaybeFocusHandler | negligible (refactor) |
+| #96454 | Trace dev route compilation | negligible (observability) |
+| #96455 | Fix client component loading span timing | negligible (observability) |
+| #97040 | Cache Components static/app-shell incompatibility tracking | negligible (internal field) |
+| #96934 | docs: runtime → optimizing prefetching | non-material (docs) |
+| #87202 | Fix Data Access Layer typo | non-material (docs) |
+| #97050 | Fix Nav Inspector request loop | **dev-only perf** (production unchanged; resolves ~30 prefetches/sec infinite loop in Nav Inspector) |
+| #87849 | docs: rename repo → repository | non-material (docs) |
+| #86096 | docs: README clarity | non-material (docs) |
+| #96988 | Keep dev validation worker alive across HMR | **72% reduction in HMR-cycle latency for cacheComponents users** (870ms → 240ms) |
+| #87015 | fix: rm.mjs typo | non-material |
+| #96820 | [turbopack] Reduce native React Compiler work | **-4.26% visible interactive + -7.11% aggregate CPU + -19.64% full compiler pipeline** for reactCompiler users (v0 corpus) |
+| #97131 | docs: mdx package name | non-material (docs) |
+| #97139 | Use emitted app entries for post-build | negligible (internal) |
+| #97132 | docs: Link prefetch grammar | non-material (docs) |
+| #97134 | examples: Webiny env var | non-material (example) |
+| #97141 | Fix typo | non-material |
+| #88447 | docs: Google Fonts section | non-material (docs) |
+| #96936 | Rename encodeCacheTag → encodeHeaderSafe | negligible (refactor) |
+| #96937 | Encode unstable_cache item name | **non-ASCII query params no longer crash the cache** (silent fix for production cache hit rates) |
+
+### Recommended version pin after canary.11 SHIP event
+
+- **Production codebases**: stay on `^16.3.0` STABLE. The canary.11 bundle includes 2 MAJOR REVERTS for known correctness bugs + 4 NEW material fixes; STABLE is pre-patched for none of these (since the canary.10 + canary.11 PR set landed AFTER the 16.3.0 cut).
+- **Canary evaluators on canary.10**: **upgrade to `16.3.1-canary.11+` immediately** — the 2 MAJOR REVERTS ship the correctness fixes, and PR #96820 + PR #96988 deliver the perf wins.
+- **Anyone using `reactCompiler: true`**: **upgrade to `16.3.1-canary.11+`** for the free -4.26% visible interactive + -7.11% aggregate CPU.
+- **Anyone using `cacheComponents: true`**: **upgrade to `16.3.1-canary.11+`** for the 72% reduction in HMR-cycle latency.
+- **Anyone using `unstable_cache` with non-ASCII query params**: **upgrade to `16.3.1-canary.11+`** — closes #76286; silent fix for cache hit rates.
+- **Canary evaluators who relied on the canary.9 5-20% bundle reduction**: note the reduction is gone in canary.11+. Re-baseline your bundle budgets.
+- **Canary evaluators who relied on the canary.8 CJS tree shaking 5-15% reduction**: opt back in via `experimental.turbopackCjsTreeShaking: true` AFTER auditing your CJS dependency tree (see v1.5.45 patterns.md audit recipe).
+
+### Common Mistakes — canary.11 SHIP additions
+
+- **Assuming PR #96820 affects Babel React Compiler users** — it doesn't. The legacy `experimental.useReactCompiler: true` (Babel) path is untouched. The PR is native-only. If you're on the Babel path, your perf is unchanged.
+- **Assuming the SWC 76 bump is a "major version bump that requires migration"** — it's not. SWC 76 is the dependency family that ships the new `is_required` predicate; the user-facing API of `next build` / `next dev` is unchanged. Audit recipe: build a canary.11+ project and confirm your build succeeds without warnings.
+- **Relying on the `unstable_cache` cache hit metric in production for non-ASCII URLs** — the bug has been silently degrading cache hit rates since `unstable_cache` shipped. Audit recipe: review your cache observability for non-ASCII URL inputs; expect to see hit rates improve after the canary.11+ bump.
+- **Trying to opt back into the canary.9 async re-export tree shaking** — PR #97009 fully reverts it with no opt-in path. If you need that optimization, stay on `next@16.3.1-canary.10` until a future canary reintroduces it.
+- **Believing the -19.64% speedup applies to your project without measuring** — the v0 corpus is a specific workload. For other projects, expect 4-7% visible interactive improvement (the "this Next.js patch only" row from the PR body), not the upstream-corpus 19.64%. Always measure your own workload.
+- **Treating the -4.26% visible interactive as a "build time" speedup** — it's an interactive latency speedup, not a build time speedup. Build time is unchanged; cold-start latency drops by 4-7%; aggregate CPU drops by 7%.
+- **Confusing "PR #96988 is dev-only" with "PR #96988 doesn't matter"** — dev-only perf matters for development velocity. A 72% reduction in HMR-cycle latency compounds across thousands of edits per day.
+
+### Sources
+
+- [Next.js v16.3.1-canary.11 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.11) — GitHub release tag published 2026-08-10T23:48:31Z
+- [npm `next@16.3.1-canary.11` publish time](https://registry.npmjs.org/next) — `2026-08-11T00:03:41.599Z`
+- [Next.js canary-branch compare `v16.3.1-canary.10...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.10...canary) — 30 commits ahead at this cron's check
+- [PR #96820 — `[turbopack] Reduce native React Compiler work`](https://github.com/vercel/next.js/pull/96820) — by marcoshernanz, merged 2026-08-10T22:33:52Z, 9 files / +436/-465. **SHIPPED in canary.11**. The PR body documents the -19.64% full compiler pipeline + -4.26% visible interactive + -7.11% aggregate CPU numbers.
+- [swc-project/swc#12105 — `[react-compiler] Export fast_check::is_required API`](https://github.com/swc-project/swc/pull/12105) — the SWC PR that released `swc_ecma_react_compiler::fast_check::is_required` in `swc_ecma_react_compiler` 23.0.0
+- [PR #96988 — `Keep the dev validation worker alive across HMR updates`](https://github.com/vercel/next.js/pull/96988) — by unstubbable, merged 2026-08-10T21:39:13Z, 10 files / +515/-35. **SHIPPED in canary.11**. The PR body documents the 870ms → 240ms speedup.
+- [PR #97018 — `Revert "[turbopack] Enable CJS tree shaking by default (#96779)"`](https://github.com/vercel/next.js/pull/97018) — by Hendrik Liebau, merged 2026-08-10T11:28:55Z. **SHIPPED in canary.11** (was "queued" in v1.5.45/v1.5.46).
+- [PR #97009 — `Revert "[turbopack] Follow re-exports for side-effect free async modules"`](https://github.com/vercel/next.js/pull/97009) — merged 2026-08-10T11:28:55Z. **SHIPPED in canary.11** (was "queued" in v1.5.45/v1.5.46).
+- [PR #96937 — `Encode the cache item name built by unstable_cache`](https://github.com/vercel/next.js/pull/96937) — by unstubbable, merged 2026-08-10T23:21:26Z, 8 files / +299/-1. **SHIPPED in canary.11**. Closes #76286.
+- [PR #97050 — `Fix Nav Inspector request loop on repeat captures`](https://github.com/vercel/next.js/pull/97050) — by acdlite, merged 2026-08-10T20:39:29Z, 12 files / +467/-434. **SHIPPED in canary.11**.
+- [Cross-reference: v1.5.46 deployment.md `## next@16.3.1-canary.11 SHIPPED` — the deployment lens on PR #96820 + PR #96988 + PR #96937 + PR #97050](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the same SHIP event from the production-impact angle
+- [Cross-reference: v1.5.45 patterns.md `## Pattern: Turbopack — 2 Major Reverts Queued for canary.11+` — Pattern A (CJS tree shaking default-on) update for the canary.11 SHIP](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md)

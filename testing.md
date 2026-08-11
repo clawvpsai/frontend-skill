@@ -2347,3 +2347,127 @@ The v1.5.27 checklist still applies. New items for 5.0.0-beta.8:
 - [Vitest 5.0.0-beta.7 release notes — July 24, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7) — the current npm-published beta (unchanged from v1.5.27)
 - [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10) — the latest stable
 - [Vitest 5 forward-looking Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664) — the team's Vite-8-aligned cadence + the 5.0 feature roadmap
+
+## Vitest Main Branch — 7 NEW Commits Since v1.5.38 (August 10, 2026) — Forward-Looking for `5.0.0-beta.8`
+
+The Vitest main branch has had a productive 1-day window (Aug 10) producing **7 NEW commits** ahead of `vitest@5.0.0-beta.7` (the latest npm-published beta, still unchanged from v1.5.27). The new commits landed 2026-08-10T07:53Z → 13:20Z. The headline is **PR #10848** — a `feat!:` (BREAKING) change that shares the Vite server between inline projects. The other 6 commits cover Windows typecheck crash reporting, browser prebundling of `vite/module-runner`, and 4 CI/deps updates.
+
+**Verified at this cron's check via** `GET /repos/vitest-dev/vitest/commits?sha=main&since=2026-08-10T00:00:00Z&per_page=10` returning 7 commits in the window. **`vitest@beta` still `5.0.0-beta.7`** — none of these commits have been bundled into an npm-published beta yet. Total main-branch ahead of `5.0.0-beta.7`: **50 commits** (was 43 in v1.5.38). The v1.5.38 prediction "5.0.0-beta.8 expected late August / early September 2026" still holds; the new commits will likely land in `5.0.0-beta.8` or `5.0.0-beta.9`.
+
+### 1. PR #10848 — `feat!: share the Vite server between inline projects` (sheremet-va, merged 2026-08-10T13:20:10Z, 25 files / +1270/-355) — **THE HEADLINE BREAKING CHANGE**
+
+**What** — Inline projects that don't modify the Vite config now reuse the Vite server of the config that declares them, sharing its transform cache: shared source files are transformed once instead of once per project. This is controlled by the new top-level `sharedViteServer` option, **enabled by default** (`--sharedViteServer=false` to opt out).
+
+**Constraints**:
+- Only applies to inline projects; projects referenced as config files or directories keep resolving their own Vite config and server.
+- An inline project still gets its own server when it defines Vite-level options, a non-default `extends`, or test options that affect the Vite config: `alias`, `browser`, `css`, `deps.optimizer`, `mode`, `root`.
+- Every project keeps its own module resolution rules, module runner, and module instances on top of the shared server.
+- When the server is shared, the declaring config file is executed once instead of once per project.
+- Works at every level: inline projects of a nested projects container share the container's server.
+
+**Stacked on** — #10846 (the "nested projects" feature, merged Jul 30, also part of the forward-looking Vitest 5 set)
+
+**BREAKING** — The `feat!:` prefix indicates this is a breaking change. The default-on behavior shift means projects that previously relied on the per-inline-project Vite server (and its per-project transform cache) will see a behavior change. The `--sharedViteServer=false` opt-out restores the old behavior.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8+`):
+- **Vitest monorepo users with inline projects** (`projects: [{ test: { ... } }, ...]` or `workspace` configs converted to `projects`): **shared source files are transformed once instead of once per project** — significant memory + CPU savings on large monorepos with hundreds of projects.
+- **Vitest users with inline projects + Vite-level options** (`alias`, `browser`, `css`, `deps.optimizer`, `mode`, `root`): no behavior change (the inline project keeps its own server because the option affects Vite config).
+- **Vitest users with config-file or directory-referenced projects**: no behavior change (those always resolve their own Vite config).
+- **Anyone hitting unexpected behavior**: opt out via `sharedViteServer: false` in the top-level `test` config, or via `--sharedViteServer=false` CLI flag.
+
+**5-step audit recipe**:
+```bash
+# 1. Confirm your Vitest version:
+npm ls vitest
+# → expect 4.1.10 stable or 5.0.0-beta.7 (current as of this cron)
+
+# 2. Identify inline projects in your config:
+rg -nB1 -A3 "projects:" vitest.config.ts
+# → if projects use the inline shape (`{ test: { ... } }`), PR #10848 affects you when 5.0.0-beta.8 ships
+
+# 3. For each inline project, check if it defines Vite-level options:
+# (alias, browser, css, deps.optimizer, mode, root — non-default extends)
+# → those keep their own server; no change
+
+# 4. Measure your test-suite memory before/after:
+# Vitest with `pool: 'forks'` + `poolOptions.forks.maxForks`:
+node --expose-gc node_modules/.bin/vitest run --logHeapUsage
+# → expect heap usage to drop on monorepos with many inline projects sharing source files
+
+# 5. If unexpected behavior, opt out:
+# vitest.config.ts:
+# export default defineConfig({
+#   test: {
+#     sharedViteServer: false,  // restore per-project Vite servers
+#   },
+# })
+```
+
+### 2. PR #10907 — `fix(typecheck): report a checker crash on Windows instead of a spawn failure` (sheremet-va, merged 2026-08-10T13:19:54Z, 4 files / +16/-7)
+
+**What** — The `fails the run when the typechecker crashes (OOM)` test added in #10705 always fails on `windows-unit` with `Spawning typechecker failed - is typescript installed?` instead of the expected `Typecheck Error`. Two Windows-specific problems combine:
+
+1. tinyexec wraps any non-`.exe` command in `cmd.exe /c`, and cmd has no file association for `.mjs`, so the `fake-tsc.mjs` fixture never executed at all. The fixture now ships a `fake-tsc.cmd` shim that runs it with node, and the test picks the shim on Windows.
+2. Even with a runnable fixture, the Windows `close` handler in `Typechecker.spawn` treats any non-zero exit without stdout output as a spawn failure. A V8 OOM abort writes only to stderr, so a checker that started and crashed was misclassified. The handler now lets the exit through when the captured output matches the V8 OOM pattern, and `start` reports the crash properly. The `!dataReceived` heuristic itself stays, since cmd's "is not recognized" error for a missing checker also surfaces as a non-zero exit with stderr-only output.
+
+The OOM pattern is now shared between `Typechecker` and the typecheck worker instead of being duplicated.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8+`):
+- **Vitest typecheck users on Windows** see the correct error message ("Typecheck Error: Out of memory") instead of the misleading "is typescript installed?" spawn-failure message when the typechecker crashes (e.g., V8 OOM on a very large codebase).
+- **No code changes required** — the fix is internal to Vitest's Typechecker.spawn Windows path.
+
+### 3. PR #10856 — `fix(browser): prebundle vite module runner with vitest (fix #10836)` (lebovvskii, merged 2026-08-10T11:47:00Z, 2 files / +16/-2)
+
+**What** — Updates browser `optimizeDeps` so Vitest pre-bundles Vite's module runner through the Vitest dependency graph instead of excluding `vite/module-runner`. That keeps the optimized Vitest browser bundle from leaving a bare `vite/module-runner` import unresolved when the tested project does not install Vite directly. Addresses the unresolved `vite/module-runner` import reported in #10836.
+
+**Practical impact** (will ship in `vitest@5.0.0-beta.8+`):
+- **Vitest Browser Mode users whose tested project does NOT directly install Vite** (common in projects where Vite is a transitive dep only, e.g. via Vitest) — the browser bundle no longer has a bare `vite/module-runner` import that fails to resolve.
+- **No code changes required** — the fix is internal to browser `optimizeDeps` config.
+- **Affected scenarios**: any Browser Mode project where the consumer uses `vi.mock('vite/module-runner', ...)` or imports a module that transitively depends on `vite/module-runner`.
+
+### 4-7. The 4 NEW CI/deps commits (PR #10904 + #10897 + #10901 + #10900)
+
+- **PR #10904** `docs: add TestMu AI to sponsors` — docs-only; zero production impact.
+- **PR #10897** `chore(deps): update eslint packages` — non-functional; zero production impact.
+- **PR #10901** `chore(deps): update dependency @testing-library/jest-dom to v7` — non-functional; zero production impact.
+- **PR #10900** `chore(deps): update dependency @antfu/ni to v30` — non-functional; zero production impact.
+
+### Updated Vitest 5 forward-looking beta-train cadence
+
+- **5.0.0-beta.7** (2026-07-24) — `injectCjsGlobals` toggable (current as of this cron; latest npm-published beta)
+- **5.0.0-beta.8** (now expected late August / early September 2026) — will likely include the 7 NEW commits from this cycle + the v1.5.38 7-commit batch (PR #10854 + #10829 + #10842 + #10841 + #10820 + #10729 + #10880) + the `nested projects` (PR #10846) + `tags` + `aroundEach`/`aroundAll` features already predicted in v1.5.27. The v1.5.27 prediction window (2026-08-08 → 2026-08-15) is sliding due to the cumulative new-commit batches.
+- **5.0.0 stable** (expected late September / early October 2026) — unchanged target
+
+### Migration checklist (Vitest 4 → Vitest 5) — UPDATED
+
+The v1.5.27 + v1.5.38 checklists still apply. New items for 5.0.0-beta.8:
+
+1. **Audit `vitest.config.ts`** for `experimental: { fsModuleCache: true }` — move to top-level `fsModuleCache: true`.
+2. **Audit `workspace` configs** — convert to `projects` with the new nested shape (PR #10846 already merged Jul 30; not yet in `5.0.0-beta.7`).
+3. **Audit `injectCjsGlobals`** — opt out early (`injectCjsGlobals: false`) to surface every implicit-global usage before the 5.0 stable default flip.
+4. **Audit `defineProject` imports** — will be removed in 5.0; replace with `defineProject` from the new project nesting API.
+5. **Bump Node to 20.18+ (or 22 LTS / 24 LTS)** — Vitest 5 requires Node 20.18+ even for the beta train. **PR #10829 requires Node 24.9+** for `require(esm)` support in vm pools; otherwise the require(esm) feature is silently dropped.
+6. **Audit any `vitest/coverage`, `vitest/environments`, `vitest/snapshot`, `vitest/runners`, `vitest/suite`, `vitest/reporters`, `vitest/mocker` imports** — in 5.0, these are consolidated into `vitest/node` (server-side) and `vitest/runtime` (browser-side). The old import paths will be deprecated.
+7. **Audit `test.sequential`** — replaced with `{ concurrent: false }` option on `test` / `describe` in 5.0.
+8. **If you use `vitest bench`** — the 5.0 API moves the bench config inside the `test()` callback (PR #10680). The `bench()` callback-level API is gone.
+9. **Check your `pool: 'vmThreads'` / `pool: 'forks'` config** — PR #10854 delivers a free 10-30% wall-clock improvement on 500+ file suites; no code changes required but verify the speedup in your CI after upgrading.
+10. **Check your multi-project `browser.*` configs** — PR #10880 fixes `connectTimeout` resolution from project config; if you set `browser.connectTimeout` per-project, verify it works after upgrading.
+11. **Audit your test files for trailing `console.log`** — PR #10842 ensures trailing stdout is captured on teardown; verify in CI that logs you expect to see are now reliably appearing.
+12. **NEW: Audit your inline projects for shared source files** — PR #10848 (BREAKING) shares the Vite server between inline projects that don't define Vite-level options; if your inline projects share large source trees (common in monorepos), expect memory + CPU savings on 5.0.0-beta.8+. If you hit unexpected behavior, opt out via `sharedViteServer: false` or `--sharedViteServer=false`.
+13. **NEW: Windows typecheck users** — PR #10907 ensures Windows users get the correct "Typecheck Error: Out of memory" message when the typechecker crashes; verify the message in your CI on Windows runners after upgrading.
+14. **NEW: Browser Mode users where Vite is a transitive dep only** — PR #10856 fixes the bare `vite/module-runner` import resolution; verify Browser Mode tests pass on 5.0.0-beta.8+ without manually adding Vite to your deps.
+
+### Sources
+
+- [Vitest main branch commits since 2026-08-10T00:00Z](https://github.com/vitest-dev/vitest/commits?sha=main&since=2026-08-10T00:00:00Z) — the 7-commit window
+- [Vitest main branch compare `v5.0.0-beta.7...main`](https://github.com/vitest-dev/vitest/compare/v5.0.0-beta.7...main) — 50 commits ahead (was 43 in v1.5.38)
+- [PR #10848 — `feat!: share the Vite server between inline projects`](https://github.com/vitest-dev/vitest/pull/10848) — sheremet-va, merged 2026-08-10T13:20:10Z, 25 files / +1270/-355. **THE HEADLINE BREAKING CHANGE**. Default-on `sharedViteServer` option; opt-out via `sharedViteServer: false` or `--sharedViteServer=false`.
+- [PR #10907 — `fix(typecheck): report a checker crash on Windows instead of a spawn failure`](https://github.com/vitest-dev/vitest/pull/10907) — sheremet-va, merged 2026-08-10T13:19:54Z, 4 files / +16/-7
+- [PR #10856 — `fix(browser): prebundle vite module runner with vitest (fix #10836)`](https://github.com/vitest-dev/vitest/pull/10856) — lebovvskii, merged 2026-08-10T11:47:00Z, 2 files / +16/-2
+- [PR #10904 — `docs: add TestMu AI to sponsors`](https://github.com/vitest-dev/vitest/pull/10904) — 2026-08-10T08:35:16Z, docs-only
+- [PR #10897 — `chore(deps): update eslint packages`](https://github.com/vitest-dev/vitest/pull/10897) — 2026-08-10T07:54:05Z, CI/deps
+- [PR #10901 — `chore(deps): update dependency @testing-library/jest-dom to v7`](https://github.com/vitest-dev/vitest/pull/10901) — 2026-08-10T07:53:31Z, CI/deps
+- [PR #10900 — `chore(deps): update dependency @antfu/ni to v30`](https://github.com/vitest-dev/vitest/pull/10900) — 2026-08-10T07:52:46Z, CI/deps
+- [Vitest 5.0.0-beta.7 release notes — July 24, 2026](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.7) — the current npm-published beta (unchanged from v1.5.27)
+- [Vitest 4.1.10 release notes — July 6, 2026](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10) — the latest stable
+- [Vitest 5 forward-looking Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664) — the team's Vite-8-aligned cadence + the 5.0 feature roadmap
