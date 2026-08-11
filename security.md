@@ -1673,3 +1673,181 @@ rg "\"next\"" package.json  # check the declared range
 - [Next.js 16.3.0 release notes (Aug 3, 2026)](https://github.com/vercel/next.js/releases/tag/v16.3.0) — confirms canary.92+ fixes are in 16.3.0
 - [Better Auth v1.7.0-rc.4 release](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.4) (Aug 5, 2026) — most recent RC drop; 1.7.0 STABLE could ship within Aug 20 window
 - Cross-references: `performance.md` → `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix (PR #96252) + Cache Components Revalidation Refactor (PR #96726 / #96727 / #96731) + Turbopack Hoisted-Module Registration Fix (PR #96697)` for the runtime + audit-recipe lens on the 5 material user-facing PRs; `routing.md` → `## 16.3.1-canary.4-ahead — Navigation Back-Before-Hydration Race Fix (PR #96252, gaearon, August 5, 2026)` for the navigation race lens; `patterns.md` → `## Pattern: Cache Components Revalidation Lifecycle (`updateTag` + `'use cache: private'` Reuse) — PR #96726 + PR #96727 + PR #96731 (unstubbable + ztanner, August 5, 2026)` for the composite recipe lens; `server-components.md` → `## App Router Execution Mode Refactor — 9-PR Coordinated Set Ahead of 16.3.1-canary.3 (August 5, 2026)` for the executionMode refactor (including the PR #96640 #96519 fix); `components.md` → `## React 19.3.0-canary-11eddecd-20260805 SHIPPED + React main branch: enableConditionalUseWarning flag (PR #37203, August 5, 2026)` for the React vendor bump.
+
+---
+
+## Keyv / Cacheable Shai-Hulud Supply-Chain Worm (August 4, 2026) — +440 Legitimate npm Packages Compromised, >2B Monthly Installs — `keyv-shai-hulud` — `setup.md` Update Required
+
+**The single largest frontend-relevant supply-chain event since the TanStack compromise (May 11, 2026).** Starting at **2026-08-04T10:53Z**, an attacker compromised the GitHub maintainer account behind the `keyv` namespace ("Jaredwray") and used it to inject a credential-stealing worm into the entire `keyv` + `cacheable` + `cacheable-request` + `file-entry-cache` + `flat-cache` + `cache-manager` + `@cacheable/*` ecosystem. By **2026-08-05T13:15Z** the worm had spread to **~444 legitimate npm packages** across **~1,381–2,236 malicious versions** (count varies by source — Socket reports ~2,236 malicious versions, Aikido reports ~1,381 versions across ~444 packages) with a **combined monthly install count of >2 billion**.
+
+**Why this matters for frontend skills:** even though most affected packages are **server-side** (not direct frontend deps), they pull into **any Node.js / Next.js / Express / Vite / Vitest project** as **transitive dependencies** via very common tooling:
+
+- **`flat-cache` 6.1.24** (~580M monthly downloads) — transitive dep of `eslint` + every ESLint config + many bundlers' plugin pipelines
+- **`file-entry-cache` 11.1.6** (~571M monthly downloads) — transitive dep of `eslint` + many linting tools
+- **`keyv` 6.0.0** (~604M monthly downloads, the source of the worm) — transitive dep of `cacheable-request` + many caching layers + storage adapters
+- **`cacheable-request` 13.0.20** (~137M monthly downloads) — transitive dep of `got` + `@npmcli/arborist` + `update-notifier`
+- **`cacheable` 2.5.1** + **`@cacheable/memory` 2.2.1** + **`@cacheable/utils` 2.5.1** + **`@cacheable/node-cache` 3.1.2** + **`@cacheable/net` 2.1.1** + **`cache-manager` 7.2.10** — all transitive deps of various API/storage layers
+- **`ecto` 5.0.1** — niche transitive dep
+
+The payload is **delivered through install-time lifecycle (`preinstall`) scripts** — `npm install` itself executes the malicious code. Once on a developer or CI machine, the worm:
+
+1. **Harvests credentials**: cloud keys (AWS / GCP / Azure), HashiCorp Vault tokens, Kubernetes service-account tokens, GitHub Actions OIDC tokens, npm publish tokens, `.npmrc` auth, plus any plaintext secrets in env / `.bash_history` / project files
+2. **Uses any recovered npm publish token** to push malicious versions to other packages the compromised account controls (the worm is **self-propagating** via `npm OIDC trusted publishing`)
+3. **Persists in the IDE** (the very first action on Aug 4 was introducing IDE persistence payloads to the `keyv` repo at ~9:00Z — before the npm publish wave)
+4. **Uses an Ethereum smart contract to dynamically retrieve C2 domains** — the contract was initially configured with three domains before being updated to return only `npm-cache[.]com`
+
+This is **Mini Shai-Hulud** lineage (sharing characteristics with TeamPCP and the earlier `antv` campaigns from June 2026). The same pattern as TanStack (May 11), node-ipc (May 15), the original Shai-Hulud (Sep 2025), Mini Shai-Hulud (June 1), and Mastra (June 17) — **a trusted marketplace or scope is compromised, malicious versions are published, and the malicious code is buried inside working features**.
+
+### Affected versions (the worm's npm-published malicious versions — DO NOT INSTALL)
+
+The `keyv-shai-hulud` tag tracks ~2,236 malicious versions across ~444 packages. The headline confirmed-package+version pairs as of Aug 5, 2026:
+
+| Package | Malicious versions | Monthly downloads | Direct vs transitive |
+|---|---|---|---|
+| `keyv` | 6.0.0 | ~604M | Transitive (via `cacheable-request`, `got`, `@npmcli/arborist`, `update-notifier`) |
+| `flat-cache` | 6.1.24 | ~580M | **Transitive of `eslint`** — affects every ESLint-using project |
+| `file-entry-cache` | 11.1.6 | ~571M | **Transitive of `eslint`** |
+| `cacheable-request` | 13.0.20 | ~137M | Transitive of `got`, `@npmcli/arborist`, `update-notifier` |
+| `cacheable` | 2.5.1 | ~30M | Transitive |
+| `@cacheable/memory` | 2.2.1 | ~28M | Transitive |
+| `@cacheable/utils` | 2.5.1 | ~34M | Transitive |
+| `@cacheable/node-cache` | 3.1.2 | ~6M | Transitive |
+| `@cacheable/net` | 2.1.1 | ~3.7K | Transitive |
+| `cache-manager` | 7.2.10 | ~16M | Transitive |
+| `ecto` | 5.0.1 | ~4.5K | Transitive |
+| `@adminide-stack/clock-tik-browser` | 12.0.24 | — | Indirect (org-scoped) |
+| `@adminide-stack/yantra-mobile` | 12.0.33 | — | Indirect (org-scoped) |
+| `@arv-bedrock/auth` | 1.1.7, 1.1.8 | — | Indirect |
+| `@arv-bedrock/auth-admin` | 1.0.2, 1.0.3 | — | Indirect |
+| `@arv-bedrock/logger` | 1.7.1, 1.7.2 | — | Indirect |
+
+The **full list** (~444 packages) is tracked at [github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv](https://github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv) (Wiz Research IOCs repo, refreshed as new packages are identified). The full worm activity tag is [`#keyv-shai-hulud`](https://opensourcemalware.com/?search=%23keyv-shai-hulud) on [opensourcemalware.com](http://opensourcemalware.com).
+
+### Detection: Indicators of Compromise (IOCs)
+
+Wiz Research published the IOC list. The most critical high-signal indicators:
+
+- **Malicious file names dropped during install**: `math_init.js` and `Math_Symbol.js` (the worm's loader names — searched in `~/.npm`, `node_modules/.cache`, and project root)
+- **HTTP user-agent on npm publish calls**: `Bun/1.3.13` (the worm uses Bun to publish malicious versions)
+- **C2 domain** (current): `npm-cache[.]com` (the Ethereum smart contract was updated to return only this domain; the contract was funded by an address previously flagged for scam activity)
+- **Eth smart contract**: dynamically resolves C2; contract owner address funded by known-scam address
+- **IDE persistence artifacts** (the very first action on Aug 4 introduced these to the `keyv` repo at ~9:00Z): VS Code `settings.json` hooks + workspace trust bypasses
+- **Filesystem paths searched by the worm**: `~/.aws/credentials`, `~/.aws/config`, `~/.docker/config.json`, `~/.kube/config`, `~/.npmrc`, `~/.bash_history`, env vars matching `*TOKEN*`, `*SECRET*`, `*KEY*`, `*PASS*`
+
+### The lockfile is the source of truth — `npm audit` is NOT enough
+
+`npm audit` does **not** detect compromised-package / typosquat-with-correct-metadata attacks. To detect, you need:
+
+1. **Lockfile-vs-version pin diff** — `npm ls` + check the `resolved` field in `package-lock.json` against the known-good version list
+2. **Behavioral SCA** — Socket.dev, Snyk, or Wiz (any of them) detect install-time `preinstall` scripts as suspicious
+3. **Filesystem scan** for the IOCs above (`math_init.js`, `Math_Symbol.js`, IDE persistence artifacts)
+4. **Outbound network monitor** on developer machines and CI runners — flag connections to `npm-cache[.]com`
+
+### Recommended action (Priority order — Aug 5+ teams)
+
+**Step 1 — IMMEDIATE (within 24h): audit your lockfile**
+
+```bash
+# 1. Check if any of the worm-affected packages are in your lockfile
+npm ls keyv flat-cache file-entry-cache cacheable cacheable-request cache-manager 2>/dev/null
+npm ls @cacheable/memory @cacheable/utils @cacheable/node-cache @cacheable/net 2>/dev/null
+
+# 2. If any are present, check the installed version against the malicious list
+# (do not run `npm install` again until you've verified — the malicious version
+# runs on install)
+
+# 3. For each installed package, check if it's in the malicious list above
+# If yes: STOP — do NOT rebuild. Treat the machine as compromised.
+
+# 4. Search your filesystem for the IOCs
+find ~ /tmp /var/tmp -name 'math_init.js' -o -name 'Math_Symbol.js' 2>/dev/null
+rg -l 'Bun/1.3.13' ~/.npm/ /var/log/ 2>/dev/null
+```
+
+**Step 2 — Pin to known-good versions** (after verifying the lockfile is clean)
+
+For the most common transitive exposure (`flat-cache` + `file-entry-cache` via `eslint`):
+
+```json
+// package.json overrides (npm) or pnpm.overrides (pnpm)
+{
+  "overrides": {
+    "flat-cache": "6.1.23",        // last-known-good before 6.1.24
+    "file-entry-cache": "11.1.5",  // last-known-good before 11.1.6
+    "keyv": "^5.0.0 || ~5.3.0",    // avoid 6.x line entirely until clean
+    "cacheable-request": "^12.0.0", // avoid 13.x line until clean
+    "cacheable": "^2.4.0"          // avoid 2.5.1
+  }
+}
+```
+
+**Step 3 — Rotate any secrets that touched the affected machines**
+
+Treat all machines where `npm install` ran between **2026-08-04T10:53Z** and **2026-08-05T13:15Z** as potentially compromised. Rotate:
+
+- npm publish tokens (`npm login` to invalidate + the next publish forces re-auth)
+- GitHub Actions OIDC trust (revoke + re-create the trust policy for affected repos)
+- AWS / GCP / Azure access keys (any env vars with these exposed)
+- Kubernetes service-account tokens
+- HashiCorp Vault tokens
+- Any `.npmrc` auth tokens (`//registry.npmjs.org/:_authToken=...`)
+
+**Step 4 — Disable install scripts as a defense-in-depth**
+
+```bash
+# Add to ~/.npmrc (and CI runners' .npmrc) to refuse ALL install scripts:
+ignore-scripts=true
+
+# OR per-project (less restrictive — only blocks the high-risk ones):
+# npm config set ignore-scripts true
+```
+
+**Step 5 — Forward-looking: the pattern is accelerating**
+
+This is the **6th major npm supply-chain event in 2026**: TanStack (May 11) → node-ipc (May 15) → Mini Shai-Hulud (June 1) → Mastra (June 17) → keyv/Cacheable Shai-Hulud (August 4). The pattern of **dormant maintainer accounts in trusted scopes** is now the dominant attack vector. Audit npm scope ownership quarterly and remove former maintainers immediately.
+
+### Audit recipe (single bash one-liner)
+
+```bash
+# 1. Detect presence of worm-affected packages in your lockfile
+npm ls --all 2>/dev/null | grep -E '(keyv@|flat-cache@|file-entry-cache@|cacheable@|cacheable-request@|cache-manager@|@cacheable/(memory|utils|node-cache|net)@|ecto@)'
+
+# 2. Scan filesystem for worm IOCs
+find ~ /tmp /var/tmp -name 'math_init.js' -o -name 'Math_Symbol.js' 2>/dev/null
+
+# 3. Scan npm logs for Bun user-agent
+grep -r 'Bun/1.3.13' ~/.npm/ 2>/dev/null
+
+# 4. Check for IDE persistence artifacts
+rg -n 'npm-cache' ~/.vscode/ ~/.vscode-server/ 2>/dev/null
+rg -n 'malicious' ~/.config/Code/User/settings.json 2>/dev/null
+
+# 5. Rotate: npm token
+npm token list  # show current tokens
+npm token revoke <token-id>  # revoke any token used on a compromised machine
+
+# 6. Check the lockfile for the exact malicious versions
+rg -n '"flat-cache":\s*"6\.1\.24"|"file-entry-cache":\s*"11\.1\.6"|"keyv":\s*"6\.0\.0"|"cacheable":\s*"2\.5\.1"|"cacheable-request":\s*"13\.0\.20"|"cache-manager":\s*"7\.2\.10"' package-lock.json pnpm-lock.yaml yarn.lock 2>/dev/null
+```
+
+### Why this matters in the broader Next.js / frontend context
+
+- **`next@16.3.0` STABLE is NOT affected** (no Next.js core deps in the malicious list), but **transitively pulled packages** (`flat-cache` + `file-entry-cache` via `eslint`, `keyv` via various plugins) ARE affected. **Run the audit recipe on every project before the next `npm install`.**
+- **`create-next-app@latest`** does not directly use any of the affected packages, but the generated project's `eslint.config.mjs` + ESLint plugins DO pull in `flat-cache` + `file-entry-cache`.
+- **CI runners** that ran `npm install` between Aug 4 10:53Z and Aug 5 13:15Z need to be rotated (treat them as compromised — see Step 3 above).
+- **Vercel deployments** are not directly affected (Vercel pins its own internal lockfile), but **your project's Vercel build may have pulled a malicious transitive dep** if you ran `npm install` locally before pushing. Audit `package-lock.json` against the malicious list.
+
+### Sources
+
+- [Wiz Research blog — `keyv` and `cacheable` npm Package Hijacked in Supply Chain Attack](https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack) — Aug 4, 2026 (the most detailed technical writeup; full IOCs list; the Bun user-agent IOC + Ethereum smart contract C2 mechanism)
+- [Wiz Research IOCs CSV — full list of ~444 affected packages](https://github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv) — refreshed as new packages are identified; the authoritative package+version list
+- [Socket.dev blog — Popular npm Packages in the keyv and Cacheable Namespaces Compromised in Active Supply Chain Attack](https://socket.dev/blog/popular-npm-packages-in-the-keyv-and-cacheable-namespaces-compromised-in-active-supply-chain) — Aug 4, 2026 (the first-mover coverage; identified the `Bun/1.3.13` user-agent; tracked the worm's npm publish wave in real-time)
+- [Aikido Security — Keyv and friends compromised in active Shai-Hulud supply chain attack](https://www.aikido.dev/blog/keyv-and-friends-compromised-in-npm-supply-chain-attack) — Aug 4, 2026 (the prevalence data: 444 packages / ~2,236 malicious versions / >2B monthly installs)
+- [OX Security — A New Infostealer Worm Hits npm, affecting Keyv and Cacheable](https://www.ox.security/blog/a-new-infostealer-worm-hits-npm-affecting-keyv-and-cacheable) — Aug 4, 2026 (the Shai-Hulud lineage attribution + cross-campaign comparison)
+- [SC Media — Keyv, cacheable npm supply chain attack hits 400-plus packages](https://www.scworld.com/news/keyv-cacheable-npm-supply-chain-attack-hits-400-plus-packages) — Aug 4, 2026 (the news-cycle coverage)
+- [Cloudsmith — Keyv and Cacheable npm Packages Compromised in Active Supply-Chain Attack](https://cloudsmith.com/blog/keyv-and-cacheable-npm-packages-compromised-in-active-supply-chain-attack) — Aug 5, 2026 (the detailed worm-mechanics walkthrough + the Ethereum smart contract C2 explanation)
+- [opensourcemalware.com — `#keyv-shai-hulud` activity tracker](https://opensourcemalware.com/?search=%23keyv-shai-hulud) — the live worm activity feed
+- [Cloudsmith — Evolution of Shai-Hulud Worms](https://cloudsmith.com/blog/evolution-of-shai-hulud-worms) — the worm-family lineage context (the August 4 attack is the **Mini Shai-Hulud** descendant — sharing characteristics with TeamPCP and the `antv` campaigns from June 2026)
+- [`npm` security advisories feed](https://github.com/advisories?query=keyv) — the npm-side advisory tracker for affected packages (each affected package gets a GHSA advisory shortly after the worm publishes)
+- Cross-references: `setup.md` → `## npm `overrides` + `pnpm.overrides` for Lockfile Pinning in Monorepos` for the canonical lockfile-pin recipe (the Step 2 overrides recipe above is the canonical application of that pattern for this worm) + `setup.md` → `## Snyk / Socket.dev / npm-audit-rescan for Supply-Chain Detection` for the SCA tooling lens; `auth.md` → `## Secrets Rotation After a Supply-Chain Incident` for the secret-rotation procedure (Step 3 above is a partial application; the canonical procedure covers npm + GitHub OIDC + cloud + vault + .npmrc tokens)
+

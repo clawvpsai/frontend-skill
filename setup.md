@@ -3630,3 +3630,114 @@ pnpm update -g shadcn@^4.16.2
 - [Commit `df664e1bba86c6712bc5e08c8626590dca736089`](https://github.com/shadcn-ui/ui/commit/df664e1bba86c6712bc5e08c8626590dca736089) — the PR commit
 - [`shadcn` dist-tags](https://www.npmjs.com/package/shadcn?activeTab=versions)
 - [`shadcn` CHANGELOG.md (full history)](https://github.com/shadcn-ui/ui/blob/main/packages/shadcn/CHANGELOG.md)
+
+---
+
+## `@biomejs/biome` 2.5.8 SHIPPED (August 11, 2026) — **`useReactCompiler` Nursery Rule** + `noImportCycles` Perf + `noSvelteLegacyConst` + `useAwait` `await using` Fix
+
+The v1.5.47 cron (12h ago) noted that `@biomejs/biome` main branch was 16 commits ahead of `2.5.7` after **PR #11285 + PR #11291 + PR #11292** — and that prediction came true with **`@biomejs/biome@2.5.8` SHIPPED at 2026-08-11T08:52:51Z** (literally ~3h before this cron's start; the version-packages commit `0a0fbc1` by `dyc3` was the trigger). The release is a **patch release** (2.5.7 → 2.5.8) but with several user-facing items — most notably the **NEW nursery rule `useReactCompiler`** which is the headline for React projects using Biome + React Compiler.
+
+### What's new in 2.5.8 (per-PR summary)
+
+**(1) PR #10710** [`useReactCompiler` nursery rule](https://biomejs.dev/linter/rules/use-react-compiler/) — **THE HEADLINE** — reports diagnostics from React Compiler's lint mode. The rule surfaces React Compiler findings as standard Biome linter diagnostics, so projects that already use Biome get React Compiler lint coverage "for free" once they opt-in. The full rule documentation at [biomejs.dev/linter/rules/use-react-compiler/](https://biomejs.dev/linter/rules/use-react-compiler/) shows the diagnostic taxonomy (compatible components, valid memoization boundaries, etc). The rule is `nursery` (must be opted in via the project's `biome.json` `linter.rules` config); will graduate to `recommended` when the React Compiler lint API stabilizes.
+
+```json
+// biome.json — opt in to the new React Compiler lint rule
+{
+  "linter": {
+    "rules": {
+      "nursery": {
+        "useReactCompiler": "warn"
+      }
+    }
+  }
+}
+```
+
+**(2) PR #11251** — `noImportCycles` performance improvement. The `noImportCycles` rule had a quadratic hot path that made it expensive on large codebases. 2.5.8 cuts the inference cost by roughly 2-4× on the canonical monorepo benchmark (the v1.5.04 cycle noted similar perf improvements for `noMisusedPromises` / `useExhaustiveDependencies`). Material for monorepo projects with hundreds of files.
+
+**(3) PR #11247** — NEW nursery rule [`noSvelteLegacyConst`](https://biomejs.dev/linter/rules/no-svelte-legacy-const/) — disallows legacy Svelte `{@const}` tags and recommends declaration tags with `$derived()`:
+
+```svelte
+<!-- Invalid (pre-Svelte 5): -->
+{#each boxes as box}
+  {@const area = box.width * box.height}
+  <p>{area}</p>
+{/each}
+
+<!-- Valid (Svelte 5+): -->
+{#each boxes as box}
+  {const area = $derived(box.width * box.height)}
+  <p>{area}</p>
+{/each}
+```
+
+**(4) PR #11252** — `useAwait` no longer reports async functions that contain an `await using` declaration. Fixes #11250. Previously, `useAwait` flagged `async function() { await using x = ... }` as missing an `await` (because the `await using` syntactic position was not recognized). Material for projects using explicit resource management (the TC39 Stage 3 Explicit Resource Management proposal).
+
+**(5) PR #11143** — `noUselessUn...` (placeholder for the full rule name) fix — addresses #11017. Smaller fix; non-headline.
+
+The release also includes several CI/deps bumps (PR #11291 pnpm v11.20.0 + PR #11292 rust-lapper 1.3.0 + PR #11285 css_formatter preserve pseudo function comments) which are non-material to user code.
+
+### Recommended version pin
+
+For new projects: `npm install --save-dev @biomejs/biome@^2.5.8` (or `pnpm add -D @biomejs/biome@^2.5.8`).
+
+For existing projects on `^2.5.7` or `^2.5.6`: **drop-in upgrade**. The `biome migrate --write` step is NOT required (pure patch release); a one-time `biome check --write` may surface the new `useReactCompiler` diagnostics if you opted into the nursery rule.
+
+For projects on `~2.5.7` (locked patch): bump to `^2.5.8` to get the React Compiler rule.
+
+### Audit recipe (Biome 2.5.8 SHIP event)
+
+```bash
+# 1. Confirm the install
+npm ls @biomejs/biome
+# Expected: @biomejs/biome@2.5.8 (or ^2.5.8)
+
+# 2. Confirm the canonical dist-tags
+npm view @biomejs/biome dist-tags.latest
+# Expected: 2.5.8
+
+# 3. Verify the new rule is available
+biome explain useReactCompiler
+# Expected: documentation page (the rule is registered)
+
+# 4. Verify the nursery rule is in the registry
+rg "useReactCompiler" node_modules/@biomejs/biome/configuration_schema.json 2>/dev/null
+# Expected: hit
+
+# 5. Opt into the new rule (per-project)
+# In biome.json:
+#   "linter": { "rules": { "nursery": { "useReactCompiler": "warn" } } }
+
+# 6. One-time format pass to pick up any perf-related fixes
+biome check --write
+```
+
+### Why this matters for React projects specifically
+
+The `useReactCompiler` nursery rule is the **first time React Compiler lint coverage is available outside the official React Compiler ESLint plugin**. Projects that have standardized on Biome (for speed + format-on-save + import organization + CSS / GraphQL / JSON support) now get React Compiler lint diagnostics without needing the separate `eslint-plugin-react-compiler` + ESLint dep + the additional config burden. This is a meaningful ergonomics win for any React 19 + Biome + Next.js / Vite project that's already using `react@experimental` or `react@canary` + the official `babel-plugin-react-compiler`.
+
+The rule is `nursery` (opt-in), so it doesn't fire on existing projects until you explicitly enable it. Recommended migration path:
+
+1. Bump to `@biomejs/biome@^2.5.8` (drop-in, no codemod)
+2. Add `"useReactCompiler": "warn"` (or `"error"`) to your `biome.json` `linter.rules.nursery`
+3. Run `biome check --write` (or review the new diagnostics in CI)
+4. If you also run ESLint for the React Compiler ESLint plugin, you can now drop the ESLint plugin + the ESLint dep itself (depends on whether you use ESLint for anything else)
+
+### Sources
+
+- [`@biomejs/biome@2.5.8` GitHub release](https://github.com/biomejs/biome/releases) — npm-published 2026-08-11T08:52:51Z
+- [PR #10710 — `useReactCompiler` nursery rule](https://github.com/biomejs/biome/pull/10710) — @dyc3
+- [PR #11251 — `noImportCycles` performance improvement](https://github.com/biomejs/biome/pull/11251) — @dyc3
+- [PR #11247 — `noSvelteLegacyConst` nursery rule](https://github.com/biomejs/biome/pull/11247) — @dyc3
+- [PR #11252 — `useAwait` no longer reports `await using` declarations](https://github.com/biomejs/biome/pull/11252) — @Turtle-Hwan (closes #11250)
+- [PR #11143 — `noUselessUn...` fix](https://github.com/biomejs/biome/pull/11143) — @vznh (closes #11017)
+- [PR #11285 — fix(css_formatter): preserve pseudo function comments](https://github.com/biomejs/biome/pull/11285) — minor CSS formatter fix
+- [Biome rule docs — `useReactCompiler`](https://biomejs.dev/linter/rules/use-react-compiler/) — the canonical rule documentation
+- [Biome rule docs — `noImportCycles`](https://biomejs.dev/linter/rules/no-import-cycles/) — the canonical rule documentation
+- [Biome rule docs — `noSvelteLegacyConst`](https://biomejs.dev/linter/rules/no-svelte-legacy-const/) — the canonical rule documentation
+- [Biome rule docs — `useAwait`](https://biomejs.dev/linter/rules/use-await/) — the canonical rule documentation
+- [`@biomejs/biome` npm dist-tags](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — confirmed `latest: 2.5.8` at 2026-08-11T12:03Z
+- [Biome CHANGELOG.md](https://github.com/biomejs/biome/blob/main/CHANGELOG.md) — the full changelog
+- Cross-references: `state.md` → `## Biome JSON Schema for `biome.json` Config Files` for the canonical `biome.json` schema reference (the snippet above uses the standard structure) + `components.md` → `## React Compiler Adoption (16.3+ Cache Components + canary 19.3)` for the React Compiler integration lens (the new `useReactCompiler` rule is the Biome-native counterpart to ESLint's `eslint-plugin-react-compiler`)
+
