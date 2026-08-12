@@ -1852,9 +1852,9 @@ export default {
 - Cross-reference: v1.5.46 components.md `## React 19.3.0-canary-807d21fd-20260810 SHIPPED` section for the prior React canary SHIP event.
 
 
-## `headers()` Restored to Live View of Incoming Request (PR #97166) + Turbopack `crossOrigin` Manifest Fix (PR #97164) — canary.14-ahead (August 12, 2026)
+## `headers()` Restored to Live View of Incoming Request (PR #97166) + Turbopack `crossOrigin` Manifest Fix (PR #97164) — SHIPPED in 16.3.1-canary.14 (npm-published 2026-08-12T13:25:30Z, August 12, 2026)
 
-The single most material Server-Components-relevant Next.js change in the 5h49min window since v1.5.50 — both fixes land in canary-branch ahead of `16.3.1-canary.13` and are expected to npm-publish in **`16.3.1-canary.14` ~2026-08-12T18:23Z ± a few hours**. **PR #97166** (Hendrik Liebau / unstubbable, merged 2026-08-12T11:36:12Z — 29min before this cron) restores the live `headers()` view; **PR #97164** (Tim Neutkens, merged 2026-08-12T07:19:23Z) closes issue #96831 (the Turbopack `crossOrigin: "none"` cross-origin CDN regression that v1.5.33 documented as one of the 3 NEW material open issues on `next@16.3.0` STABLE). **Next.js canary-branch is now 11 commits ahead of `16.3.1-canary.13`** (was 4 in v1.5.50 at 06:14Z Aug 12); 7 NEW canary-branch commits since the previous cycle, 2 MATERIAL (PR #97166 + PR #97164) + 5 docs/test/CI (PR #93529, PR #97191, PR #97187, PR #97163, PR #97190).
+The single most material Server-Components-relevant Next.js change in the 5h49min window since v1.5.50 — both fixes landed in canary-branch ahead of `16.3.1-canary.13` and **SHIPPED at 2026-08-12T13:25:30Z** â ~4h38min before this cron's 18:03Z start. **PR #97166** (Hendrik Liebau / unstubbable, merged 2026-08-12T11:36:12Z — 29min before this cron) restores the live `headers()` view; **PR #97164** (Tim Neutkens, merged 2026-08-12T07:19:23Z) closes issue #96831 (the Turbopack `crossOrigin: "none"` cross-origin CDN regression that v1.5.33 documented as one of the 3 NEW material open issues on `next@16.3.0` STABLE). **canary-branch is now 4 commits ahead of `16.3.1-canary.14`** (was 11 in v1.5.51 at 12:03Z Aug 12); 4 NEW commits since canary.14 tagged at 13:25:30Z, 2 MATERIAL (PR #97166 + PR #97164) + 5 docs/test/CI (PR #93529, PR #97191, PR #97187, PR #97163, PR #97190).
 
 ### Why PR #97166 matters for Server Components — Live `headers()` View
 
@@ -1878,9 +1878,9 @@ The single most material Server-Components-relevant Next.js change in the 5h49mi
 1. **`rg -n "await headers\(\)" app/ src/`** — find every Server Component or Server Action that reads headers. If you have a Proxy that mutates `request.headers`, these are the sites that need the fix.
 2. **`rg -n "request\.headers\.(set|delete|append)" proxy.ts middleware.ts app/proxy.ts`** — find the Proxy mutation sites. Cross-reference with step 1 to identify the Server Components affected.
 3. **`rg -n "forEach.*headers|headers.*forEach" app/ src/`** — find any `forEach` over headers. Review to ensure no callback was relying on the mutability (security-tightening side fix in PR #97166).
-4. **`npm ls next`** — verify you're on `next@>=16.3.1-canary.14` (when it npm-publishes). Until then, work around by reading via `request.headers.get(name)` directly in the Proxy, or by stashing the header on a custom `request.cookies` set before the mutation.
+4. **`npm ls next`** — you're on `next@>=16.3.1-canary.14` (now that it has shipped at 2026-08-12T13:25:30Z). Until then, work around by reading via `request.headers.get(name)` directly in the Proxy, or by stashing the header on a custom `request.cookies` set before the mutation.
 
-**Workaround until canary.14 ships**:
+**Workaround (for versions pre-canary.14)** — canary.14 shipped at 2026-08-12T13:25:30Z; bump to `next@>=16.3.1-canary.14` to fix:
 
 ```tsx
 // app/api/route.ts — Server Component reading x-tenant-id set by Proxy
@@ -1911,7 +1911,7 @@ PR #97164 closes issue **#96831** (documented in v1.5.33 `deployment.md` as one 
 **Audit recipe (3 steps)**:
 1. **`curl -sL https://your-app.example.com | grep -i 'crossorigin'`** — confirm `crossorigin` attribute is absent on script tags post-#97164.
 2. **`rg -n "assetPrefix" next.config.ts`** — find any project with cross-origin CDN assetPrefix on Turbopack + App Router + `next@16.3.0` STABLE.
-3. **`npm ls next`** — bump to `next@>=16.3.1-canary.14` when it npm-publishes.
+3. **`npm ls next`** — bump to `next@>=16.3.1-canary.14` (shipped at 2026-08-12T13:25:30Z).
 
 ### Practical Impact Summary
 
