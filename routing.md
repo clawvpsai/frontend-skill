@@ -2413,3 +2413,114 @@ The Common Mistakes section grows **2 new bullets**:
 - Cross-reference: `deployment.md` → `## Next.js — next@16.3.1-canary.11 SHIPPED (August 11, 2026)` for the canary.11 SHIP event lens.
 - Cross-reference: `performance.md` → `## next@16.3.1-canary.11 SHIPPED (August 11, 2026)` for the canary.11 SHIP event's performance lens.
 
+
+## 16.3.1-canary.13-ahead — Restore the Live `headers()` View of the Incoming Request (PR #97166) + Fix Unset `crossOrigin` in Turbopack Manifests (PR #97164) + 5 docs/test/CI (7 NEW canary-branch commits, August 12, 2026)
+
+The single most material Next.js change in the 5h49min window since v1.5.50: **PR #97166 — Restore the live `headers()` view of the incoming request** ([Hendrik Liebau](https://github.com/unstubbable), merged 2026-08-12T11:36:12Z — **literally 29 minutes before this cron's 12:03Z start**; 8 files changed; closes #97145 + #94703 + #95116). **Next.js canary-branch is now 11 commits ahead of `16.3.1-canary.13`** (verified at this cron's check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.13...canary` returning `ahead_by: 11`); canary.14 is not yet git-tagged and not yet npm-published — canary.14 npm-publish expected **~2026-08-12T18:23Z ± a few hours on the 24h cadence** (the v1.5.50 prediction was exact). The 7 NEW canary-branch-ahead-of-canary.13 commits that landed in the past 5h49min (since v1.5.50's `ahead_by: 4` snapshot at 06:14Z Aug 12) decompose to **2 MATERIAL + 5 non-material**: **(1) PR #97166** (Hendrik Liebau, 2026-08-12T11:36:12Z) — restores the live `headers()` view; **(2) PR #97164** (Tim Neutkens, 2026-08-12T07:19:23Z) — `[turbopack] Fix unset crossOrigin in Turbopack manifests` (closes issue #96831 that v1.5.33 documented as one of the 3 NEW open issues on 16.3.0 STABLE); **(3) PR #93529** (Benjamin Staneck, 2026-08-12T07:27:12Z) — `Fix debug build paths Pages Router support entries` (non-material Pages Router internal); **(4) PR #97191** (Hendrik Liebau, 2026-08-12T08:57:39Z) — `Forward a build-container pin to deploy-test deployments` (deploy-test infra); **(5) PR #97187** (Hendrik Liebau, 2026-08-12T08:58:16Z) — `[test] Unflake use-cache-custom-handler-dev tests` (test-only); **(6) PR #97163** (Tim Neutkens, 2026-08-12T09:50:25Z) — `Update gh-stack skill guidance` (docs-only); **(7) PR #97190** (Hendrik Liebau, 2026-08-12T10:57:38Z) — `[test] Compile the middleware redirect routes up front in dev` (test-only). Plus the 4 NEW PRs that v1.5.50 already documented (PR #97208 Sam Poder 2026-08-11T23:31:57Z + PR #95439 dan 2026-08-12T00:43:17Z + PR #97215 Josh Story 2026-08-12T04:38:24Z + PR #97181 Hendrik Liebau 2026-08-12T04:42:24Z) are unchanged. **Routing-lens material PRs in detail:**
+
+### Why PR #97166 matters — Restore the Live `headers()` View of the Incoming Request (HEADLINE)
+
+Closes issue **#97145** (the original @tachsin fork PR — recreated on the main repo because deploy tests don't run for fork PRs) + the upstream issues **#94703 + #95116** that caused the regression. **The bug** — `headers()` and `NextRequest.headers` were supposed to describe the same request, but starting in `next@16.3.0` STABLE (and still in `16.3.1-canary.0`–`16.3.1-canary.13`), a Proxy that mutates `request.headers.set(...)` then reads via `headers()` got a **stale pre-mutation value**, while reading the same header directly off `request.headers` returned the new value. **Two APIs describing the same request disagreed**, and a second `headers()` call returned the same stale view. Whether the write was seen at all depended on **ordering** — the view was built on first access, so a write made before the first `headers()` call was observed, but the identical write made after it was not. **The root cause** — PR #94703 (16.3.0) started stripping dev-only request-id headers alongside the flight headers from the shared request headers (because `HeadersAdapter.from` returned a `Headers` instance unchanged instead of copying it), and removing the request-id headers there broke the dev debug channel. PR #95116 fixed that by **copying** the headers before stripping them. Neither change set out to alter whether `headers()` follows the request, but the copy turned the sealed view into a **frozen snapshot** as collateral damage — no test covered the live-view property, and the unit tests for `HeadersAdapter.seal` actually assert that the sealed view reads through to the underlying headers. **The fix** — drop the copy and stop deleting anything. `HeadersAdapter.seal` now accepts a set of header names to omit from every read operation, and `getHeaders` seals the **shared request headers directly** with the flight headers and the dev request-id headers hidden. Both earlier intentions survive (internal headers stay on the request where the framework still reads them + stay invisible to userland `headers()`) and the sealed view tracks the request again. Hiding on read is **slightly stricter than the delete it replaces** — the delete ran once when the view was created, so an internal header written to the request afterwards would have shown through; it now stays hidden no matter when it is written. **Plus a security-tightening side fix** — the `parent` argument that `HeadersAdapter.seal`'s `forEach` passes to its callback now passes the **sealed proxy** instead of the native-mutable target, so userland `forEach` callbacks can't escape the seal. **`cookies()` is unaffected** — `RequestCookies` parses the `cookie` header when constructed, predates 16.3, left alone.
+
+**Practical impact**:
+
+| Deployment profile | Symptom pre-#97166 | Post-#97166 |
+|---|---|---|
+| **Proxy that mutates `request.headers.set(...)` then reads via `headers()`** (e.g., adding `x-trace-id`, `x-tenant-id`, `x-correlation-id` for downstream logging) | Second `headers()` call returns **stale pre-mutation** value; `request.headers.get(...)` returns the new value — two APIs disagreeing on the same request | `headers()` is now a **live read-only view** over the shared request headers; mutation via `request.headers.set(...)` is observed on the next `headers()` call; both APIs agree throughout the Proxy run |
+| **Proxy that runs `forEach` over `headers()`** (custom logging, request-introspection middleware) | The `forEach` callback could escape the seal and write directly to the underlying headers — defeating the entire `HeadersAdapter.seal` security model | `forEach` now passes the sealed proxy; the callback can't mutate the underlying headers |
+| **Apps that count on `headers()` being a snapshot** (e.g., they memoize the value across the request) | Worked by accident pre-#97166 | Memoization now sees live updates — review memoization logic to ensure it's safe for live updates |
+| **Dev-only request-id header consumers** (Next.js's own dev debug channel that PR #95116 was protecting) | Worked (PR #95116's copy + delete kept the request-id headers on the shared request) | Still works — `seal` now hides on read instead of deleting, so the request-id headers stay on the request |
+| **Apps using `cookies()`** | Snapshot semantics preserved | **Unaffected** — `RequestCookies` parses on construct, predates 16.3 |
+| **Apps not using `headers()` or Proxy** | Not affected | Not affected |
+| **Apps using `headers()` for read-only access** (e.g., reading `accept-language`, `user-agent`) | Worked (these reads don't involve mutation) | Works the same — live view is read-only from userland's perspective |
+
+**Why this matters at the routing layer** — `headers()` lives in the routing layer's request-scoped storage (`request-store.ts`). The Proxy is the canonical place to inject tenant/trace/feature-flag headers from upstream gateways (Vercel Edge Config, Cloudflare Workers, custom auth middleware), and the bug meant that any userland code running **after** the Proxy mutation would see stale data. This is the same routing-layer surface that PR #96085 (16.3.1-canary.11, the **headers() Returns a Unique Object Per Render Pass** fix) addressed, and PR #97166 is the natural follow-up that closes the live-view regression introduced by PR #94703 + #95116.
+
+**Audit recipe (3 steps)**:
+1. **`rg -n "request\.headers\.(set|delete|append)" proxy.ts middleware.ts app/proxy.ts`** — find any code that mutates `request.headers` and then expects `headers()` to reflect the change. After bumping to `next@>=16.3.1-canary.14` (when it npm-publishes), verify with a smoke test that the value flows through.
+2. **`rg -n "forEach\(.*headers" proxy.ts middleware.ts app/proxy.ts app/middleware.ts`** — find any `forEach` over `headers()`. After the fix, the `forEach` callback can no longer escape the seal — review to ensure no callback was relying on the mutability.
+3. **`rg -n "memoize|cache" proxy.ts middleware.ts app/proxy.ts app/middleware.ts`** — find any code that memoizes `headers()` across the request. After the fix, the memoized value is no longer guaranteed to be stable — replace with explicit `request.headers.get(name)` if you need a snapshot at a specific point in time.
+
+**Workaround until canary.14 ships**:
+```ts
+// app/proxy.ts — if you can't bump to canary.14 yet
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function proxy(request: NextRequest) {
+  // Mutating request.headers now updates the live view (post-#97166)
+  // Pre-#97166: this mutation was invisible to headers()
+  //             reading the same header via request.headers.get() returned the new value
+  request.headers.set('x-trace-id', crypto.randomUUID());
+
+  // If you're stuck on 16.3.0 STABLE / canary.0–13, use request.headers directly
+  // instead of relying on headers() to reflect the mutation:
+  const traceId = request.headers.get('x-trace-id'); // works on ALL versions
+
+  return NextResponse.next();
+}
+```
+
+### Why PR #97164 matters — Fix Unset `crossOrigin` in Turbopack Manifests (Closes #96831)
+
+Closes issue **#96831** (one of the 3 NEW material open issues on `next@16.3.0` STABLE that v1.5.33 documented in `deployment.md`). **The bug** — when `crossOrigin` is not configured (default `undefined`), Turbopack added `crossorigin=""` to generated `<script>` tags in the client reference manifest. This **broke cross-origin `assetPrefix` CDN deployments** because preinited chunks got the attribute, and on real CDNs whose cache key doesn't include the `Origin` header, the no-cors responses poisoned the CORS-mode loads. The bug regressed in PR #92070 when Turbopack added `crossOriginLoading` support — the client reference manifest changed from an optional cross-origin value to the shared `CrossOrigin` enum, and Serde serialized the enum's default `None` variant as the string `"none"`, so React saw a present string and treated it as anonymous CORS, emitting `crossorigin=""`. Webpack continued to omit its `undefined` value (different serde behavior for `Option<CrossOrigin>` vs `CrossOrigin`). **The fix** — skip serializing `CrossOrigin::None` in the Turbopack client reference manifest so an unset option remains absent while preserving explicit anonymous and credentialed modes.
+
+**Practical impact**:
+
+| Deployment profile | Symptom pre-#97164 | Post-#97164 |
+|---|---|---|
+| **Cross-origin `assetPrefix` CDN** (e.g., Cloudflare with different origin than the page, no `Access-Control-Allow-Origin`) | `crossorigin=""` emitted on preinited chunks; CORS-mode loads poisoned by no-cors cache entries; chunks load intermittently; deployed on Turbopack + `next@16.3.0` STABLE / `canary.0–13` | `crossorigin` attribute omitted on unset; CORS-mode loads succeed; production reads work end-to-end |
+| **Same-origin or `assetPrefix` on same origin** | Not affected | Not affected |
+| **Explicit `crossOrigin: 'anonymous'` configured** | Worked (anonymous mode preserved) | Still works (anonymous mode preserved by the fix) |
+| **Explicit `crossOrigin: 'use-credentials'` configured** | Worked (credentialed mode preserved) | Still works (credentialed mode preserved by the fix) |
+| **Webpack users** | Not affected (Webpack was already omitting `undefined` correctly) | Not affected |
+| **Turbopack + Pages Router only** | Not affected (the bug was in the App Router client reference manifest) | Not affected |
+
+**Audit recipe (3 steps)**:
+1. **`rg -n "assetPrefix" next.config.ts next.config.js`** — find any project with a cross-origin `assetPrefix` CDN. If Turbopack + `next@>=16.3.0` STABLE + App Router, you were affected pre-#97164.
+2. **`curl -sL https://your-app.example.com | grep -i 'crossorigin'`** — confirm `crossorigin` attribute is absent on script tags (post-#97164) vs present with empty value (pre-#97164).
+3. **`npm ls next`** — verify you're on `next@>=16.3.1-canary.14` (when it npm-publishes ~2026-08-12T18:23Z ± a few hours). Until then, stay on `16.3.0` STABLE if the `crossOrigin` regression is critical for you (the fix is in canary-branch only).
+
+**Workaround until canary.14 ships**:
+```ts
+// next.config.ts — workaround for the Turbopack crossOrigin regression
+export default {
+  // Option A: Configure ACAO on the CDN (most robust)
+  // Option B: Switch to Webpack (next dev --webpack)
+  // Option C: Use output: 'export' for fully static sites (no Server Components)
+  // Option D: Roll back to next@16.2.12 (pre-Turbopack crossOrigin change)
+  experimental: {
+    // No opt-in needed for the fix; PR #97164 is unconditional
+  },
+};
+```
+
+### Common Mistakes — Routing-Edition Updates
+
+The Common Mistakes section grows **2 new bullets**:
+
+- **`headers()` returns stale pre-mutation values in Proxy after `request.headers.set(...)` (16.3.0 STABLE + canary.0–13) — FIXED in `next@16.3.1-canary.14-ahead` by PR #97166** — Hendrik Liebau, merged 2026-08-12T11:36:12Z, 8 files / +382/-23, base `canary`. The bug: PR #94703 + #95116 (the dev-request-id-header cleanup) accidentally turned the sealed `headers()` view into a frozen snapshot instead of a live read-through view. Two APIs describing the same request disagreed: `request.headers.get(...)` returned the new value, but `headers()` returned the pre-mutation value. Symptom: tracing/feature-flag/tenant-id headers injected by Proxy don't propagate to RSCs that read via `headers()`. Fix: bump to `next@>=16.3.1-canary.14` when it npm-publishes (~2026-08-12T18:23Z ± a few hours). **Workaround until then**: read directly via `request.headers.get(name)` instead of relying on `headers()` to reflect the mutation. See the new `### Why PR #97166 matters` subsection above for full walkthrough + audit recipe.
+- **Turbopack emits `crossorigin=""` on `<script>` tags when `crossOrigin` is unset, breaking cross-origin `assetPrefix` CDNs (16.3.0 STABLE + canary.0–13) — FIXED in `next@16.3.1-canary.14-ahead` by PR #97164** — Tim Neutkens, merged 2026-08-12T07:19:23Z, 7 files / +164/-31, base `canary`. The bug: Turbopack's client reference manifest changed from an optional cross-origin value to a `CrossOrigin` enum in PR #92070, and Serde serialized `CrossOrigin::None` as the string `"none"` instead of omitting it. Symptom: preinited chunks carry `crossorigin=""`; on real CDNs whose cache key doesn't include the `Origin` header, the no-cors responses poison the CORS-mode loads; chunks load intermittently. Closes issue #96831 (one of the 3 NEW open issues on 16.3.0 STABLE that v1.5.33 documented in `deployment.md`). Fix: bump to `next@>=16.3.1-canary.14` when it npm-publishes. **Workaround until then**: configure `Access-Control-Allow-Origin` on the CDN, switch to Webpack, use `output: 'export'`, or roll back to `next@16.2.12`. See the new `### Why PR #97164 matters` subsection above for full walkthrough + audit recipe.
+
+### Forward-Looking
+
+- **Next.js `v16.3.1-canary.14` npm-publish** — expected ~2026-08-12T18:23Z ± a few hours on the 24h cadence (the v1.5.50 prediction was exact; canary.13 npm-published at 2026-08-12T00:02:03Z, so canary.14 is ~18h ahead of the prediction window's center). Will bundle: PR #97208 + PR #95439 + PR #97215 + PR #97181 (all 4 already documented in v1.5.50) + PR #97164 (crossOrigin fix) + PR #97166 (headers() live view restore) + PR #93529 + PR #97191 + PR #97187 + PR #97163 + PR #97190 + the version-tag commit + any canary-branch-ahead commits that land in the next 5-7h.
+- **Aug 20 monthly security release** — T-8d from v1.5.50; now T-7d22h from this cron. The Critical Dev-Mode Security Disclosure #97157 documented in v1.5.50 remains the headline candidate for the batch. Expected patch versions: `next@16.3.1` + `16.3.2` + `15.5.24` + `14.2.36`. Watch the GitHub Security Advisories feed for the Aug 20 batch.
+- **Next.js canary-branch Cadence Observation** — canary-branch was at `ahead_by: 4` at v1.5.50 (06:14Z Aug 12) and at `ahead_by: 11` at this cron (12:03Z Aug 12). **7 NEW commits in 5h49min** — about **1.2 commits/hour**, **much faster than the typical 24h canary cadence of ~15 commits/day = ~0.6 commits/hour**. This indicates the canary-branch is moving fast, possibly to land PR #97166 + PR #97164 + the 4 NEW v1.5.50 PRs as a coordinated `canary.14` SHIP event. Expect the canary.14 npm-publish to land within the next 5-8h, not the full 18h.
+
+### Sources
+
+- [PR #97166 — Restore the live `headers()` view of the incoming request](https://github.com/vercel/next.js/pull/97166) — by Hendrik Liebau (unstubbable), merged 2026-08-12T11:36:12Z, 8 files / +382/-23, base `canary`. **THE HEADLINE of canary.14-ahead for the routing lens.** Closes #97145 + #94703 + #95116. Recreates the @tachsin fork PR #97145 on a main-repo branch because deploy tests don't run for fork PRs.
+- [PR #97145 — Fix `headers()` stale snapshot after `NextRequest` mutation in Proxy (the original fork PR by @tachsin)](https://github.com/vercel/next.js/pull/97145) — the original @tachsin fork PR; recreated by Hendrik Liebau as PR #97166.
+- [Issue #96831 — Turbopack `crossOrigin: "none"` string serialization breaks cross-origin `assetPrefix` CDNs](https://github.com/vercel/next.js/issues/96831) — closed by PR #97164.
+- [PR #97164 — `[turbopack]` Fix unset `crossOrigin` in Turbopack manifests](https://github.com/vercel/next.js/pull/97164) — by Tim Neutkens (timneutkens), merged 2026-08-12T07:19:23Z, 7 files / +164/-31, base `canary`. The second material commit in canary.14-ahead for the routing lens.
+- [Next.js canary-branch compare `v16.3.1-canary.13...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.13...canary) — 11 commits ahead as of 2026-08-12T12:03Z; 7 NEW since v1.5.50 (06:14Z Aug 12).
+- [Next.js `v16.3.1-canary.13` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.13) — npm-published 2026-08-12T00:02:03Z; latest npm-available canary.
+- [Next.js `v16.3.1-canary.12` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.12) — npm-published 2026-08-11T18:03:19Z.
+- [Next.js `HeadersAdapter.seal` source](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/web/spec-extension/adapters/headers.ts) — the function PR #97166 restructures.
+- [Next.js `headers.test.ts`](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/web/spec-extension/adapters/headers.test.ts) — 130 lines of new tests added by PR #97166 covering the live-view property.
+- [Next.js `client_reference_manifest.rs` source](https://github.com/vercel/next.js/blob/canary/crates/next-core/src/next_manifests/client_reference_manifest.rs) — the 5-line Turbopack change in PR #97164 that skips serializing `CrossOrigin::None`.
+- [Next.js `app-config-crossorigin` e2e test](https://github.com/vercel/next.js/tree/canary/test/e2e/app-dir/app-config-crossorigin) — the production coverage added by PR #97164 for static prerendering, dynamic rendering, and `output: 'export'`.
+- Cross-reference: `server-components.md` → `## headers() Restored to Live View of Incoming Request (PR #97166) + Turbopack crossOrigin Manifest Fix (PR #97164) — canary.14-ahead (August 12, 2026)` for the Server Components lens on the same PRs.
+- Cross-reference: `components.md` → `## React Main Branch — 8 NEW Fragment Events Cleanup PRs (PR #37160-#37167) by Jack Pope (August 12, 2026)` for the React main-branch Fragment-events cleanup that landed in the same window but was missed by v1.5.50.
+- Cross-reference: `deployment.md` → `## Next.js 16.3.0 STABLE — 3 NEW Open Issues Affecting Production Deployments Today` for the issue #96831 closure confirmation.
+- Cross-reference: `security.md` → `## Next.js 16.3.1-canary.12 SHIPPED + canary.13 SHIPPED + Critical Dev-Mode Security Disclosure #97157` for the Aug 20 monthly security release T-7d22h pre-roll refresh.

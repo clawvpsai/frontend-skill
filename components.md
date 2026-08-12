@@ -3225,3 +3225,110 @@ The Common Mistakes section (already extensive) grows **2 new bullets**:
 - Cross-reference: `routing.md` → `## 16.3.1-canary.12-ahead — Fix Optimistic Routing Bugs (PR #97128) + 3-PR Legacy PPR Refactor + Turbopack CJS Scope-Hoisting Flag` for the routing-lens on the same canary.12-ahead content.
 - Cross-reference: v1.5.46 `## React 19.3.0-canary-807d21fd-20260810 SHIPPED` section for the prior React canary SHIP event.
 
+
+## React Main Branch — 8 NEW Fragment Events Cleanup PRs (PR #37160-#37167) by Jack Pope (August 12, 2026) — Missed by v1.5.50
+
+The v1.5.50 cycle noted "React main branch idle since 2026-08-11T16:29:33Z; the 2-commit-ahead-of-bfb7a768 list is unchanged" — **that observation was wrong**. React main branch has 8 NEW Fragment-events cleanup PRs that landed between 00:50:16Z Aug 12 and 01:46:13Z Aug 12 — **before the v1.5.50 cron started at 06:14Z Aug 12**, so the previous cron was using a stale API snapshot. **Verified at this cron's check via `GET /repos/facebook/react/commits?sha=main&per_page=15`** — the first 8 commits returned are all by **Jack Pope** (the engineer behind the v1.5.31 forward-looking Fragment blur work), forming a coordinated Fragment-events cleanup that lands edge-case fixes for the events/dispatch/listener machinery introduced in React 19.2 Fragment instances. **The 8 NEW commits** (all merged between 2026-08-12T00:50:16Z and 2026-08-12T01:46:13Z — a **56-minute coordinated push**):
+
+| SHA | Merge time | PR | Title | Files | Material |
+|---|---|---|---|---|---|
+| `3cba19c977` | 2026-08-12T00:50:16Z | **[PR #37160](https://github.com/facebook/react/pull/37160)** | `[DOM] Fix Fragment removeEventListener dropping tracked listeners` | (small) | **YES** — fix bug where `removeEventListener` on an unregistered listener used `splice(-1)`, which deleted the last tracked entry and left the real handler stuck on DOM children |
+| `278d318de1` | 2026-08-12T01:05:13Z | **[PR #37161](https://github.com/facebook/react/pull/37161)** | `[DOM] Blur portaled Fragment focus targets` | (small) | **YES** — portaled Fragment focus targets were not getting blurred on focus loss |
+| `db4ee659e9` | 2026-08-12T01:13:34Z | **[PR #37162](https://github.com/facebook/react/pull/37162)** | `[DOM] Find host siblings for nested empty Fragments` | (small) | **YES** — fragment traversal for nested empty Fragments now finds correct host siblings |
+| `809280d595` | 2026-08-12T01:19:19Z | **[PR #37163](https://github.com/facebook/react/pull/37163)** | `[DOM] Fix Fragment compareDocumentPosition for documentElement and empty portals` | (small) | **YES** — accepts documentElement in the CONTAINS fiber fallback when no React fiber exists; positions empty portaled Fragments against the portal container instead of the React host parent |
+| `18c30e7a5e` | 2026-08-12T01:25:13Z | **[PR #37164](https://github.com/facebook/react/pull/37164)** | `[DOM] Attach Fragment event listeners to committed text children` | (small) | **YES** — Fragment event listeners now attach to text children that get committed after the Fragment is mounted (previously: late-committed text nodes missed the listeners) |
+| `305feb9058` | 2026-08-12T01:32:39Z | **[PR #37165](https://github.com/facebook/react/pull/37165)** | `[DOM] Fix Fragment dispatchEvent when the container is a Document` | (small) | **YES** — dispatching events on Fragments whose container is the Document (e.g. `<Fragment ref={ref}>` mounted at the document root) was failing |
+| `fdaa617ce5` | 2026-08-12T01:38:18Z | **[PR #37166](https://github.com/facebook/react/pull/37166)** | `[DOM] Apply Fragment listeners to children inserted into portals later` | (small) | **YES** — Fragment listeners applied late to children that get inserted into portals after the Fragment mount |
+| `22e4f993c7` | 2026-08-12T01:46:13Z | **[PR #37167](https://github.com/facebook/react/pull/37167)** | `[Fiber] Extract Fragment instance commit helpers into their own module` | (small) | refactor-only — consolidates `FragmentInstance` helpers into one module (no behavior change) |
+
+**Per-PR deep dive summary**:
+
+### Why PR #37160 matters — Fragment `removeEventListener` dropping tracked listeners
+
+**The bug** — `removeEventListener` on an unregistered listener used `splice(-1)`, which deletes the **last tracked entry** and leaves the **real handler** stuck on DOM children. The fix uses a correct splice index from the tracking array. **Practical impact**: Fragment-instance event listeners were accumulating over mount/unmount cycles in dev. Apps calling `fragmentRef.removeEventListener('click', handler)` without first registering the handler would leak the original handler. **Affected**: any app using `<Fragment ref={ref}>` + dynamic `addEventListener`/`removeEventListener` patterns (rare but real). **Production users on `react@latest` 19.2.8**: zero impact (canary-only material).
+
+### Why PR #37161 matters — Blur portaled Fragment focus targets
+
+**The bug** — when a Fragment is portaled into a different container (e.g., a modal in `document.body`), focus targets inside the Fragment weren't getting blurred when focus moved elsewhere. **The fix** — propagates the blur to portaled Fragment focus targets correctly. **Practical impact**: modal-style focus management (the canonical case: a focus-trapped modal portaled into `document.body`) had focus-leak bugs where focus would stay on a deleted DOM element inside the portaled Fragment. **Affected**: any app using `createPortal` with Fragment children + focus management. **Production users on `react@latest` 19.2.8**: zero impact.
+
+### Why PR #37162 matters — Find host siblings for nested empty Fragments
+
+**The bug** — fragment traversal for nested empty Fragments (e.g., `<Fragment><Fragment /></Fragment>` where neither has content) didn't find the correct host siblings, breaking event bubbling/dispatch in certain cases. **The fix** — correctly walks through nested empty Fragments to find the actual DOM host siblings. **Practical impact**: rare but real edge case for apps with deep Fragment nesting.
+
+### Why PR #37163 matters — `compareDocumentPosition` for `documentElement` and empty portals
+
+**The bug** — `compareDocumentPosition` calls on Fragments whose container is `documentElement` (the `<html>` element) or that contain only empty portals would return incorrect containment results. **The fix** — accepts `documentElement` in the CONTAINS fiber fallback when no React fiber exists; positions empty portaled Fragments against the portal container instead of the React host parent. **Practical impact**: affects the `Node.compareDocumentPosition` semantics for Fragment instances — apps using `<Fragment>` at the document root or with portaled empty Fragments were getting wrong `compareDocumentPosition` results.
+
+### Why PR #37164 matters — Attach Fragment listeners to committed text children
+
+**The bug** — Fragment event listeners (attached via `addEventListener`) didn't propagate to text children that get committed **after** the Fragment is mounted (e.g., text nodes inserted via refs or via Suspense-resolved content). **The fix** — listeners now attach to text children added after mount. **Practical impact**: rare edge case for Fragment-based components with dynamically inserted text.
+
+### Why PR #37165 matters — `dispatchEvent` when the container is a Document
+
+**The bug** — `dispatchEvent` on Fragments whose container is the `Document` (e.g., a Fragment mounted directly under `<html>`) was failing silently. **The fix** — correctly dispatches events for Document-container Fragments. **Practical impact**: rare but real for apps that mount Fragment refs at the document root.
+
+### Why PR #37166 matters — Apply Fragment listeners to children inserted into portals later
+
+**The bug** — Fragment listeners applied **late** to children that get inserted into portals **after** the Fragment mount. **The fix** — re-applies Fragment listeners when children are inserted into portals later in the lifecycle. **Practical impact**: complements PR #37164 for portal scenarios specifically.
+
+### Why PR #37167 matters — Fragment instance commit helpers extracted to own module
+
+**Refactor-only** — consolidates `FragmentInstance` helpers (`commitFragmentInstances` + `unmountFragmentInstances` + helpers) into a single module (`react-reconciler/src/ReactFiberFragmentInstance.js`). **No behavior change**. **Practical impact**: zero — pure code organization for maintainability. The fact that the cleanup landed as the 8th and final PR of the coordinated push suggests the team wanted the helper consolidation to land alongside the bug fixes for code-organization coherence.
+
+### Practical Impact Summary
+
+| User type | Pre-cleanup (canary `bfb7a768-20260811`) | Post-cleanup (next canary cut) |
+|---|---|---|
+| **Apps using Fragment refs + `addEventListener`/`removeEventListener`** | `removeEventListener` on unregistered handler leaks the real handler | Cleanup works correctly; handlers stay properly tracked |
+| **Apps using `createPortal` + Fragment + focus management** (modals, tooltips, dropdowns) | Portaled Fragment focus targets didn't blur on focus loss | Blur works correctly across portals |
+| **Apps with nested empty Fragments + event bubbling** | Fragment traversal missed correct host siblings | Correct host siblings found |
+| **Apps using `compareDocumentPosition` on Fragment refs at document root** | Wrong containment results | Correct `compareDocumentPosition` semantics |
+| **Apps with Fragment + dynamically inserted text children** | Listeners didn't propagate to late-committed text | Listeners propagate correctly |
+| **Apps dispatching events on Document-container Fragments** | `dispatchEvent` failed silently | Works correctly |
+| **Apps with Fragment + children inserted into portals later** | Late-portal listeners didn't apply | Listeners apply correctly |
+| **Production users on `react@latest` 19.2.8** | Zero impact (canary-only material) | Zero impact (canary-only material) |
+| **Canary users** | Cumulative + PR #37203 + PR #37215 + PR #37241 + PR #37258 + PR #34983 + PR #37171 + the 8 NEW PRs in this cleanup | Cumulative + 8 NEW PRs |
+
+### When these ship — Forward-looking on the next React canary cut
+
+These 8 NEW commits are **all on React main branch, not yet in any canary tag**. The current `react@canary` is `19.3.0-canary-bfb7a768-20260811` (npm-published 2026-08-11T16:29:33Z, 19h34min stable as of this cron). The Fragment-events cleanup PRs merged at 00:50–01:46Z Aug 12 are **queued for the next React canary cut**, which is expected to land within **0–72h on the typical 20-72h cadence** (well overdue for a 56-minute coordinated push of this magnitude — the team typically waits for the bundle to be internally stable before publishing). **The next canary tag will be the first one to bundle all 8 cleanup PRs**.
+
+### Audit Recipe (5 Steps)
+
+1. **`npm view react dist-tags.canary`** — confirm the canary bump from `bfb7a768-20260811` to the next tag (TBD, expected within 0-72h). Check the gitHead SHA to verify the 8 NEW commits are included.
+2. **`npm view react dist-tags.experimental`** — confirm the lockstep bump (canary and experimental always bump together).
+3. **For Fragment event-listener leak fix (PR #37160)** — search your codebase for `fragmentRef.removeEventListener` patterns; if any exist that weren't preceded by an `addEventListener`, the fix prevents a real handler leak. **Audit recipe**: `rg -n "fragmentRef\.removeEventListener|\.removeEventListener\(.*'" app/ src/ components/`.
+4. **For portal + focus management fix (PR #37161)** — search for `createPortal` + Fragment patterns; if you have modal-style focus management with portal Fragments, the fix prevents focus-leak bugs. **Audit recipe**: `rg -n "createPortal" app/ src/ components/ | xargs -I {} rg -l "Fragment"` (cross-reference portal usage with Fragment usage).
+5. **For Fragment traversal + `compareDocumentPosition` fixes (PR #37162 + PR #37163)** — rare edge cases; search for `compareDocumentPosition` usage + nested empty Fragment patterns.
+
+### Common Mistakes Section Grows — 8 New Bullets
+
+The Common Mistakes section grows **8 new bullets**:
+
+- **`fragmentRef.removeEventListener(...)` on an unregistered handler leaks the real handler (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37160** — Jack Pope, merged 2026-08-12T00:50:16Z. The bug: `removeEventListener` on an unregistered listener used `splice(-1)`, which deleted the last tracked entry. Symptom: Fragment-instance event listeners accumulate over mount/unmount cycles. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships. Workaround until then: explicitly call `removeEventListener` with the exact handler reference that was `addEventListener`-ed.
+- **Portaled Fragment focus targets don't blur on focus loss (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37161** — Jack Pope, merged 2026-08-12T01:05:13Z. The bug: focus targets inside a portaled Fragment stay focused when focus moves elsewhere. Symptom: modal-style focus management with `createPortal` + Fragment has focus-leak bugs. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships. Workaround until then: explicitly call `.blur()` on portaled focus targets on unmount.
+- **Nested empty Fragments miss correct host siblings in traversal (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37162** — Jack Pope, merged 2026-08-12T01:13:34Z. The bug: `<Fragment><Fragment /></Fragment>` traversal doesn't find correct DOM host siblings. Symptom: event bubbling/dispatch broken for nested empty Fragment patterns. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships. Workaround until then: avoid deeply nested empty Fragments.
+- **`compareDocumentPosition` returns wrong containment for `documentElement`-container or empty-portal Fragments (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37163** — Jack Pope, merged 2026-08-12T01:19:19Z. The bug: Fragments whose container is `documentElement` or that contain only empty portals return incorrect `compareDocumentPosition` results. Symptom: apps using Fragment refs at the document root or with portaled empty Fragments get wrong DOM-containment semantics. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships. Workaround until then: avoid mounting Fragment refs at the document root.
+- **Fragment event listeners don't attach to committed text children (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37164** — Jack Pope, merged 2026-08-12T01:25:13Z. The bug: Fragment event listeners don't propagate to text nodes inserted **after** the Fragment mount. Symptom: rare edge case for Fragment components with dynamically inserted text. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships.
+- **`dispatchEvent` fails silently on Document-container Fragments (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37165** — Jack Pope, merged 2026-08-12T01:32:39Z. The bug: dispatching events on Fragments mounted under `<html>` fails silently. Symptom: rare edge case for apps mounting Fragment refs at the document root. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships.
+- **Fragment listeners don't apply to children inserted into portals later (pre-cleanup) — FIXED in `react@19.3.0-canary` next cut by PR #37166** — Jack Pope, merged 2026-08-12T01:38:18Z. The bug: late-portal children don't receive Fragment listeners. Symptom: rare edge case for Fragment + portal patterns. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships.
+- **Fragment instance commit helpers consolidated into one module (refactor-only, no behavior change) — `react@19.3.0-canary` next cut by PR #37167** — Jack Pope, merged 2026-08-12T01:46:13Z. The refactor: extracts `commitFragmentInstances` + `unmountFragmentInstances` + helpers into `react-reconciler/src/ReactFiberFragmentInstance.js`. No behavior change. Practical impact: zero for users; pure code organization for maintainability. The fact that the cleanup landed as the 8th and final PR of the coordinated push suggests the team wanted the helper consolidation to land alongside the bug fixes.
+
+### Sources
+
+- [React PR #37160 — `[DOM]` Fix Fragment `removeEventListener` dropping tracked listeners](https://github.com/facebook/react/pull/37160) — by Jack Pope, merged 2026-08-12T00:50:16Z, base `main`. The 1st of 8 coordinated Fragment-events cleanup PRs.
+- [React PR #37161 — `[DOM]` Blur portaled Fragment focus targets](https://github.com/facebook/react/pull/37161) — by Jack Pope, merged 2026-08-12T01:05:13Z, base `main`. The 2nd cleanup PR.
+- [React PR #37162 — `[DOM]` Find host siblings for nested empty Fragments](https://github.com/facebook/react/pull/37162) — by Jack Pope, merged 2026-08-12T01:13:34Z, base `main`. The 3rd cleanup PR.
+- [React PR #37163 — `[DOM]` Fix Fragment `compareDocumentPosition` for `documentElement` and empty portals](https://github.com/facebook/react/pull/37163) — by Jack Pope, merged 2026-08-12T01:19:19Z, base `main`. The 4th cleanup PR.
+- [React PR #37164 — `[DOM]` Attach Fragment event listeners to committed text children](https://github.com/facebook/react/pull/37164) — by Jack Pope, merged 2026-08-12T01:25:13Z, base `main`. The 5th cleanup PR.
+- [React PR #37165 — `[DOM]` Fix Fragment `dispatchEvent` when the container is a Document](https://github.com/facebook/react/pull/37165) — by Jack Pope, merged 2026-08-12T01:32:39Z, base `main`. The 6th cleanup PR.
+- [React PR #37166 — `[DOM]` Apply Fragment listeners to children inserted into portals later](https://github.com/facebook/react/pull/37166) — by Jack Pope, merged 2026-08-12T01:38:18Z, base `main`. The 7th cleanup PR.
+- [React PR #37167 — `[Fiber]` Extract Fragment instance commit helpers into their own module](https://github.com/facebook/react/pull/37167) — by Jack Pope, merged 2026-08-12T01:46:13Z, base `main`. The 8th and final cleanup PR (refactor-only).
+- [React main-branch commits feed](https://github.com/facebook/react/commits?sha=main&per_page=15) — verified at 2026-08-12T12:03Z; first 8 commits returned are the Jack Pope Fragment-events cleanup.
+- [React main-branch compare `bfb7a768...main`](https://github.com/facebook/react/compare/bfb7a768...main) — 8 commits ahead as of 2026-08-12T12:03Z.
+- [React `v19.3.0-canary-bfb7a768-20260811` GitHub release tag](https://github.com/facebook/react/releases/tag/v19.3.0-canary-bfb7a768-20260811) — latest published canary; the 8 NEW Fragment-events cleanup PRs are queued for the next canary cut.
+- [React Fragment instance docs](https://react.dev/reference/react/Fragment) — the Fragment API surface that the cleanup PRs target.
+- Cross-reference: `server-components.md` → `## headers() Restored to Live View of Incoming Request (PR #97166) + Turbopack crossOrigin Manifest Fix (PR #97164) — canary.14-ahead (August 12, 2026)` for the Next.js canary.14-ahead lens on the same window.
+- Cross-reference: `routing.md` → `## 16.3.1-canary.13-ahead — Restore the Live headers() View (PR #97166) + Fix Unset crossOrigin in Turbopack Manifests (PR #97164)` for the routing-lens on the same Next.js canary.14-ahead content.
+- Cross-reference: v1.5.49 `## React 19.3.0-canary-bfb7a768-20260811 SHIPPED` section for the prior React canary SHIP event.
+- Cross-reference: v1.5.31 forward-looking note about Jack Pope's Fragment blur work that the v1.5.49 cycle documented as the upstream source for these cleanup PRs.

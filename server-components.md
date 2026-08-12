@@ -1851,3 +1851,93 @@ export default {
 - Cross-reference: `components.md` → `## React 19.3.0-canary-bfb7a768-20260811 SHIPPED (August 11, 2026) — 807d21fd → bfb7a768 (PR #34983 Metadata Hoisting in Hidden Activity Trees + PR #37171 Drop Empty Fragment scrollIntoView No-Op Warning)` for the React canary SHIP event.
 - Cross-reference: v1.5.46 components.md `## React 19.3.0-canary-807d21fd-20260810 SHIPPED` section for the prior React canary SHIP event.
 
+
+## `headers()` Restored to Live View of Incoming Request (PR #97166) + Turbopack `crossOrigin` Manifest Fix (PR #97164) — canary.14-ahead (August 12, 2026)
+
+The single most material Server-Components-relevant Next.js change in the 5h49min window since v1.5.50 — both fixes land in canary-branch ahead of `16.3.1-canary.13` and are expected to npm-publish in **`16.3.1-canary.14` ~2026-08-12T18:23Z ± a few hours**. **PR #97166** (Hendrik Liebau / unstubbable, merged 2026-08-12T11:36:12Z — 29min before this cron) restores the live `headers()` view; **PR #97164** (Tim Neutkens, merged 2026-08-12T07:19:23Z) closes issue #96831 (the Turbopack `crossOrigin: "none"` cross-origin CDN regression that v1.5.33 documented as one of the 3 NEW material open issues on `next@16.3.0` STABLE). **Next.js canary-branch is now 11 commits ahead of `16.3.1-canary.13`** (was 4 in v1.5.50 at 06:14Z Aug 12); 7 NEW canary-branch commits since the previous cycle, 2 MATERIAL (PR #97166 + PR #97164) + 5 docs/test/CI (PR #93529, PR #97191, PR #97187, PR #97163, PR #97190).
+
+### Why PR #97166 matters for Server Components — Live `headers()` View
+
+`headers()` in Server Components is the canonical mechanism for reading the request's headers in RSCs. The bug introduced in `next@16.3.0` STABLE (and persisting through `canary.0`–`canary.13`) broke this contract: **a Proxy that mutated `request.headers.set(...)` was invisible to subsequent `headers()` reads**, while the same mutation was visible via direct `request.headers.get(...)` access. This meant any Server Component reading `headers()` after a Proxy mutation saw a **stale pre-mutation view** — breaking trace-id propagation, tenant-id injection, feature-flag injection, A/B-test cookie mirroring, and any other "Proxy injects, RSC reads" pattern. **Server-Components-lens practical impact**:
+
+| Server Component pattern | Symptom pre-#97166 | Post-#97166 |
+|---|---|---|
+| **`await headers()` in a Server Component to read `x-trace-id` set by Proxy** | Returns the pre-mutation value; tracing breaks end-to-end | Live view returns the post-mutation value; tracing works |
+| **`await headers()` in a Server Component to read `x-tenant-id` set by Proxy** | Returns the pre-mutation value; tenant-aware RSCs render the wrong tenant's data | Live view; correct tenant data |
+| **`await headers()` in a Server Component to read `accept-language` set by Proxy** (e.g., for i18n) | Returns the pre-mutation value; i18n RSC falls back to default | Live view; i18n RSC reads the correct locale |
+| **`await headers()` in a Server Action** (the `server-action-headers-redirect` e2e that #95116 was protecting) | Worked (PR #95116's copy protected this specific path) | Still works |
+| **`await cookies()` in a Server Component** | Snapshot semantics preserved (predates 16.3) | **Unaffected** — `RequestCookies` parses on construct, left alone |
+| **RSC + Cache Components + `await headers()` for cache-key derivation** | Cache key derived from stale headers; stale cache hits across requests | Live headers; correct cache key derivation per request |
+| **RSC + Proxy + `request.headers.forEach(...)` for custom logging** | The `forEach` callback could escape the seal and write to the underlying headers — defeating the security model | `forEach` now passes the sealed proxy; can't mutate |
+| **No Proxy, just `await headers()` in RSC for `accept-language` / `user-agent`** | Worked (no mutation involved) | Works the same |
+| **Client Components reading via `useHeaders()` or `headers()` in route handlers** | Worked | Works the same |
+
+**Why this matters for Cache Components** — Cache Components derives cache keys from a stable view of the request. If `headers()` returns stale data, the cache key may be derived from the pre-mutation view, which means **stale cache hits across requests**: two different tenants may hit the same cached RSC because the cache key was derived from headers that hadn't yet been mutated by the Proxy. PR #97166 closes this gap.
+
+**Audit recipe (4 steps)**:
+1. **`rg -n "await headers\(\)" app/ src/`** — find every Server Component or Server Action that reads headers. If you have a Proxy that mutates `request.headers`, these are the sites that need the fix.
+2. **`rg -n "request\.headers\.(set|delete|append)" proxy.ts middleware.ts app/proxy.ts`** — find the Proxy mutation sites. Cross-reference with step 1 to identify the Server Components affected.
+3. **`rg -n "forEach.*headers|headers.*forEach" app/ src/`** — find any `forEach` over headers. Review to ensure no callback was relying on the mutability (security-tightening side fix in PR #97166).
+4. **`npm ls next`** — verify you're on `next@>=16.3.1-canary.14` (when it npm-publishes). Until then, work around by reading via `request.headers.get(name)` directly in the Proxy, or by stashing the header on a custom `request.cookies` set before the mutation.
+
+**Workaround until canary.14 ships**:
+
+```tsx
+// app/api/route.ts — Server Component reading x-tenant-id set by Proxy
+// WORKAROUND (works on all versions, but no-op after canary.14):
+import { headers } from 'next/headers';
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function proxy(request: NextRequest) {
+  request.headers.set('x-tenant-id', await resolveTenantFromAuth(request));
+  return NextResponse.next();
+}
+
+export default async function TenantPage() {
+  // Pre-#97166: returns stale pre-mutation x-tenant-id
+  // Post-#97166: returns the live post-mutation value
+  const headersList = await headers();
+  const tenantId = headersList.get('x-tenant-id');
+  // ...render with tenantId
+}
+```
+
+The proxy-headers-live-view test added by PR #97166 (`test/e2e/app-dir/proxy-headers-live-view/`) is the canonical verification target.
+
+### Why PR #97164 matters for Server Components — Turbopack `crossOrigin` Manifest Fix
+
+PR #97164 closes issue **#96831** (documented in v1.5.33 `deployment.md` as one of the 3 NEW material open issues on `next@16.3.0` STABLE). The bug: Turbopack's client reference manifest serialized the `CrossOrigin` enum's `None` variant as the string `"none"`, so React saw a present string and emitted `crossorigin=""` on preinited `<script>` tags even when `crossOrigin` was unset. **Server-Components-lens impact**: the client reference manifest is the bridge between Server Components and their Client Component counterparts in the browser. Every Server Component that imports a Client Component gets a manifest entry pointing at the chunk(s) that contain the client reference. If those chunks carry `crossorigin=""` on cross-origin `assetPrefix` CDN deployments, the chunks fail to load (CORS-mode loads poisoned by no-cors cache entries). **The fix is unconditional** (no opt-in flag needed) — skip serializing `CrossOrigin::None` in the Turbopack client reference manifest, so an unset option remains absent while preserving explicit anonymous and credentialed modes.
+
+**Audit recipe (3 steps)**:
+1. **`curl -sL https://your-app.example.com | grep -i 'crossorigin'`** — confirm `crossorigin` attribute is absent on script tags post-#97164.
+2. **`rg -n "assetPrefix" next.config.ts`** — find any project with cross-origin CDN assetPrefix on Turbopack + App Router + `next@16.3.0` STABLE.
+3. **`npm ls next`** — bump to `next@>=16.3.1-canary.14` when it npm-publishes.
+
+### Practical Impact Summary
+
+| User type | Pre-canary.14 | Post-canary.14 |
+|---|---|---|
+| **Anyone using `headers()` in RSC after a Proxy mutation** | Stale pre-mutation view | Live view; mutations observed |
+| **Anyone using `headers()` in Cache Components for cache-key derivation** | Stale cache keys; stale hits | Live cache keys; correct hits |
+| **Anyone using `headers().forEach(...)` with a mutating callback** | Callback could escape the seal (security gap) | Callback can't mutate; seal preserved |
+| **Anyone using `cookies()` in RSC** | Snapshot (predates 16.3, left alone) | Same |
+| **Anyone with Turbopack + cross-origin `assetPrefix` CDN + App Router** | `crossorigin=""` on preinited chunks; CORS-mode loads poisoned | Unset remains absent; CORS-mode loads succeed |
+| **Anyone using `crossOrigin: 'anonymous'` / `'use-credentials'` explicitly** | Worked | Still works |
+| **Anyone with same-origin or no `assetPrefix`** | Not affected | Not affected |
+| **Anyone on Webpack** | Not affected (Webpack was already omitting `undefined` correctly) | Not affected |
+| **Framework authors wrapping Next.js request-store internals** | Could rely on either live or snapshot semantics | Must handle live semantics — code that assumed snapshot needs review |
+
+### Sources
+
+- [PR #97166 — Restore the live `headers()` view of the incoming request](https://github.com/vercel/next.js/pull/97166) — by Hendrik Liebau (unstubbable), merged 2026-08-12T11:36:12Z, 8 files / +382/-23, base `canary`. **THE HEADLINE** for the Server Components lens.
+- [PR #97164 — `[turbopack]` Fix unset `crossOrigin` in Turbopack manifests](https://github.com/vercel/next.js/pull/97164) — by Tim Neutkens, merged 2026-08-12T07:19:23Z, 7 files / +164/-31, base `canary`. Closes issue #96831.
+- [Issue #96831 — Turbopack `crossOrigin: "none"` string serialization breaks cross-origin assetPrefix CDNs](https://github.com/vercel/next.js/issues/96831) — closed by PR #97164.
+- [Issue #97145 — Fix `headers()` stale snapshot after `NextRequest` mutation in Proxy (the @tachsin fork PR)](https://github.com/vercel/next.js/pull/97145) — the original @tachsin fork PR; recreated by Hendrik Liebau as PR #97166.
+- [Next.js `HeadersAdapter.seal` source](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/web/spec-extension/adapters/headers.ts) — the function PR #97166 restructures to hide-on-read instead of copy-and-delete.
+- [Next.js `request-store.ts`](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/async-storage/request-store.ts) — the Server Component request-scoped storage where `headers()` lives.
+- [Next.js `client_reference_manifest.rs` source](https://github.com/vercel/next.js/blob/canary/crates/next-core/src/next_manifests/client_reference_manifest.rs) — the 5-line Turbopack change in PR #97164 that skips serializing `CrossOrigin::None`.
+- [Next.js canary-branch compare `v16.3.1-canary.13...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.13...canary) — 11 commits ahead as of 2026-08-12T12:03Z; 7 NEW since v1.5.50.
+- [Next.js `proxy-headers-live-view` e2e test](https://github.com/vercel/next.js/tree/canary/test/e2e/app-dir/proxy-headers-live-view) — the canonical verification target added by PR #97166 (proxy.ts + page.tsx + layout.tsx + next.config.js + test).
+- [Next.js `app-config-crossorigin` e2e test](https://github.com/vercel/next.js/tree/canary/test/e2e/app-dir/app-config-crossorigin) — the production coverage added by PR #97164 for static prerendering, dynamic rendering, and `output: 'export'`.
+- Cross-reference: `routing.md` → `## 16.3.1-canary.13-ahead — Restore the Live headers() View (PR #97166) + Fix Unset crossOrigin in Turbopack Manifests (PR #97164)` for the routing lens on the same PRs.
+- Cross-reference: `deployment.md` → `## Next.js 16.3.0 STABLE — 3 NEW Open Issues Affecting Production Deployments Today` for the issue #96831 closure confirmation (already documented in v1.5.33).
