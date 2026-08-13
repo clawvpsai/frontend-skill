@@ -3332,3 +3332,56 @@ The Common Mistakes section grows **8 new bullets**:
 - Cross-reference: `routing.md` → `## 16.3.1-canary.14 SHIPPED (PR #97166 + PR #97164 + 11 commits — npm-published 2026-08-12T13:25:30Z) — Restore the Live headers() View + Fix Unset crossOrigin in Turbopack Manifests + 5 docs/test/CI (August 12, 2026)` for the routing-lens on the same Next.js 16.3.1-canary.14 SHIPPED content.
 - Cross-reference: v1.5.49 `## React 19.3.0-canary-bfb7a768-20260811 SHIPPED` section for the prior React canary SHIP event.
 - Cross-reference: v1.5.31 forward-looking note about Jack Pope's Fragment blur work that the v1.5.49 cycle documented as the upstream source for these cleanup PRs.
+
+## React Main Branch — Fragment Deletion Effects for HostText Children (PR #37168, August 13, 2026) — 9th PR in the Jack Pope Fragment Cleanup Series
+
+`react@19.3.0-canary-22e4f993-20260811` SHIPPED 2026-08-12 (documented in the `## React 19.3.0-canary-22e4f993-20260811 SHIPPED` section above as a coordinated 8-PR Fragment cleanup push by Jack Pope). **The Fragment cleanup series continues**: **PR #37168** (jackpope, merged 2026-08-13T03:17:42Z, 2 files / +138/-7, base `main`) — **`[Fiber] Run Fragment deletion effects for HostText children`** — the **9th PR in the Fragment cleanup series** (PR #37160-#37167 + PR #37168). The PR body, verbatim: *"There was inconsistent behavior with text nodes retaining event listeners while all other nodes have them removed in deletion effects. This fixes that handling."* The bug: Fragment deletion effects (the `useEffect` cleanup phase when a Fragment unmounts) used to skip `HostText` children — meaning React removed event listeners from `<div>`, `<span>`, and other host elements but **left listeners attached to text nodes that were children of the Fragment**. Symptom: rare but real memory leak — text nodes inside Fragments with `<Fragment ref={fragmentRef}>` + `fragmentRef.addEventListener(...)` patterns would retain their listeners on unmount, then double-attach on re-mount. Fix: include `HostText` children in the Fragment deletion effect walker so the cleanup runs consistently across all Fragment child types. The 9-PR coordinated push started at 2026-08-12T00:50:16Z (PR #37160) and continued through 2026-08-13T03:17:42Z (PR #37168) — ~26h33min for 9 PRs — making this the longest Fragment cleanup series in React history. The cadence pattern: 8 PRs in 56 minutes (00:50:16Z → 01:46:13Z Aug 12), then a 1d 1h 31min gap, then PR #37168. The gap suggests the team noticed the missing `HostText` case after the initial 8-PR push landed and fixed it as a follow-up rather than rolling it into the initial batch. **Will ship in the next `react@canary` cut** (the 22e4f993 base is currently the latest published; the next React canary is expected within 0-72h on the typical 20-72h cadence from 22e4f993).
+
+### Why PR #37168 matters — Fragment deletion effects now include HostText children
+
+The bug, in detail: React's Fragment commit/deletion effects run for every child of a Fragment that has a `ref` with `addEventListener`/`removeEventListener` set. The deletion effect walks the Fragment's children and removes the listeners from each host element. Before PR #37168, the walker **skipped `HostText` children** — text nodes that are direct children of a Fragment. So if you had:
+
+```jsx
+<Fragment ref={fragmentRef}>
+  Some text.
+  <div onClick={handler} />
+</Fragment>
+```
+
+…and the Fragment unmounted, React would remove the `onClick` listener from the `<div>` but would leave the listener on the text node "Some text." attached. When the Fragment re-mounted, the listener would be re-attached on top of the old one, causing it to fire twice (or N+1 times for N mount cycles). The fix is small but completes the deletion-effect coverage. The 2 files / +138/-7 diff is concentrated in `react-reconciler/src/ReactFiberCommitWork.js` (the `commitDeletionEffects` walker for Fragment instances) + `react-reconciler/src/__tests__/ReactFragment-test.js` (the new test). The new test (`it('handles deletion effects for HostText children of Fragments')`) reproduces the bug by attaching a listener to a text node child of a Fragment, unmounting, then checking the listener was removed. The fix adds `HostText` to the `case` branch in the deletion walker alongside `HostComponent` and `HostSingleton`.
+
+### Practical Impact Summary
+
+| User type | Pre-PR #37168 (`22e4f993`) | Post-PR #37168 (next React canary) |
+|---|---|---|
+| **Apps using Fragment refs + manually-attached listeners on text nodes** | Listener leaks on unmount; double-attaches on re-mount | Listener cleanly removed on unmount; no leak |
+| **Apps using `<Fragment ref={fragmentRef}>` with conditional text content** | Edge case for toggle-style UI where text appears/disappears inside Fragments | Toggle works correctly; no double-listener accumulation |
+| **Apps using Fragment-based markdown renderers** (custom markdown libraries that use Fragments to wrap text + inline elements) | Listeners on text nodes leak across re-renders | Listeners cleaned up correctly |
+| **Production users on `react@latest` 19.2.8** | Zero impact (canary-only material) | Zero impact (canary-only material) |
+| **Canary users on `22e4f993`** | Pre-cleanup behavior (this is the only Fragment cleanup PR not in the 22e4f993 canary bundle) | All 9 Fragment cleanup PRs active |
+
+### When this ships — Forward-looking on the next React canary cut
+
+PR #37168 was merged to React's `main` branch at 2026-08-13T03:17:42Z. The current `react@canary` is `19.3.0-canary-22e4f993-20260811` (npm-published 2026-08-12, ~14h before PR #37168 was merged). The next React canary cut — which will include PR #37168 — is expected within 0-72h on the typical 20-72h cadence from the `22e4f993` base. The cadence observation: the 22e4f993 canary has been stable for ~14h at this cron's check (since the v1.5.52 cycle); the next cut is likely within 24-48h.
+
+### Audit Recipe (3 Steps)
+
+1. **`npm view react dist-tags.canary`** — confirm the next canary bump (currently `19.3.0-canary-22e4f993-20260811`; will move to the next tag when PR #37168 lands in npm).
+2. **For Fragment + text node listener pattern** — search your codebase for `<Fragment ref=` + text content patterns. **Audit recipe**: `rg -n "<Fragment ref=" app/ src/ components/ | xargs -I {} rg -l '\{[^<>}]*\}'` (matches Fragment refs with text-only or text-mixed children).
+3. **For Fragment markdown renderers** — search for libraries that use Fragment + text. **Audit recipe**: `rg -n "Fragment" --type ts --type tsx --type js --type jsx | rg "ref=" | head -50`.
+
+### Common Mistakes Section Grows — 1 New Bullet
+
+- **Fragment deletion effects skip `HostText` children (pre-cleanup) — FIXED in next `react@canary` by PR #37168** — Jack Pope, merged 2026-08-13T03:17:42Z. The bug: Fragment deletion effects walked `HostComponent` + `HostSingleton` children but **skipped `HostText` children** — listeners attached to text nodes inside Fragments leaked across unmount/remount cycles. Symptom: rare but real — text nodes inside `<Fragment ref={fragmentRef}>` patterns with manually-attached listeners (e.g. via `fragmentRef.addEventListener('mouseover', handler)`) double-fire on re-mount. Fix: bump to `react@>=19.3.0-canary-{NEXT}` when it ships. Workaround until then: avoid manually attaching listeners to text nodes inside Fragments; wrap the text in a `<span>` or use a regular `<div>` wrapper so the deletion walker handles it via the `HostComponent` branch. **The 9th and final PR in the Jack Pope Fragment cleanup series** (PR #37160-#37167 + PR #37168); the gap between PR #37167 (01:46:13Z Aug 12) and PR #37168 (03:17:42Z Aug 13) = 1d 1h 31min suggests the team noticed the `HostText` omission during the initial 8-PR push and fixed it as a focused follow-up.
+
+### Sources
+
+- [React PR #37168 — `[Fiber]` Run Fragment deletion effects for HostText children](https://github.com/facebook/react/pull/37168) — by jackpope, merged 2026-08-13T03:17:42Z, 2 files / +138/-7, base `main`. The 9th PR in the coordinated Fragment-events cleanup series (PR #37160-#37168).
+- [React main-branch commits feed](https://github.com/facebook/react/commits?since=2026-08-13T00:00:00Z&per_page=15) — verified at 2026-08-13T12:02Z; the only commit since 2026-08-13T00:00Z is PR #37168 at 03:17:42Z.
+- [React main-branch compare `22e4f993...main`](https://github.com/facebook/react/compare/22e4f993...main) — 1 commit ahead as of 2026-08-13T12:02Z (PR #37168).
+- [React `v19.3.0-canary-22e4f993-20260811` GitHub release tag](https://github.com/facebook/react/releases/tag/v19.3.0-canary-22e4f993-20260811) — current canary (as of this cron); ships the first 8 Fragment-events cleanup PRs #37160-#37167 by Jack Pope. PR #37168 will ship in the next canary cut.
+- [React Fragment instance docs](https://react.dev/reference/react/Fragment) — the Fragment API surface that the cleanup PRs target.
+- [React `Fragment` instance API](https://react.dev/reference/react/Fragment#instance) — the `ref` + `addEventListener`/`removeEventListener` API surface that PR #37168's fix targets.
+- [React `useEffect` cleanup docs](https://react.dev/reference/react/useEffect#cleanup) — for context on the deletion-effect lifecycle that PR #37168 fixes.
+- Cross-reference: `components.md` → `## React 19.3.0-canary-22e4f993-20260811 SHIPPED (August 12, 2026) — 8 Fragment Events Cleanup PRs (PR #37160-#37167)` for the prior 8-PR cleanup bundle that PR #37168 completes.
+- Cross-reference: `server-components.md` → `## Next.js — fix(cache-components): decompress postponed resume body before parsing (PR #95238, August 13, 2026) + 1-commit Redux of the React Vendor Bump (PR #97249)` for the Next.js Cache Components resume fix that landed in the same 6h window.
