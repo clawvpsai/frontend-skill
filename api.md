@@ -1466,3 +1466,275 @@ rg -n "next/image|Image\b" app/ src/ components/
 - [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — confirms 0 commits ahead at 2026-08-09T06:02Z (canary-branch exactly at canary.9; the PR is open, not yet merged)
 - [Next.js v16.3.1-canary.9 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.9) — npm-published 2026-08-08T23:44:17Z; the latest canary
 - Cross-references: `routing.md` → `## Next.js 16.3.x Routing — New Open Issues (August 8–9, 2026) — Server Actions Routing Refactor (PR #96950, Forward-Looking for 16.4) + Sibling PPR Prefetch Dropped (Issue #96965) + unstable_cache fetchUrl Percent-Encoding Fix (PR #96954) + Dev-Overlay Route-Info Copy-on-Write (PR #96968) + @next/playwright instant() Cookie Scoping (PR #96962)` for the routing-surface lens on the same 6h window; `deployment.md` → `## Next.js 16.3.x Deployment — 4 NEW Open Items Affecting Production (August 8–9, 2026) — Windows Turbopack watchOptions + RHEL 8 glibc + sitemap/robots fix-in-progress + ABBA Deadlock` for the deployment-bounded lens
+
+## Next.js 16.3.1-canary.10 → canary.15 API-Surface Changes (August 10–13, 2026) — PR #97166 Live `headers()` View Restored + PR #96937 `unstable_cache` Item Name Encoding + PR #97040 Static/App Shell Incompatibility Tracking + PR #97247 RDC Compression Rollout Controls + PR #97181 Literal Exports in `'use cache'` Files + PR #95439 Stale Data After Navigation Despite Revalidation Fix
+
+The 6h window since the v1.5.39 cycle (which closed out the canary.9 API-surface lens with PR #96606 + PR #96681 + #96766) has surfaced **6 canary releases = 81 NEW commits on the canary-branch** (verified at 2026-08-13T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.9...canary` returning `ahead_by: 81, behind_by: 0`; was 0 ahead at v1.5.39). The 6 canary releases are canary.10 (1 commit), canary.11 (28 commits), canary.12 (14 commits), canary.13 (4 commits), canary.14 (11 commits), canary.15 (15 commits). **From an API-surface lens**, the 81 commits decompose to:
+
+- **6 MATERIAL API/PR-or-runtime-surface PRs** (every Route Handler / Server Action / middleware / cache API user should know about)
+- **5 medium material PRs** (`'use cache'` debug log improvements, request-insights tracing, route-handler build pipeline, Nav Inspector bug fix)
+- **70 non-material PRs** (docs / tests / CI / Turbopack internal / React vendor bumps)
+
+The 6 MATERIAL PRs are detailed below; the 5 medium-material PRs are summarized at the end.
+
+### Summary Table — 6 NEW API-Relevant Items (August 10–13, 2026)
+
+| # | Type | Title | Author | Merged | Canary | Material to API? | Why it matters |
+|---|---|---|---|---|---|---|---|
+| [PR #97166](https://github.com/vercel/next.js/pull/97166) | Merged | `Restore the live headers() view of the incoming request` | unstubbable | 2026-08-12T11:36:13Z | **canary.14** | **YES — affects every route handler / middleware / Server Action that uses `headers()`** | Since 16.3.0, `headers()` returned a stale snapshot; Proxy mutations on `request.headers` were NOT visible via `headers()`; the fix restores the live view via `HeadersAdapter.seal` with a hide-on-read design |
+| [PR #96937](https://github.com/vercel/next.js/pull/96937) | Merged | `Encode the cache item name built by unstable_cache` | unstubbable | 2026-08-10T23:21:29Z | **canary.11** | **YES — affects every cache handler + dynamic route using `unstable_cache` with non-ASCII query params** | Item names with URLSearchParams non-ASCII chars failed the Latin-1 header validation; the fix encodes with `encodeHeaderSafe` (the renamed `encodeCacheTag`) |
+| [PR #97040](https://github.com/vercel/next.js/pull/97040) | Merged | `[CC] Track APIs that cause incompatible static/app shells` | lubieowoce | 2026-08-10T16:29:50Z | **canary.11** | **YES — Cache Components routing surface** | New `workUnitStore.hasIncompatibleShellContent` field; renamed `needsSessionShell` → `needsAppShell`; future `navigation()` + `prefetch()` APIs will toggle this flag |
+| [PR #97247](https://github.com/vercel/next.js/pull/97247) | Merged | `Add RDC compression rollout controls` | gnoff | 2026-08-13T04:37:24Z | **canary.16** (forward-looking) | **YES — new deployment option for Cache Components + PPR users** | New `experimental.disableResumeDataCacheCompression` opt-in flag (default false); new warn on raw UTF-8 size BEFORE compression; eliminates compression-ratio-estimate + duplicate-serialization cost |
+| [PR #97181](https://github.com/vercel/next.js/pull/97181) | Merged | `Allow literal exports in 'use cache' files` | unstubbable | 2026-08-12T04:42:24Z | **canary.14** | **YES — route segment config in cache files** | A file-level `'use cache'` directive now allows `export const instant = false` (or similar segment config); the Cache Components migration codemod relies on this |
+| [PR #95439](https://github.com/vercel/next.js/pull/95439) | Merged | `Fix stale data after navigation despite revalidation` | gaearon | 2026-08-12T00:43:18Z | **canary.14** | **YES — Server Action + revalidation flows** | The queue's React state always got updated in the order of dispatching; navigation's promise was last, so subsequent action revalidation wasn't reflected; the fix re-renders at the end with the final queue state if preempted |
+
+### Why PR #97166 matters — Live `headers()` view restored (HEADLINE OF THIS CYCLE)
+
+**Today (pre-#97166, canary.0 → canary.13):** Since 16.3.0 stable, **`headers()` returned a stale snapshot that did not update with Proxy mutations on `request.headers`**. The PR body, verbatim:
+
+> #94703 and #95116 both changed how internal headers are kept out of userland `headers()`, and between them they left `headers()` detached from the request it describes. #94703 started stripping the dev-only request-id headers alongside the flight headers that had been stripped for much longer. Those deletes ran against the shared request headers, because `HeadersAdapter.from` returns a `Headers` instance unchanged instead of copying it, and removing the request-id headers there broke the dev debug channel when the dev server rendered a redirect target after a server action. #95116 fixed that by copying the headers before stripping them.
+>
+> Neither change set out to alter whether `headers()` follows the request. The sealed view has read through to the underlying headers for as long as `HeadersAdapter.seal` has existed, and its own unit tests assert that. The copy was only a way to keep the deletes from escaping into `req.headers`, and the detached view was collateral that no test covered.
+>
+> The result, since 16.3.0, is that a Proxy which writes a header onto `request.headers` and then reads it back through `headers()` gets the value from before the write. Reading the same header directly off `request.headers` returns the new value, so two APIs describing the same request disagree, and a second `headers()` call returns the same stale view. Whether the write is seen at all depends on ordering, because the view is built on first access: a write made before the first `headers()` call is observed, and the identical write made after it is not.
+
+**Post-#97166 (canary.14+):** The fix:
+
+1. **`HeadersAdapter.seal` now accepts a set of header names to omit from every read operation.** `getHeaders` seals the shared request headers directly with the flight headers + dev request-id headers hidden. Both earlier intentions survive — the internal headers stay on the request where the framework still reads them, they stay invisible to userland `headers()`, and the sealed view tracks the request again.
+2. **Hiding on read is slightly stricter than the delete it replaces.** The delete ran once, when the view was created, so an internal header written to the request afterwards would have shown through. The new hidden-on-read design always hides, no matter when the header is written.
+3. **Security fix: `forEach` parent argument.** While restructuring `seal`, the `parent` argument that `forEach` passes to its callback was corrected. The native method passes the unsealed target, which hands the callback a mutable handle on the underlying headers and defeats the seal. Both the plain and the hiding handler now pass the sealed proxy instead.
+4. **`cookies()` is unaffected and stays a snapshot.** Because `RequestCookies` parses the `cookie` header when it is constructed. That predates 16.3 and is left alone here.
+
+**Practical impact:**
+
+| User type | Pre-#97166 (16.3.0 STABLE → canary.13) | Post-#97166 (canary.14+) |
+|---|---|---|
+| **Route handler injecting a trace header via Proxy on `request.headers` then reading via `headers()`** | Stale view; trace-id not visible | Live view; trace-id visible |
+| **Middleware writing a header to `request.headers` then passing to a Server Component** | Header lost across the boundary | Header preserved |
+| **Server Action setting a header on `request.headers` then reading via `headers()` in same request** | Stale view depending on call ordering | Live view |
+| **Anyone using `headers().forEach((value, key, parent) => { parent.set(...) })`** | Mutable handle on underlying headers (defeats seal) | Sealed proxy (parent.set throws) |
+| **Anyone using `headers()` for read-only access** | Works (their accidental mutations escaped anyway) | Works (no escape) |
+| **Anyone using `cookies()`** | Snapshot, parsed once at construction | Unchanged — still snapshot (out of scope for this PR) |
+
+**Why this matters for route handlers:** Many production route handlers use `Proxy` on `request.headers` to inject context (trace-id, request-id, audit trail, A/B-test variant) that they then read via `headers()` in nested Server Components or Server Actions. Pre-#97166, the injected header was invisible via `headers()`; the route handler saw its own mutation via `request.headers.get()` but a Server Component in the same render tree did not see it via `headers()`. The fix makes the two APIs agree throughout a Proxy run.
+
+**The two APIs (headers() / request.headers) now agree throughout a Proxy run.** This is the canonical "previous behavior was a bug" — code that depended on the stale view was incidental, not intentional.
+
+**Migration-required-none.** No public API changes; no config; no codemod. Just bump to `next@16.3.1-canary.14+` for the live view.
+
+**Forward-looking note:** PR #97166 is **SHIPPED in `next@16.3.1-canary.14`** (npm-published 2026-08-12T13:01:25Z; the v1.5.51 cycle documented the canary-branch-ahead-of-canary.13 PR; the v1.5.52 cycle confirmed the SHIP). Will ship in `next@16.3.1` stable within 1-2 weeks on the canary cadence.
+
+### Why PR #96937 matters — `unstable_cache` item name encoding
+
+**Today (pre-#96937, canary.0 → canary.10):** `unstable_cache` assembles a cache item name from the request URL pathname + URLSearchParams + the callback name. The pathname stays percent-encoded, but `URLSearchParams` returns **decoded** keys and values. When any of those contains a character above U+00FF (Latin-1), the conversion to a header value (for cache handlers that use HTTP headers for metadata) **throws before the request is dispatched**. So:
+
+- The read never reaches the cache
+- The write that follows it fails the same way
+- Nothing is stored, nothing is found
+- The entry falls back to the origin on every render
+
+**The bug is reachable for any dynamic route that calls `unstable_cache` with non-ASCII query parameters**, whether or not the route reads `searchParams`. A callback whose name holds such a character is also affected, though a production build usually renames the binding.
+
+**Post-#96937 (canary.11+):** The fix encodes the assembled name with `encodeHeaderSafe` (the renamed `encodeCacheTag` — see PR #96936 below). That helper only replaces characters outside the class Node accepts in a header value, so the separating spaces and the URL punctuation are preserved and the name keeps its documented shape. **Every name that is representable today is returned unchanged, so this is inert for existing entries.** The item name is a label — it is not the cache key, which is derived separately from the callback's key parts and arguments, and the Suspense Cache API neither parses nor matches on it.
+
+**Practical impact:**
+
+| User type | Pre-#96937 | Post-#96937 |
+|---|---|---|
+| **Dynamic route with non-ASCII `searchParams` calling `unstable_cache`** | Throws on every render; fallback to origin | Works; encoded name in cache handler header |
+| **Dynamic route with ASCII `searchParams` calling `unstable_cache`** | Works | Works (unchanged) |
+| **Reverse proxy / Apache mod_rewrite / NGINX `proxy_set_header` with non-ASCII URL path** | Throws if path component has non-ASCII after normalizing | Works (encoded) |
+| **Apps with `unstable_cache` deployed to Vercel where the bridge sends headers via `fetch`** | May throw on non-ASCII path | Works |
+| **Apps with custom `cacheHandler` that uses meta headers** | Throws on non-ASCII URL | Works (encoded) |
+
+**Fixes #76286** — the issue has been open since 2024.
+
+**Migration-required-none.** No public API changes; no config; no codemod. Just bump to `next@16.3.1-canary.11+` for the encoding fix.
+
+**Forward-looking note:** PR #96937 is **SHIPPED in `next@16.3.1-canary.11`** (npm-published 2026-08-10T23:48:31Z). Will ship in `next@16.3.1` stable within 1-2 weeks.
+
+### PR #96936 — Rename `encodeCacheTag` to `encodeHeaderSafe` (canary.11, refactor)
+
+[Pure refactor; no behavior change.] The helper percent-encodes anything outside Node's valid header-value class so a string can be serialized into an HTTP header. That is a property of the transport, not of cache tags, and the next caller is `unstable_cache`'s synthetic `fetchUrl`, which is a cache item name rather than a tag. Naming the function after one of its callers would make that call site read as though it were tagging something. This change renames the module to `encode-header-safe.ts` and the function to `encodeHeaderSafe`, and generalizes the leading paragraph of the doc comment accordingly. The function body is identical apart from the parameter name. **Recommended:** rename your internal imports if you were importing `encodeCacheTag` from Next.js source (rare).
+
+### Why PR #97040 matters — Static/App Shell Incompatibility Tracking (Cache Components)
+
+**The new `workUnitStore.hasIncompatibleShellContent` field.** Certain APIs resolve in different stages depending on whether they're in a static prerender or a runtime prerender:
+
+- **Static `params`** — previously the only instance of this, and was detectable statically
+- **`navigation()` and `prefetch()`** (upcoming) — next-stage APIs that future Cache Components will support; not statically detectable
+
+The PR body, verbatim:
+
+> When a page uses one of these, we need separate renders for Static and Instant validation. Previously, static `params` was the only instance of this, and we could detect those for a route statically. However, we have no way of statically knowing if the upcoming `navigation()` or `prefetch()` are going to be called on a given route, so we need to switch to dynamically tracking API usage instead.
+>
+> We do this via a mutable field `workUnitStore.hasIncompatibleShellContent`, which starts out as `false` and may get set to `true` if one of the APIs is used. Conceptually, the field works in tandem with `workUnitStore.needsAppShell`¹ — `needsAppShell` controls when things resolve, and `hasIncompatibleShellContent` tracks whether the result would've been equivalent if `needsAppShell` was set to the opposite value (i.e. are the static and runtime shells equivalent).
+>
+> This PR moves static `params` to use this new method. We instrument the resulting `params` promise and set `hasIncompatibleShellContent` when it's `then()`ed, which seems close enough to tracking use.
+
+The `¹` footnote (also from the PR body): "`needsSessionShell` was renamed to `needsAppShell`, because 'session shell' is not really a term we're using anywhere else right now, it's basically a leftover."
+
+**Practical impact:**
+
+- **Cache Components users:** No behavior change for current code. The new field is internal — it tracks when a route uses APIs that have different static-vs-runtime resolution. Apps that opt into `cacheComponents: true` but don't use the upcoming `navigation()` / `prefetch()` APIs see no change.
+- **Future Cache Components users (when `navigation()` / `prefetch()` ship):** Routes that call those APIs will trigger `hasIncompatibleShellContent = true`, which means a separate static validation render will be performed. This is the design choice that allows the upcoming navigation APIs to work without forcing every Cache Components route to do a runtime prerender.
+- **Framework authors:** The `workUnitStore` API surface gains a new field. If you have a custom Cache Components integration, you'll need to handle `hasIncompatibleShellContent` and `needsAppShell` (the renamed `needsSessionShell`).
+
+**Migration-required-none** for users. The field is internal. The `needsSessionShell` → `needsAppShell` rename is also internal.
+
+**Forward-looking note:** PR #97040 is **SHIPPED in `next@16.3.1-canary.11`** (npm-published 2026-08-10T23:48:31Z). Will ship in `next@16.3.1` stable within 1-2 weeks.
+
+### Why PR #97247 matters — RDC Compression Rollout Controls
+
+**The new `experimental.disableResumeDataCacheCompression` opt-in flag.** The PR body, verbatim:
+
+> Warn during prerendering when the exact UTF-8 size of the uncompressed postponed-state body exceeds `experimental.maxPostponedStateSize` while Resume Data Cache compression is enabled.
+>
+> Add `experimental.disableResumeDataCacheCompression` as an opt-in rollout flag. It defaults to `false`, preserving the existing compressed representation. When enabled, both persistence and parsing use raw JSON, allowing a controlled minimal-mode rollout without format negotiation.
+>
+> RDC serialization now happens in explicit steps: stringify, check the raw body size, then conditionally deflate. This avoids compression-ratio estimates and duplicate serialization.
+>
+> This is the lower PR in a two-PR stack. It can land first so the raw representation can be enabled selectively for minimal-mode deployments and observed on canary before compression is removed.
+
+**What changed:**
+
+1. **New `experimental.disableResumeDataCacheCompression` flag** — defaults to `false`. When `true`, both persistence and parsing use raw JSON, enabling a controlled minimal-mode rollout without format negotiation.
+2. **The `maxPostponedStateSize` warning now fires on raw UTF-8 size BEFORE compression** — previously it fired on the compressed size, which was confusing for ops teams trying to reason about quota.
+3. **RDC serialization is now in explicit steps** — stringify → check raw body size → conditionally deflate. This eliminates the compression-ratio-estimate + duplicate-serialization work that was happening per cache entry that exceeded `experimental.maxPostponedStateSize`.
+
+**Practical impact:**
+
+| User type | Pre-#97247 | Post-#97247 |
+|---|---|---|
+| **Apps with `cacheComponents: true` writing large RDC entries** | Possible double-serialization cost on entries exceeding `maxPostponedStateSize` (estimate + actual) | Single explicit-step serialization; no estimate cost |
+| **Apps hitting `maxPostponedStateSize` warnings** | Warning fired on compressed size (incomparable to raw UTF-8 budgets) | Warning fires on raw UTF-8 size (matches the actual stored bytes when compression is disabled) |
+| **Minimal-mode deployments using a custom cache handler** | Stuck with the compressed format | Can opt into raw JSON via `experimental.disableResumeDataCacheCompression: true` |
+| **Apps NOT using `cacheComponents: true`** | N/A | N/A (no RDC, no flag) |
+
+**Why this matters:** the RDC (Resume Data Cache) is the format that powers PPR resume + Cache Components. The previous code path had a subtle cost: it would serialize once for the size estimate, then again for the actual storage (compression). For large entries that exceeded `maxPostponedStateSize`, the duplicate work was multiples of the entry size. The new explicit-step path eliminates that.
+
+**Migration-required-none** for the default path (compression still on). The flag is opt-in.
+
+**Forward-looking note:** PR #97247 is **NOT YET SHIPPED — it's on canary.16-ahead** (the canary-branch commit landed at 2026-08-13T04:37:24Z; canary.15 npm-publish was 2026-08-12T23:26:21Z; canary.16 npm-publish expected within 8-12h on the accelerated 24h cadence). Will ship in `next@16.3.1-canary.16` first, then `next@16.3.1` stable within 1-2 weeks.
+
+### Why PR #97181 matters — `export const instant = false` (and Similar) Now Allowed in `'use cache'` Files
+
+**The bug:** A file-level `'use cache'` directive rejected any export initialized with a literal, so `export const instant = false` in a page or layout failed the build with:
+
+```
+Only async functions are allowed to be exported in a 'use cache' file
+```
+
+**The asymmetry:** Object and array literals were already exempt, which meant `export const instant = { level: 'warning' }` compiled while `export const instant = false` did not.
+
+**Post-#97181 (canary.14+):** The ban was never needed for cache files. `may_need_cache_runtime_wrapper` already groups literals with object and array literals as statically known non-functions that need no cache wrapper, and `'use cache'` files deliberately skip the `ensureServerEntryExports` runtime check that `"use server"` files use to assert that every export is a function. The check now applies only when `in_action_file` is set, so a `"use server"` file keeps failing at build time on an exported literal.
+
+**Why this matters:** Route segment config is read from the module's runtime exports, in `app-segments.ts` during build and in `instant-config.tsx` at render time, so the export has to survive the transform as a plain value rather than being stripped or wrapped. **The Cache Components migration codemod relies on this when it adds `export const instant = false` to page and layout files.**
+
+**Practical impact:**
+
+| User type | Pre-#97181 (canary.0 → canary.13) | Post-#97181 (canary.14+) |
+|---|---|---|
+| **Cache Components migration codemod adding `export const instant = false` to a cache file** | Build fails | Build succeeds |
+| **Page/layout with file-level `'use cache'` and `export const dynamic = 'force-static'`** | Build fails | Build succeeds |
+| **Page/layout with file-level `'use cache'` and `export const revalidate = 3600`** | Build fails | Build succeeds |
+| **`"use server"` file with literal export** | Build fails (correct behavior preserved) | Build fails (unchanged) |
+| **Plain Server Component file (no `'use cache'`) with literal export** | Works (unchanged) | Works (unchanged) |
+
+**Migration-required-none** for users who weren't trying to do this. Codemod users get the fix for free.
+
+**Forward-looking note:** PR #97181 is **SHIPPED in `next@16.3.1-canary.14`** (npm-published 2026-08-12T13:01:25Z). Will ship in `next@16.3.1` stable within 1-2 weeks.
+
+### Why PR #95439 matters — Fix Stale Data After Navigation Despite Revalidation
+
+**The bug (gaearon, the fix author):** The queue's React state always gets updated in the order of dispatching. So if a navigation displaced pending actions, it's the *navigation's* promise that was last. So when the pending action runs after it, that action's state is no longer taken into account, even if it revalidated. This is why the new data won't reflect on the screen.
+
+**Practical impact for users:**
+
+- **Server Action + revalidation flows:** `<form action={serverAction}>` followed by `router.push('/posts')` or `<Link>` would previously lose the revalidation state if the navigation was in flight. The new data didn't reflect on the screen.
+- **Apps using `useFormState` + `revalidateTag` / `revalidatePath`:** Same — the revalidation might be silently dropped if a navigation was racing.
+- **Apps using `router.refresh()` + concurrent Server Actions:** Same — the refresh might be silently dropped.
+
+**Post-#97166 (canary.14+):** The fix re-renders at the end with the final queue state if it was preempted. The new data DOES reflect on the screen.
+
+**The PR's test minimal reproduction (from gaearon's PR body):**
+
+> Basically, the queue's React state always gets updated in the order of dispatching. So if a navigation displaced pending actions, it's the *navigation's* promise that was last. So when the pending action runs after it, that action's state is no longer taken into account, even if it revalidated. This is why the new data won't reflect on the screen.
+>
+> With the fix, the final state is properly reflected.
+
+**The minimal app linked in the PR body shows the bug visually** — pre-#95439, the screen shows stale data after the Server Action revalidates and the navigation resolves; post-#95439, the screen shows the new data.
+
+**Migration-required-none.** No public API changes; no config; no codemod. Just bump to `next@16.3.1-canary.14+` for the fix.
+
+**Forward-looking note:** PR #95439 is **SHIPPED in `next@16.3.1-canary.14`** (npm-published 2026-08-12T13:01:25Z). Will ship in `next@16.3.1` stable within 1-2 weeks. The PR has been open since 2026-07-02 (43 days) — long-standing production bug now fixed.
+
+### 5 medium-material PRs in the 6h window
+
+| # | Title | Why it's medium-material |
+|---|---|---|
+| [PR #97037](https://github.com/vercel/next.js/pull/97037) | `Prefix 'use cache' debug logs with the full directive` (eps1lon, canary.11) | Debug-log improvement: with `NEXT_PRIVATE_DEBUG_CACHE` enabled, every log line from the `"use cache"` wrapper used the same generic `use-cache:` prefix. Each wrapper line is now prefixed with the full quoted directive, derived from the handler kind: `'use cache'` for the default kind, `'use cache: <kind>'` otherwise. Helpful for debugging `'use cache: private'` vs `'use cache: remote'` vs `'use cache'`. |
+| [PR #97139](https://github.com/vercel/next.js/pull/97139) | `Use emitted app entries for post-build processing` (gnoff, canary.11) | Build-pipeline change: route discovery feeds app page keys both into compilation and into post-build work (adapters, standalone output). Now filters the discovered keys against `app-paths-manifest` after compilation and uses that emitted set for post-build processing. **Zero behavior change today** (every discovered app entry is emitted); future-proofing for selective emission. |
+| [PR #97050](https://github.com/vercel/next.js/pull/97050) | `Fix Nav Inspector request loop on repeat captures` (acdlite, canary.11) | Bug fix for the developer-facing Nav Inspector: enable the Nav Inspector, click a `<Link prefetch={true}>`, close the inspector, navigate home, re-enable it, click the same link. The app hung in a pending "Compiling..." state while firing prefetch requests in an infinite loop (~30/sec). The Instant Navigation Testing lock's `ownedEntries` filter approach was replaced with a per-scope private `CacheMap`. **Production builds without the testing API compile down to the previous single-map behavior — zero production impact.** |
+| [PR #96453](https://github.com/vercel/next.js/pull/96453) + [PR #96454](https://github.com/vercel/next.js/pull/96454) | `Trace development route preparation` + `Trace development route compilation` (canary.11) | Request Insights / OpenTelemetry: introduces the first bounded route-preparation phases used by Request Insights. Instruments existing matcher and bundler boundaries without changing their behavior or making the spans default-public OpenTelemetry data. The internal phases are surfaced as `match route`, `prepare route`, `reload route matchers`, and `compile route` in Request Insights. **Dev-only — zero production impact.** |
+| [PR #96941](https://github.com/vercel/next.js/pull/96941) | `[turbopack] Retain fewer stale cache versions and use a TTL` (canary.13) | Dev-disk-usage fix: in CI, no old versions of the db are retained. In dev / non-CI, up to 2 were retained indefinitely. Now reduces to no more than 1 old version, and only for 3 days. The `CURRENT` file format is modified to store a small JSON object containing `max_sequence_number` and `mtime`. **Dev-only — zero production impact.** |
+
+### Combined Audit Recipe (api.md lens)
+
+```bash
+# 1. Are you using `headers()` in route handlers / middleware / Server Actions
+#    with a Proxy that mutates `request.headers`?
+rg -n "headers\s*\(\s*\)" app/ src/ | rg -v ".test." | head -20
+# If yes: pre-#97166 (canary.14), your `headers()` returned a stale snapshot
+# Post-#97166 (canary.14+): live view, mutations are visible
+# Audit: bump to next@16.3.1-canary.14+ and verify the trace-id flow
+
+# 2. Are you using unstable_cache with non-ASCII query params?
+rg -n "unstable_cache" app/ src/ | head -20
+# If yes: pre-#96937 (canary.11), you may have hit the Latin-1 header-validation throw
+# Post-#96937 (canary.11+): encoded item name works
+# Audit: bump to next@16.3.1-canary.11+ and verify the cache-miss path
+
+# 3. Are you using Cache Components with upcoming navigation()/prefetch() APIs?
+# Pre-#97040 (canary.11): static params was the only case; detected statically
+# Post-#97040 (canary.11+): hasIncompatibleShellContent field tracks upcoming APIs
+# No user-facing audit needed unless you have a custom Cache Components integration
+
+# 4. Are you using Cache Components with large cache entries?
+# Check for maxPostponedStateSize warnings in your build logs:
+# rg "maxPostponedStateSize" .next/ logs/ 2>/dev/null
+# If pre-#97247 (canary.16): warnings fired on compressed size
+# If post-#97247 (canary.16+): warnings fire on raw UTF-8 size
+# Audit: bump to next@16.3.1-canary.16+ OR opt-in via experimental.disableResumeDataCacheCompression
+
+# 5. Are you using the Cache Components migration codemod?
+# Pre-#97181 (canary.14): codemod-added `export const instant = false` fails the build
+# Post-#97181 (canary.14+): codemod success
+# Audit: bump to next@16.3.1-canary.14+
+
+# 6. Are you using Server Action + revalidation + navigation?
+# Pre-#95439 (canary.14): revalidation may be silently dropped if navigation is racing
+# Post-#95439 (canary.14+): revalidation is honored on the final render
+# Audit: bump to next@16.3.1-canary.14+ and verify the new data shows on screen
+```
+
+### Sources
+
+- [PR #97166 — `Restore the live headers() view of the incoming request`](https://github.com/vercel/next.js/pull/97166) — unstubbable, merged 2026-08-12T11:36:13Z, **SHIPPED in `next@16.3.1-canary.14`**, the 8-file / +382/-23 fix; closes issue #97145 + the regression caused by #94703 + #95116
+- [PR #97166 files diff](https://github.com/vercel/next.js/pull/97166/files) — full 8-file breakdown incl. `HeadersAdapter.seal` restructure + the `forEach` parent argument fix + the `getHeaders` rewire
+- [PR #96937 — `Encode the cache item name built by unstable_cache`](https://github.com/vercel/next.js/pull/96937) — unstubbable, merged 2026-08-10T23:21:29Z, **SHIPPED in `next@16.3.1-canary.11`**, fixes issue #76286
+- [PR #96936 — `[refactor] Rename encodeCacheTag to encodeHeaderSafe`](https://github.com/vercel/next.js/pull/96936) — unstubbable, merged 2026-08-10T23:21:27Z, **SHIPPED in `next@16.3.1-canary.11`**, pure refactor
+- [PR #97040 — `[CC] Track APIs that cause incompatible static/app shells`](https://github.com/vercel/next.js/pull/97040) — lubieowoce, merged 2026-08-10T16:29:50Z, **SHIPPED in `next@16.3.1-canary.11`**, the new `workUnitStore.hasIncompatibleShellContent` field + the `needsSessionShell` → `needsAppShell` rename
+- [PR #97247 — `Add RDC compression rollout controls`](https://github.com/vercel/next.js/pull/97247) — gnoff, merged 2026-08-13T04:37:24Z, **NOT YET SHIPPED — canary.16-ahead**; the new `experimental.disableResumeDataCacheCompression` opt-in flag + the `maxPostponedStateSize` warning on raw UTF-8 size BEFORE compression
+- [PR #97181 — `Allow literal exports in 'use cache' files`](https://github.com/vercel/next.js/pull/97181) — unstubbable, merged 2026-08-12T04:42:24Z, **SHIPPED in `next@16.3.1-canary.14`**, the build fix for the Cache Components migration codemod
+- [PR #95439 — `Fix stale data after navigation despite revalidation`](https://github.com/vercel/next.js/pull/95439) — gaearon, merged 2026-08-12T00:43:18Z, **SHIPPED in `next@16.3.1-canary.14`**, the Server Action + revalidation race-condition fix
+- [PR #97037 — `Prefix 'use cache' debug logs with the full directive`](https://github.com/vercel/next.js/pull/97037) — eps1lon, canary.11, the debug log improvement
+- [PR #97139 — `Use emitted app entries for post-build processing`](https://github.com/vercel/next.js/pull/97139) — gnoff, canary.11, the build-pipeline change
+- [PR #97050 — `Fix Nav Inspector request loop on repeat captures`](https://github.com/vercel/next.js/pull/97050) — acdlite, canary.11, the Nav Inspector developer-tooling bug fix
+- [PR #96453 — `Trace development route preparation`](https://github.com/vercel/next.js/pull/96453) + [PR #96454 — `Trace development route compilation`](https://github.com/vercel/next.js/pull/96454) — canary.11, the Request Insights / OpenTelemetry dev-tracing pair
+- [PR #96941 — `[turbopack] Retain fewer stale cache versions and use a TTL`](https://github.com/vercel/next.js/pull/96941) — canary.13, the dev-disk-usage fix
+- [Next.js v16.3.1-canary.14 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.14) — 2026-08-12T13:25:30Z; bundled PR #97166 + PR #97181 + PR #95439 + 8 others
+- [Next.js v16.3.1-canary.11 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.11) — 2026-08-10T23:48:31Z; bundled PR #96937 + PR #96936 + PR #97040 + 25 others
+- [Next.js v16.3.1-canary.15 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.15) — 2026-08-12T23:50:16Z; the latest canary at this cron; the 6 canary releases enclosed 81 NEW commits on the canary-branch
+- [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — 81 commits ahead at 2026-08-13T18:02Z; the version-tag for canary.16 is queued on the canary branch
+- Cross-references: `routing.md` → `## Next.js 16.3.1-canary.13-ahead — Restore the Live Headers() View of the Incoming Request (PR #97166)` for the routing-layer lens on PR #97166; `server-components.md` → `## Next.js 16.3.1-canary.13-ahead — Restore the Live Headers() View (PR #97166) + Fix Unset crossOrigin in Turbopack Manifests (PR #97164)` for the Server Components / RSC lens; `deployment.md` → the deployment-impact lens for PR #97247 RDC compression rollout controls; `state.md` → the cache-invalidation API surface for PR #96937 (the `unstable_cache` item-name encoding from the cache-API lens); `components.md` → the React-vendor-bump observation for PR #97249 (the 22e4f993-20260811 React vendor bump that brings the 8-PR Fragment cleanup bundle into Next.js's bundled React); `forms.md` → the v1.5.54 Zod 6-PR hardening burst + RHF PR #13639 getErrors() lens for the data-validation API surface

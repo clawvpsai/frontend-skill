@@ -1666,3 +1666,109 @@ Plus docs rewrites in `docs/01-app/03-api-reference/05-config/01-next-config-js/
 - **Forgetting to run `npx tsgo --noEmit`** — TS 7 ships the Go-native compiler as `tsgo`; `tsc --noEmit` is still the TS 6 binary if both are installed. Check `$PATH` and the npm script wiring to make sure CI runs the fast path.
 - **Setting `peerDependencies.typescript` to `">=7.0.0"` for OSS plugins** — most consumers still run TS 6; widen to `">=6.0.0"` unless your plugin genuinely needs TS 7-only features (`import defer`, `stableTypeOrdering`, etc.)
 - **Leaving `experimental: { useTypeScriptCli: true }` in `next.config.ts` after upgrading to `next@16.3.0-canary.108+`** — Tim Neutkens's PR #96497 (merged 2026-08-03T16:10:51Z, will ship in canary.108) flips the option to default-`true`. The line in your config becomes redundant (and will trigger the "redundant setting" warning path that next-config-validator emits). Just delete the line — Next.js will use the CLI path by default. **The reverse case is also worth noting**: if you want Next.js to keep using the legacy JS Compiler API backend (for compatibility with custom transformers or specific tooling that needs the in-process API), set `experimental: { useTypeScriptCli: false }` explicitly. The opt-out still works. See the new `## experimental.useTypeScriptCli Default Flips to true in Next.js 16.3.0-canary.108+` section above.
+
+## TypeScript 7.0 Stable Confirmed (August 3, 2026) + 20th No-Content Daily Rebuild + tsgo/tcs Binary Naming Update + Strada API Roadmap (October 2026)
+
+The 4-day window since the v1.5.39 cycle (which closed out the TS 7.0 compatibility matrix + `experimental.useTypeScriptCli` default-flip heads-up) has surfaced **two real material updates** + the ongoing no-content rebuild count:
+
+### 1. TypeScript 7.0 STABLE confirmed shipped on August 3, 2026 (was previously expected)
+
+The official InfoQ coverage (https://www.infoq.com/news/2026/08/typescript-7-released/, published 2026-08-03) and the Microsoft devblog (https://devblogs.microsoft.com/typescript/announcing-typescript-7-0, originally published as the RC announcement on 2026-06-18, then updated for the stable release) **both confirm**: TypeScript 7.0 is **GA / stable** since 2026-08-03. The exact stable version is `7.0.2` (the v1.5.39 cycle's pin), and the InfoQ article explicitly states:
+
+> "With 7.0, nightly builds move back under the standard `typescript` package on the `next` tag, and the new `tsc` executable installs the usual way."
+
+**This means the canonical install recipe is now:**
+
+```bash
+# Install TypeScript 7.0
+npm install -D typescript
+
+# The binary is `tsc` (NOT `tsgo` in 7.0 STABLE)
+# `tsgo` only exists in the `@typescript/native-preview` package for nightly builds
+```
+
+**Important clarification** — the v1.5.39 recommended-setup snippet mentions `tsgo --noEmit` as the binary. This is **wrong for TypeScript 7.0 STABLE** and should be corrected:
+
+- **TypeScript 7.0 stable:** The binary is `tsc` (your usual `tsc` invocation works)
+- **`@typescript/native-preview` (nightly):** The binary is still `tsgo`
+- **TypeScript 6.0.x:** The binary is `tsc` (JS-based, slower)
+
+The package-name-and-binary-name pairing is therefore:
+
+| Package | Version | Binary | Use case |
+|---|---|---|---|
+| `typescript` | 7.0.2 (STABLE since Aug 3) | `tsc` | Production |
+| `typescript` | 8.0.0-dev (the `next` tag) | `tsc` | Track next minor |
+| `@typescript/native-preview` | rolling nightly | `tsgo` | Bleeding edge |
+
+**Update to the v1.5.39 recommended setup on `next@16.2.12`:**
+
+```jsonc
+// package.json
+{
+  "devDependencies": {
+    "typescript": "^7.0.2",  // GA; tsc is the Go-native binary
+    "@typescript/typescript6": "^6.0.4", // compat fallback for tooling
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",   // CORRECTED — was "tsgo --noEmit" in v1.5.39 which was a pre-stable assumption
+    "build":     "next build"        // uses experimental.useTypeScriptCli
+  }
+}
+```
+
+### 2. The 20th no-content daily rebuild of `typescript@next` is now documented
+
+Per the v1.5.56 header observation, the 20th consecutive no-content daily rebuild of `typescript@next` shipped at ~2026-08-13T08:25Z, moving `dist-tag.next` from `7.1.0-dev.20260812.1` to `7.1.0-dev.20260813.1`. **TypeScript main branch is still idle since 2026-07-27T20:55:30Z — now 17+ days idle.**
+
+The 21st rebuild is expected at ~08:25Z tomorrow Aug 14. The pattern (no functional changes since the b465fdbfe1 Intl.PluralRules fix on 2026-07-27) is documented in v1.5.54, v1.5.53, v1.5.52, v1.5.51, v1.5.50, v1.5.49, v1.5.48, v1.5.47, v1.5.46, v1.5.45, v1.5.44, v1.5.43, v1.5.42, v1.5.41, v1.5.40, v1.5.39, v1.5.38, v1.5.35, v1.5.34, v1.5.33, and earlier cycles. **The TypeScript main branch is in maintenance mode** per the README at https://github.com/microsoft/TypeScript:
+
+> "Code changes in this repo are now limited to a small category of fixes:
+> - Crashes that were introduced in 5.9 or 6.0 that also repro in 7.0 and have a portable fix and don't incur other behavioral changes
+> - Security issues
+> - Language service crashes that substantially impact mainline usage
+> - Serious regressions from 5.9 (these must seriously impact a large proportion of users)"
+
+This explains the long-deferred routine updates. The 7.1 feature work is happening in the `typescript-go` repo (the Go-native rewrite that powers 7.0).
+
+### 3. Strada API Roadmap for TypeScript 7.1 (October 2026 target)
+
+Per the [Microsoft devblog announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) and the [Gist migration guide](https://gist.github.com/nafiskabbo/01ccb4970515413076f3759486c39755):
+
+> "We expect TypeScript 7.1 to ship with a new (and different) API, but until then we have made it a priority to ensure TypeScript can be run side-by-side with TypeScript 6.0 for utilities that still need some programmatic access to the compiler (such as typescript-eslint)."
+
+**Strada** is the codename for the new TypeScript 7.1 API. The roadmap target is **October 2026** (~2 months from this cron). Once Strada is shipped:
+
+- **`typescript-eslint`** can move off the `@typescript/typescript6` shim and use the native Strada API
+- **`ts-morph` and custom AST transformers** can drop the `@typescript/typescript6` shim
+- **The split toolchain (TS 7 for `tsgo` type-check, TS 6 via `@typescript/typescript6` for ESLint)** can collapse to a single TS 7 install
+
+**Until Strada ships (October 2026 target):** Use the v1.5.39 recommended setup with the split toolchain. The corrected `tsc --noEmit` (not `tsgo --noEmit`) is the production binary.
+
+### 4. Template Literal Types Now Preserve Unicode Code Points (BREAKING CHANGE — already documented in v1.5.39)
+
+Per the [7.0 RC blog](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc) and confirmed in the 7.0 stable release:
+
+> "Template Literal Types Now Preserve Unicode Code Points. This is a breaking change for type-level string manipulation that intentionally modeled UTF-16 code units, such as some string `Length` utilities."
+
+The v1.5.39 section already documented this. **No new content** — just confirmation that the breaking change is real and ships in 7.0 stable.
+
+### Practical guidance for the August 2026 stable 7.0 migration
+
+1. **Pin `typescript: "^7.0.2"`** in package.json (was `^7.0.0` in the v1.5.39 cycle).
+2. **Run `tsc --noEmit`** — not `tsgo --noEmit`. The binary is `tsc` in 7.0 stable.
+3. **Keep `@typescript/typescript6: "^6.0.4"`** for tooling that needs the legacy API (typescript-eslint, ts-morph, custom transformers).
+4. **Watch the September 2026 + October 2026 milestones** for the Strada API rollout.
+5. **For Next.js 16.2.12 + TS 7 users:** `experimental.useTypeScriptCli: true` is now the default-true flag in canary.108+ (per the v1.5.39 cycle). On 16.2.12 stable, you still need to set it explicitly.
+
+### Sources
+
+- [InfoQ: Microsoft Releases TypeScript 7.0 with a Native Go Compiler, Delivering 10x Faster Builds](https://www.infoq.com/news/2026/08/typescript-7-released/) — published 2026-08-03 by InfoQ; the canonical 7.0 STABLE coverage
+- [Microsoft Devblog: Announcing TypeScript 7.0](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — the official STABLE announcement (was previously the RC announcement dated 2026-06-18; updated for STABLE)
+- [Microsoft Devblog: Announcing TypeScript 7.0 RC](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc) — published 2026-06-18; the RC announcement with the Strada API roadmap
+- [TypeScript 7.0 Migration Guide (Gist)](https://gist.github.com/nafiskabbo/01ccb4970515413076f3759486c39755) — third-party migration guide confirming the Strada 7.1 October 2026 target
+- [Visual Studio Magazine: TypeScript 7.0 RC Moves Microsoft's Go Rewrite Into the Mainline Compiler](https://visualstudiomagazine.com/articles/2026/06/22/typescript-7-0-rc-moves-microsofts-go-rewrite-into-the-mainline-compiler.aspx) — published 2026-06-22; the beta + RC coverage
+- [TypeScript GitHub README](https://github.com/microsoft/TypeScript) — the canonical "maintenance mode" statement; explains the 17+ day main-branch idle
+- [TypeScript GitHub Releases](https://github.com/microsoft/TypeScript/releases) — the canonical release list (`7.0.2` is the current stable)
+- [TypeScript CHANGES.md](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — the canonical 6.0 → 7.0 behavior-change list (the TS 6.0 x 7.0 deltas)
+- Cross-references: `setup.md` → the Next.js 16.2.12 + TS 7 setup recipe (the v1.5.39 update covers the `experimental.useTypeScriptCli` default-flip to canary.108+); `api.md` → the broader Next.js 16.3.1 API surface changes; `patterns.md` → the new 16.3 Instant Navigation patterns

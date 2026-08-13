@@ -3824,3 +3824,340 @@ The recipe is functionally identical to the canary.10 recipe EXCEPT for the CJS 
 - [Cross-reference: v1.5.45 performance.md `## next@16.3.1-canary.10 SHIPPED` — full PR-by-PR deep dive](https://github.com/clawvpsai/frontend-skill/blob/main/performance.md) — the performance-lens coverage with the verbatim PR body walkthroughs
 - [Cross-reference: v1.5.45 deployment.md `## Next.js — next@16.3.1-canary.10 SHIPPED — Deployment Impact Lens` — the deployment-bounded audit recipes](https://github.com/clawvpsai/frontend-skill/blob/main/deployment.md) — the deploy-side perspective on the same reverts
 - [Cross-reference: v1.5.38 patterns.md `## Pattern: Turbopack + Server Actions + Cache Components on canary.8` — the original Pattern A documentation being updated](https://github.com/clawvpsai/frontend-skill/blob/main/patterns.md) — the canary.8 SHIP event that introduced the CJS tree shaking default-on
+
+## Next.js 16.3 Instant Navigation Patterns (August 2026) — Partial Prefetching Adoption + `instant()` Test Helper + `useOffline` Hook + `catchError` Error Boundaries + Root Params + Read-Your-Writes With `updateTag`
+
+The 16.3 cycle (STABLE since 2026-08-03) introduced the **Instant Navigations** suite — a coordinated set of features that bring SPA-feel link clicks to a server-driven Next.js app. The features are **opt-in** (via `next.config.ts` `cacheComponents: true`, `partialPrefetching: true`), so this section documents the canonical adoption patterns. **From a patterns lens**, the 6 new patterns are:
+
+1. **Partial Prefetching** — the new prefetching behavior that extracts a reusable loading shell from any route's UI
+2. **`instant()` test helper** — verifies whether a navigation is instant (new `@next/playwright` API)
+3. **`useOffline` hook** — reports when the app is offline (new `experimental.useOffline` companion)
+4. **`catchError` error boundaries** — new error boundary shape for Cache Components
+5. **Root params** — root-level `[locale]` etc. work inside `use cache` scopes (new in 16.3)
+6. **Read-Your-Writes with `updateTag`** — the new Server Actions-only API for read-your-writes semantics
+
+These patterns are **for content-heavy Next.js apps**; the canary.10+ docs (https://nextjs.org/docs/app/guides/adopting-partial-prefetching) show the canonical adoption.
+
+### Pattern A — Partial Prefetching Adoption (the canonical 16.3 instant-navigation pattern)
+
+The 16.3 prefetching default was wasteful: prefetching a target route's *full* content for every link in the viewport, even when the user only clicks 1-2 of them. With Partial Prefetching, Next.js extracts a **reusable loading shell** from any route's UI, and each `<Link prefetch>` decides how much of the target page to include. You get instant feedback on click without prefetching entire pages your users may never visit.
+
+**The canonical adoption recipe (from the official docs `https://nextjs.org/docs/app/guides/adopting-partial-prefetching` updated 2026-08-10):**
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
+}
+
+export default nextConfig
+```
+
+**The key design points:**
+
+1. **`cacheComponents: true` is the underlying primitive.** Partial Prefetching is a layer on top of Cache Components. You must opt into Cache Components first.
+2. **`partialPrefetching: true` is the opt-in.** Without it, your Prefetch headers fall back to the pre-16.3 behavior (full-page prefetch).
+3. **The shell is extracted from `'use cache'` boundaries.** Routes that want a reusable shell must wrap the shell portion in `'use cache'` (or use `'use cache: private'` for personalized shells).
+4. **`<Link prefetch={...}>` controls per-link prefetch scope:**
+   - `prefetch={true}` (default): full prefetch
+   - `prefetch={undefined}`: shell-only prefetch (the new default behavior with Partial Prefetching enabled)
+   - `prefetch="allow-runtime"`: includes runtime data (cookies, headers, search params)
+   - `prefetch={false}`: no prefetch
+
+**Migration recipe (canary.10 → 16.3 stable):**
+
+```ts
+// Before — 16.2.x with PPR
+// next.config.ts
+export default {
+  experimental: {
+    ppr: true,
+  },
+}
+
+// After — 16.3 with Partial Prefetching
+// next.config.ts
+export default {
+  cacheComponents: true,
+  partialPrefetching: true,
+  // experimental.ppr is REMOVED in 16.3
+  // (Cache Components is now the sole PPR signal)
+}
+```
+
+**Shell extraction pattern:**
+
+```tsx
+// app/posts/[id]/page.tsx
+import { Suspense } from 'react'
+import { PostContent } from './post-content'
+import { PostComments } from './post-comments'
+
+// The shell: cacheable, reused across navigations
+export async function Page({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return (
+    <div>
+      <h1>Post {id}</h1>
+      <Suspense fallback={<PostCommentsSkeleton />}>
+        <PostComments postId={id} />
+      </Suspense>
+    </div>
+  )
+}
+
+// The dynamic data: streams in after the shell
+async function PostCommentsSkeleton() {
+  return <div>Loading comments...</div>
+}
+```
+
+**Practical impact:**
+
+- **Apps with many links in the viewport (e.g., dashboard, search results):** 45% reduction in prefetch requests (per Vercel's measurement, https://vercel.com/blog/vercel-supports-next-js-16-3 published 2026-08-04). This drops the prefetch-related bandwidth and CPU.
+- **Cold start perceived performance:** With shell prefetch, click-to-interactive is dramatically faster — the shell renders immediately, the content streams in.
+- **Server-side cost:** The shell is computed once per session (memoized on the client), not per click. The dynamic data is fetched per navigation.
+
+**Common mistakes:**
+
+- **Setting `partialPrefetching: true` without `cacheComponents: true`.** The flag is silently ignored in 16.3 (per the canary.10 docs).
+- **Forgetting to wrap the shell in `'use cache'`.** Without a cache boundary, the shell is recomputed per navigation, defeating the purpose.
+- **Confusing `prefetch={true}` (full) vs `prefetch={undefined}` (shell).** With Partial Prefetching enabled, `prefetch={true}` is wasteful in most cases. Use `prefetch={undefined}` (or omit) for the shell-only default.
+- **Not handling the `prefetch="allow-runtime"` case.** Without it, the prefetched shell doesn't include the user's auth state, locale, etc. For personalized routes, opt in explicitly.
+
+### Pattern B — `instant()` Test Helper (Verification)
+
+The `instant()` test helper (new in 16.3, `@next/playwright` package) verifies whether a navigation is instant. The canonical use case is for agents (like the [`next-cache-components-optimizer` skill](https://www.skills.sh/vercel/next.js/next-cache-components-optimizer)) that apply Partial Prefetching and need to verify that the resulting navigation is actually instant.
+
+**The canonical recipe:**
+
+```ts
+// tests/instant-navs.spec.ts
+import { test, expect } from '@playwright/test'
+import { instant } from '@next/playwright'
+
+test('clicking the dashboard link is instant', async ({ page }) => {
+  await page.goto('/chat')
+  
+  // Click the dashboard link and assert the navigation is instant
+  const result = await instant(page, async () => {
+    await page.click('a[href="/dashboard"]')
+  })
+  
+  expect(result.isInstant).toBe(true)
+  expect(result.shellRenderedAt).toBeLessThan(100) // ms
+})
+```
+
+**The `instant()` helper returns:**
+- `isInstant: boolean` — whether the shell rendered before the navigation completed
+- `shellRenderedAt: number` — ms to shell render
+- `firstPaintAt: number` — ms to first paint of the destination route
+- `hydrationAt: number` — ms to hydration
+
+**Practical impact:**
+
+- **Agent-first adoption:** The `next-cache-components-optimizer` skill uses `instant()` to write a failing test for each slow route, apply the cache + partial prefetching, and verify the test now passes.
+- **CI regression detection:** Add `instant()` tests to your CI to detect when a route's shell grows or the dynamic data fetch slows.
+- **Vercel-published case study:** The v0 team used this pattern to identify slow routes and apply Partial Prefetching. https://nextjs.org/blog (Aug 6, 2026) has the full case study.
+
+**Migration:** `npm install -D @next/playwright` (already in your `@playwright/test` install). Then `import { instant } from '@next/playwright'`.
+
+### Pattern C — `useOffline` Hook (Offline Resilience)
+
+The new `experimental.useOffline` flag plus the `useOffline()` hook (new in 16.3) keeps navigations, fetches, and Server Actions **pending** instead of throwing when the connection drops. When the connection restores, the pending requests retry.
+
+**The canonical recipe:**
+
+```ts
+// next.config.ts
+export default {
+  experimental: {
+    useOffline: true,
+  },
+}
+```
+
+```tsx
+// app/components/offline-banner.tsx
+'use client'
+import { useOffline } from 'next/hooks'
+
+export function OfflineBanner() {
+  const isOffline = useOffline()
+  
+  if (!isOffline) return null
+  
+  return (
+    <div className="offline-banner">
+      You're offline. Your changes will sync when you reconnect.
+    </div>
+  )
+}
+```
+
+**How it works:**
+
+- **Navigations:** When the user clicks a `<Link>` while offline, the navigation stays pending instead of throwing. When the connection restores, the navigation completes.
+- **Fetches:** `fetch()` calls inside Server Components stay pending; routes render with the cached shell + the dynamic data streams in when online.
+- **Server Actions:** Form submissions stay pending; the submit button shows a "waiting for connection" state instead of throwing.
+
+**Practical impact:**
+
+- **Apps with flaky networks (mobile, developing regions):** Graceful degradation instead of error UI.
+- **Apps with PWAs:** The shell renders from cache, the dynamic data streams in when online.
+- **Apps with offline-first UX:** Combine with service workers for full offline support.
+
+**Common mistakes:**
+
+- **Enabling `useOffline` without a service worker.** The hook only delays the requests; the requests still need to succeed. Without a service worker, the user has no way to recover from a sustained offline state.
+- **Forgetting to handle the pending state in UI.** The `useOffline` hook returns `true` when offline, but your fetch hooks also need to show a pending state.
+
+### Pattern D — `catchError` Error Boundaries (Cache Components)
+
+The new `catchError` error boundary (new in 16.3) is the Cache Components-compatible error boundary. It catches errors from the dynamic data fetches while keeping the shell interactive.
+
+**The canonical recipe:**
+
+```tsx
+// app/dashboard/error.tsx
+'use client'
+import { catchError } from 'next/cache-components'
+
+export default catchError(async ({ error, reset }) => {
+  return (
+    <div className="error-state">
+      <h2>Something went wrong</h2>
+      <p>{error.message}</p>
+      <button onClick={reset}>Try again</button>
+    </div>
+  )
+})
+```
+
+**Why `catchError` instead of `error.tsx`?**
+
+- **Cache Components requires that errors from the dynamic data don't break the shell.** A regular `error.tsx` catches everything; the `catchError` boundary only catches errors from the data fetches within the cache boundary.
+- **The `reset` function is async-cache-aware.** It re-runs the dynamic data fetch without re-fetching the shell.
+
+**Practical impact:**
+
+- **Apps with `'use cache'` boundaries around dynamic data:** The shell keeps rendering; the dynamic data shows the error state. Better UX than losing the entire route.
+- **Apps with mixed static + dynamic routes:** The static part stays interactive; the dynamic part shows the error.
+
+**Common mistakes:**
+
+- **Using `error.tsx` for Cache Components routes.** It catches errors that should cascade to the shell; use `catchError` instead.
+- **Forgetting that `reset` is partial.** It re-runs the dynamic data, not the shell. If the shell is broken, you need a full `router.refresh()`.
+
+### Pattern E — Root Params (Inside `use cache` Scopes)
+
+The new **Root params** feature (16.3) lets `[locale]` and similar root-level params work inside `'use cache'` scopes. This makes internationalization considerably less painful for Cache Components routes.
+
+**The canonical recipe:**
+
+```tsx
+// app/[locale]/posts/[id]/page.tsx
+import { unstable_cache } from 'next/cache'
+
+// The root param [locale] is automatically picked up by the cache key
+const getPost = unstable_cache(
+  async (locale: string, id: string) => {
+    return db.posts.findUnique({ where: { id }, locale })
+  },
+  ['post'],
+  { tags: [`post`] }
+)
+
+export async function Page({ 
+  params 
+}: { 
+  params: Promise<{ locale: string; id: string }> 
+}) {
+  const { locale, id } = await params
+  const post = await getPost(locale, id)
+  return <Post post={post} />
+}
+```
+
+**What's new in 16.3:**
+
+- **Pre-16.3:** Root params like `[locale]` were NOT included in the cache key. Two users with different locales would see the same cached content.
+- **16.3:** Root params ARE included in the cache key. The cache function automatically reads the params from the route context.
+
+**Limitations (per the 16.3 docs):**
+
+- **Route handlers and Server Actions don't support root params yet.** The planned support is for a future release (16.4 or 16.5).
+
+**Practical impact:**
+
+- **i18n apps with `'use cache'`:** Much simpler — no need to manually pass the locale into the cache key.
+- **Apps with multi-tenant routing:** Similar simplification for tenant-scoped caches.
+
+### Pattern F — Read-Your-Writes with `updateTag` (Server Actions)
+
+The new `updateTag()` Server Actions-only API (new in 16.3) provides **read-your-writes** semantics. When a user updates their profile, they see the changes instantly because the cache expires and refreshes immediately within the same request.
+
+**The canonical recipe:**
+
+```tsx
+// app/profile/actions.ts
+'use server'
+import { updateTag } from 'next/cache'
+import { revalidatePath } from 'next/cache'
+
+export async function updateProfile(formData: FormData) {
+  const userId = await getUserId()
+  const newName = formData.get('name') as string
+  
+  // Update the database
+  await db.users.update({
+    where: { id: userId },
+    data: { name: newName },
+  })
+  
+  // Invalidate the cache — refreshes immediately within this request
+  updateTag(`user:${userId}`)
+  
+  // Optional: revalidate the page path
+  revalidatePath('/profile')
+}
+```
+
+**The difference vs `revalidateTag`:**
+
+- **`revalidateTag('posts', 'max')`:** Stale-while-revalidate. The next request waits for fresh data, but the current request still serves the stale cache. There's a brief window where the user sees stale data.
+- **`updateTag('user:123')`:** Read-your-writes. The current request's render wait for fresh data. The user sees the change instantly.
+
+**When to use each:**
+
+| Scenario | Use |
+|---|---|
+| User updates their own profile | `updateTag` |
+| User publishes a post; other users see it | `revalidateTag` (with `max`) |
+| CMS webhook triggers a content update | `revalidateTag` |
+| User edits a draft | `updateTag` |
+| Admin dashboard shows real-time metrics | `refresh()` (different API) |
+
+**Common mistakes:**
+
+- **Using `revalidateTag` instead of `updateTag` for personal data.** The current user sees stale data until the next request.
+- **Using `updateTag` for global data.** It's wasteful — every user re-renders a route to refresh the cache for one user.
+
+### Sources
+
+- [Next.js 16.3 official blog post](https://nextjs.org/blog/next-16-3) — published 2026-08-03; the canonical Instant Navigations announcement
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — last updated 2026-08-10; the canonical adoption recipe
+- [Next.js 16.3 version](https://nextjs.org/docs/app/guides/version-16) — last updated 2026-08-03; the upgrade guide
+- [Next.js 16.3 on Vercel](https://vercel.com/blog/vercel-supports-next-js-16-3) — published 2026-08-04; the 45% reduction in prefetch requests + the JSONL-formatted shards + PPR observability
+- [Next.js Instant Navigation Testing docs](https://nextjs.org/docs/app/api-reference/functions/instant) — the `instant()` test helper reference
+- [Next.js useOffline hook docs](https://nextjs.org/docs/app/api-reference/functions/use-offline) — the `useOffline` hook reference
+- [catchError docs](https://nextjs.org/docs/app/api-reference/file-conventions/error) — the `catchError` Cache Components error boundary reference
+- [updateTag docs](https://nextjs.org/docs/app/api-reference/functions/updateTag) — the Server Actions read-your-writes API reference
+- [Next.js 16.3.0 standard build artifacts](https://www.npmjs.com/package/next/v/16.3.0) — STABLE 16.3.0 release (Aug 3, 2026)
+- [Next.js 16.3.1-canary.15 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.15) — npm-published 2026-08-12T23:26:21Z; the latest canary
+- [Next.js 16.3.0 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE 16.3.0 release (2026-08-03T21:03:18Z)
+- Cross-references: `routing.md` → `## Next.js 16.3 — Instant Navigations` for the routing-layer coverage of `<Link prefetch>` changes; `performance.md` → `## Next.js 16.3 — Instant Navigations` for the perf-measurement lens; `security.md` → the Cache Components audit recipe for the new APIs; `server-components.md` → the `'use cache'` and `usePrivateCache` patterns; `api.md` → `## Next.js 16.3.1-canary.10 → canary.15 API-Surface Changes` for the companion API-surface changes (PR #97166 live headers() + PR #96937 unstable_cache encoding + PR #97040 static/app shell tracking + PR #97247 RDC compression + PR #97181 literal exports in cache files + PR #95439 stale data revalidation fix)
