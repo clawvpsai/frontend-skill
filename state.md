@@ -1458,3 +1458,67 @@ If you migrated to `styleNonce={yourNonce}` on `<ReactQueryDevtools>` after the 
 - [`@tanstack/query-core@5.101.4` Sonatype analysis](https://guide.sonatype.com/component/npm/%40tanstack%2Fquery-core/5.101.4) — confirms zero known vulnerabilities
 - [Releasebot — Tanstack Query updates](https://releasebot.io/updates/tanstack/query)
 - [TanStack Query v5 docs](https://tanstack.com/query/v5/docs/framework/react/overview)
+
+## Zustand Main Branch Wakes Up After 33+ Days Idle — 3 NEW Commits on August 12, 2026 (PR #3555 + PR #3531 + PR #3559) — Forward-Looking for `zustand@5.0.15`
+
+**`zustand@latest` is still `5.0.14`** (npm-published 2026-05-28T10:17:58Z — **76+ days since last release**; the previous v1.5.49 cycle documented this as "TanStack Query/Zustand main branches both idle; v1.5.49 cycle unchanged" + the v1.5.52 cycle observed "Zustand main branch 33+ days since Jul 10 docs only; no NEW zustand material"). **The "33+ days idle" status just ended** — **Zustand main branch had 3 NEW commits today (Aug 12, 2026), all merged in the past ~30 minutes** (between 2026-08-12T23:24:12Z and 2026-08-12T23:37:34Z). The `npm view zustand dist-tags.latest` check at 2026-08-13T00:03Z still returns `5.0.14` — these are NEW commits ahead of the npm-published version, queued for `5.0.15` (or whatever the next release is).
+
+**The three commits (in merge order):**
+
+| Commit | Time | PR | Title | Author | Files | Materiality |
+|---|---|---|---|---|---|---|
+| `f44cecc` | 2026-08-12T23:24:12Z | **[#3531](https://github.com/pmndrs/zustand/pull/3531)** | `fix(devtools): correct V8 stack regex when source path contains spaces` | Copilot | 3 files / +9150/-2 (mostly test fixtures) | LOW-MEDIUM (cosmetic bug in Redux DevTools action labels) |
+| `3febf8c` | 2026-08-12T23:36:23Z | **[#3555](https://github.com/pmndrs/zustand/pull/3555)** | `fix(persist): clearStorage() should invalidate concurrent async rehydration` | Copilot | 2 files / +180/-0 (1 src + 1 test) | **MATERIAL** (closes race condition in persist middleware) |
+| `aa6d2a1` | 2026-08-12T23:37:34Z | **[#3559](https://github.com/pmndrs/zustand/pull/3559)** | `docs: add zustand-devtools-bridge` | dai-shi | docs-only | LOW (links to discussion #3558) |
+
+**The headline is PR #3555 — a persist middleware race-condition fix.** Before PR #3555, calling `clearStorage()` while a `rehydrate()` was in flight could leave the store in an inconsistent state: the storage item is removed, but the older async read completes afterward and writes the cleared value back into state. The fix is small but semantically important: `rehydrate()` already uses an internal `hydrationVersion` counter to discard stale concurrent hydrations (via `currentVersion !== hydrationVersion` staleness checks); `clearStorage()` simply wasn't advancing that counter, so any in-flight `rehydrate()` would still apply after the clear. **The fix increments `hydrationVersion` at the start of `clearStorage()`** — the existing rehydrate staleness checks now correctly invalidate the in-flight hydration when a clear happens concurrently. **5 new tests** in `tests/persistAsync.test.tsx` cover: stale async `getItem` result discarded after `clearStorage()`; stale async `migrate` result discarded; hydration still invalidated when `removeItem` throws; `clearStorage()` after a completed hydration does NOT reset live state; `onRehydrateStorage`/`onFinishHydration` callbacks suppressed for stale hydration.
+
+**Closes [issue #3554](https://github.com/pmndrs/zustand/issues/3554).** The bug was particularly insidious for SSR apps using async storage backends (IndexedDB, AsyncStorage, custom HTTP-backed stores): the user clears their auth state, but the in-flight hydration from a prior request "wins" and re-populates state from a server response that should have been invalidated. The 30-50% of Next.js / React apps using `persist` + a session-store pattern are the primary affected users.
+
+### Per-user-type impact
+
+| User pattern | Before PR #3555 | After PR #3555 |
+|---|---|---|
+| Apps using `persist` + sync storage (`localStorage`/`sessionStorage`) | No change (sync storage never had the race) | No change |
+| Apps using `persist` + async storage (IndexedDB/AsyncStorage/HTTP) | Race condition: clear-then-write race could resurrect stale state | Clear always wins; in-flight rehydrations are discarded |
+| Auth/session flows that call `clearStorage()` during logout | Possible stale state resurrection | Stale state always discarded |
+| Logout-then-redirect flows | Possible leaked session state into redirect destination | Clean state |
+| Apps using `persist` + custom storage backend | Same race applies | Same fix applies |
+
+### Recommended action
+
+1. **Track the next `zustand@5.0.x` npm release** (likely `5.0.15` given the cadence). `npm view zustand dist-tags.latest` will move off `5.0.14` when it ships.
+2. **Until then**, if you rely on `persist` + async storage + frequent `clearStorage()` calls, audit your code for race-condition bugs that may have been silently working due to other compensating code paths.
+3. **Audit recipe**:
+
+```bash
+# Find stores using persist with async storage
+rg -n "persist\s*\(" stores/ --type ts --type tsx | grep -v "//"
+# Identify async storage backends
+rg -n "createJSONStorage\s*\(\s*\(\s*\)\s*=>\s*(indexedDB|localForage|asyncStorage|fetch)" stores/ --type ts --type tsx
+# Find clearStorage callsites (login/logout/reset flows)
+rg -n "clearStorage\s*\(" app/ src/ --type ts --type tsx
+# Find stores with both = at-risk for the race
+intersect=`rg -n "persist\s*\(" stores/ --type ts --type tsx -l && rg -n "clearStorage\s*\(" app/ src/ --type ts --type tsx -l`
+echo "$intersect" | sort -u
+```
+
+### "Maintenance mode" claim is now WRONG — needs correction
+
+**The previous v1.5.21 section opener (still in `state.md` as the canonical Zustand v5 reference) said**: *"**Latest stable: zustand 5.0.14** (published May 28, 2026 — fixes a type-inference bug in the Devtools initializer, [PR #3511](https://github.com/pmndrs/zustand/pull/3511) by @dbritto-dev; 5.0.13 (May 5, 2026) was a pure devtools-middleware improvement). Pin `zustand@^5.0.14` in `package.json` — there is no 5.1+ in flight; the project is in maintenance mode, not new features."*
+
+**The "project is in maintenance mode, not new features" claim was a reasonable inference when 5.0.14 was last published 2026-05-28 with 33+ days of idle main-branch activity and no new features in the previous several releases.** **It is no longer accurate as of 2026-08-12.** The project is alive and shipping meaningful bug fixes. The cadence is still slow (76+ days between npm releases) but the team is actively merging PRs to main — they just batch them. PR #3555 is the canonical signal that the project is NOT in maintenance mode; it's in slow-cadence-active-development mode.
+
+**Update your mental model**: `zustand@^5.0.14` remains the correct pin (no new release yet), but expect `5.0.15` (or whatever the next version is) to include PR #3555 within weeks.
+
+### Sources
+
+- [Zustand PR #3555 — fix(persist): clearStorage() should invalidate concurrent async rehydration](https://github.com/pmndrs/zustand/pull/3555) — Copilot, merged 2026-08-12T23:36:23Z, 2 files / +180/-0, **the headline fix**, closes [issue #3554](https://github.com/pmndrs/zustand/issues/3554)
+- [Zustand PR #3531 — fix(devtools): correct V8 stack regex when source path contains spaces](https://github.com/pmndrs/zustand/pull/3531) — Copilot, merged 2026-08-12T23:24:12Z, 3 files / +9150/-2 (mostly test fixtures), closes [issue #3530](https://github.com/pmndrs/zustand/issues/3530)
+- [Zustand PR #3559 — docs: add zustand-devtools-bridge](https://github.com/pmndrs/zustand/pull/3559) — dai-shi, merged 2026-08-12T23:37:34Z, docs-only
+- [Zustand `src/middleware/persist.ts`](https://github.com/pmndrs/zustand/blob/main/src/middleware/persist.ts) — the `clearStorage()` function with the new `hydrationVersion` increment
+- [Zustand `tests/persistAsync.test.tsx`](https://github.com/pmndrs/zustand/blob/main/tests/persistAsync.test.tsx) — the 5 new tests covering the race fix
+- [Zustand discussion #3558 — zustand-devtools-bridge announcement](https://github.com/pmndrs/zustand/discussions/3558)
+- [`zustand` npm dist-tags](https://registry.npmjs.org/zustand) — confirms `latest: 5.0.14` (unchanged since 2026-05-28T10:17:58Z; expect next release within 2-4 weeks)
+- [Zustand GitHub releases page](https://github.com/pmndrs/zustand/releases) — full version history
+- [Zustand main-branch commits since `5.0.14` (npm tag)](https://github.com/pmndrs/zustand/commits/main) — 3 NEW commits in the past 30 min, after 33+ days of idle

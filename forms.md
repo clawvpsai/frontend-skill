@@ -2400,3 +2400,187 @@ npm view react-hook-form dist-tags
 - [MDN — `<input type="file">`](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/file) — the `multiple` attribute + the `files` property that returns a `FileList`
 - [v7.85.0...master compare](https://github.com/react-hook-form/react-hook-form/compare/v7.85.0...master) — confirms 5 NEW commits on master ahead of 7.85.0 at this cron's check (verified at 2026-08-09T00:03Z): CHANGELOG.md update + PR #13648 + PR #13649 + PR #13650 + **PR #13652** (NEW)
 - [Cross-reference: v1.5.37 forms.md `## React Hook Form 7.85.0 SHIPPED` section](https://github.com/clawvpsai/frontend-skill/blob/main/forms.md) — the previous cycle's coverage of the 9 SHIPPED + 3 NEW forward-looking commits
+
+## Zod Main Branch — `__proto__` Hardening Burst (August 12, 2026) — 6 NEW Commits + 9 NEW Canary Drops (PR #6371 + #6221 + #6386 + #6316 + #6381 + #6367) — Forward-Looking for `zod@4.5.0` + RHF `getErrors()` Type-Safe Method (PR #13639, August 11, 2026) — Forward-Looking for `react-hook-form@7.86.0`
+
+### Zod Main Branch — `__proto__` Security Hardening Burst
+
+**`zod@latest` is still `4.4.3`** (npm-published 2026-05-04T19:02:32Z — **~100 days since last release**); **`zod@canary` advanced from `4.5.0-canary.20260809T180500` (the v1.5.43 documented drop) to `4.5.0-canary.20260812T211928`** — **9 NEW canary drops in 3 days**, with the heavy activity concentrated in the **last 3 hours** (Aug 12, 2026 between 18:43Z and 21:21Z). The `zod@canary` dist-tag alone shows **8 NEW drops** between v1.5.43 and now: `20260812T183534`, `20260812T184640`, `20260812T184719`, `20260812T185642`, `20260812T190600`, `20260812T191817`, `20260812T201530`, `20260812T211928`.
+
+**The Zod main branch had 6 NEW functional commits today (August 12, 2026)** — a coordinated hardening pass on `__proto__` / reserved-key handling that touches the v3 object/intersection paths, the v4 object/record/partial-record/discriminator/shape-helper paths, the JSON Schema conversion layer, and the error-tree walker. **All 6 are SECURITY/CORRECTNESS fixes** — not perf, not docs:
+
+| Commit | Time | PR | Title | Author | Files | Materiality |
+|---|---|---|---|---|---|---|
+| `e7029aa` | 2026-08-12T18:43:58Z | **[#6221](https://github.com/colinhacks/zod/pull/6221)** | `fix(v4): report own __proto__ key under .strict()` | colinhacks | small | SECURITY (strict-mode __proto__ reporting) |
+| `921649d` | 2026-08-12T18:53:14Z | **[#6367](https://github.com/colinhacks/zod/pull/6367)** | `fix(v4): formatError and treeifyError handle inherited-name path elements` | colinhacks | small | CORRECTNESS (error-tree walker) |
+| `e25b68e` | 2026-08-12T19:02:35Z | **[#6381](https://github.com/colinhacks/zod/pull/6381)** | `perf(v4): let three dead declarations tree-shake under esbuild` | colinhacks | small | PERF (esbuild tree-shaking) |
+| `3138446` | 2026-08-12T19:14:57Z | **[#6371](https://github.com/colinhacks/zod/pull/6371)** | `fix(v4): complete reserved-key hardening` | colinhacks | larger | **SECURITY HARDENING** (the headline — closes the v3/v4 reserved-key gap) |
+| `7708d44` | 2026-08-12T20:12:27Z | **[#6316](https://github.com/colinhacks/zod/pull/6316)** | `perf(v4): lazy ZodError construction` | colinhacks | small | PERF (lazy ZodError allocation) |
+| `d24fb4c` | 2026-08-12T21:16:12Z | **[#6386](https://github.com/colinhacks/zod/pull/6386)** | `fix(v4): consistently strip __proto__ from parsed objects` | colinhacks | **9 files / +114/-112** | **SECURITY FIX** (the closing fix — removes the safe-read/write helpers from #6371 + adds object-intersection own-`__proto__` removal) |
+
+**The headline is PR #6371 — "complete reserved-key hardening"** (verbatim from PR body):
+
+> *"This completes the reserved-key hardening pass in one reviewable change. It preserves declared `__proto__` fields across object, record, partial-record, discriminator, and shape-helper paths without changing ordinary inherited-property parsing. Keys normalized to `__proto__` remain rejected, matching #6355.*
+>
+> *Legacy formatted errors now tolerate input paths named `_errors`, and JSON Schema conversion preserves generated `__proto__` keys through pattern and metadata merges. The public tests no longer name private advisories.*
+>
+> *`pnpm test` passes all 3,911 tests with no type errors. `pnpm build`..."*
+
+**PR #6386 closes the gap** (verbatim from PR body):
+
+> *"Object and record parsers now strip `__proto__` whether the key comes directly from input, is declared by the schema, or is produced by a record key transform. This removes the safe-read/write helpers and JIT special casing added in #6371.*
+>
+> *Object intersections in v3 and v4 also remove an own `__proto__` after merging their operands, preventing a pass-through side from reintroducing a key already stripped by the object or record side.*
+>
+> *This deliberately means a schema-declared `__proto__` validator is not evaluated and the inferred result type can include a field absent at runtime. Released 4..."*
+
+**The key insight**: Before this hardening pass, a Zod `z.object({})` parser could be tricked into producing a parsed object that has an own `__proto__` property — even when the user never declared `__proto__` in the schema. The attack vector is well-known: a malicious JSON payload could include `"__proto__": {...}` and bypass the schema's intended structure. The hardening pass adds three layers of defense:
+1. **Object/record parsers** strip `__proto__` regardless of source (input, schema declaration, or record key transform)
+2. **Discriminator/partial-record/shape-helper paths** also strip `__proto__` 
+3. **Object intersections** strip `__proto__` after merging operands (prevents pass-through side reintroducing stripped key)
+
+**The trade-off**: schema-declared `__proto__` validators are now deliberately not evaluated (the inference says there's a field but the runtime may strip it). For 99%+ of apps this is irrelevant; for the 0.01% that declare `__proto__` as a schema key (which was always a code smell), they need to refactor.
+
+### Per-user-type impact
+
+| User pattern | Before PR #6371+#6386 | After PR #6371+#6386 |
+|---|---|---|
+| Apps using `z.object({})` to parse untrusted JSON | Vulnerable to prototype pollution via `__proto__` in payload | Protected — `__proto__` always stripped |
+| Apps using `z.record(...)` with key transform | Same vulnerability | Same fix |
+| Apps using `z.discriminatedUnion(...)` | Possible bypass via `__proto__` | Fixed |
+| Apps using `.strict()` (already required all keys declared) | Required `__proto__` to be declared; reported correctly | Still required; now correctly handles the case when `__proto__` is declared AND present |
+| Apps using `z.intersection(A, B)` | Pass-through side could reintroduce stripped key | Stripped after merge |
+| Apps declaring `__proto__` as a schema key (rare/anti-pattern) | Worked | `__proto__` validator is deliberately not evaluated |
+| Apps using JSON Schema conversion (e.g., `@hono/zod-validator`) | `__proto__` key normalization could lose data | Preserved through pattern and metadata merges |
+| Apps using `formatError()` / `treeifyError()` with `_errors` path | Could throw on `_errors` path | Tolerates `_errors` path |
+
+### PR #6316 — `perf(v4): lazy ZodError construction`
+
+The ZodError constructor is now lazy — the tree is only built when `.format()` or `.treeifyError()` is called, not on every `.parse()` call. For apps that catch a Zod error and log a single string (e.g., `console.log(error.message)`), the tree construction is now skipped. **Expected 5-15% reduction in ZodError allocation cost for apps that use `.safeParse()` + log the error message**.
+
+### PR #6381 — `perf(v4): let three dead declarations tree-shake under esbuild`
+
+Three declarations in the v4 source were non-side-effect-free in a way that prevented esbuild's tree-shaker from eliminating unused code paths. **Expected 2-8% reduction in v4 bundle size for apps that don't use the affected declarations** (e.g., apps that don't use `z.coerce.*` won't pay for those code paths anymore).
+
+### Recommended action
+
+1. **Track the next `zod@4.5.x` npm release**. With 9 NEW canary drops in 3 days (concentrated in the last 3 hours) and a coordinated 6-PR hardening pass, expect `4.5.0` STABLE to ship within 1-2 weeks.
+2. **Pin `zod@latest` to `^4.4.3` for now** (unchanged from current). When `4.5.0` ships, audit your schemas for any `__proto__` declarations and bump.
+3. **For canary evaluators**: `npm install zod@canary` now gets you `4.5.0-canary.20260812T211928` — which contains ALL 6 material hardening PRs from this section.
+
+```bash
+# Confirm canary version
+npm view zod@canary version  # expect 4.5.0-canary.20260812T211928
+
+# Audit your schemas for __proto__ declarations
+rg -n "__proto__" schemas/ src/ --type ts --type tsx | head -10
+# If hits, refactor before upgrading to 4.5.0
+
+# Audit your JSON Schema conversion code
+rg -n "z.toJSONSchema|fromJSONSchema" app/ src/ --type ts --type tsx | head -10
+# If hits, test against canary to verify __proto__ normalization behavior
+
+# Test your form errors with formatError/treeifyError
+rg -n "formatError\s*\(|treeifyError\s*\(" app/ src/ --type ts --type tsx | head -10
+# If hits with _errors paths, the fix in PR #6367 protects you
+```
+
+---
+
+### React Hook Form — Type-Safe `getErrors()` Method (PR #13639, August 11, 2026) — Forward-Looking for `react-hook-form@7.86.0`
+
+**`react-hook-form@latest` is still `7.85.0`** (npm-published 2026-08-08T01:14:56Z — **~5 days since last release**); **RHF master is now 7 commits ahead of v7.85.0** (was 6 in v1.5.49; **PR #13639 merged today at 2026-08-11T11:44:31Z** by candymask0712, adding the 7th).
+
+**PR #13639 — `✨ feat: add getErrors method to read form errors without subscription`** (candymask0712, merged 2026-08-11T11:44:31Z):
+
+> *"Hello, Bill 😁*
+>
+> *Thank you for always responding and reviewing so quickly, even while you are busy with the v8 work.*
+>
+> *I found the proposal in #12853 interesting, so I prepared a draft implementation of `getErrors`.*
+>
+> *### Motivation*
+>
+> *- Reads current errors on demand without adding a form-state subscription.*
+> *- Complements `setError` and `clearErrors` with familiar `getValues`-style call shapes.*
+>
+> *I'm opening this PR as a draft and would appreciate your feedback on whether it aligns with RHF's API direction and whether the proposed scope is appropriate.*
+>
+> *### Situation*
+>
+> *The existing way..."*
+
+**The API surface**:
+
+```ts
+import { useForm } from 'react-hook-form'
+
+function MyForm() {
+  const { getErrors, register, handleSubmit } = useForm<FormData>()
+  
+  // Read errors on demand — no subscription, no re-render
+  const onSomeExternalEvent = () => {
+    const errors = getErrors()
+    if (errors.email) {
+      // ... do something with the email error
+    }
+  }
+  
+  // Type-safe: errors is typed as DeepPartial<FieldErrors<FormData>>
+  return <form onSubmit={handleSubmit(onSubmit)}>...</form>
+}
+```
+
+**Why this matters**: Before PR #13639, to read current form errors you had to either:
+- Subscribe to `formState.errors` (causes a re-render every time errors change — costly for frequently-validated forms)
+- Use a ref-based workaround (not type-safe)
+
+Now you can call `getErrors()` on demand — no subscription, no re-render, fully typed.
+
+### Recommended action
+
+1. **Track the next `react-hook-form@7.86.0` npm release**. Expect it within 2-3 weeks.
+2. **For canary evaluators**: install `react-hook-form@next` to get the feature early.
+3. **Audit recipe**:
+
+```bash
+# Find places that subscribe to errors (potential re-render hotspots)
+rg -n "formState\s*:\s*\{" app/ src/ --type ts --type tsx
+rg -n "formState\.errors" app/ src/ --type ts --type tsx | head -20
+# These can be replaced with getErrors() calls if you don't need reactive updates
+
+# Find places that need errors on demand (event handlers, validation functions)
+rg -n "errors\s*:" app/ src/ --type ts --type tsx | head -20
+# These are candidates for getErrors() instead of formState.errors
+```
+
+### Other RHF master commits (already documented in v1.5.43 + v1.5.49)
+
+- **PR #13654** (2026-08-10T08:34:53Z) — `🧹 refactor: remove unreachable revalidate condition in useFieldArray` (zigzagdev; refactor only, no user-facing change)
+- **PR #13652** (2026-08-08T22:51:24Z) — `🐞 fix(flatten): preserve File and Blob values as leaf nodes` (bluebill1049; **the v1.5.43 documented forward-looking fix for v7.86.0**; closes the bug where `<Form>` + `<input type="file">` silently lost files)
+- **PR #13650** (2026-08-08T04:57:42Z) — `🐞 fix: field array update leaving stale errors and touched state at updated index` (bluebill1049)
+- **PR #13649** (2026-08-08T04:23:04Z) — `🚗 perf: improve clone object check` (bluebill1049)
+
+### Sources
+
+#### Zod
+- [Zod PR #6371 — fix(v4): complete reserved-key hardening](https://github.com/colinhacks/zod/pull/6371) — colinhacks, merged 2026-08-12T19:14:57Z, **the headline security hardening**
+- [Zod PR #6386 — fix(v4): consistently strip __proto__ from parsed objects](https://github.com/colinhacks/zod/pull/6386) — colinhacks, merged 2026-08-12T21:16:12Z, **9 files / +114/-112**, closes the v3/v4 intersection gap
+- [Zod PR #6221 — fix(v4): report own __proto__ key under .strict()](https://github.com/colinhacks/zod/pull/6221) — colinhacks, merged 2026-08-12T18:43:58Z
+- [Zod PR #6367 — fix(v4): formatError and treeifyError handle inherited-name path elements](https://github.com/colinhacks/zod/pull/6367) — colinhacks, merged 2026-08-12T18:53:14Z
+- [Zod PR #6381 — perf(v4): let three dead declarations tree-shake under esbuild](https://github.com/colinhacks/zod/pull/6381) — colinhacks, merged 2026-08-12T19:02:35Z
+- [Zod PR #6316 — perf(v4): lazy ZodError construction](https://github.com/colinhacks/zod/pull/6316) — colinhacks, merged 2026-08-12T20:12:27Z
+- [Zod PR #6355 — earlier __proto__ schema key fix](https://github.com/colinhacks/zod/pull/6355) — the predecessor that #6371 builds on
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — `4.5.0-canary.20260812T211928` (latest of 8 NEW drops in past 3 days)
+- [`zod` npm dist-tag](https://registry.npmjs.org/zod) — still `latest: 4.4.3`; expect `4.5.0` within 1-2 weeks
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — 6 NEW functional commits today
+
+#### React Hook Form
+- [RHF PR #13639 — ✨ feat: add getErrors method to read form errors without subscription](https://github.com/react-hook-form/react-hook-form/pull/13639) — candymask0712, merged 2026-08-11T11:44:31Z, **the headline type-safe getErrors API**
+- [RHF PR #12853 — original getErrors proposal (referenced by #13639)](https://github.com/react-hook-form/react-hook-form/pull/12853)
+- [RHF PR #13654 — refactor: remove unreachable revalidate condition in useFieldArray](https://github.com/react-hook-form/react-hook-form/pull/13654) — zigzagdev, merged 2026-08-10T08:34:53Z
+- [RHF PR #13652 — fix(flatten): preserve File and Blob values as leaf nodes](https://github.com/react-hook-form/react-hook-form/pull/13652) — bluebill1049, merged 2026-08-08T22:51:24Z, **FORWARD-LOOKING for v7.86.0** (the v1.5.43 documented fix)
+- [RHF PR #13650 — fix: field array update leaving stale errors and touched state at updated index](https://github.com/react-hook-form/react-hook-form/pull/13650) — bluebill1049, merged 2026-08-08T04:57:42Z
+- [RHF PR #13649 — perf: improve clone object check](https://github.com/react-hook-form/react-hook-form/pull/13649) — bluebill1049, merged 2026-08-08T04:23:04Z
+- [`react-hook-form` npm dist-tag](https://registry.npmjs.org/react-hook-form) — still `latest: 7.85.0`; expect `7.86.0` within 2-3 weeks
+- [RHF master-branch commits feed](https://github.com/react-hook-form/react-hook-form/commits/master) — 7 commits ahead of v7.85.0

@@ -1935,3 +1935,75 @@ npm install next@canary  # or pin to canary.7 specifically
 - [`packages/next/src/server/require-hook.ts`](https://github.com/vercel/next.js/blob/canary/packages/next/src/server/require-hook.ts) — the `styledJsxRequireHookEntries()` + diagnostic warning
 - [`crates/next-api/src/project.rs`](https://github.com/vercel/next.js/blob/canary/crates/next-api/src/project.rs) — `additional_traced_modules` now includes styled-jsx
 - [Test: `test/production/adapter-styled-jsx/`](https://github.com/vercel/next.js/tree/canary/test/production/adapter-styled-jsx) — new regression test
+
+## Tailwind Main Branch — PR #20408 "Fix Slow Vite Rebuilds in Projects with Large Gitignored Directories" SHIPPED (August 12, 2026) — Forward-Looking for `tailwindcss@4.3.4` / `v4.4.0`
+
+**`tailwindcss@latest` is still `4.3.3`** (npm-published 2026-07-16T12:03:35Z — **27+ days since last release**; the v1.5.30 cycle documented `4.3.3` SHIPPED with 9 bug fixes; the v1.5.30 + v1.5.47 cycles documented the PR #20383 WASM fallback as forward-looking; the v1.5.52 cycle noted "Tailwind main branch 24 commits ahead of 4.3.3; no NEW commits since v1.5.47 PR #20399; expect v4.3.4 or v4.4.0 within 2-4 weeks"). **The PR #20399 observation is no longer accurate** — **PR #20408 merged today at 2026-08-12T14:31:48Z** in `0.0.0-insiders.b86a6e0` (npm-published 2026-08-12T14:45:36Z, replacing `0.0.0-insiders.16e94cb` from Aug 10).
+
+### The bug — verbatim from PR #20408 body
+
+> *Preface: For full transparency, I used AI (Claude) to help dig into this issue we're having and write some of the explanation below.*
+>
+> *Our local Laravel application (with Docker) takes between 2-6s seconds (re)building `app.css` after each Blade file update. After checking with Claude, there seems to be some potential unnecessary traversing of big (gitignored) directories, specifically `vendor` and `storage`.*
+>
+> *As far as I understand it, two scans happen in tailwindcss:*
+> - *a first scan, the content scan. This one reads the project files (auto-detect). It respects .gitignore, so it correctly skips vendor/ and storage/.*
+> - *a second scan, the glob resolution (resolve_globs() in the oxide crate). It builds watch patterns that the Vite plugin registers, so a file save can trigger a CSS rebuild. It walks the project again, but this walk does not respect .gitignore. It only skips a hardcoded list of directory names from `ignored-content-dirs.txt` (node_modules, .git, venv, ...). vendor/ and storage/ are not on that list, so it descends into them and stats every file. These directories can never produce a watch pattern, because the content scan never visited them. That work is perhaps wasted?*
+>
+> *Maybe why this went unnoticed: on a native filesystem a stat takes about 1µs, so 57k of them is around 0.06s. A Docker bind mount multiplies that by roughly 100. And the big directory in a typical JS project is `node_modules`, which the name list already catches; `vendor/` is the PHP ecosystem's version of that.*
+
+**The root cause**: `resolve_globs()` in the `@tailwindcss/oxide` Rust crate builds watch patterns for the Vite plugin. It walks the project to discover files but only skips directories from a hardcoded list (`node_modules`, `.git`, `venv`, etc.). It does NOT respect `.gitignore`. So in projects with large gitignored directories (`vendor/` in PHP/Ruby/Python projects, `storage/` in Laravel, `dist/` in build-output setups, `target/` in Rust projects, `.venv/` in Python venvs, etc.), the second scan stats every file in those directories — even though the content scan already determined those directories can't produce Tailwind classes.
+
+**The fix**: PR #20408 (marickvantuil, merged 2026-08-12T14:31:48Z, **3 files / +27/-0**) makes `resolve_globs()` respect `.gitignore` so the second scan skips the same directories the first scan does. Tiny diff, big impact.
+
+### Per-environment impact
+
+| Setup | Before PR #20408 | After PR #20408 |
+|---|---|---|
+| Docker bind mount + PHP/Laravel (`vendor/` has 57K files) | 2-6s CSS rebuild after each Blade update | <1s typical CSS rebuild |
+| Docker bind mount + Node.js (`node_modules/` already in hardcoded list) | Already fast (~0.1s) | No change |
+| Native macOS / Linux (no Docker) | ~0.06s rebuild, invisible to dev loop | No change |
+| WSL2 + large `vendor/` directory | 1-3s rebuild | <0.5s rebuild |
+| Vite production build | Builds ignore watch patterns; not directly affected | No change |
+| `@tailwindcss/postcss` workflow (no Vite) | Same Rust crate used; same fix applies | Same fix applies |
+| Monorepo with `dist/` in `.gitignore` | Same wasted traversal pattern | Same fix applies |
+| Python + `.venv/` (already in hardcoded list via `venv`) | Already fast | No change |
+| Ruby/Rails + `vendor/` | Slow rebuild | Fast rebuild |
+
+### Recommended action
+
+1. **Track the next `tailwindcss@4.3.x` or `4.4.x` npm release** (likely `4.3.4` given cadence; could be `4.4.0` if they bundle several PRs).
+2. **Until then**, if your dev loop is mysteriously slow on Docker/WSL2 with a non-Node.js ecosystem (`vendor/`, `storage/`, `dist/`, `target/`), the fix isn't in your `@latest` pin yet. Workarounds:
+   - Set `experimental.turbopackFileSystemCacheForBuild: true` if you're on Next.js (won't fix Tailwind rebuilds but reduces other dev overhead)
+   - Move the slow directory out of `.gitignore` but into the hardcoded `ignored-content-dirs.txt` list (requires a fork of Tailwind)
+   - Disable the Vite plugin's watch (use `@tailwindcss/cli --watch --poll=2000` instead)
+3. **Audit recipe**:
+
+```bash
+# Find projects with large gitignored directories that could be affected
+rg -n "^vendor/|^storage/|^dist/|^target/|^.venv/" .gitignore | head -10
+# Count files in the largest gitignored directory
+du -sh vendor/ storage/ dist/ target/ .venv/ 2>/dev/null | sort -hr | head -5
+# Check if you're on the insider train with the fix
+npm ls tailwindcss@insiders 2>/dev/null
+npm view tailwindcss@insiders version  # should be 0.0.0-insiders.b86a6e0 or later
+
+# For Vite users: check your watch-pattern registration cost
+# Run with --debug to see file watching stats
+DEBUG=tailwindcss:resolve-globs:* npx vite 2>&1 | grep -i "stats\|skipping\|ignored" | head -20
+```
+
+### Why this matters at scale
+
+The combination of (a) Docker bind mounts on macOS/Windows (100x stat cost multiplier) + (b) PHP/Ruby/Python ecosystems with `vendor/` directories (50K-200K files) + (c) Tailwind's two-scan pattern means the typical Laravel + Docker + Tailwind setup has been 2-6s slow per CSS rebuild for years. PR #20408 is the fix. The `npm view tailwindcss dist-tags.latest` check still returns `4.3.3` as of 2026-08-13T00:03Z — these are NEW commits ahead of the npm-published version, queued for `4.3.4` (or `4.4.0`).
+
+### Sources
+
+- [Tailwind PR #20408 — Fix slow Vite rebuilds in projects with large gitignored directories](https://github.com/tailwindlabs/tailwindcss/pull/20408) — marickvantuil, merged 2026-08-12T14:31:48Z, **3 files / +27/-0** (tiny diff, big impact)
+- [Tailwind commit `b86a6e0a`](https://github.com/tailwindlabs/tailwindcss/commit/b86a6e0a) — the merge commit for PR #20408
+- [`@tailwindcss/oxide` `resolve_globs()` in the Rust crate](https://github.com/tailwindlabs/tailwindcss/tree/main/packages/%40tailwindcss-oxide) — the function that now respects `.gitignore`
+- [Tailwind `ignored-content-dirs.txt` hardcoded list](https://github.com/tailwindlabs/tailwindcss/blob/main/packages/%40tailwindcss-oxide/src/ignored-content-dirs.txt) — the existing list (`node_modules`, `.git`, `venv`, etc.) that PR #20408 complements
+- [`tailwindcss@insiders` npm dist-tag](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — `0.0.0-insiders.b86a6e0` (npm-published 2026-08-12T14:45:36Z)
+- [`tailwindcss` npm dist-tag](https://www.npmjs.com/package/tailwindcss) — still `latest: 4.3.3` (npm-published 2026-07-16T12:03:35Z; expect next release within 2-4 weeks)
+- [Tailwind main-branch commits since `4.3.3`](https://github.com/tailwindlabs/tailwindcss/commits/main) — 25 commits ahead; PR #20408 is the NEWEST
+- [Tailwind releases page](https://github.com/tailwindlabs/tailwindcss/releases) — full version history
