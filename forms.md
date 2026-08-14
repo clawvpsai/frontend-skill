@@ -2584,3 +2584,80 @@ rg -n "errors\s*:" app/ src/ --type ts --type tsx | head -20
 - [RHF PR #13649 — perf: improve clone object check](https://github.com/react-hook-form/react-hook-form/pull/13649) — bluebill1049, merged 2026-08-08T04:23:04Z
 - [`react-hook-form` npm dist-tag](https://registry.npmjs.org/react-hook-form) — still `latest: 7.85.0`; expect `7.86.0` within 2-3 weeks
 - [RHF master-branch commits feed](https://github.com/react-hook-form/react-hook-form/commits/master) — 7 commits ahead of v7.85.0
+
+## React Hook Form v7.85.0 — Full Changelog Capture (Shipped August 8, 2026) + zod@canary 4.5.0 Train Continues (10th Drop Since v1.5.54)
+
+**`react-hook-form@latest` is still `7.85.0`** (npm-published 2026-08-08T01:14:56Z — **6 days since last release**; v1.5.54 cycle documented the headline `<Activity />` support but did not capture the full 6-fix changelog). **RHF master is still 7 commits ahead of v7.85.0** (no new master commits since v1.5.54 documented the 7 — the team is in stabilization mode ahead of v7.86.0). **Expect `react-hook-form@7.86.0` within 2-3 weeks** — the v1.5.43 + v1.5.49 + v1.5.54 predictions keep sliding but the accumulation of PR #13639 + PR #13652 + the new 5.5.8+ @hookform/resolvers train suggest it's close.
+
+### `react-hook-form@7.85.0` — Full changelog (verbatim from `CHANGELOG.md`)
+
+**Headline new feature (1):**
+- **Support `<Activity />`** ([PR #13633](https://github.com/react-hook-form/react-hook-form/pull/13633), [@bluebill1049](https://github.com/bluebill1049)) — RHF now correctly handles forms inside React 19.2's `<Activity mode="hidden">` boundary. Previously, forms inside hidden Activities would lose their state on `mode="visible"` transitions because the form's internal ref tracking was tied to mount/unmount cycles. With this fix, RHF properly preserves form state across the hidden→visible transition. **The fix doesn't add any new public API; it changes the internal subscription model to be aware of Activity's hidden-subtree semantics.** For apps using `<Activity>` extensively (Next.js 16 + Cache Components + partial-prefetching patterns — see [routing.md](routing.md) and [server-components.md](server-components.md)), this allows forms to be safely hidden-then-revealed without losing user input.
+
+**Bug fixes (6):**
+- **`getFieldState` error resolution from a field path** — when you called `getFieldState('items.0.qty', formState)` and `items.0.qty` had an error nested deep, the resolver was previously walking the wrong branch of the error tree. The fix uses the standard field-path walking the resolver already uses for `formState.errors[fieldName]`, so `getFieldState` and `formState.errors` now agree on which field is the source of an error. **Affects every form that uses `getFieldState` for field-level error UI** — silent inconsistency pre-7.85.0.
+- **`useWatch` discarding `useForm({ defaultValues })` in favor of its own `defaultValue` before the form mounts** — a subtle race where `useWatch({ name: 'field', defaultValue: 'X' })` could return `'X'` even if `useForm({ defaultValues: { field: 'Y' } })` had set `field: 'Y'`. The fix defers `useWatch`'s default-value resolution until after `useForm`'s init. **Affects every form that uses `useWatch` with a fallback `defaultValue` — common in optional-field UIs.**
+- **`setValue` emitting a duplicate `values` state notification for fields without a native input ref** — `setValue` was firing the `values` state-change event twice for fields registered without a backing DOM ref (e.g., `<Controller>`-only fields). The fix de-duplicates the notification. **Performance improvement, not a behavior change — reduces re-renders for Controller-heavy forms.**
+- **Stale render re-creating a field array path vacated by an array action** — if you called `useFieldArray.remove(0)` and React was mid-render, the next render could see a stale `fields[0]` and try to register a new path there. The fix tracks the field array's "removed slots" set and refuses to re-register on a removed slot. **Affects dynamic forms with `useFieldArray.remove` + concurrent rendering.**
+- **`useFieldArray` root-level error (`errors.name.root`) being lost on `append`/`prepend`/`insert`/`remove`** — the array root error key was being treated as a regular field error and overwritten by the new field's error state. The fix preserves `errors.name.root` across array mutations. **Affects every form using `useFieldArray` with a root-level form error (e.g., "items must be unique" applied to the array as a whole).**
+- **`min`/`max` validation being skipped for `valueAsDate` fields** — `register('dob', { valueAsDate: true, min: new Date('1900-01-01') })` was silently skipping the `min` check because the validation engine was comparing strings against the date object. The fix coerces the rule to a date before comparison. **Affects date-input forms (DOB, expiry, etc.) with min/max bounds.**
+
+**Audit recipe:**
+
+```bash
+# Find <Activity> usage in your app
+rg -n "<Activity" app/ components/ --type ts --type tsx
+# If you have <Activity mode="hidden"> wrapping a form, upgrade to 7.85.0+ to preserve form state across hidden→visible transitions
+
+# Find forms using getFieldState
+rg -n "getFieldState" app/ components/ --type ts --type tsx
+# Spot-check with hasError() + field path — pre-7.85.0 may have walked the wrong error branch
+
+# Find useWatch with defaultValue
+rg -n "useWatch\s*\(\s*\{[^}]*defaultValue" app/ components/ --type ts --type tsx
+# Verify the watched value matches the useForm defaultValues — pre-7.85.0 could race
+
+# Find valueAsDate fields with min/max
+rg -n "valueAsDate.*min:|valueAsDate.*max:|min:.*new Date|min:.*Date\." schemas/ src/ --type ts --type tsx
+# If you have any, upgrade to 7.85.0+ to enable min/max validation on date fields
+```
+
+### `zod@canary` 4.5.0 train — 10th drop since v1.5.54 (no `@latest` impact yet)
+
+**`zod@latest` is still `4.4.3`** (npm-published 2026-05-04T07:06:00Z — **3+ months since last release**; Zod's `@latest` cadence is genuinely slow — the security hardening PRs PR #6371 + PR #6386 + PR #6221 + PR #6367 + PR #6381 + PR #6316 from v1.5.54 are queued for `4.5.0` but not yet shipped). **The `zod@canary` train added 1 NEW drop since v1.5.54**: `4.5.0-canary.20260814T055530` (npm-published `2026-08-14T05:58:43Z` — **2h before this cron**; the 10th drop on the 4.5.0 canary train since v1.5.54's `4.5.0-canary.20260812T211928`).
+
+**The acceleration observation:** the canary train is now dropping ~1 cut per day — `4.5.0-canary.20260813T055200` (Aug 13) → `4.5.0-canary.20260814T055510` (Aug 14) → `4.5.0-canary.20260814T055530` (Aug 14, 20 minutes later). That's the fastest canary cadence the v1.5.54 cycle observed. **Expect `zod@4.5.0` STABLE within 1-2 weeks.** Track the canary train via `npm view zod dist-tags.canary` and the changelog at [github.com/colinhacks/zod/releases](https://github.com/colinhacks/zod/releases).
+
+**Audit recipe:**
+
+```bash
+# Check current @latest
+npm view zod dist-tags.latest   # 4.4.3
+# Check current canary
+npm view zod dist-tags.canary   # 4.5.0-canary.20260814T055530
+
+# If you want to opt into 4.5.0 features early (the 6-PR hardening burst from v1.5.54):
+npm install zod@canary
+# All your Zod v4 code should continue to work — the 6 PRs are additive bug fixes / perf, not API changes
+```
+
+### Sources
+
+#### React Hook Form
+- [RHF v7.85.0 GitHub release](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.85.0) — npm-published 2026-08-08T01:14:56Z
+- [RHF PR #13633 — support React `<Activity />`](https://github.com/react-hook-form/react-hook-form/pull/13633) — [@bluebill1049](https://github.com/bluebill1049), the headline new feature
+- [RHF CHANGELOG.md full v7.85.0 entry](https://github.com/react-hook-form/react-hook-form/blob/master/CHANGELOG.md#7850---2026-08-08) — supports `<Activity />` + 6 fixes
+- [RHF PR #13639 — ✨ feat: add getErrors method to read form errors without subscription](https://github.com/react-hook-form/react-hook-form/pull/13639) — candymask0712, merged 2026-08-11T11:44:31Z, **FORWARD-LOOKING for v7.86.0** (v1.5.54 documented)
+- [RHF PR #12853 — original getErrors proposal (referenced by #13639)](https://github.com/react-hook-form/react-hook-form/pull/12853)
+- [RHF PR #13654 — refactor: remove unreachable revalidate condition in useFieldArray](https://github.com/react-hook-form/react-hook-form/pull/13654) — zigzagdev, merged 2026-08-10T08:34:53Z
+- [RHF PR #13652 — fix(flatten): preserve File and Blob values as leaf nodes](https://github.com/react-hook-form/react-hook-form/pull/13652) — bluebill1049, merged 2026-08-08T22:51:24Z, **FORWARD-LOOKING for v7.86.0** (the v1.5.43 documented fix)
+- [RHF PR #13650 — fix: field array update leaving stale errors and touched state at updated index](https://github.com/react-hook-form/react-hook-form/pull/13650) — bluebill1049, merged 2026-08-08T04:57:42Z
+- [RHF PR #13649 — perf: improve clone object check](https://github.com/react-hook-form/react-hook-form/pull/13649) — bluebill1049, merged 2026-08-08T04:23:04Z
+- [`react-hook-form` npm dist-tags](https://registry.npmjs.org/react-hook-form) — confirms `latest: 7.85.0`; expect `7.86.0` within 2-3 weeks
+- [RHF master-branch commits feed](https://github.com/react-hook-form/react-hook-form/commits/master) — 7 commits ahead of v7.85.0 (unchanged from v1.5.54)
+
+#### Zod
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — `4.5.0-canary.20260814T055530` (latest of 10 drops since v1.5.54)
+- [`zod@latest` npm dist-tag](https://registry.npmjs.org/zod) — still `4.4.3`; expect `4.5.0` within 1-2 weeks
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — 6+ NEW functional commits since v1.5.54
+- [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history

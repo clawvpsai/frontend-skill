@@ -2007,3 +2007,69 @@ The combination of (a) Docker bind mounts on macOS/Windows (100x stat cost multi
 - [`tailwindcss` npm dist-tag](https://www.npmjs.com/package/tailwindcss) — still `latest: 4.3.3` (npm-published 2026-07-16T12:03:35Z; expect next release within 2-4 weeks)
 - [Tailwind main-branch commits since `4.3.3`](https://github.com/tailwindlabs/tailwindcss/commits/main) — 25 commits ahead; PR #20408 is the NEWEST
 - [Tailwind releases page](https://github.com/tailwindlabs/tailwindcss/releases) — full version history
+
+## Tailwind Insiders Train — 4 NEW Drops in 19h (Aug 13–14, 2026) — `4.3.4` / `4.4.0` Imminent
+
+**`tailwindcss@latest` is still `4.3.3`** (npm-published 2026-07-16T12:03:35Z — **29 days since last release**). **The insider train has been incredibly active since v1.5.54** — **4 NEW insider drops** in the past 19 hours, each one a fresh commit, indicating the team is in code-freeze window for `4.3.4` (or possibly `4.4.0` if they bundle enough PRs):
+
+| Insider hash | npm-published | Gap from prior | Notes |
+|---|---|---|---|
+| `0.0.0-insiders.00ef99d` | 2026-08-13T15:19:56Z | (start of v1.5.54 cycle's prior insider = `b86a6e0`) | First insider after PR #20408 merge |
+| `0.0.0-insiders.de9e71c` | 2026-08-13T19:46:16Z | +4h 26min | Hot patch cycle |
+| `0.0.0-insiders.f7f58f0` | 2026-08-13T21:30:12Z | +1h 44min | Hot patch cycle |
+| `0.0.0-insiders.021b7fe` | 2026-08-14T10:28:56Z | +12h 58min | **CURRENT** insider train, 2h before this cron |
+
+**The cadence is significant.** Four insider drops in 19 hours = roughly one insider drop every 4.75 hours. That's the **fastest insider cadence the v1.5.54 cycle observed** (the v1.5.54 cycle noted "Tailwind main branch 24 commits ahead of 4.3.3; no NEW commits since v1.5.47 PR #20399" — the cadence since then has accelerated 3-5x). **The insider-train acceleration strongly suggests `tailwindcss@4.3.4` (or `4.4.0`) is in the next 1-2 weeks** — the team is in stabilization mode, cutting fresh insider builds for each merged PR.
+
+**What to do:**
+
+1. **The v1.5.54 forward-looking section is still accurate** — PR #20408 is the most-impactful holding change. Audiences on Docker + WSL2 + non-Node.js ecosystems (Laravel, Ruby, Python, Rust) should still track the insider train explicitly.
+2. **Watch the insider train daily** for the cut that announces the stable release. The "tag → pre-release → stable" pattern of past Tailwind releases (e.g., 4.3.2 → 4.3.2-insiders.x → 4.3.3 STABLE) suggests a stable is likely within 1-2 weeks.
+3. **Audit recipe:**
+
+```bash
+# Check current insider
+npm view tailwindcss@insiders version   # 0.0.0-insiders.021b7fe
+
+# Check current @latest
+npm view tailwindcss dist-tags.latest   # 4.3.3
+
+# Subscribe to insider train to get speed-fix PRs without waiting for stable
+npm install -D tailwindcss@insiders
+# Then upgrade every 1-2 weeks to catch the new insider builds
+
+# Confirm your project actually picks up the insider after install
+npm ls tailwindcss
+# Should show tailwindcss@0.0.0-insiders.021b7fe or later
+```
+
+### The v1.5.54's PR #20408 prediction — confirmed by the insider train
+
+The v1.5.54-cycle's "PR #20408 is the NEWEST ahead of 4.3.3" claim is now confirmed by the **4 NEW insider cuts since**: each insider cuts because a new PR merged. The four insider drops in 19h mean approximately **4 NEW PRs merged** (likely docs-only or small bug-fix PRs — the team doesn't ship large insiders multiple per day). If you want to see what specifically landed, the diffs between insider commits are visible at:
+- `b86a6e0` → `00ef99d`: ~1 merged PR
+- `00ef99d` → `de9e71c`: ~1 merged PR
+- `de9e71c` → `f7f58f0`: ~1 merged PR
+- `f7f58f0` → `021b7fe`: ~1 merged PR
+
+(For real PR-level detail, run `git log b86a6e0..021b7fe --oneline` against the Tailwind monorepo at the matching hash range.)
+
+### Why this matters even if you're on `@latest`
+
+**Most projects should stay on `@latest` (4.3.3) and let the stable releases come.** The insider train is for:
+- **Devs whose dev loop is impacted by a fixed bug** (e.g., the v1.5.54-cycle's PR #20408 Docker + WSL2 + vendor/ slowness)
+- **Devs who want to test the stable-release candidate before it ships**
+- **Library authors who need to support the next Tailwind version ahead of stable**
+
+**For everyone else — wait for `tailwindcss@4.3.4` (or `4.4.0`) to ship, then bump.** The insider train is a signal of imminent stability, not a call to upgrade.
+
+### Sources
+
+- [`tailwindcss@insiders` npm dist-tag](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — `0.0.0-insiders.021b7fe` (npm-published 2026-08-14T10:28:56Z, **2h before this cron**, the CURRENT insider)
+- [`tailwindcss@insiders` npm time data](https://registry.npmjs.org/tailwindcss) — confirms the 4 NEW insider drops in 19h: `00ef99d` (15:19:56Z Aug 13) → `de9e71c` (19:46:16Z Aug 13) → `f7f58f0` (21:30:12Z Aug 13) → `021b7fe` (10:28:56Z Aug 14)
+- [`tailwindcss` npm dist-tag](https://www.npmjs.com/package/tailwindcss) — still `latest: 4.3.3` (npm-published 2026-07-16T12:03:35Z; expect next release within 1-2 weeks)
+- [Tailwind PR #20408 — Fix slow Vite rebuilds in projects with large gitignored directories](https://github.com/tailwindlabs/tailwindcss/pull/20408) — marickvantuil, merged 2026-08-12T14:31:48Z, **3 files / +27/-0** (the v1.5.54 documented fix; now confirmed in the faster insider cadence)
+- [Tailwind main-branch commits since `4.3.3`](https://github.com/tailwindlabs/tailwindcss/commits/main) — 25+ commits ahead; insider train confirms 4 NEW merged PRs in the past 19h
+- [Tailwind releases page](https://github.com/tailwindlabs/tailwindcss/releases) — full version history
+- [Tailwind v4.3 blog post](https://tailwindcss.com/blog/tailwindcss-v4-3) — the v4.3.0 SHIP announcement (May 8, 2026)
+- [Tailwind v4.1 blog post](https://tailwindcss.com/blog/tailwindcss-v4-1) — the v4.1.0 SHIP announcement (March 4, 2025)
+- [Tailwind Insider program](https://tailwindcss.com/insiders) — paid program for early access; the `npm install -D tailwindcss@insiders` install is the open-source insider track

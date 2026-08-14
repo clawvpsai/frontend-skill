@@ -1522,3 +1522,85 @@ echo "$intersect" | sort -u
 - [`zustand` npm dist-tags](https://registry.npmjs.org/zustand) — confirms `latest: 5.0.14` (unchanged since 2026-05-28T10:17:58Z; expect next release within 2-4 weeks)
 - [Zustand GitHub releases page](https://github.com/pmndrs/zustand/releases) — full version history
 - [Zustand main-branch commits since `5.0.14` (npm tag)](https://github.com/pmndrs/zustand/commits/main) — 3 NEW commits in the past 30 min, after 33+ days of idle
+
+## Zustand 5.0.15 SHIPPED (August 13, 2026) — Forward-Looking Became Real; Pin `zustand@^5.0.15`
+
+**The v1.5.54 cycle's "Forward-Looking for `zustand@5.0.15`" prediction has come true.** `npm view zustand dist-tags.latest` now returns `5.0.15` (npm-published `2026-08-13T00:39:55.466Z` — **30 minutes after the v1.5.54 cycle committed** at ~00:09Z, and exactly **77 days after v5.0.14** published on 2026-05-28T10:17:58Z). The 3 commits documented in v1.5.54 as forward-looking — PR #3555 (persist race fix), PR #3531 (V8 stack regex), PR #3559 (docs) — all landed in 5.0.15.
+
+### Confirmed: 5.0.15 changelog (verbatim from npm + GitHub release)
+
+**What changed** (the safe-to-bump additive patch, no breaking changes):
+
+| PR | Files | Title | Materiality |
+|---|---|---|---|
+| [#3555](https://github.com/pmndrs/zustand/pull/3555) | 2 / +180/-0 | `fix(persist): clearStorage() should invalidate concurrent async rehydration` | **MATERIAL** (closes persist race condition; 5 new tests) |
+| [#3531](https://github.com/pmndrs/zustand/pull/3531) | 3 / +9150/-2 (mostly test fixtures) | `fix(devtools): correct V8 stack regex when source path contains spaces` | LOW (cosmetic bug in Redux DevTools action labels) |
+| [#3559](https://github.com/pmndrs/zustand/pull/3559) | docs-only | `docs: add zustand-devtools-bridge` | NONE (docs) |
+
+**Migration required:** none. The single user-observable change is that `clearStorage()` now correctly invalidates in-flight async rehydration on async storage backends (IndexedDB, AsyncStorage, custom HTTP-backed stores). Apps using sync storage (`localStorage`/`sessionStorage`) see no change. The 5 new tests in `tests/persistAsync.test.tsx` cover: stale async `getItem` discarded after `clearStorage()`; stale async `migrate` discarded; hydration invalidated when `removeItem` throws; post-completion `clearStorage()` does NOT reset live state; `onRehydrateStorage`/`onFinishHydration` callbacks suppressed for stale hydration.
+
+### Recommended action
+
+1. **Bump `zustand@^5.0.15`** in `package.json`. Pure additive patch, no test cycles needed if you aren't using `persist` with async storage. If you DO use `persist` + async storage + `clearStorage()`, the fix is silent for benign cases — you only need to test if you have user reports of stale state after logout.
+2. **Audit recipe** (same as v1.5.54 — copy-paste for easy execution):
+
+```bash
+# Confirm version
+npm view zustand dist-tags.latest   # should be 5.0.15
+
+# Find stores using persist with async storage (at-risk for the race pre-5.0.15)
+rg -n "persist\s*\(" stores/ --type ts --type tsx | grep -v "//"
+rg -n "createJSONStorage\s*\(\s*\(\s*\)\s*=>\s*(indexedDB|localForage|asyncStorage|fetch)" stores/ --type ts --type tsx
+
+# Find clearStorage callsites (login/logout/reset flows)
+rg -n "clearStorage\s*\(" app/ src/ --type ts --type tsx
+
+# Intersection = at-risk for the pre-5.0.15 race
+comm -12 \
+  <(rg -l "persist\s*\(" stores/ --type ts --type tsx | sort -u) \
+  <(rg -l "clearStorage\s*\(" app/ src/ --type ts --type tsx | sort -u)
+```
+
+### "Maintenance mode" claim — fully updated to "slow-cadence-active-development"
+
+The v1.5.54 section's "maintenance mode" correction ("the project is alive and shipping meaningful bug fixes") is now confirmed by a real npm release: **5.0.15 shipped 5.0.15 carries the long-deferred PR #3555 persist fix that nobody thought would make a release.** The team's pattern is clear: they batch PRs for ~2-3 months, then cut a release. Expect `5.0.16` to follow the same pattern — track the main-branch commits feed for activity.
+
+## TanStack Query Solid 6.0.0-rc.0 SHIPPED (August 12, 2026) — Acceleration Toward Major v6
+
+**The TanStack Query monorepo has been accelerating on the Solid adapter specifically.** `@tanstack/solid-query@6.0.0-rc.0` + `@tanstack/solid-query-persist-client@6.0.0-rc.0` + `@tanstack/solid-query-devtools@6.0.0-rc.0` all shipped at `2026-08-12T23:30:00Z` — 3 days after `@tanstack/solid-query@6.0.0-beta.8` (Aug 11, 21:43) and 11 days after `@tanstack/solid-query@6.0.0-beta.7` (Aug 1, 15:58). **The Solid adapter is on the v6 major line** while **React stays on the v5.101.x line** — the two adapters are now on different major versions because the Solid v2 (the upstream framework) has breaking changes that don't apply to React.
+
+**Why this matters for React users:** largely it doesn't. **React Query stays on `5.101.4`** (last published 2026-07-21T13:04:07Z — **24 days ago**; no new patch since). The Solid v6 push is cross-pollination / hygiene:
+- If you have a monorepo with both React Query and Solid Query, you'll get peer-dep warnings if you upgrade Solid before React (or vice versa). Doesn't break anything.
+- If you use `@tanstack/query-persist-client` (the framework-agnostic layer), both packages depend on `@tanstack/query-core@5.101.4` so the underlying engine is still in sync.
+- If you use only React Query, this is a no-op. Pin `^5.101.4` and ignore the Solid v6 train.
+
+**Audit recipe:**
+
+```bash
+# Check whether Solid is in your dep tree (it shouldn't be in a pure React app)
+npm ls @tanstack/solid-query 2>/dev/null
+# If present, you're in a multi-framework monorepo — track both trains separately
+
+# Confirm React is still on 5.101.4
+npm view @tanstack/react-query dist-tags.latest   # should be 5.101.4
+```
+
+### TanStack Query React — STILL IDLE on 5.101.4
+
+**`@tanstack/react-query@latest` is still `5.101.4`** (npm-published 2026-07-21T13:04:07Z — **24 days since last release**). The v1.5.54 cycle noted "5.101.4 was a pure dep-coordination bump with zero new code" — and that's still true. The TanStack monorepo has been concentrating engineering effort on the Solid v6 major, not on React 5.101.x. Expect `5.101.5` when React-specific work resumes (likely a single PR or a solid 6.0.0-STABLE coordination bump; no timeline implied).
+
+**No new material between v1.5.54 and this cycle for React Query.** The 5.101.2 devtools CSP nonce fix (PR #10736) + the 5.101.3 partialMatchKey perf rewrite (PR #11084) + the 5.101.4 dep coordination bump remain the cumulative material of the 5.101.x line. **Pin `^5.101.4` — no action needed.**
+
+### Sources
+
+- [Zustand GitHub release v5.0.15](https://github.com/pmndrs/zustand/releases/tag/v5.0.15) — npm-published 2026-08-13T00:39:55Z
+- [`zustand@5.0.15` npm dist-tags](https://www.npmjs.com/package/zustand?activeTab=versions) — confirms `latest: 5.0.15`
+- [Zustand PR #3555](https://github.com/pmndrs/zustand/pull/3555) — Copilot, merged 2026-08-12T23:36:23Z, **the headline fix**, closes [issue #3554](https://github.com/pmndrs/zustand/issues/3554)
+- [Zustand `src/middleware/persist.ts`](https://github.com/pmndrs/zustand/blob/main/src/middleware/persist.ts) — the `clearStorage()` function with the new `hydrationVersion` increment
+- [Zustand `tests/persistAsync.test.tsx`](https://github.com/pmndrs/zustand/blob/main/tests/persistAsync.test.tsx) — the 5 new tests covering the race fix
+- [Zustand discussion #3558 — zustand-devtools-bridge announcement](https://github.com/pmndrs/zustand/discussions/3558)
+- [TanStack Query `release-2026-08-12-2330` train](https://github.com/TanStack/query/releases/tag/release-2026-08-12-2330) — `@tanstack/solid-query@6.0.0-rc.0` + persist-client + devtools
+- [TanStack Query `release-2026-08-11-2143` train](https://github.com/TanStack/query/releases/tag/release-2026-08-11-2143) — `@tanstack/solid-query@6.0.0-beta.8`
+- [TanStack Query `release-2026-08-01-1558` train](https://github.com/TanStack/query/releases/tag/release-2026-08-01-1558) — `@tanstack/solid-query@6.0.0-beta.7`
+- [`@tanstack/react-query` npm dist-tags](https://registry.npmjs.org/@tanstack/react-query) — confirms `latest: 5.101.4` (unchanged since 2026-07-21T13:04:07Z)
+- [TanStack Query v5 docs](https://tanstack.com/query/v5/docs/framework/react/overview)
