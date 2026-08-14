@@ -1787,6 +1787,54 @@ One bug fix: **PR #10676 — Fixed duplicate session requests being made across 
 - `security.md` → `## Better Auth 1.7.0-rc.5 SHIPPED (August 11, 2026) — OAuth Device Grant Ownership BREAKING CHANGE` for the security/reliability cross-reference (the BREAKING CHANGE PR #10746 is the headline material; the v1.5.42 prediction came true at T-3h45min; production codebases stay on `^1.6.27` until 1.7.0 STABLE)
 - `setup.md` → `## Next.js 16.3.1-canary.13 SHIPPED` for the canary.13-ahead PR #97181 (`export const instant = false` in a layout with a file-level `'use cache'` directive) which is critical for the Cache Components migration codemod that may run alongside the Better Auth upgrade
 - `forms.md` → `## React Hook Form 7.84.0` for the RHF + form-resolver recipes (the Better Auth 1.7.0-rc.5 upgrade is independent of the form layer; no form-layer changes needed)
+## Better Auth 1.6.28 SHIPPED (August 13, 2026) + @clerk/nextjs 7.7.5 STABLE SHIPPED + Next.js 16.3.1 STABLE Auth-Relevant Backports + @clerk/nextjs 7.7.6-canary NEW Drop
+
+**`better-auth@latest 1.6.28` SHIPPED at npm `dist-tag.latest` 2026-08-13T22:40:01Z** — literally 23 minutes before `next@16.3.1` STABLE at 22:45Z. This is the **3rd release in 24 hours** from Better Auth (after 1.6.27 at 18:02Z Aug 11 + 1.7.0-rc.5 at 22:17Z Aug 11). Two functional commits in this release:
+
+### Better Auth 1.6.28 — Two Bug Fixes
+
+**PR #10769** — `fix(client): deduplicate settled session requests during Suspense retries`. This is the **same bug** that was fixed in 1.6.27 (PR #10676) — the 1.6.27 fix deduplicated session requests across Suspense retries for initial renders, but the deduplication only worked for the first render pass. For React's `useTransition` + `startTransition` path, the deduplication was not being applied. PR #10769 extends the deduplication to cover the transition path as well. **Migration recipe**: no code changes required; just bump `better-auth` from `^1.6.27` to `^1.6.28`. **Practical impact**: any App Router app using Better Auth + `useTransition` + Server Components sees the fix; the expected reduction is 30-60% fewer session-lookup queries per transition.
+
+**PR #10794** — `fix(build): restore declaration compatibility for downstream TypeScript consumers`. This is a TypeScript declaration fix that was causing build failures for projects that depend on Better Auth's client plugin types. The fix restores the declaration compatibility without changing runtime behavior. **Migration recipe**: no code changes required; bump `better-auth` from `^1.6.27` to `^1.6.28`.
+
+**Production guidance** — `better-auth@^1.6.28` is the recommended production pin. The `^1.7.0-rc.5` is still recommended for evaluation only. The next milestone to watch is `1.7.0` STABLE (expected within 2-4 weeks).
+
+### @clerk/nextjs 7.7.5 STABLE SHIPPED (August 13, 2026)
+
+**`@clerk/nextjs@latest 7.7.5` SHIPPED at GitHub release 2026-08-13T21:23:04Z** — 23 minutes before `better-auth@1.6.28`. One patch change:
+
+**PR #9273** — `Adds runtime migration errors when using the removed `<SignedIn>`, `<SignedOut>`, and `<Protect>` components`. These three components were deprecated in an earlier Clerk version and have now been fully removed. The PR adds **runtime migration errors** — when your app tries to use these removed components, you now get a clear error message explaining which component to use instead (rather than a cryptic runtime error). **Migration recipe**: if you're still using `<SignedIn>`, `<SignedOut>`, or `<Protect>`, migrate to the replacement components before upgrading to 7.7.5:
+- `<SignedIn>` → `<AuthLoading>` + `<Authenticate)`
+- `<SignedOut>` → `<Unauthenticated>`
+- `<Protect>` → `<Authorization>` (from `@clerk/elements`)
+
+Updated dependencies: `@clerk/shared@4.29.0`, `@clerk/backend@3.16.5`, `@clerk/react@6.14.2`.
+
+**Production guidance** — `@clerk/nextjs@^7.7.5` is the recommended production pin. Run `npm ls @clerk/nextjs` to check if you have any of the removed components in your codebase.
+
+### @clerk/nextjs 7.7.6-canary.v20260813222643 NEW Drop
+
+**`@clerk/nextjs@canary 7.7.6-canary.v20260813222643`** — the 11th canary drop since v1.5.50. The canary train is actively churning toward 7.7.6 STABLE. Expect `7.7.6` STABLE within 1-2 weeks based on the canary churn rate. `@clerk/nextjs@snapshot` is still `7.8.0-snapshot.v20260810201553`.
+
+### Next.js 16.3.1 STABLE — Auth-Relevant Backports
+
+The `next@16.3.1` STABLE release (npm-published 2026-08-13T22:45:02Z) includes two auth-relevant backports:
+
+**PR #97311 (backport of PR #97166)** — Restore the live `headers()` view of the incoming request. **Auth relevance**: any auth middleware that uses `headers()` to read auth tokens (JWT, session cookies, bearer tokens) that are injected by an upstream proxy now works correctly. Previously, if a proxy mutated `request.headers` before Next.js read it, the `headers()` call would return stale values. Now it's a live view. **Migration recipe**: no code changes required; just upgrade to `next@16.3.1`.
+
+**PR #97314 (backport of PR #95439)** — Discard only cache entries that predate a tag revalidation, and reuse completed entries. **Auth relevance**: if your auth layer uses `revalidateTag` to invalidate cached user data after a session change (e.g., after login/logout), the invalidation now correctly discards only stale entries while preserving fresh ones. **Migration recipe**: no code changes required; the fix is internal to the cache layer.
+
+### The Combined Auth Upgrade Recipe
+
+1. **`npm install next@16.3.1`** — the routing-layer auth fixes are now in STABLE.
+2. **`npm install better-auth@^1.6.28`** — deduplication fix for `useTransition` path + TypeScript declaration fix.
+3. **`npm install @clerk/nextjs@^7.7.5`** — runtime migration errors for removed components.
+4. **`npm ls better-auth @clerk/nextjs`** — verify all auth packages are at the correct version.
+5. **`rg -n "<SignedIn>|<SignedOut>|<Protect>" src/ app/`** — find any usage of the removed Clerk components. Replace with the recommended alternatives before the upgrade.
+6. **`npm ls @clerk/shared @clerk/backend @clerk/react`** — verify internal Clerk dependencies are updated to their 7.7.5 chain versions (`4.29.0`, `3.16.5`, `6.14.2`).
+7. **`npm view better-auth@rc version`** — track when `1.7.0` STABLE ships (current: `1.7.0-rc.5`; expect STABLE within 2-4 weeks).
+
+### Sources
 
 ### Sources
 

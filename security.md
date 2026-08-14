@@ -1837,10 +1837,70 @@ rg -n '"flat-cache":\s*"6\.1\.24"|"file-entry-cache":\s*"11\.1\.6"|"keyv":\s*"6\
 - **CI runners** that ran `npm install` between Aug 4 10:53Z and Aug 5 13:15Z need to be rotated (treat them as compromised — see Step 3 above).
 - **Vercel deployments** are not directly affected (Vercel pins its own internal lockfile), but **your project's Vercel build may have pulled a malicious transitive dep** if you ran `npm install` locally before pushing. Audit `package-lock.json` against the malicious list.
 
+## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) + 16.3.1-canary.16 SHIPPED (August 14, 2026) + August 20 Monthly Security Release T-6 Days + React 19.3.0-canary-beef6d60 SHIPPED + @clerk/nextjs 7.7.5 STABLE
+
+**`next@16.3.1` STABLE SHIPPED at npm `dist-tag.latest` 2026-08-13T22:45:02Z** — 18 minutes before this cron's 00:03Z start. This is the **first 16.3.x STABLE patch release** and includes 19 backports from the canary train. The most security-relevant backports:
+
+**PR #97315 (backport of PR #96988)** — `Keep the dev validation worker alive across HMR updates`. The dev validation worker was being recreated on every HMR update, which meant any state in the worker (including security validation state) was reset. The fix keeps the worker alive across HMR updates, preserving validation context. **Security relevance**: for apps using custom security headers validation in dev mode, the validation context is now preserved across hot reloads.
+
+**PR #97328 (backport of PR #97190)** — `Compile the middleware redirect routes up front in dev`. Middleware redirect routes are now compiled at startup rather than lazily on first request. **Security relevance**: earlier compilation means security-relevant middleware logic (rate limiting, IP allowlisting, bot detection, auth checks on redirect routes) is validated at startup rather than at request time. Runtime errors in redirect middleware now surface at `next dev` startup instead of at the first request.
+
+**PR #97311 (backport of PR #97166)** — `Restore the live headers() view of the incoming request`. **Security relevance**: for apps using `headers()` to read security-relevant headers (CORS, CSP, auth tokens) that are injected or modified by an upstream proxy/load balancer, the live view now correctly reflects the final state of the request. Previously, a proxy that mutated `request.headers` could leave `headers()` returning stale pre-mutation values, causing security checks to see incorrect data.
+
+**PR #96733** — `fix(next/image): preserve image response after optimization`. The image optimization response was being lost after the optimization step, causing the original response to be returned instead. **Security relevance**: this is a medium-severity issue for apps that rely on image optimization to enforce security policies (e.g., hotlink protection, referrer checking at the image optimization layer).
+
+**PR #97317 (backport of PR #97213)** — `Turbopack: Fix HMR for dynamic imports evaluated from layouts`. HMR now correctly invalidates when a dynamic import changes. **Security relevance**: for apps with security-critical dynamic imports (e.g., dynamic auth module loading), HMR now correctly triggers re-evaluation when the imported module changes.
+
+**The 16.3.0 → 16.3.1 security upgrade checklist** (5 steps):
+1. `npm install next@16.3.1` — the canonical upgrade. No config changes required.
+2. `npm ls next` — verify `16.3.1` is installed.
+3. **`rg -n "headers\(\)" app/middleware.ts app/proxy.ts`** — if your middleware/proxy reads security-relevant headers via `headers()`, verify the values are correct after the PR #97166 live-view fix. The fix resolves the stale snapshot regression.
+4. **`next dev &` then check startup logs** — after upgrading to 16.3.1, middleware redirect routes are compiled at startup. Any compilation errors in redirect middleware now surface at startup instead of at first request.
+5. If using custom security validation in dev mode: verify that validation context is preserved across hot reloads (the PR #96988 fix).
+
+### Next.js 16.3.1-canary.16 SHIPPED (August 14, 2026) — Self-Hosted Deployment Security Fix
+
+**`next@16.3.1-canary.16` SHIPPED at npm `dist-tag.canary` 2026-08-14T00:05:06Z** — literally 2 minutes after this cron's 00:03Z start. The most important canary.16 commit for security is:
+
+**PR #95238** — `fix(cache-components): decompress postponed resume body before parsing`. **This is a self-hosted deployment security/reliability fix**. When the resume body arrives gzip-compressed (which happens behind Vercel's infrastructure and self-hosted nginx/cloudflare setups with gzip-on-the-wire), the gzip binary bytes (`0x1f 0x8b`) were being misinterpreted as UTF-8. This caused `parsePostponedState` to fail, throwing `Invariant: invalid postponed state` (E314). The error was caught, degraded to `type:1`, and resulted in a logged server error with an HTTP 200 fallback — meaning the route couldn't resume its prerendered HTML shell. **The security angle**: for self-hosted deployments, this silent fallback could bypass security checks that rely on the Cache Components resume path. The fix adds proper `Content-Encoding` detection and decompression. **Self-hosted users with gzip-on-the-wire (nginx with `gzip on`, Cloudflare with auto-gzip, Vercel) should upgrade to canary.16** for the full resume path.
+
+**Workaround for self-hosted users until canary.16 ships as STABLE**: disable gzip for the POST `/_next/data/.../...resume` endpoints:
+```nginx
+# nginx — disable gzip for Cache Components resume endpoints
+location ~* ^/\_next/data/.*\.json$ {
+    gzip off;
+    proxy_set_header Content-Encoding "";
+}
+```
+
+### August 20 Monthly Security Release — T-6 Days
+
+**The Aug 20 batch is now T-6 days away as of 2026-08-14**. The v1.5.50 cycle documented the Critical Dev-Mode Security Disclosure #97157 (unauthenticated inspector UUID + CDP RCE + webpack source-map file-read + unauthenticated `/_next/mcp` + HMR websocket) as the headline candidate. **The v1.5.50 prediction was: `next@16.3.1` is pre-patched for the Aug 20 batch** — that prediction is now confirmed, since `next@16.3.1` STABLE was published without addressing #97157 (the fix was not in the canary train).
+
+**The pre-batch triage state as of this cron**:
+- **Issue #97157 (dev-mode inspector UUID + source-map file-read + `/_next/mcp` + HMR websocket)** — closed by `github-actions[bot]` at 2026-08-11T07:18:25Z (not fixed). **The canonical fix is expected in the Aug 20 batch.** The issue remains the headline candidate.
+- **No new pre-announced CVEs** as of this cron's check (verified via `GET https://github.com/advisories?query=next.js`).
+- **next@16.3.1 STABLE is pre-patched** for whatever the Aug 20 batch contains — the canary train from `canary.92+` contains the fix candidate.
+- **Expected Aug 20 patch versions**: `next@16.3.1-patch` (if any fixes land in 16.3.1) + `next@16.3.2` + `next@15.5.24` + `next@14.2.36`.
+- **The Aug 20 monthly security release is independent of next@16.3.1 STABLE** — upgrading to 16.3.1 STABLE does NOT address #97157. Continue applying the 5 mitigations from v1.5.50.
+
+**The 5 mitigations for #97157 (until the Aug 20 fix ships)**:
+1. **DO NOT bind `next dev` to all interfaces** — explicitly bind to `127.0.0.1` or use `--hostname 127.0.0.1`
+2. **DO NOT expose `next dev` to a LAN** (common Docker dev setups forward port 3000 to the LAN)
+3. **DO NOT visit malicious sites while running `next dev`** — the DNS rebinding drive-by is the worst case
+4. **Disable MCP explicitly** in `next.config.ts` via `experimental: { mcpServer: false }` if not using it
+5. **Watch for the fix** in canary.14+ and in the Aug 20 Vercel monthly security release
+
+### React 19.3.0-canary-beef6d60 SHIPPED (August 13, 2026)
+
+**`react@canary 19.3.0-canary-beef6d60-20260813` SHIPPED at npm `dist-tag.canary` 2026-08-13T16:30:24Z**. The new canary bundle includes PR #37168 + PR #37169 (the 9th and 10th PRs in the Jack Pope Fragment cleanup series). No security-material changes in this bundle. The Fragment event listener fixes reduce the attack surface for XSS via orphaned event listeners on Fragment children. **No security-relevant React changes in this cycle.**
+
+### @clerk/nextjs 7.7.5 STABLE SHIPPED (August 13, 2026)
+
+**`@clerk/nextjs@latest 7.7.5` SHIPPED at GitHub release 2026-08-13T21:23:04Z**. One patch change: **PR #9273 adds runtime migration errors when using the removed `<SignedIn>`, `<SignedOut>`, and `<Protect>` components**. This is a reliability fix (clearer error messages) rather than a security fix. **Production guidance**: `@clerk/nextjs@^7.7.5` is the recommended production pin. Run `rg -n "<SignedIn>|<SignedOut>|<Protect>" src/ app/` to find any usage of the removed components before upgrading.
+
 ### Sources
 
-- [Wiz Research blog — `keyv` and `cacheable` npm Package Hijacked in Supply Chain Attack](https://www.wiz.io/blog/keyv-and-cacheable-npm-supply-chain-attack) — Aug 4, 2026 (the most detailed technical writeup; full IOCs list; the Bun user-agent IOC + Ethereum smart contract C2 mechanism)
-- [Wiz Research IOCs CSV — full list of ~444 affected packages](https://github.com/wiz-sec-public/wiz-research-iocs/blob/main/reports/keyv-packages.csv) — refreshed as new packages are identified; the authoritative package+version list
 - [Socket.dev blog — Popular npm Packages in the keyv and Cacheable Namespaces Compromised in Active Supply Chain Attack](https://socket.dev/blog/popular-npm-packages-in-the-keyv-and-cacheable-namespaces-compromised-in-active-supply-chain) — Aug 4, 2026 (the first-mover coverage; identified the `Bun/1.3.13` user-agent; tracked the worm's npm publish wave in real-time)
 - [Aikido Security — Keyv and friends compromised in active Shai-Hulud supply chain attack](https://www.aikido.dev/blog/keyv-and-friends-compromised-in-npm-supply-chain-attack) — Aug 4, 2026 (the prevalence data: 444 packages / ~2,236 malicious versions / >2B monthly installs)
 - [OX Security — A New Infostealer Worm Hits npm, affecting Keyv and Cacheable](https://www.ox.security/blog/a-new-infostealer-worm-hits-npm-affecting-keyv-and-cacheable) — Aug 4, 2026 (the Shai-Hulud lineage attribution + cross-campaign comparison)

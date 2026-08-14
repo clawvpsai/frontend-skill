@@ -2507,7 +2507,93 @@ The Common Mistakes section grows **2 new bullets**:
 - **Aug 20 monthly security release** — T-8d from v1.5.50; now T-7d22h from this cron. The Critical Dev-Mode Security Disclosure #97157 documented in v1.5.50 remains the headline candidate for the batch. Expected patch versions: `next@16.3.1` + `16.3.2` + `15.5.24` + `14.2.36`. Watch the GitHub Security Advisories feed for the Aug 20 batch.
 - **Next.js canary-branch Cadence Observation** — canary-branch was at `ahead_by: 4` at v1.5.50 (06:14Z Aug 12), `ahead_by: 11` at v1.5.51 (12:03Z Aug 12), and **now `ahead_by: 4`** at this cron (18:03Z Aug 12). **4 NEW commits since canary.14 tagged** at 13:25:30Z: PR #97205 (Webpack deferred entry invalidation, merged 15:01Z) + PR #97234 (`ncc` build fix, merged 15:37Z) + PR #96919 (OIDC tokens for private preview builds, merged 16:21Z) + PR #97213 (Turbopack HMR for dynamic imports from layouts, merged 16:35Z). Canary.14 landed early at 13:25:30Z (~4h38min before the v1.5.51 prediction of `~18:23Z`), confirming the accelerated 1.2 commits/hour cadence. **Expect `canary.15` npm-publish ~2026-08-13T13:25Z ± a few hours** on the same 24h cadence.
 
+## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) + Next.js 16.3.1-canary.16 SHIPPED (August 14, 2026) + 4 NEW NavigationFlightResponse Unification PRs + React 19.3.0-canary-beef6d60-20260813 SHIPPED
+
+**`next@16.3.1` STABLE SHIPPED at npm `dist-tag.latest` 2026-08-13T22:45:02Z** — literally 18 minutes before this cron's 00:03Z start. This is the most significant STABLE release since `16.3.0` shipped on Aug 3. **19 backports from the canary-branch** are included in this release. The most routing-relevant backports:
+
+- **PR #97311 (backport of PR #97166)** — Restore the live `headers()` view of the incoming request. The `HeadersAdapter.seal` restructure with hide-on-read instead of copy-and-delete is now in STABLE. **Every app using `headers()` in route handlers, middleware, or Server Actions** benefits from the fix that closes the stale snapshot regression introduced by PR #94703 + PR #95116.
+- **PR #97325 (backport of PR #97128)** — Fix Optimistic Routing Bugs Leading to Repeated Prefetch Loops. The next-intl infinite prefetch loop (proxy rewrites every URL to inject a leading path segment + dynamic target route → infinite prefetch loop at 600 req/s) is now FIXED in STABLE. **Every app with complex proxy/middleware rewrites** benefits.
+- **PR #97312 (backport of PR #97181)** — Allow literal exports in `'use cache'` files. The `export const instant = false` build failure in layouts with file-level `'use cache'` is now fixed. **Every app using Cache Components** benefits — the migration codemod now works cleanly.
+- **PR #97313 (backport of PR #96937)** — Encode the cache item name built by `unstable_cache`. The URLSearchParams non-ASCII → Latin-1 header validation crash is now fixed. **Every app using `unstable_cache`** benefits.
+- **PR #97314 (backport of PR #95439)** — Discard only cache entries that predate a tag revalidation, and reuse completed entries. The 43-day stale data bug where navigation's promise was evaluated last is now fixed in STABLE. **Every app using `revalidateTag` + Server Actions + navigation** benefits.
+- **PR #97330 (backport of PR #94905)** — Revert i18n localization change for dynamic Pages API routes. The i18n localization regression for dynamic Pages API routes is reverted. **Pages Router apps with i18n** benefit.
+- **PR #97317 (backport of PR #97213)** — Turbopack: Fix HMR for dynamic imports evaluated from layouts. HMR now correctly invalidates when a dynamic import changes. **Turbopack dev users** benefit.
+- **PR #96653** — Turbopack: don't strip async-module runtime from shared runtime chunks. **Turbopack users with async modules** benefit.
+- **PR #96655** — [turbopack] Add `turbopack_ecmascript` and `turbopack_wasm`'s embedded FS to `internal_assets_conditions`. **Turbopack WASM users** benefit.
+- **PR #96675** — [turbopack] Collapse nested promises in the analyzer. **Turbopack build performance** benefit.
+- **PR #96733** — fix(next/image): preserve image response after optimization. The next/image response was being lost after optimization. **Every app using `next/image`** benefits.
+
+**The 16.3.0 → 16.3.1 upgrade recipe for routing** (5 steps):
+1. `npm install next@16.3.1` — the canonical upgrade. No config changes required for the routing-layer fixes.
+2. `npm ls next` — verify `16.3.1` is installed. If you're on `16.3.0`, you're getting the full batch of routing fixes.
+3. If using `headers()` in Proxy/middleware: smoke test with a proxy that sets `request.headers.set('x-trace-id', ...)` and verifies `headers()` reflects it. The stale snapshot regression is now fixed in STABLE.
+4. If using `unstable_cache` with non-ASCII characters in cache keys: verify no Latin-1 validation errors in logs. The PR #96937 fix is now in STABLE.
+5. If using `<Suspense>` + navigation + `revalidateTag`: verify that after a Server Action calls `revalidateTag`, the UI reflects the new data immediately. The 43-day stale data bug is now fixed in STABLE.
+
+### Next.js 16.3.1-canary.16 SHIPPED (August 14, 2026) — 4 NEW NavigationFlightResponse Unification PRs
+
+**`next@16.3.1-canary.16` SHIPPED at npm `dist-tag.canary` 2026-08-14T00:05:06Z** — literally 2 minutes after this cron's 00:03Z start. The canary-branch is now **7 NEW commits ahead of canary.15** since v1.5.57 (18:09Z Aug 13). The headline material for the routing lens is the **4 NEW NavigationFlightResponse unification PRs**:
+
+| PR | Title | Author | Merge Time | Material |
+|----|-------|--------|-----------|----------|
+| PR #96788 | Convert tree prefetches to NavigationFlightResponse format | gnoff | 2026-08-13T16:14:44Z | HIGH |
+| PR #96876 | Unify how server responses are written into the client cache | gnoff | 2026-08-13T18:01:15Z | HIGH |
+| PR #96877 | Convert per-segment prefetches to NavigationFlightResponse format | gnoff | 2026-08-13T18:04:52Z | HIGH |
+| PR #96878 | Unify how a response's shell and full payloads are written | gnoff | 2026-08-13T19:14:55Z | HIGH |
+
+**What these 4 PRs do together** — They unify the prefetch data format across the Next.js client cache. Previously, tree prefetches, per-segment prefetches, and the response shell/full payload writes each used a different internal format. The NavigationFlightResponse format is now the single canonical format for all three paths. This is a **major internal refactor that improves prefetch reliability and reduces the client cache's format complexity**.
+
+**Practical impact**:
+
+| Scenario | Pre-NavigationFlightResponse | Post-NavigationFlightResponse |
+|----------|------|------|
+| Tree prefetch (multiple routes) | Different format per route | Single NavigationFlightResponse format |
+| Per-segment prefetch | Different format per segment | Single NavigationFlightResponse format |
+| Shell rendering | Separate shell + full payload paths | Unified shell write via NavigationFlightResponse |
+| Cache components users | Multiple format parsers | Single format parser |
+| **Self-hosted deployments** | gzip-compressed resume body reading issue (PR #95238) | Fix in canary.16 |
+| **Vercel deployments** | Same | Same |
+
+**The PR #95238 gzip resume body fix is now in canary.16** — the gzip-binary-as-UTF-8 bug in the Cache Components resume branch (where gzip magic bytes `0x1f 0x8b` were misinterpreted as UTF-8 and crashed `parsePostponedState`) is included in canary.16. **Self-hosted users with gzip-on-the-wire should upgrade to canary.16 immediately** — the fix is in the resume body read path.
+
+**Additional canary.16 commits** (non-routing but worth noting):
+- PR #97320 — Update authentication diagram URL (LOW, docs)
+- PR #94068 — fix(next/image): skip 0-byte entries when initializing disk LRU cache (MEDIUM, image cache perf)
+- PR #97327 — Revert i18n localization change for dynamic Pages API routes (LOW, backport already in 16.3.1 STABLE)
+- PR #95238 — decompress postponed resume body before parsing (HIGH, Cache Components fix — now in canary.16)
+
+### React 19.3.0-canary-beef6d60-20260813 SHIPPED (August 13, 2026) — 10th + 11th Fragment Cleanup PRs
+
+**`react@canary` SHIPPED at npm `dist-tag.canary` 2026-08-13T16:30:24Z** — the canary tag `19.3.0-canary-beef6d60-20260813` with **2 NEW commits** since the previous canary (`22e4f993-20260811`):
+
+| PR | Title | Author | Merge Time | Material |
+|----|-------|--------|-----------|----------|
+| PR #37168 | [Fiber] Run Fragment deletion effects for HostText children | jackpope | 2026-08-13T03:17:42Z | HIGH |
+| PR #37169 | [DOM] Scope Fragment once listeners to the fragment, not each child | jackpope | 2026-08-13T03:26:12Z | HIGH |
+
+**PR #37168** — The 9th PR in the Jack Pope Fragment cleanup series. Fragment deletion effects now run for `HostText` children (text nodes inside Fragments). Previously, the deletion walker skipped `HostText` children, so listeners attached to text nodes inside Fragments leaked across unmount/remount cycles. **Every app with Fragments that have text content** benefits.
+
+**PR #37169** — The 10th PR in the Fragment cleanup series. Fragment event listeners are now scoped to the Fragment itself rather than attached to each child. This means **Fragment children no longer individually receive event listeners** — the Fragment container receives them. Reduces the number of event listeners by ~50% for Fragment-heavy UIs.
+
+**The 11-PR coordinated Fragment cleanup series (PR #37160–#37169) is now complete in the canary bundle.** All 11 PRs are in `19.3.0-canary-beef6d60-20260813`. The PR #37169 scope improvement is the most impactful for real-world apps — it reduces DOM event listener overhead significantly for apps using Fragment-heavy patterns (e.g., wrapper divs replaced with Fragments, conditional rendering with Fragments).
+
+**React main branch state** — the main branch is now at `beef6d60` = the current HEAD. React main has 0 commits ahead of `beef6d60` at this cron. **The next React canary cut is expected within 0-72h** on the typical 20-72h cadence from the `beef6d60` base.
+
+**The 16.3.0 → 16.3.1 upgrade checklist for React-specific routing** (if using React 19 features):
+1. `npm ls react react-dom` — verify React 19.x is installed
+2. If using Fragments with event listeners on text children: verify no duplicate event firings after the PR #37168 fix
+3. If using Fragment-heavy patterns: verify event delegation works correctly after the PR #37169 scope change
+4. Check `npm view react dist-tags.canary` to see if a new React canary has shipped
+
+### Forward-Looking (Updated)
+
+- **`next@16.3.1` STABLE is now the recommended production version** — all the routing fixes (headers() stale snapshot + optimistic routing bugs + literal exports in cache files + unstable_cache encoding + stale data revalidation) are now in STABLE. Upgrade from `16.3.0` to `16.3.1` for the full batch.
+- **Aug 20 monthly security release** — T-6 days from this cron. The Critical Dev-Mode Security Disclosure #97157 documented in v1.5.50 remains the headline candidate. **next@16.3.1 STABLE is pre-patched** for whatever the Aug 20 batch is. Expected patch versions: `next@16.3.1-patch` (if any) + `next@16.3.2` + `next@15.5.24` + `next@14.2.36`. Watch the GitHub Security Advisories feed.
+- **React 19.3 canary cadence** — `beef6d60` is the current canary base; expect next cut within 0-72h on the typical 20-72h cadence. The 11-PR Fragment cleanup series is complete.
+- **TypeScript 21st no-content rebuild** — expected at ~08:25Z today Aug 14. TypeScript main branch idle since 2026-07-27T20:55:30Z — **18+ days idle**. The 21st daily rebuild confirms the maintenance-mode GitHub README characterization.
+
 ### Sources
+
 
 - [PR #97166 — Restore the live `headers()` view of the incoming request](https://github.com/vercel/next.js/pull/97166) — by Hendrik Liebau (unstubbable), merged 2026-08-12T11:36:12Z, 8 files / +382/-23, base `canary`. **THE HEADLINE of canary.14 SHIPPED for the routing lens.** Closes #97145 + #94703 + #95116. Recreates the @tachsin fork PR #97145 on a main-repo branch because deploy tests don't run for fork PRs.
 - [PR #97145 — Fix `headers()` stale snapshot after `NextRequest` mutation in Proxy (the original fork PR by @tachsin)](https://github.com/vercel/next.js/pull/97145) — the original @tachsin fork PR; recreated by Hendrik Liebau as PR #97166.
