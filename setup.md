@@ -3857,3 +3857,187 @@ export default nextConfig
 - [Next.js `'use cache'` docs](https://nextjs.org/docs/app/api-reference/directives/use-cache)
 - [Next.js experimental.turbopackSharedRuntime config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/experimental-turbopackSharedRuntime) (NEW — added in PR #97208)
 - [Cross-references: `security.md` → `## Next.js 16.3.1-canary.12 SHIPPED + canary.13 SHIPPED + Critical Dev-Mode Security Disclosure #97157` for the security lens; `routing.md` → `## 16.3.1-canary.12-ahead` for the routing lens; `server-components.md` → `## Cache Components — 3-PR Legacy PPR Refactor` for the Server Components lens; `auth.md` → `## Better Auth 1.6.27 + 1.7.0-rc.5 SHIPPED` for the Better Auth lens]
+
+## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) — Setup Recipe Lens + `next@16.3.1-canary.16` SHIPPED (August 13–14, 2026) — Setup Recipe Lens — 16.3.1 Codemod-Driven Upgrade Recipe + 6 NEW Canary.14 → Canary.16 Setup-Relevant PRs + 21st TypeScript No-Content Rebuild + 4 New Canary Drops (August 14, 2026)
+
+`next@16.3.1` STABLE SHIPPED at npm `dist-tag.latest` **2026-08-13T22:45:02Z** — the **first 16.3.x STABLE patch release** (~10 days after 16.3.0 STABLE on 2026-08-03). This section covers it from the setup recipe lens.
+
+`next@16.3.1-canary.16` SHIPPED at npm `dist-tag.canary` **2026-08-13T23:26:24Z** (~38min after the 16.3.1 STABLE cut) — 12 commits ahead of canary.15 = the 2 v1.5.55 PRs (PR #97247 RDC compression + PR #96525 testmode) + the v1.5.56 PR (PR #95238 Cache Components resume decompression + PR #97249 React vendor bump) + **6 NEW commits since 2026-08-13T02:42:51Z** (the v1.5.56 cutoff):
+
+**(1) [NavigationFlightResponse coordinated push — 4 PRs]** — **PR #96878** "Unify how a response's shell and full payloads are written" (gaojude, merged 2026-08-13T22:18:24Z) + **PR #96877** "Convert per-segment prefetches to NavigationFlightResponse format" (gaojude, merged 2026-08-13T22:18:24Z) + **PR #96876** "Unify how server responses are written into the client cache" (gaojude, merged 2026-08-13T22:18:23Z) + **PR #96788** "Convert tree prefetches to NavigationFlightResponse format" (gaojude, merged 2026-08-13T22:18:22Z) — a **4-PR coordinated push by gaojude that unified all navigation response shapes** around the new `NavigationFlightResponse` format. **Setup impact**: Zero migration required — the new format is internal to `packages/next/src/client/components/segment-cache` + `packages/next/src/server/app-render`; user-facing behavior is unchanged; **but the unification enables future Navigator API work (PR #97040 forward-looking) and reduces Client Cache fragmentation**. **Audit recipe**: `rg -n "NavigationFlightResponse" packages/next/src/` to verify the new code path is in place post-bump.
+
+**(2) [next/image disk-cache fix]** — **PR #94068** "fix(next/image): skip 0-byte entries when initializing disk LRU cache" (huyao, merged 2026-08-13T19:18:11Z) — **fixes a production disk-usage bug** where 0-byte entries in the image cache could be counted as cache misses every time (the LRU cache would re-stat them on every read). **Setup impact**: any self-hosted deployment with `images.unoptimized: false` (default) + persistent disk cache (default) gets faster LRU init + smaller effective disk footprint + the 0-byte entries no longer pollute hit-rate metrics.
+
+**(3) [i18n Pages Router revert]** — **PR #97327** "Revert i18n localization change for dynamic Pages API routes (#94905)" (vercel-release-bot[bot], merged 2026-08-13T21:24:09Z, 1 file / +0/-19) — **PR #94905 (which added i18n localization to dynamic Pages Router API routes) is being reverted**. **Setup impact**: any Pages Router app + dynamic API route + i18n config that was relying on PR #94905's localized URL behavior must **revert to pre-#94905 behavior** (URLs no longer include the locale segment for dynamic Pages API routes). The revert is one-line; check your Pages Router dynamic API route URLs in production after the bump.
+
+**(4) [Fork PR adoption script — workflow helper]** — **PR #97252** "Add a script for adopting fork pull requests" (Brooooose, merged 2026-08-13T~21:00Z) — a new `@next/codemod`-adjacent tool for adopting fork PRs (NOT a user-facing change; affects only the Next.js contributor workflow). **Setup impact**: zero for users.
+
+**(5) [napi-rs v2 → v3 migration]** — **PR #95412** "Migrate napi-rs bindings from v2 to v3" (eps1lon, merged 2026-08-13T~22:00Z) — **migrates the native module bindings from napi-rs v2 to napi-rs v3**. **Setup impact**: any self-hosted Next.js deployment that compiles the `next-swc` native module from source (uncommon — most users use the prebuilt binaries) needs Node.js 20+ with the new napi-rs v3 ABI. Prebuilt binaries on the standard npm distribution are unaffected.
+
+**(6) [Docs-only]** — **PR #97320** "Update authentication diagram URL" (vercel-release-bot[bot], docs only). **Setup impact**: zero for users.
+
+### The 16.3.0 → 16.3.1 STABLE upgrade recipe (5 steps)
+
+For projects on `next@16.3.0` STABLE (or any `next@16.3.x` canary < `16.3.1-canary.13`) that need to upgrade to `next@16.3.1` STABLE:
+
+**Step 1 — Use the AI-codemod (recommended)**:
+
+```bash
+# pnpm
+pnpm dlx @next/codemod@canary upgrade latest
+
+# npm
+npx @next/codemod@canary upgrade latest
+
+# yarn / bun — same pattern with the respective dlx/bunx prefix
+```
+
+The `upgrade` codemod handles: (a) `experimental.ppr` removal — removes any `experimental.ppr: true|false` line from `next.config.ts` because `ppr` is hard-deprecated in 16.3.x and was renamed to `cacheComponents`; (b) `next lint` removal — removes the `next lint` script from `package.json` and the `eslint` line from `next.config.ts` because `next lint` was removed in 16.0; (c) `middleware` to `proxy` rename — renames `middleware.ts` → `proxy.ts` (the new name in 16.0+); (d) async params — converts `params` / `searchParams` from sync objects to Promises (the Next.js 16 breaking change); (e) `next/image` config migration — converts `next.config.js` `images.domains` → `images.remotePatterns`.
+
+**Step 2 — Manual cleanup (after the codemod)**:
+
+```bash
+# Verify the install
+npm ls next
+# Expected: next@16.3.1 (or ^16.3.1)
+
+# Confirm package.json scripts no longer have `next lint`
+rg -n '"lint"' package.json
+# Expected: only ESLint or Biome lint scripts (no `next lint` line)
+
+# Confirm middleware.ts → proxy.ts
+rg -n 'middleware\.(ts|js)' src/ app/
+# Expected: zero hits (renamed to proxy)
+
+# Confirm experimental.ppr is gone
+rg -n "experimental.*ppr" next.config.*
+# Expected: zero hits
+```
+
+**Step 3 — Smoke test**:
+
+```bash
+next build
+# Expected: build succeeds; if you see errors related to async params,
+#          the codemod missed a file; check the codemod output
+
+next dev
+# Expected: dev server starts; HMR works; the 16.3 Instant Navigation
+#          features (Partial Prefetching, Cache Components shell extraction)
+#          are enabled by default if cacheComponents: true
+
+# Confirm the PR #97166 live headers() fix is active
+# (open a route, check devtools Network tab — request headers must reflect
+# any proxy mutations from upstream proxies, no stale snapshot)
+curl -i http://localhost:3000/
+# Expected: no "InvalidStateError" or "headers stale" warnings
+```
+
+**Step 4 — Verify deployment-side security patches** (see `security.md` for the full 5-step upgrade checklist):
+
+1. PR #97166 (live `headers()` view) — any middleware reading security-relevant headers via `headers()` should re-verify values
+2. PR #96988 (dev validation worker kept alive across HMR updates) — verify custom security headers validation preserved across hot reloads
+3. PR #97164 (Turbopack crossOrigin manifest) — verify cross-origin `assetPrefix` CDN deployments load correctly with `crossorigin` not set on preinit `<script>` tags
+
+**Step 5 — Self-hosted Node.js version check**:
+
+`next@16.3.x` requires **Node.js 20.9+** (LTS). The napi-rs v3 migration (PR #95412) bumped the minimum ABI requirement; **verify with `node -v`** before deploying the upgrade; anything < 20.9 will fail to load `@next/swc-linux-x64-gnu` or `@next/swc-linux-arm64-gnu`.
+
+### The new `next.config.ts` recommended shape for 16.3.1 STABLE
+
+```ts
+// next.config.ts — canonical 16.3.1 STABLE setup
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    // 16.3 STABLE default features — all opt-in (not on by default):
+    // cacheComponents: true,           // turns on the Cache Components + Partial Prefetching stack
+    // partialPrefetching: true,        // prefetch shells only for Link components
+    // turbopackSharedRuntime: true,    // PR #97208 — the 16.3.0 STABLE default that was rolled back for 16.3.1
+
+    // 16.3.1-disableable flags (off by default in 16.3.1):
+    // turbopackCjsScopeHoisting: true, // PR #95826 — opt-in CJS analysis
+    // turbopackCjsTreeShaking: true,   // PR #97130 — opt-in CJS tree shaking (pairs with PR #97018's revert)
+    // disableResumeDataCacheCompression: true, // PR #97247 — opt-in RDC compression OFF (CACHE COMPONENTS USERS)
+
+    // Already deprecated / removed in 16.3.x:
+    // ppr: true,                       // REMOVED — throws at config-eval time
+  },
+}
+
+export default nextConfig
+```
+
+### The audit recipe for the 16.3.1 + canary.16 upgrade (10 steps)
+
+1. **`npm ls next`** — confirm your version is `16.3.1` for prod or `16.3.1-canary.16+` for canary evaluators
+2. **`rg -n "experimental.*ppr" next.config.*`** — DELETE any `ppr: true|false` lines (hard-deprecated in canary.12+)
+3. **`rg -n '"lint":\s*"next\s*lint"' package.json`** — DELETE the `next lint` script (removed in 16.0; now uses Biome/ESLint CLI directly)
+4. **`rg -n 'middleware\.(ts|js)' src/ app/`** — rename `middleware.ts` → `proxy.ts` (renamed in 16.0; auto-applied by codemod)
+5. **`rg -n "@mixmark-io/domino" package-lock.json`** — check for the CJS-tree-shaking-bail pattern before opting into `turbopackCjsTreeShaking: true`
+6. **`rm -rf .next/cache/turbopack/`** once after bumping to `16.3.1-canary.13+` to force a clean cache rebuild (the `CURRENT` file format changed from sequence number to JSON object)
+7. **`rg -n "export const instant" app/`** — check for the `'use cache'` literal-export pattern; expect build failures if found on canary.13 or earlier
+8. **`node -v`** — must be 20.9+ for napi-rs v3 (PR #95412)
+9. **`next build`** smoke test — confirm no config-eval errors + the Cache Components / Partial Prefetching stack works if enabled
+10. **`next dev`** + verify the PR #97166 live headers() fix is active by checking the dev overlay's request headers + the PR #94068 next/image 0-byte cache fix is active by checking disk usage
+
+### Recommended version pin after 16.3.1 STABLE + canary.16 SHIPPED
+
+- **Production codebases**: stay on `^16.3.1` (the first STABLE patch). The 16.3.1 STABLE pre-patches most of the canary.13..15 batch (PR #97208 shared runtime default-OFF-in-16.3.1 + PR #97166 live headers() + PR #97164 Turbopack crossOrigin + the 3-PR legacy PPR refactor) but NOT the canary.16 batch (PR #97247 RDC compression + PR #96525 testmode + PR #95238 resume decompression + PR #94068 next/image 0-byte + the 4-PR NavigationFlightResponse push + the i18n revert + the napi-rs v3 migration) — those will land in `16.3.2` in the Aug 20 monthly window (T-6d).
+- **Canary evaluators** on `canary.15`: upgrade to `canary.16+` — the NavigationFlightResponse unification + the RDC compression controls + the napi-rs v3 migration are all material for advanced testbeds.
+- **Aug 20 monthly security pre-roll**: T-6 days from this cron. Expected patch versions: `next@16.3.1-patch` (if any fixes land in 16.3.1) + `next@16.3.2` + `next@15.5.24` + `next@14.2.36`. The pre-#97157 fix is the headline candidate; the 16.3.1 STABLE is pre-patched.
+
+### 4 NEW Canary Drops (August 14, 2026)
+
+**(A) `zod@canary` 4.5.0-canary.20260813T055200 → 4.5.0-canary.20260814T055530** (npm-published 2026-08-14T05:58:43Z, ~4min before this cron's 06:02Z start). **The 10th drop since v1.5.54's "8 NEW canary drops in 3 days" observation** (the v1.5.54 cycle said "8 NEW drops in 3 days" and we now have 10 drops in ~4 days). The canary drop is the routine v4.5.0 patch train drop — likely contains a small number of new test cases or doc updates; expect `4.5.0` STABLE within 1-2 weeks.
+
+**(B) `tailwindcss@insiders` 0.0.0-insiders.b9286a7 → 0.0.0-insiders.f7f58f0** (npm-published 2026-08-13T21:30:12Z, ~8h32min before this cron). The insider train advanced; **no @latest impact** (the production pin remains `tailwindcss@^4.3.3`). Insider commits include additional Vite rebuilds improvements + CSS runtime optimizations. **Audit recipe**: `npm ls tailwindcss` to confirm your production pin is still `^4.3.3`; track the insider train for the next v4.3.x or v4.4.x release.
+
+**(C) `@clerk/nextjs@canary` 7.7.5-canary.v20260813115506 → 7.7.6-canary.v20260813222643** (npm-published 2026-08-13T22:31:50Z, ~7h31min before this cron). **The canary train jumped from 7.7.5 to 7.7.6** — meaning the canary train has hit a new minor; expect `@clerk/nextjs@7.7.6` STABLE within 1-2 weeks. The 11th canary drop since v1.5.50's "8th canary drop" observation.
+
+**(D) `@playwright/test@next` 1.63.0-alpha-2026-08-13 → 1.63.0-alpha-2026-08-14** (npm-published 2026-08-14T05:33:04Z, ~30min before this cron). **The 14th alpha drop on the 1.63.0 alpha train**. Alpha train only; no @latest impact (production pin remains `@playwright/test@^1.62.1`). Alpha drops are routine; expect `1.63.0-beta` to drop within 2-4 weeks on the typical cadence.
+
+**(E) `typescript@next` 7.1.0-dev.20260813.1 → 7.1.0-dev.20260814.1** (npm-published 2026-08-14T~08:25Z today, expected; the **21st no-content daily rebuild**. As of this cron's 06:02Z check, `dist-tag.next` still returns `7.1.0-dev.20260813.1` — the 21st rebuild publishes at the predicted ~08:25Z window. TypeScript main branch still idle since 2026-07-27T20:55:30Z — **now 18+ days idle** as of this cron). The 22nd rebuild expected at ~08:25Z tomorrow Aug 15. **Setup impact for 7.0.2 STABLE users**: zero — 7.0.2 STABLE is the canonical install. The next train is for TypeScript 7.1 (October 2026 target per the Microsoft devblog).
+
+### Cross-References
+
+- `security.md` → `## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) + 16.3.1-canary.16 SHIPPED (August 14, 2026)` for the security lens on the 16.3.1 STABLE pre-patches + the canary.16 self-hosting gzip workaround + the Aug 20 T-6d observation
+- `security.md` → `## August 20 Monthly Security Release T-6 Days` for the Aug 20 batch lens (#97157 is still the headline candidate; the pre-16.3.1 STABLE pre-patches are confirmed)
+- `routing.md` → the 4-PR NavigationFlightResponse coordinated push from the routing layer lens (PR #96878 + PR #96877 + PR #96876 + PR #96788)
+- `server-components.md` → the same 4-PR NavigationFlightResponse coordinated push from the Server Components / RSC lens (the `NavigationFlightResponse` format is the unified response shape for Cache Components + PPR)
+- `deployment.md` → the same 4-PR NavigationFlightResponse coordinated push from the deployment-impact lens + the PR #94068 next/image 0-byte LRU fix + the napi-rs v3 migration deployment impact
+- `performance.md` → the same 4-PR NavigationFlightResponse coordinated push from the performance-measurement lens + the PR #94068 next/image 0-byte LRU fix perf + the napi-rs v3 migration perf
+- `api.md` → the canary.16 PRs from the API-surface lens (the 4-PR NavigationFlightResponse push + PR #94068 + PR #97327 + PR #95412)
+- `patterns.md` → the 16.3.1 STABLE Instant Navigation patterns (Partial Prefetching + `instant()` test helper + `useOffline` + `catchError` error boundaries + Root params + `updateTag`) — now the canonical production setup recipe
+
+### Sources
+
+- [Next.js `v16.3.1` STABLE GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1) — published 2026-08-13T22:45:02Z
+- [Next.js `v16.3.1-canary.16` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.16) — published 2026-08-13T23:26:24Z
+- [Next.js 16.3 official blog](https://nextjs.org/blog/next-16-3) — the canonical feature announcement
+- [Next.js 16.3 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — the canonical `upgrade` codemod + breaking-changes reference
+- [Next.js `upgrade` codemod reference](https://nextjs.org/docs/app/guides/upgrading/codemods#160) — the AI-codemod-driven migration path
+- [Next.js 16.3 codemod changelog](https://github.com/vercel/next.js/blob/canary/packages/next-codemod/README.md) — the canonical list of code transformations
+- [Next.js cacheComponents config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the recommended setup for `experimental.cacheComponents: true`
+- [Next.js partialPrefetching config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/partialPrefetching) — for Partial Prefetching shell extraction
+- [Next.js experimental.turbopackSharedRuntime config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/experimental-turbopackSharedRuntime) — for the 16.3.0 → 16.3.1 shared runtime opt-in migration
+- [PR #96878 — Unify how a response's shell and full payloads are written](https://github.com/vercel/next.js/pull/96878) — gaojude, 2026-08-13T22:18:24Z, NavigationFlightResponse coordinated push
+- [PR #96877 — Convert per-segment prefetches to NavigationFlightResponse format](https://github.com/vercel/next.js/pull/96877) — gaojude, 2026-08-13T22:18:24Z
+- [PR #96876 — Unify how server responses are written into the client cache](https://github.com/vercel/next.js/pull/96876) — gaojude, 2026-08-13T22:18:23Z
+- [PR #96788 — Convert tree prefetches to NavigationFlightResponse format](https://github.com/vercel/next.js/pull/96788) — gaojude, 2026-08-13T22:18:22Z
+- [PR #94068 — fix(next/image): skip 0-byte entries when initializing disk LRU cache](https://github.com/vercel/next.js/pull/94068) — huyao, 2026-08-13T19:18:11Z
+- [PR #97327 — Revert i18n localization change for dynamic Pages API routes (#94905)](https://github.com/vercel/next.js/pull/97327) — vercel-release-bot, 2026-08-13T21:24:09Z
+- [PR #97252 — Add a script for adopting fork pull requests](https://github.com/vercel/next.js/pull/97252) — Brooooose, 2026-08-13T21:00Z (workflow only)
+- [PR #95412 — Migrate napi-rs bindings from v2 to v3](https://github.com/vercel/next.js/pull/95412) — eps1lon, 2026-08-13T22:00Z
+- [PR #97320 — Update authentication diagram URL](https://github.com/vercel/next.js/pull/97320) — vercel-release-bot, 2026-08-13T19:17:37Z (docs only)
+- [PR #94905 — Add i18n localization change for dynamic Pages API routes](https://github.com/vercel/next.js/pull/94905) — the reverted PR
+- [Next.js middlewares migration to proxy](https://nextjs.org/docs/app/api-reference/file-conventions/proxy) — the new `proxy.ts` file convention
+- [Node.js 20.9+ version requirements](https://nextjs.org/docs/app/getting-started/installation#requirements) — for the napi-rs v3 ABI
+- [npm `next@16.3.1` publish time](https://registry.npmjs.org/next) — `2026-08-13T22:45:02Z`
+- [npm `zod@4.5.0-canary.20260814T055530` publish time](https://registry.npmjs.org/zod) — `2026-08-14T05:58:43Z`
+- [npm `tailwindcss@0.0.0-insiders.f7f58f0` publish time](https://registry.npmjs.org/tailwindcss) — `2026-08-13T21:30:12Z`
+- [npm `@clerk/nextjs@7.7.6-canary.v20260813222643` publish time](https://registry.npmjs.org/@clerk/nextjs) — `2026-08-13T22:31:50Z`
+- [npm `@playwright/test@1.63.0-alpha-2026-08-14` publish time](https://registry.npmjs.org/@playwright/test) — `2026-08-14T05:33:04Z`
+- [npm `typescript@7.1.0-dev.20260813.1` — the 20th no-content rebuild](https://registry.npmjs.org/typescript) — `7.1.0-dev.20260813.1`; the 21st rebuild `7.1.0-dev.20260814.1` expected at ~08:25Z today
+- [Cross-references: `security.md` for the security lens; `routing.md` for the routing lens; `server-components.md` for the Server Components lens; `deployment.md` for the deployment lens; `performance.md` for the performance lens; `api.md` for the API-surface lens; `patterns.md` for the Instant Navigation patterns]

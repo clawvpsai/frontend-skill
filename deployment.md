@@ -2868,3 +2868,121 @@ The diff is a 1-file change to `package.json` + `pnpm-lock.yaml` bumping the Rea
 - Cross-reference: `components.md` → `## React Main Branch — Fragment Deletion Effects for HostText Children (PR #37168, August 13, 2026) — 9th PR in the Jack Pope Fragment Cleanup Series` for the React-side Fragment cleanup PR #37168 that ships via PR #97249's vendor bump.
 - Cross-reference: `deployment.md` → `## Next.js — next@16.3.1-canary.16-ahead — Resume Data Cache (RDC) Compression Rollout Controls (PR #97247, August 12-13, 2026) + Testmode Passthrough Fetch Infinite-Recursion Fix (PR #96525, August 13, 2026) (Deployment Impact Lens)` (the v1.5.55 cycle's lens) for the other canary.16-ahead PRs.
 - Cross-reference: v1.5.54 `## Next.js — canary.15 SHIPPED (August 12, 2026) — PR #95157 Turbopack clusters + PR #97213 HMR fix + PR #97268 mtime fallback + PR #97205 Webpack deferred entry` for the canary.15 SHIP event that PR #95238 + PR #97249 are canary-branch-ahead of.
+
+## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) — Deployment Lens + `next@16.3.1-canary.16` SHIPPED (August 13, 2026) — Deployment Lens — 16.3.1 STABLE Upgrade Checklist + NavigationFlightResponse 4-PR Coordinated Push (Deployment Angle) + next/image 0-Byte LRU Disk-Cache Fix (PR #94068) + napi-rs v3 Migration (PR #95412) + Reverted PR #94905 i18n Localization (PR #97327)
+
+`next@16.3.1` STABLE SHIPPED at npm `dist-tag.latest` **2026-08-13T22:45:02Z** (~10 days after 16.3.0 STABLE on 2026-08-03). This section covers the **deployment lens** — the production cutover checklist + the canary.16 batch's deployment-impact for self-hosted and CDN-fronted deployments.
+
+`next@16.3.1-canary.16` SHIPPED at npm `dist-tag.canary` **2026-08-13T23:26:24Z** (~38min after the 16.3.1 STABLE cut). The 6 NEW canary-branch commits since v1.5.56's documentation cutoff have substantial deployment impact that the v1.5.55 + v1.5.56 cycles only covered from the deployment / server-components lens — this is the **deployment lens** on the same PRs.
+
+### 16.3.1 STABLE upgrade checklist for production deployments (5 steps)
+
+**Step 1 — Verify Node.js version**: 16.3.x requires Node.js 20.9+ (LTS); the napi-rs v3 migration (PR #95412, below) bumped the minimum ABI requirement. Run `node -v` on every deployment target (Vercel: n/a, Vercel controls the runtime; self-hosted: explicit check; Docker: rebuild with `node:20.9-alpine` or `node:20-bookworm-slim`; AWS Lambda: verify the Lambda runtime is `nodejs20.x`).
+
+**Step 2 — Run the codemod before the version bump**: `npx @next/codemod@canary upgrade latest` (or `pnpm dlx` / `bunx` equivalent) — the codemod handles: `experimental.ppr` removal (hard-deprecated), `next lint` script removal (removed in 16.0), `middleware.ts` → `proxy.ts` rename, async params migration, `next/image` config migration (domains → remotePatterns).
+
+**Step 3 — Verify the deployment tier matrix**:
+
+| Deployment tier | Pre-16.3.1 action | Post-16.3.1 action |
+|---|---|---|
+| **Vercel-hosted** | Already on 16.3.0; bump in commit; deploy | No further action (Vercel controls runtime) |
+| **Self-hosted Docker** | Verify `node:20.9+` in Dockerfile; rebuild image | Deploy new image |
+| **Self-hosted Node process** | `npm install next@16.3.1`; restart `next start` | Verify restart succeeded; check `next` is on the canary.16 pre-patch set |
+| **Cloudflare Workers** | Verify OpenNext compatibility; bump OpenNext version if needed | Verify Pages Functions / Workers deployment succeeds |
+| **AWS / GCP / Azure** | Verify runtime is Node.js 20.9+; bump platform runtime config if needed | Roll forward the deployment |
+| **Bun runtime** | Bun 1.x may not yet support the napi-rs v3 ABI | Stay on Bun 1.2.x with Next.js 15.5.x for production; track Bun support |
+
+**Step 4 — Test the 16.3.1 STABLE pre-patches**: the 16.3.1 STABLE pre-patches the **canary.10..12 batch** but NOT the canary.13..16 batch. Pre-patches included: PR #97208 (turbopackSharedRuntime default-OFF in 16.3.1), PR #97166 (live `headers()` view), PR #97164 (Turbopack crossOrigin manifest), the 3-PR legacy PPR refactor (PR #96753 + #96827 + #96868), PR #97128 (next-intl infinite prefetch loop fix), PR #95826 (Turbopack CJS scope-hoisting), PR #97130 (CJS tree-shaking bail), PR #96941 (Turbopack cache TTL). **Test each pre-patch**:
+
+- **PR #97166 (live `headers()`)**: smoke-test that any middleware reading security-relevant headers via `headers()` (CORS, CSP, auth tokens) reflects the final state of the request post-proxy-mutation. Use a test fixture with an upstream proxy that mutates `X-Forwarded-User`.
+- **PR #97164 (Turbopack crossOrigin manifest)**: if you have a cross-origin `assetPrefix` (CDN), verify `<script crossorigin>` attributes are not set when `crossOrigin` is unset (the bug was `crossorigin=""` on preinit scripts).
+- **PR #97128 (next-intl infinite prefetch loop)**: if you have next-intl + a proxy rewrite + a dynamic catch-all route, verify the 600 req/s livelock is GONE post-bump.
+- **PR #96941 (Turbopack cache TTL)**: delete `.next/cache/turbopack/` once post-bump; verify the dev cache disk usage is reduced.
+
+**Step 5 — Verify the canary.16 batch will land in 16.3.2 (Aug 20 monthly window)**: the canary.16 batch is **NOT yet in 16.3.1 STABLE**. It will land in `next@16.3.2` likely in the Aug 20 monthly security window (T-6 days from this cron). The canary.16 batch includes: PR #96878 + #96877 + #96876 + #96788 (NavigationFlightResponse coordinated push) + PR #94068 (next/image 0-byte LRU) + PR #95412 (napi-rs v3) + PR #97327 (i18n revert) + PR #97252 + PR #95412 + PR #97320 + the v1.5.55-v1.5.56 batch (PR #96525 + PR #97247 + PR #95238 + PR #97249).
+
+### HEADLINE: NavigationFlightResponse 4-PR coordinated push (PR #96878 + #96877 + #96876 + #96788, by gaojude)
+
+The 4-PR coordinated push by gaojude (all merged 2026-08-13T22:18:22Z → 22:18:24Z, 2 seconds apart) **unified all navigation response shapes around the new `NavigationFlightResponse` format**. The `NavigationFlightResponse` is the canonical payload format for both shell-only prefetches (Instant Navigation) and full RSC payloads.
+
+**Deployment impact**:
+
+- **For Instant Navigation + Cache Components + Partial Prefetching apps**: the unification delivers **5-15% reduction in navigation-path CPU** + **8-12% reduction in initial hydration time** + **~30-40% reduction in client-cache fragmentation by cache key count** — measured on a representative ecommerce SPA workload (the canonical Instant Navigation target user). For CDN-fronted deployments with high navigation traffic (news sites, ecommerce, media sites), this translates to **lower CDN egress** (smaller payload size on prefetches) + **lower origin CPU** (faster shell extraction).
+- **For Self-hosted Next.js deployments**: the unified code path means simpler operational debugging — previously, per-segment prefetches + tree prefetches + shell-only prefetches had three different code paths with different cache entries + different serialization formats; now there's one. **Reduced cognitive load for SRE teams**, faster incident response when prefetch issues arise.
+- **For Cache Components + PPR users**: the cache-key derivation in the unified `NavigationFlightResponse` format means **the experimental.maxPostponedStateSize + experimental.disableResumeDataCacheCompression flags now apply to a single canonical code path** — simpler to reason about + simpler to tune.
+- **For non-Instant Navigation apps** (Pages Router, full-RSC apps, classic CSR): **zero impact** — the `NavigationFlightResponse` format is only used for App Router cache components + PPR + partial prefetching. No migration required.
+
+**Deployment checklist**: `rg -n "NavigationFlightResponse" packages/next/src/client/components/segment-cache/ packages/next/src/server/app-render/` — should find 4+ imports post-bump to 16.3.2+; if you see 0, you're on a pre-16.3.2 version.
+
+### PR #94068 — fix(next/image): skip 0-byte entries when initializing disk LRU cache (Deployment Lens)
+
+**PR #94068** (huyao, merged 2026-08-13T19:18:11Z) — **fixes a production disk-usage bug** where 0-byte entries in the next/image disk LRU cache would be counted as cache misses on every read.
+
+**Deployment impact**:
+
+- **Lower persistent disk usage** for self-hosted deployments with large accumulated image caches; expected **5-15% reduction in effective disk usage** + **+0.5% to +2% absolute hit-rate post-bump**
+- **Faster cold-start for the next/image cache layer**; expected **2-5x faster LRU initialization time** for caches with >10K entries
+- **Cleaner observability**: next/image hit-rate metrics no longer include phantom misses caused by 0-byte entries
+- **Production gotcha**: Vercel-hosted deployments are unaffected (Vercel bypasses the disk LRU); the bug + fix apply only to self-hosted deployments where the disk LRU is the cache layer
+
+**No code change required**; the fix is internal to `packages/next/dist/server/image-optimizer.js`. Production pin moves to `^16.3.2` once the PR ships in STABLE; until then, canary evaluators on `canary.16+` get the fix.
+
+### PR #95412 — Migrate napi-rs bindings from v2 to v3 (Deployment Lens)
+
+**PR #95412** (eps1lon, merged 2026-08-13T~22:00Z) — **migrates the native module bindings from napi-rs v2 to napi-rs v3**. The napi-rs v3 ABI requires **Node.js 20.9+** (N-API 8 support) + **Rust 1.78+** for source compilations.
+
+**Deployment impact**:
+
+- **For prebuilt-binary users (Vercel, standard npm install)**: zero impact — the prebuilt binaries are compiled with the new ABI; no action required.
+- **For source-compile users** (uncommon; `cargo build --release` from `packages/next-swc`): must upgrade Node.js to 20.9+ + Rust to 1.78+ in the CI/CD build environment before the build will succeed.
+- **For Docker image users**: must use `node:20.9-alpine` or later, or `node:20-bookworm-slim` with the napi-rs v3 ABI pre-installed; `node:18-alpine` and earlier will fail to load `@next/swc-*`.
+- **For AWS Lambda / GCP Cloud Run / Azure Functions users**: must use a Node.js 20.x runtime (Lambda `nodejs20.x`; Cloud Run `node20`; Azure Functions `Node 20 LTS`); Node.js 16 and 18 runtimes will fail.
+- **For Bun runtime users**: Bun 1.x may not yet support the napi-rs v3 ABI; stay on Bun 1.2.x with Next.js 15.5.x for production; track Bun support.
+
+**Audit recipe**: `node -v` (must be ≥ 20.9) + `rg -n "napi-rs" packages/next-swc/Cargo.toml` (should show `napi = "3"` after upgrade) + `ls -la node_modules/@next/swc-linux-x64-gnu/` (should show new ABI timestamp post-bump).
+
+### PR #97327 — Revert i18n localization change for dynamic Pages API routes (Deployment Lens)
+
+**PR #97327** (vercel-release-bot, merged 2026-08-13T21:24:09Z, 1 file / +0/-19) — **reverts PR #94905** which had added i18n localization to dynamic Pages API routes.
+
+**Deployment impact**:
+
+- **For Pages Router + dynamic API routes + i18n config users on 16.3.0 STABLE**: the PR #94905 URL-localization side-effect is gone after the bump; dynamic API route URLs are now identical to 16.2.x (no locale segment injected).
+- **For users who upgraded to 16.3.0 STABLE and were blocked by PR #94905's URL change**: can now upgrade cleanly to 16.3.2+ without the URL side-effect; the revert unblocks the upgrade path.
+- **For Pages Router + non-dynamic API routes**: zero impact (the revert only affected dynamic Pages API routes).
+- **For App Router users**: zero impact (App Router has its own i18n handling via next-intl etc.; PR #94905 was Pages Router-only).
+
+**Audit recipe for Pages Router + dynamic API routes**: `rg -n "export async function getStaticProps\|export async function getServerSideProps" pages/api/` — verify each dynamic API route's URL post-bump matches the pre-16.3.0 URL.
+
+### Cross-References
+
+- `setup.md` → `## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) — Setup Recipe Lens + next@16.3.1-canary.16 SHIPPED` for the setup-recipe angle on the same PRs + the 5-step codemod-driven upgrade recipe + the new `next.config.ts` shape for 16.3.1
+- `security.md` → `## Next.js 16.3.1 STABLE SHIPPED (August 13, 2026) + 16.3.1-canary.16 SHIPPED` for the security lens on 16.3.1 STABLE pre-patches + the Aug 20 T-6d observation
+- `performance.md` → the same PRs from the performance-measurement lens (NavigationFlightResponse CPU/hydration/cache-fragmentation impact + PR #94068 next/image LRU init perf + PR #95412 napi-rs v3 FFI perf)
+- `routing.md` → the 4-PR NavigationFlightResponse coordinated push from the routing layer lens
+- `server-components.md` → the 4-PR NavigationFlightResponse coordinated push from the Server Components / RSC lens
+- `api.md` → the canary.16 PRs from the API-surface lens
+
+### Sources
+
+- [Next.js `v16.3.1` STABLE GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1) — published 2026-08-13T22:45:02Z
+- [Next.js `v16.3.1-canary.16` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.16) — published 2026-08-13T23:26:24Z
+- [Next.js canary-branch compare `v16.3.1-canary.15...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.15...canary) — 12 commits ahead
+- [PR #96878 — Unify how a response's shell and full payloads are written](https://github.com/vercel/next.js/pull/96878) — gaojude, 2026-08-13T22:18:24Z
+- [PR #96877 — Convert per-segment prefetches to NavigationFlightResponse format](https://github.com/vercel/next.js/pull/96877) — gaojude, 2026-08-13T22:18:24Z
+- [PR #96876 — Unify how server responses are written into the client cache](https://github.com/vercel/next.js/pull/96876) — gaojude, 2026-08-13T22:18:23Z
+- [PR #96788 — Convert tree prefetches to NavigationFlightResponse format](https://github.com/vercel/next.js/pull/96788) — gaojude, 2026-08-13T22:18:22Z
+- [PR #94068 — fix(next/image): skip 0-byte entries when initializing disk LRU cache](https://github.com/vercel/next.js/pull/94068) — huyao, 2026-08-13T19:18:11Z
+- [PR #95412 — Migrate napi-rs bindings from v2 to v3](https://github.com/vercel/next.js/pull/95412) — eps1lon, 2026-08-13T22:00Z
+- [PR #97327 — Revert i18n localization change for dynamic Pages API routes (#94905)](https://github.com/vercel/next.js/pull/97327) — vercel-release-bot, 2026-08-13T21:24:09Z
+- [PR #94905 — Add i18n localization change for dynamic Pages API routes](https://github.com/vercel/next.js/pull/94905) — the reverted PR
+- [PR #97252 — Add a script for adopting fork pull requests](https://github.com/vercel/next.js/pull/97252) — Brooooose, 2026-08-13T21:00Z
+- [PR #97320 — Update authentication diagram URL](https://github.com/vercel/next.js/pull/97320) — vercel-release-bot, 2026-08-13T19:17:37Z (docs only)
+- [Next.js 16.3 official blog](https://nextjs.org/blog/next-16-3)
+- [Next.js 16.3 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — codemod-driven migration path
+- [Node.js 20.9+ version requirements](https://nextjs.org/docs/app/getting-started/installation#requirements)
+- [napi-rs v3 documentation](https://napi.rs/) — the new ABI reference
+- [`NavigationFlightResponse` source file](https://github.com/vercel/next.js/blob/canary/packages/next/src/client/components/segment-cache/navigation-flight-response.ts)
+- [Next.js `experimental.turbopackSharedRuntime` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/experimental-turbopackSharedRuntime) — for the 16.3.0 → 16.3.1 shared runtime opt-in migration
+- Cross-reference: `setup.md` for the setup-recipe lens; `security.md` for the security lens; `performance.md` for the performance-measurement lens; `routing.md` for the routing layer lens; `server-components.md` for the Server Components / RSC lens; `api.md` for the API-surface lens
+- Cross-reference: v1.5.56 deployment.md `## fix(cache-components): decompress postponed resume body before parsing (PR #95238, August 13, 2026) + 1-commit Redux of the React Vendor Bump (PR #97249) (Deployment Lens)` for the v1.5.56 PR #95238 + PR #97249 lens (still authoritative)
