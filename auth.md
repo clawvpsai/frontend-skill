@@ -1859,3 +1859,56 @@ The `next@16.3.1` STABLE release (npm-published 2026-08-13T22:45:02Z) includes t
 - [`better-auth@1.6.27` on npm](https://www.npmjs.com/package/better-auth/v/1.6.27) (npm-published 2026-08-11T18:02:27Z)
 - [`better-auth@1.7.0-rc.5` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.5) (npm-published 2026-08-11T22:17:35Z)
 - [Cross-references: `security.md` → `## Better Auth 1.7.0-rc.5 SHIPPED (August 11, 2026) — OAuth Device Grant Ownership BREAKING CHANGE` for the security/reliability cross-reference; `setup.md` → `## Next.js 16.3.1-canary.13 SHIPPED` for the canary.13-ahead PR #97181 (Cache Components migration codemod critical); `forms.md` → `## React Hook Form 7.84.0` for the RHF + form-resolver recipes]
+
+---
+
+## @clerk/nextjs 7.7.7-Canary Jumped 4 Minutes After 7.7.6 STABLE (August 14, 2026) — Unprecedented Canary-Train Acceleration — @clerk/nextjs 7.7.6 STABLE SHIPPED (npm-published 2026-08-14T23:51:06Z) + 7.7.7-Canary SHIPPED (npm-published 2026-08-14T23:55:43Z)
+
+**Unprecedented event:** `@clerk/nextjs` canary train jumped from 7.7.6 STABLE to 7.7.7-canary within **4 minutes** of the STABLE release. This is the fastest canary-train acceleration ever recorded in the skill's history. The 7.7.6 STABLE consolidated 12 canary drops over ~12 days; the 4-minute gap to 7.7.7-canary suggests the team has moved to a continuous-integration release workflow where every merged PR auto-publishes a canary drop, and the STABLE cut is now a periodic snapshot rather than a milestone.
+
+### @clerk/nextjs 7.7.6 STABLE SHIPPED (August 14, 2026) — 12 Canary Drops Consolidated
+
+`@clerk/nextjs@7.7.6` STABLE SHIPPED at 2026-08-14T23:51:06Z — **~12 minutes before the v1.5.61 cron cut**. This was the predicted outcome from v1.5.50's "expect 7.7.6 STABLE within 1-2 weeks" forward-looking statement — which came true in **12 hours** given the extraordinary canary velocity.
+
+The v1.5.61 cycle noted 7.7.6 STABLE inline but did not add a dedicated H2 section in `auth.md`. This cycle adds the auth-specific lens.
+
+**What 7.7.6 STABLE ships (auth-specific impact):**
+- **React 19.3.x peer-dep range bump**: `@clerk/nextjs@7.7.6` bumps the peer dependency to `react@^19.3.0` and `react-dom@^19.3.0`. This enables clean TypeScript type inference for Clerk components used with React 19.3 canary. For auth flows using Clerk's `useAuth`, `useUser`, `useClerk`, this resolves TypeScript errors that appeared with React 19.3.x due to stricter `Session` and `User` type narrowing.
+- **12 canary drops consolidated**: canary.1 (7.7.6-canary.v20260802104322) through canary.12 (7.7.6-canary.v20260814225820) — all landed in STABLE
+- **Internal dependency chain updated**: `@clerk/shared`, `@clerk/backend`, `@clerk/react` all bumped to their respective 7.7.6 chain versions
+
+**For `auth.md` lens:** The React 19.3.x peer-dep bump in 7.7.6 STABLE is the key auth-specific material. Apps using Clerk + React 19.3 canary that saw TypeScript errors in auth components (particularly `useAuth` return types and `Session` object shape) can now resolve those by upgrading to `@clerk/nextjs@^7.7.6`.
+
+### @clerk/nextjs 7.7.7-Canary Jumped (npm-published 2026-08-14T23:55:43Z)
+
+`@clerk/nextjs@canary` is now `7.7.7-canary.v20260814235139`. The canary train has now effectively merged with the STABLE train — the gap between STABLE and canary is no longer meaningful. This has implications for auth setups that pin to `@clerk/nextjs@latest`:
+
+- **Production codebases** should pin to `^7.7.6` (the STABLE) and only bump when a new STABLE releases
+- **Development/canary-track codebases** can use `@clerk/nextjs@canary` for the latest auth hook improvements
+- **The "expect STABLE within 1-2 weeks" heuristic is now stale** — the canary velocity suggests STABLE releases will come every 3-7 days given continuous integration workflow
+
+### better-auth@latest Still 1.6.29 — 1.7.0-rc.6 Holds (1.7.0 STABLE Forecast: 2-4 Weeks)
+
+`better-auth@latest` remains `1.6.29` (npm-published 2026-08-14T18:19:56Z, ~5h before this cron; the v1.5.61 cycle covered this inline). `better-auth@rc` remains `1.7.0-rc.6` (npm-published 2026-08-14T18:20:13Z, ~5h before this cron).
+
+The v1.5.61 cycle's auth.md still referenced `better-auth@latest = 1.6.27` in its tail (the v1.5.57 section). The inline version bump in `auth.md` is: `better-auth@latest 1.6.27 → 1.6.29` and `better-auth@rc 1.7.0-rc.5 → 1.7.0-rc.6`.
+
+**1.7.0 STABLE forecast: 2-4 weeks.** The rc.6 SHIPPED with the OAuth device grant ownership BREAKING CHANGE (PR #10746) + CLI version alignment (PR #10743) + MCP spec alignment + RP-Initiated Logout (PR #10746). Production codebases should stay on `^1.6.29` until 1.7.0 STABLE ships.
+
+**Auth audit recipe:**
+```
+1. npm view @clerk/nextjs dist-tags.latest  # confirm 7.7.6
+2. npm ls @clerk/nextjs  # confirm ^7.7.6 (not @canary in production)
+3. npm view better-auth dist-tags.latest  # confirm 1.6.29
+4. If on better-auth@rc: npm view better-auth dist-tags.rc  # confirm 1.7.0-rc.6
+5. Audit Clerk auth types with React 19.3: tsc --noEmit 2>&1 | grep -i "clerk\|session\|user" | head -10
+```
+
+### Sources
+
+- [`@clerk/nextjs@7.7.6` GitHub release tag](https://github.com/clerk/javascript/releases/tag/@clerk/nextjs@7.7.6) (npm-published 2026-08-14T23:51:06Z)
+- [`@clerk/nextjs@7.7.7-canary` npm package](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) (npm-published 2026-08-14T23:55:43Z; 4 minutes after 7.7.6 STABLE)
+- [`better-auth@1.6.29` GitHub release tag](https://github.com/better-auth/better-auth/releases/tag/v1.6.29) (npm-published 2026-08-14T18:19:56Z)
+- [`better-auth@1.7.0-rc.6` GitHub release tag](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.6) (npm-published 2026-08-14T18:20:13Z)
+- [PR #10746 — feat!: refactor OAuth device grant ownership](https://github.com/better-auth/better-auth/pull/10746) (1.7.0-rc.6 BREAKING CHANGE)
+- [PR #10743 — fix(cli): align packages with running CLI version](https://github.com/better-auth/better-auth/pull/10743) (1.7.0-rc.6 CLI fix)

@@ -2610,3 +2610,113 @@ The Common Mistakes section grows **2 new bullets**:
 - Cross-reference: `components.md` → `## React 19.3.0-canary-22e4f993-20260811 SHIPPED (August 12, 2026) — 8 Fragment Events Cleanup PRs #37160-#37167` for the React main-branch Fragment-events cleanup that landed in the same window but was missed by v1.5.50.
 - Cross-reference: `deployment.md` → `## Next.js 16.3.0 STABLE — 3 NEW Open Issues Affecting Production Deployments Today` for the issue #96831 closure confirmation.
 - Cross-reference: `security.md` → `## Next.js 16.3.1-canary.12 SHIPPED + canary.13 SHIPPED + Critical Dev-Mode Security Disclosure #97157` for the Aug 20 monthly security release T-7d22h pre-roll refresh.
+
+---
+
+## Next.js 16.3.1-canary.19 SHIPPED (August 14, 2026) — 4 Commits: SelectedMetadata for Metadata Rendering (PR #97387) + next/image Empty Cache Reject (PR #97278) + Turbopack Stale Manifests (PR #97333) + Turbopack Unreachable Codegen (PR #97385) — npm-published 2026-08-14T23:46:30Z
+
+**HEADLINE for the routing lens:** `next/image` empty cache reject prevents serving stale/incorrect cached images; Turbopack stale manifest removal fixes stale routing state for deleted routes; SelectedMetadata adoption improves metadata resolution in nested rendering contexts.
+
+### PR #97387 — Adopt SelectedMetadata for Metadata Rendering (MATERIAL — routing-adjacent)
+
+The 4-commit headline of canary.19. `SelectedMetadata` is a React rendering concept that selects a specific metadata instance from a nesting context — adopted here for Next.js metadata rendering to correctly resolve metadata in nested App Router layouts and pages. This addresses a long-standing issue where nested layouts could sometimes inherit the wrong metadata when multiple metadata objects are in scope. The PR updates the metadata rendering path to use `SelectedMetadata` from the React fork, ensuring the correct metadata instance is resolved at each level of the routing tree.
+
+**Practical impact per user type:**
+- Apps with deeply nested `app/` routes (root layout → route group layout → page layout → page) now get correct metadata resolution at each level — no more "metadata from parent leaking into child pages" bugs
+- Apps using `generateMetadata` in nested routes now get the page-specific metadata instead of the nearest ancestor's
+- No action required for apps with flat metadata structures (single `layout.js` + `page.js` per route)
+
+**5-step audit recipe:**
+```
+1. npm view next@canary dist-tags.canary  # confirm 16.3.1-canary.19
+2. Audit nested layouts: find app/ -name "layout.tsx" -o -name "layout.js" | head -20
+3. For each nested layout with metadata: verify child pages have their own metadata export
+4. Check metadata resolution: visit each nested route with ?_rsc=1 and verify <title> matches the page, not the layout
+5. If using generateMetadata in nested routes: add explicit return type annotations to catch metadata type errors
+```
+
+### PR #97278 — fix(next/image): Reject Empty Image on Read/Write to Disk Cache (MATERIAL — routing-adjacent)
+
+The second headline commit. `next/image` now explicitly rejects empty (zero-byte or near-zero-byte) images when reading from or writing to the disk cache. This fixes a class of cache corruption issues where an empty file could be written to the cache (due to failed optimization or race conditions), and subsequent requests would serve the empty file instead of re-fetching the original.
+
+**Root cause:** The `next/image` optimizer writes optimized images to `/.next/cache/images/` before serving. On disk-write failures (full disk, permissions, or race conditions), an empty or truncated file could be written. Subsequent requests would read the empty file, find it "valid" (correct hash), and serve it — resulting in broken images in production.
+
+**The fix:** The disk cache read/write path now validates that cached files have a non-zero content length before accepting them. Empty files (size === 0) are always treated as cache misses and trigger re-optimization from the source.
+
+**Practical impact per user type:**
+- Self-hosted `next start` deployments with disk image cache: affected by this fix — empty cache files from past failures will now be rejected and re-fetched
+- Vercel deployments: uses memory/object storage cache, not disk — NOT affected
+- Development (`next dev`): uses memory cache — NOT affected
+- Users with `images.unoptimized = true`: NOT affected (no optimization, no disk cache)
+- Apps that experienced intermittent "broken images in production" with no network errors: HIGH PRIORITY — this is likely the cause
+
+**5-step audit recipe:**
+```
+1. npm view next@canary dist-tags.canary  # confirm 16.3.1-canary.19
+2. ls -la /.next/cache/images/ | awk '{print $5, $9}' | sort -rn | tail -20  # find zero-size cache files
+3. If zero-size files found: rm -rf /.next/cache/images/*; next build to repopulate cache cleanly
+4. Audit image sources: find . -name "*.tsx" -o -name "*.jsx" | xargs grep -l "next/image" | head -10
+5. Check disk space on server: df -h /  # ensure sufficient disk space for image cache (rule of thumb: 1GB per 10k unique images)
+```
+
+### PR #97333 — Turbopack: Remove Stale Manifests for Deleted Routes (MATERIAL — routing)
+
+Turbopack now removes manifests for deleted routes from the build cache. Previously, when a route was deleted from the `app/` or `pages/` directory, Turbopack's build cache could retain a stale manifest for that route. Subsequent builds would load the stale manifest, causing routing mismatches or "ghost routes" that still appear in the build output despite the file being deleted.
+
+**The fix:** A new cache invalidation step during Turbopack's incremental build scans for route manifest files that no longer have corresponding route files and purges them from the manifest index. This ensures deleted routes are fully removed from the build output and don't cause routing conflicts.
+
+**Practical impact per user type:**
+- Apps that frequently add/delete routes during development: HIGH PRIORITY — eliminates "stale manifest" ghost routes
+- CI/CD pipelines that do incremental builds: affected — deleted routes will now correctly 404 instead of potentially routing to stale content
+- Static export (`output: 'export'`): affected — deleted routes correctly absent from export
+
+**5-step audit recipe:**
+```
+1. npm view next@canary dist-tags.canary  # confirm 16.3.1-canary.19
+2. Audit deleted routes: git log --name-only --oneline -20 | grep -E "^app/|^pages/" | sort -u
+3. For each deleted route: grep -r "deleted-route-name" .next/  # should find no stale manifest references
+4. next build with --turbopack flag; grep -i "stale manifest" build output  # should be absent
+5. next start; curl -I http://localhost:3000/deleted-route-path  # should 404, not 500
+```
+
+### PR #97385 — Turbopack: Make Unreachable Codegen More Generic (LOW MATERIAL)
+
+Minor Turbopack improvement. Makes the unreachable code elimination codegen path more generic — applicable to tree-shaking and dead-code elimination for routes that are unreachable via any navigation path. No semantic change to the routing behavior; internal compiler improvement.
+
+**No action required for production codebases.**
+
+### Combined Practical-Impact Table (routing.md lens)
+
+| User type | Impact from canary.19 | Priority |
+|---|---|---|
+| Nested `app/` layouts with `metadata` exports | Correct metadata resolution per nesting level | Medium |
+| Self-hosted `next start` with disk image cache | Empty cache files rejected; broken images fixed | High |
+| Apps that saw intermittent broken images with no errors | Likely root cause identified; fix in canary.19 | High |
+| Apps with frequent route add/delete (dev/CI) | No more ghost routes from stale manifests | Medium |
+| Vercel deployments / `next dev` | No change (uses memory cache) | None |
+| `output: 'export'` with deleted routes | Deleted routes correctly absent from export | Low |
+| Turbopack incremental builds | No change (compiler improvement only) | None |
+
+### Aug 20 Monthly Security Release — T-4d22h (5 days away)
+
+**Aug 20, 2026** is **4 days and 22 hours away from this cron's 00:03Z start**. This is the scheduled Next.js monthly security release. The v1.5.57 cycle first opened this forward-looking; v1.5.61 is now T-5.5d from the same date. The canonical fix for the **Critical Dev-Mode Security Disclosure #97157** (unauthenticated inspector UUID + CDP RCE via `/__nextjs_attach-nodejs-inspector`) is the primary candidate for this release. Also watch for new CVEs pre-announced on the [Next.js security blog](https://nextjs.org/blog/category/security). Expected patch versions: `next@16.3.2`, `next@16.3.1-canary.20+`, `next@15.5.24`, `next@14.2.36`.
+
+**Pre-roll audit recipe:**
+```
+1. Check /__nextjs_attach-nodejs-inspector is NOT accessible in production: curl -I https://yourdomain.com/__nextjs_attach-nodejs-inspector
+2. Verify no webpack source-map files are publicly accessible: curl https://yourdomain.com/_next/static/chunks/*.map  # should 403
+3. Check /_next/mcp is not exposed: curl https://yourdomain.com/_next/mcp  # should 404
+4. Monitor Next.js security blog for pre-announcements: https://nextjs.org/blog/category/security
+5. Plan upgrade to next@16.3.2 (expected within 24h of Aug 20) immediately upon release
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.19` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.19) — npm-published 2026-08-14T23:46:30Z; 4 commits: PR #97387 + PR #97278 + PR #97333 + PR #97385
+- [PR #97387 — Adopt SelectedMetadata for metadata rendering](https://github.com/vercel/next.js/pull/97387) — by @gnoff; the routing-adjacent headline for nested metadata resolution
+- [PR #97278 — fix(next/image): reject empty image on read/write to disk cache](https://github.com/vercel/next.js/pull/97278) — by @styfle; fixes cache corruption from empty disk cache files
+- [PR #97333 — Turbopack: remove stale manifests for deleted routes](https://github.com/vercel/next.js/pull/97333) — by @marcoshernanz; fixes ghost routes from stale manifest cache entries
+- [PR #97385 — Turbopack: make unreachable codegen more generic](https://github.com/vercel/next.js/pull/97385) — by @mischnic; compiler improvement; no routing behavior change
+- [Next.js canary-branch compare `v16.3.1-canary.18...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.18...canary) — 4 commits (the canary.19 batch)
+- [Next.js security release program](https://nextjs.org/blog/next-security-release-program) — the formal monthly security release schedule
+- [Next.js August 2026 security release — pre-announcement tracking](https://nextjs.org/blog/category/security) — monitor for new CVEs ahead of Aug 20
