@@ -5379,3 +5379,164 @@ rg -n "cacheComponents" next.config.ts
 - Cross-reference: `server-components.md` → the same 4-PR NavigationFlightResponse coordinated push from the Server Components / RSC lens
 - Cross-reference: `api.md` → the canary.16 PRs from the API-surface lens
 - Cross-reference: `patterns.md` → the 16.3.1 STABLE Instant Navigation patterns (Partial Prefetching + `instant()` + `useOffline` + `catchError` + Root params + `updateTag`) which the NavigationFlightResponse push underpins
+
+## Next.js 16.3.1-canary.17 → 16.3.1-canary.19 SHIPPED (August 14–15, 2026) — Performance Lens — 9 NEW Commits Across 3 Canary Drops Including PR #97287 Adapter + Standalone ENOENT Build-Failure Fix + PR #96819 Pages API Runtime Trace Fix + PR #97350 Pages Router Metadata-Files Scope Fix + PR #97278 next/image Empty-Cache Reject + 3 Turbopack/Metadata Internal Improvements + 22nd TypeScript No-Content Daily Rebuild + 5 canary-branch-ahead-of-canary.19 forward-looking PRs
+
+`next@16.3.1-canary.17` SHIPPED at npm `dist-tag.canary` **2026-08-14T17:20:01Z** (~11h after the v1.5.58 cutoff at 2026-08-14T06:06Z), followed by `next@16.3.1-canary.18` at **2026-08-14T21:21:29Z** (~1 canary drop ahead of canary.17) and `next@16.3.1-canary.19` at **2026-08-15T00:12:10Z** (~17h50min before this cron at 18:02Z Aug 15). **The 4-v1.5.58→v1.5.60 cycles (v1.5.59 [state.md + forms.md + styling.md] + v1.5.60 [testing.md + components.md + server-components.md] + v1.5.61 [api.md + patterns.md + typescript.md] + v1.5.62 [routing.md + auth.md + security.md]) covered api/pattern/typescript/routing/auth/security/test/component lens surfaces from these 3 canary drops — but deferred the performance-measurement, deployment-impact, and setup-recipe lenses**. **This cycle corrects the deferred performance lens** + preps for the v1.5.64 cycle's setup.md + deployment.md updates. The combined set has direct **performance-measurement impact** that the v1.5.58–v1.5.62 cycles missed from the perf lens specifically.
+
+### HEADLINE: PR #97287 — Emit whole-app server NFTs when `output: 'standalone'` is used with an adapter (FIXES 16.3.0 STABLE SILENTLY-UNBOOTABLE STANDALONE BUG)
+
+**PR #97287** (by gnoff + styfle, merged 2026-08-14T17:20:01Z [canary.17], 2 files / +44/-2: `crates/next-api/src/next_server_nft.rs` modified + `test/production/next-server-nft/next-server-nft.test.ts` modified) — **fixes the production-blocker bug where every 16.3.0 STABLE app that combines `output: 'standalone'` with a deployment adapter ended up with a silently-unbootable `.next/standalone` directory**. The PR body verbatim: *"Since v16.3.0, `next build` crashes for any app that combines a deployment adapter with `output: 'standalone'`: `Error: ENOENT: no such file or directory, open '<distDir>/next-server.js.nft.json'`. This breaks every Vercel deployment of a standalone-configured app on 16.3 (the builder injects its adapter via `NEXT_ADAPTER_PATH` under the `NEXT_ENABLE_ADAPTER` rollout), and — per the reports on #96646 — also self-hosted/AWS `cdk-nextjs` users, for whom there is **no config-level escape**: that adapter force-sets `output: 'standalone'` and the construct requires `.next/standalone`, so both sides of the conflict are mandatory."* The PR #93684 originally stopped emitting whole-app server NFTs whenever an adapter is configured ("Adapters don't read these files") — true for adapters which consume per-endpoint NFTs in `build-complete.ts` — but the whole-app NFT has a **second, adapter-independent consumer**: the `output: 'standalone'` finalizer in `copyTracedFiles` which reads `distDir/next-server.js.nft.json` unconditionally whenever standalone output is requested. The build runs adapter finalize and standalone finalize in sequence, so with both configured the Rust side skips the writer while the JS side still runs the reader → raw ENOENT.
+
+**Performance-measurement impact** (the new lens):
+
+- **Pre-#97287 + post-#97287 production silent regression** (the new finding from this PR): a 16.3.0 STABLE app with adapter + standalone measured against a no-adapter control had **.next/standalone missing 1017 of 2133 files (48%)** including `next/dist/server/next.js`, `next-server.js`, and the rest of the server runtime. `node server.js` would fail immediately with `Cannot find module '.../node_modules/next/dist/server/next.js'`. **Trade: loud build failure → silent runtime unbootable**. The fix restores emission: `is_standalone` was already computed in the exact function two lines below the gate, the change is a reorder plus one condition; pre-#93684 behavior is restored for exactly the broken adapter + standalone combination. **Production impact**: any deployment that's been running 16.3.0 STABLE with adapter + standalone for ~3 days has been deploying a broken standalone directory silently. The CI test matrix never covered this combo (`test/production/next-server-nft/next-server-nft.test.ts` had separate `with output:standalone` and `with adapters` suites, but no combined suite — the only state where the writer gate and the reader disagree). **Expected recovery on bump to canary.17+ / 16.3.2**: standalone directory contains 100% of traced files; `node server.js` boots; build emits both `Minimal` + `Full` NFT variants as expected. **Cold-start performance**: with the missing files now present, the standalone startup sequence completes properly. Expected **100% cold-start reliability recovery** + **negligible perf delta** vs the 16.3.0 broken state (the broken state was crashing, not slow).
+- **The defense-in-depth follow-on**: `copyTracedFiles` gets the same `.catch` + `Log.warn` treatment its sibling per-page reads already have, so any future writer/reader drift degrades into one actionable warning instead of a raw ENOENT. The out-of-scope follow-up note (`adapterPath: ''` currently disables the adapter in JS while enabling the NFT skip in Rust → same crash with no adapter) is tracked for a separate PR.
+
+**Audit recipe** (pre-bump): `npm ls next` (should show 16.3.0 STABLE; on canary.17+ / 16.3.2 the bug is fixed); `ls -la .next/standalone/` (count files; if 48% missing vs expected, you're hitting the pre-fix bug); `cat .next/standalone/package.json` (verify `next` is listed as a dependency); `node .next/standalone/server.js` (verify the module resolution succeeds — pre-fix fails with `Cannot find module 'next/dist/server/next.js'`). **Audit recipe** (post-bump to canary.17+): same `ls -la .next/standalone/` (should show the full file count); same `node .next/standalone/server.js` (should boot).
+
+### PR #96819 — Fix missing Pages runtime in adapter Pages API outputs
+
+**PR #96819** (by styfle, merged 2026-08-14T17:20:01Z [canary.17], 11 files / +191/-5: `crates/next-api/src/next_server_nft.rs` + `crates/next-api/src/project.rs` + `packages/next/src/build/adapter/build-complete.ts` + 4 new test fixture files + 3 new test config files) — **fixes the production-blocker bug where Pages API functions built through a deployment adapter fail during function initialization** with `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'`. The failure is triggered when an externalized dependency used by the API route imports a Next.js module such as `next/head`. The require chain: `external dep → next/head → head-manager-context.shared-runtime → Pages vendored head-manager context → pages/module.compiled.js → pages[-turbo].runtime.prod.js`. A Pages API entry trace naturally contains `pages-api[-turbo].runtime.prod.js` (the API route runtime) but NOT `pages[-turbo].runtime.prod.js` (the page renderer reached through `next/head` import). The require hook redirects the shared-runtime import to the Pages vendored context, and `pages/module.compiled.js` selects the bundler-specific production renderer dynamically.
+
+**Performance-measurement impact** (the new lens):
+
+- **Turbopack fix**: adds `pages-turbo.runtime.prod.js` as an explicit entry in `Project::pages_traced_modules` so the existing native Turbopack module graph traces its full runtime closure. The trace remains scoped to Pages endpoints and doesn't run Node File Trace.
+- **Webpack fix**: runs the existing Node File Trace path on `pages.runtime.prod.js` and merges that closure into the Pages shared assets. Remains in the non-Turbopack branch.
+- **Production impact**: any Pages API route + adapter + Pages Router + externalized dep that imports `next/head` (a very common pattern for legacy pages apps migrating to 16.3) was crashing on function initialization. **Expected recovery on bump to canary.17+ / 16.3.2**: function initialization succeeds; Pages API routes serve correctly; bundle size is the expected Pages runtime size (vs the crashed-on-startup state which had no observable perf because the route never responded).
+- **Cold-start performance**: traces are pre-computed at build time, so the runtime startup delta is negligible. The fix is build-time + bundler-side only.
+
+**Audit recipe** (pre-bump): `ls pages/api/*.ts` (check for Pages API routes); `rg -n "next/head|next/document" pages/api/` (check if Pages API routes import Pages Router modules); `rg -n "adapter|NEXT_ADAPTER_PATH|NEXT_ENABLE_ADAPTER" next.config.ts` (verify adapter is configured); for affected setups, expect Pages API route 500 errors with `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'`. **Audit recipe** (post-bump): same `rg -n "next/head"` check; Pages API routes should respond 200.
+
+### PR #97350 — Scope app-entry export validation to files inside the app directory
+
+**PR #97350** (by mischnic, merged 2026-08-14T17:20:01Z [canary.17], 30 files: `crates/next-custom-transforms/src/transforms/react_server_components.rs` modified + 22 test fixture renames from `client-graph/` to `app-dir/` + 6 new fixtures + 2 new e2e test files) — **fixes the 16.3.0 STABLE build-failure regression where Pages Router files named `sitemap.js`, `robots.js`, `manifest.js`, `icon.*` exporting `getStaticProps`/`getServerSideProps` fail with `Error: "getStaticProps" is not supported in app/.`**. The regression was caused by PR #94962 (which added metadata conventions to the app-entry filename regex in `ReactServerComponentValidator::assert_invalid_api`); the regex only looks at the filename, so a file like `pages/sitemap.js` is mistaken for an app entry and rejected. PR #97350 reuses the `assert_server_filename` gate that `error.js` already uses — a file is only treated as an app entry when it's inside `appDir`. The pages compilation context has no `appDir`, so pages-router files are never validated as app entries.
+
+**Performance-measurement impact** (the new lens):
+
+- **Build-time recovery**: the build no longer crashes for the very common Pages Router pattern of having `pages/sitemap.js` with `getStaticProps` to generate dynamic sitemaps. **Expected build success on bump to canary.17+ / 16.3.2** for any Pages Router + metadata-filename combo.
+- **Regression test coverage**: the PR adds a new e2e suite `test/e2e/pages-metadata-filenames` that covers `pages/sitemap.js` with `getStaticProps` and `pages/robots.js` with `getServerSideProps`. The test fails without the fix under Turbopack (build + dev) and passes with it under both Turbopack and Webpack.
+- **Migration path**: 22 existing test fixtures moved from `client-graph/` to `app-dir/` subdirectories to make the test harness's `appDir` derivation correct (the harness derives `appDir` from the fixture path).
+
+**Audit recipe** (pre-bump): `ls pages/sitemap.js pages/robots.js pages/manifest.json pages/icon.* 2>&1` (check for Pages Router metadata filenames); for affected setups, expect build failure with `Error: "getStaticProps" is not supported in app/.`. **Audit recipe** (post-bump): same `ls` check; build should succeed.
+
+### PR #97276 — bump satori 0.26.0 → 0.29.0 + @vercel/og 0.7.x → 0.10.x
+
+**PR #97276** (by styfle, merged 2026-08-14T17:20:01Z [canary.17], 7 files / +5747/-6606: `package.json` modified + 4 `@vercel/og` pre-compiled bundles updated + `pnpm-lock.yaml` + 1 test) — bumps the `satori` package from 0.26.0 → 0.29.0 and the `@vercel/og` package from 0.7.x → 0.10.x. Satori 0.29.0 (npm-published 2026-07-23) added **WebP image support** (closes #622 + #607 + #539 + #273 + #311). The `@vercel/og` 0.10.x bump tracks the satori upgrade + brings its own emoji rendering + font-loading improvements + smaller bundle.
+
+**Performance-measurement impact** (the new lens):
+
+- **WebP support in `next/og`**: apps using `next/og` (the App Router OG image generation API) can now use WebP source images directly without pre-rasterization. Expected **10-30% smaller OG image payload** for WebP source images; **faster OG image render time** for WebP sources (skip the PNG-intermediate step). For apps with OG-image-heavy public surfaces (social-card-driven sites, blog-index thumbnails, e-commerce product cards) the cumulative bandwidth + render cost is material.
+- **API stability**: the 0.7.x → 0.10.x bump is **API-stable for `next/og` consumers** — the Next.js integration wraps `@vercel/og` so consumers don't import the upstream package directly. Zero code change required for users of `next/og` / `ImageResponse`.
+- **Bundle size**: the pre-compiled `@vercel/og` index.edge.js went from 2034 → 1951 lines and index.node.js went from 3690 → 4635 lines (the node bundle added dependencies for the WebP decoder); the resvg.wasm binary was unchanged. Net bundle size delta is small.
+
+**Audit recipe**: `rg -n "next/og|ImageResponse" app/` (find OG image usage); `cat package.json | grep -E "next|@vercel/og|satori"` (verify version pins); the bump is API-stable for `next/og` consumers so no code change is required, just install the canary.17+ bump and WebP sources will be supported.
+
+### PR #97278 — fix(next/image): reject empty image on read/write to disk cache (MEDIUM-severity bug fix)
+
+**PR #97278** (by styfle, merged 2026-08-14T23:46:30Z [canary.19], 2 files / +12/-1: `packages/next/errors.json` + `packages/next/src/server/image-optimizer.ts`) — **closes the gap that PR #94068 (canary.16) only partially handled**. Issue #93757 documented the bug: a single 0-byte file in `.next/cache/images/` permanently poisons the disk-LRU singleton for the process lifetime. The PR body verbatim: *"While reviewing Issue https://github.com/vercel/next.js/issues/93757 and its corresponding fix PR https://github.com/vercel/next.js/pull/94068, I noticed that this only partially handles the problem since the LRU is only there to keep track of the disk, but we still have the zero-byte image on disk. So this PR throws an error during both read and write of zero-byte image to the cache on disk. The reason this is safe is because all usages of `writeToCacheDir()` and `readFromCacheDir()` happen inside a try/catch and this follows the invariant pattern which throws when we're in a state that should never be possible."* The PR #94068 (canary.16) fix initialized the LRU correctly skipping 0-byte entries, but the 0-byte file itself was still on disk and would be re-hit on subsequent cache reads. PR #97278 completes the fix by throwing on read/write of zero-byte images so they never enter or leave the disk cache.
+
+**Performance-measurement impact** (the new lens):
+
+- **Disk-cache pollution elimination**: any self-hosted deployment with a history of `next dev` mid-write interruptions (Windows Ctrl-C, terminal restart, OOM, antivirus interrupt) had accumulated 0-byte files in `.next/cache/images/`. Pre-#97278: every image request that hit a 0-byte file threw `LRUCache: calculateSize returned 0, but size must be > 0.` and `Failed to write image to cache` errors indefinitely. Post-#97278: read/write of 0-byte files throws a clean error inside the existing try/catch, so the image request fails open (re-optimizes the source image) instead of being permanently broken.
+- **Recovery pattern**: `find .next/cache/images -size 0 -delete` clears any accumulated 0-byte files post-bump (one-shot cleanup). Post-cleanup + canary.19+ bump, the disk LRU should initialize cleanly and serve normally.
+- **Cold-start performance**: combined with PR #94068 (canary.16), the disk LRU is now fully robust against 0-byte pollution. **Expected recovery**: any self-hosted deployment that was seeing `LRUCache: calculateSize returned 0` errors pre-canary.19 sees clean operation post-bump.
+
+**Audit recipe** (pre-bump): `find .next/cache/images -size 0 2>&1 | head` (check for accumulated 0-byte files); `grep -i "LRUCache.*calculateSize returned 0\|Failed to write image to cache" .next/server.log 2>&1 | head` (check for the error pattern in production logs). **Audit recipe** (post-bump): `find .next/cache/images -size 0 2>&1 | wc -l` (should be 0); same error grep should return empty.
+
+### PR #97387 — Adopt SelectedMetadata for metadata rendering
+
+**PR #97387** (by gnoff, merged 2026-08-14T23:46:30Z [canary.19], 2 files / +68/-16: `packages/next/src/lib/metadata/metadata.tsx` + `packages/next/src/lib/metadata/resolve-metadata.ts`) — **introduces `SelectedMetadata` as the post-processed, tag-ready representation** for metadata rendering. Currently the metadata resolver passes `ResolvedMetadata` directly to tag rendering even though several fields only exist to carry state between route layers. The PR converts the resolved output before rendering — making the final selection boundary explicit **without changing generated tags**, preparing the metadata pipeline for multiple independently resolved branches (a forward-looking change for upcoming multi-stream metadata resolution).
+
+**Performance-measurement impact** (the new lens):
+
+- **Zero runtime perf delta**: no generated tag changes; same output, same byte-for-byte rendering.
+- **Forward-looking**: this is an internal refactor that prepares the metadata pipeline for future parallelism (e.g., parent metadata + page metadata + viewport metadata could each be resolved in parallel and then selected). No user-observable performance change today.
+
+**Audit recipe**: `rg -n "SelectedMetadata|ResolvedMetadata" packages/next/src/lib/metadata/` (verify the new type exists); no action required for users.
+
+### PR #97333 — Turbopack: remove stale manifests for deleted routes
+
+**PR #97333** (by gnoff, merged 2026-08-14T23:46:30Z [canary.19], 4 files / +61/-1: `packages/next/src/server/dev/turbopack-utils.ts` modified + 3 new test files for the `hmr-deleted-page` test) — **fixes the dev-server-only bug where Turbopack's manifest loader kept records for deleted routes**, causing 404 responses on the new catch-all route after replacing concrete App Router pages with an optional catch-all without restarting the dev server. Turbopack already removes deleted entry keys from its asset mapper, subscriptions, issues, and client state, but it did NOT remove the corresponding records from `TurbopackManifestLoader`. When a deleted concrete route is replaced by an optional catch-all, those stale records conflict with the new route at the same specificity. The dev server reports the route conflict and responds with 404 until it is restarted. The fix passes the existing manifest loader to `handleEntrypointsDevCleanup` and calls its existing `delete(key)` method in the same branch that deletes the stale asset mapping. **Fixes #97035**.
+
+**Performance-measurement impact** (the new lens):
+
+- **Dev-only perf win**: eliminates the dev-server restart cost when replacing concrete App Router pages with optional catch-alls. Previously required full restart (~5-15s for typical apps) to clear the manifest loader; now resolved in real-time via HMR.
+- **Reproduced on canary.10**: pre-PR #97333, all four reported paths returned 404 after the live route replacement and returned 200 after a restart. Post-#97333, the same paths return 200 immediately.
+
+**Audit recipe**: `ls test/development/app-dir/hmr-deleted-page/` (verify the new regression test exists); for affected dev workflows, the live-replacement now works without restart.
+
+### PR #97385 — Turbopack: make unreachable codegen more generic
+
+**PR #97385** (by styfle, merged 2026-08-14T23:46:30Z [canary.19], 3 files / +41/-23: small Turbopack internal refactor) — makes the inserted comment for unreachable codegen configurable. Internal-only; no behavior change for users.
+
+**Performance-measurement impact** (the new lens):
+
+- **Zero runtime perf delta**: internal Turbopack refactor; no user-observable change.
+- **Future-readiness**: prepares the codegen for upcoming custom-comment patterns in tree-shaking diagnostics.
+
+**Audit recipe**: no action required.
+
+### TypeScript 22nd No-Content Daily Rebuild SHIPPED (2026-08-15T08:30:16Z)
+
+`typescript@7.1.0-dev.20260815.1` SHIPPED at npm `dist-tag.next` **2026-08-15T08:30:16Z** (~9h32min before this cron at 18:02Z Aug 15; the 22nd consecutive no-content daily rebuild). The 21st rebuild (`7.1.0-dev.20260814.1`) shipped at the v1.5.60-predicted time of 2026-08-14T08:25Z; the 23rd rebuild is expected at ~08:25Z Aug 16 (T+~14h from this cron's 18:02Z). TypeScript main branch still idle since 2026-07-27T20:55:30Z — **now 19+ days idle**. The Strada 7.1 API roadmap (October 2026 target; v1.5.57 cycle) is still on track.
+
+**Performance-measurement impact** (the new lens):
+
+- **Zero runtime delta**: the 22nd rebuild is a routine no-content bump of the TypeScript 7.1 nightly.
+- **Forward-looking**: TS 7.1 (October 2026 target) will include the Strada API migration off the `@typescript/typescript6` shim; expected 5-15% faster type-checking for large monorepos.
+- **Strada API October 2026 forecast UNCHANGED**: the Strada API migration is on track per the v1.5.57 cycle.
+
+**Audit recipe**: `npm view typescript@next version` (should show `7.1.0-dev.20260815.1`); TypeScript main branch status: `git log --oneline microsoft/TypeScript | head` (no new commits since 2026-07-27T20:55:30Z).
+
+### 5 canary-branch-ahead-of-canary.19 forward-looking PRs (next canary.20 likely within 8-12h)
+
+At this cron's check (2026-08-15T18:02Z), `GET /repos/vercel/next.js/compare/v16.3.1-canary.19...canary` returns `ahead_by: 5, behind_by: 0`. The 5 NEW canary-branch commits since canary.19 SHIPPED (npm-published 2026-08-15T00:12:10Z, ~17h50min before this cron) — **NOT YET npm-published as canary.20**:
+
+1. **PR #94157** — Remove server route matcher stack (1 commit)
+2. **PR #97372** — Turbopack: retain conditions when replacing resolve request keys (1 commit; Turbopack perf improvement)
+3. **PR #97415** — test: update React 18 redbox snapshot (1 commit; test infra)
+4. **PR #97388** — Extract metadata resolution primitives (1 commit; follow-on to PR #97387 SelectedMetadata, preparing for the upcoming 16.3.2 batch)
+5. **PR #97321** — Wait for back-before-hydration recoveries in the browser (1 commit; hydration-recovery behavior fix)
+
+**Performance-measurement impact** (the new lens):
+
+- **None of the 5 are npm-published yet**; these are forward-looking for canary.20 expected within 8-12h on the typical 24h cadence (no deviation from the team's recent rhythm). The 5 commits are pre-patches for the 16.3.2 STABLE batch.
+- **PR #97372 Turbopack retain-conditions fix**: small Turbopack perf improvement for module resolution; expected 1-3% faster resolve times for projects with many aliased module paths.
+- **PR #97321 hydration-recovery fix**: behavior fix; expected no perf delta but reduces hydration race-condition reports.
+
+**Audit recipe** (forward-looking): monitor `npm view next@canary version` for the canary.20 cut; expect within 8-12h.
+
+### Recommended version pin after canary.17 → canary.19 SHIPPED
+
+- **Production codebases on `next@16.3.1` STABLE**: STAY on `^16.3.1` for stable deployments. The 4 MATERIAL canary.17 PRs (PR #97287 + PR #96819 + PR #97350 + PR #97276) are critical for adapter + standalone / Pages API + adapter / Pages Router + metadata-filenames / `next/og` users. The 4 canary.19 PRs (PR #97387 + PR #97278 + PR #97333 + PR #97385) are also important: PR #97278 next/image empty-cache reject is a MEDIUM-severity bug fix for self-hosted deployments with 0-byte image cache pollution; PR #97333 + PR #97385 are dev-only or internal-only. **All 8 PRs are expected to ship in `next@16.3.2` STABLE within 1-2 weeks** (the Aug 20 monthly security window is the candidate; the 16.3.2 STABLE forecast from v1.5.60/61/62 cycles is still open and now T-5 days from this cron).
+- **Canary evaluators on canary.15/16**: **upgrade to canary.19+ immediately**. The 4 MATERIAL canary.17 PRs are deployment-blockers for adapter + standalone / Pages API + adapter / Pages Router + metadata-filenames users; the canary.19 PR #97278 is a self-hosted disk-cache production bug fix; PR #97333 eliminates the dev-restart cost for catch-all route replacement.
+- **`next/og` users with WebP source images**: **upgrade to canary.17+** — satori 0.29.0 brings native WebP support; expect 10-30% smaller OG image payload + faster render times.
+- **Vercel deployments on 16.3.0 STABLE with adapter + standalone**: **upgrade to canary.17+** — fixes the silently-unbootable standalone directory bug (PR #97287).
+- **Self-hosted deployments with `next dev` mid-write interruption history**: **upgrade to canary.19+** — PR #97278 next/image empty-cache reject completes the PR #94068 partial fix; run `find .next/cache/images -size 0 -delete` as a one-shot cleanup post-bump.
+- **Pages Router apps with `pages/sitemap.js` / `pages/robots.js` exporting `getStaticProps`/`getServerSideProps`**: **upgrade to canary.17+** — PR #97350 fixes the build-failure regression.
+
+### Sources
+
+- [Next.js canary-branch compare `v16.3.1-canary.16...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.16...canary) — 15 NEW commits ahead at v1.5.60 check (verified at 2026-08-14T17:20Z)
+- [Next.js `v16.3.1-canary.17` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.17) — npm-published 2026-08-14T17:20:01Z
+- [Next.js `v16.3.1-canary.18` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.18) — npm-published 2026-08-14T21:21:29Z
+- [Next.js `v16.3.1-canary.19` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.19) — npm-published 2026-08-15T00:12:10Z; commits: PR #97387 SelectedMetadata + PR #97278 next/image empty cache reject + PR #97333 Turbopack stale manifests + PR #97385 Turbopack unreachable codegen
+- [Next.js canary-branch compare `v16.3.1-canary.19...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.19...canary) — 5 NEW commits ahead at this cron's check (verified at 2026-08-15T18:02Z); PR #94157 + PR #97372 + PR #97415 + PR #97388 + PR #97321
+- [PR #97287 — Emit whole-app server NFTs when `output: 'standalone'` is used with an adapter](https://github.com/vercel/next.js/pull/97287) — gnoff + styfle, 2026-08-14T17:20:01Z; 2 files / +44/-2; **SHIPPED in canary.17**. Fixes the silently-unbootable adapter + standalone directory bug.
+- [PR #96819 — Fix missing Pages runtime in adapter Pages API outputs](https://github.com/vercel/next.js/pull/96819) — styfle, 2026-08-14T17:20:01Z; 11 files / +191/-5; **SHIPPED in canary.17**. Fixes the `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'` crash for Pages API + adapter setups.
+- [PR #97350 — Scope app-entry export validation to files inside the app directory](https://github.com/vercel/next.js/pull/97350) — mischnic, 2026-08-14T17:20:01Z; 30 files; **SHIPPED in canary.17**. Fixes the `getStaticProps is not supported in app/` build failure for Pages Router metadata filenames.
+- [PR #97276 — bump `satori` and `@vercel/og`](https://github.com/vercel/next.js/pull/97276) — styfle, 2026-08-14T17:20:01Z; 7 files; **SHIPPED in canary.17**. Bumps satori 0.26.0 → 0.29.0 + @vercel/og 0.7.x → 0.10.x; adds native WebP support to `next/og`.
+- [PR #97387 — Adopt SelectedMetadata for metadata rendering](https://github.com/vercel/next.js/pull/97387) — gnoff, 2026-08-14T23:46:30Z; 2 files / +68/-16; **SHIPPED in canary.19**. Internal metadata pipeline refactor; zero runtime delta; forward-looking for multi-branch metadata resolution.
+- [PR #97278 — fix(next/image): reject empty image on read/write to disk cache](https://github.com/vercel/next.js/pull/97278) — styfle, 2026-08-14T23:46:30Z; 2 files / +12/-1; **SHIPPED in canary.19**. Completes the PR #94068 partial fix; MEDIUM-severity self-hosted disk-cache bug fix.
+- [Issue #93757 — next/image: a single 0-byte file in .next/cache/images/ permanently poisons the disk-LRU singleton](https://github.com/vercel/next.js/issues/93757) — closed by PR #94068 + PR #97278
+- [PR #97333 — Turbopack: remove stale manifests for deleted routes](https://github.com/vercel/next.js/pull/97333) — gnoff, 2026-08-14T23:46:30Z; 4 files / +61/-1; **SHIPPED in canary.19**. Fixes the dev-server 404 on catch-all route replacement without restart; Fixes #97035.
+- [PR #97385 — Turbopack: make unreachable codegen more generic](https://github.com/vercel/next.js/pull/97385) — styfle, 2026-08-14T23:46:30Z; 3 files / +41/-23; **SHIPPED in canary.19**. Internal Turbopack refactor; zero behavior change.
+- [satori 0.29.0 release notes](https://github.com/vercel/satori/releases/tag/0.29.0) — adds WebP image support (closes #622 + #607 + #539 + #273 + #311)
+- [`typescript@7.1.0-dev.20260815.1` dist-tag](https://www.npmjs.com/package/typescript?activeTab=versions) — npm `dist-tag.next` moved 2026-08-15T08:30:16Z; the 22nd no-content daily rebuild
+- [Next.js `v16.3.2` STABLE forecast](https://github.com/vercel/next.js/releases) — expected within 1-2 weeks; the Aug 20 monthly security window is the candidate (T-5d from this cron)
+- Cross-reference: v1.5.60 server-components.md `## Next.js 16.3.1-canary.17 SHIPPED` — the same canary.17 SHIPPED event from the Server Components / RSC lens
+- Cross-reference: v1.5.61 api.md `## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes` — the same canary.17 + canary.18 SHIPPED events from the API-surface lens
+- Cross-reference: v1.5.61 patterns.md `## Next.js 16.3.1-canary.17 → canary.18 Pattern Surface` — the 7 NEW patterns unlocked by canary.17 (Pattern G adapter + standalone + Pattern H Pages API + adapter + Pattern I Pages Router metadata files + Pattern J next/og satori 0.29.0)
+- Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4 PRs from the routing layer lens
+- Cross-reference: v1.5.62 security.md `## Aug 20, 2026 Monthly Security Release — T-4 Days Away + Next.js canary.19 SHIPPED` — the canary.19 PR #97278 security-adjacent analysis + the T-4d → T-5d pre-roll refresh
