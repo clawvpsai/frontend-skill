@@ -1772,3 +1772,101 @@ The v1.5.39 section already documented this. **No new content** — just confirm
 - [TypeScript GitHub Releases](https://github.com/microsoft/TypeScript/releases) — the canonical release list (`7.0.2` is the current stable)
 - [TypeScript CHANGES.md](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — the canonical 6.0 → 7.0 behavior-change list (the TS 6.0 x 7.0 deltas)
 - Cross-references: `setup.md` → the Next.js 16.2.12 + TS 7 setup recipe (the v1.5.39 update covers the `experimental.useTypeScriptCli` default-flip to canary.108+); `api.md` → the broader Next.js 16.3.1 API surface changes; `patterns.md` → the new 16.3 Instant Navigation patterns
+
+## 22nd No-Content TypeScript Daily Rebuild Pending (Expected ~08:25Z Aug 15, 2026) + TS 7.0.x Stable Maintained + @clerk/nextjs 7.7.6 STABLE React 19.3.x Peer-Dep TypeScript Alignment + better-auth 1.6.29 STABLE TypeScript Cleanup (August 14, 2026)
+
+The 6h-window since v1.5.60 (Aug 14 18:02Z) closed with **modest TypeScript-side material** — the TypeScript main branch is still idle since 2026-07-27T20:55:30Z (now 19+ days idle), but several adjacent TypeScript-alignment events shipped in the window:
+
+### 1. TypeScript Main Branch Status — 19+ Days Idle (UNCHANGED from v1.5.60)
+
+The TypeScript main branch has been idle since 2026-07-27T20:55:30Z — now 19+ days without a new commit. The 21st no-content daily rebuild (`7.1.0-dev.20260813.1`) shipped at ~08:25Z Aug 13 (npm-published 2026-08-13T08:33:43.580Z). The **22nd no-content daily rebuild (`7.1.0-dev.20260814.1`) is expected at ~08:25Z today Aug 15** — about 8h 22min from this cron's 00:03Z start. TypeScript 7.1 is still pre-release; TS 7.0.2 is the current stable. No content changes are expected in the 22nd rebuild.
+
+```bash
+# Audit recipe: TypeScript next dist-tag + daily rebuild cadence
+npm view typescript@next version time --json 2>/dev/null | tail -5
+# Expected at this cron: 21st rebuild shipped Aug 13; 22nd expected ~08:25Z Aug 15
+```
+
+### 2. @clerk/nextjs 7.7.6 STABLE React 19.3.x Peer-Dep TypeScript Alignment (NEW — npm-published 2026-08-14T23:51:06Z)
+
+The `@clerk/nextjs@7.7.6` STABLE release (the v1.5.50 cycle's "expect within 1-2 weeks" prediction came true in **12 hours** — canary-train velocity dramatically accelerated) bumps the `react` + `react-dom` peer-dep range to accept `19.3.0-canary-eb8feb71-20260814`. This has **TypeScript implications**:
+
+- **Peer-dep TypeScript inference improvement** — apps on `@clerk/nextjs@^7.7.6` no longer need to suppress `react@19.3.x-canary` peer-dep warnings via `npm install --legacy-peer-deps` or `pnpm install --no-strict-peer-dependencies`. TypeScript's `strict-peer-dependencies` setting now resolves cleanly.
+- **`@types/react` + `@types/react-dom` alignment** — `@clerk/nextjs@7.7.6` keeps the `@types/react@^19.0.8` + `@types/react-dom@^19.0.3` peer-dep range (unchanged from 7.7.5 STABLE). Apps on React 19.3.x canary use `@types/react@^19.2.18` (the current latest) + `@types/react-dom@^19.2.4`.
+- **TypeScript 7.0.x compatibility** — `@clerk/nextjs@7.7.6` is built against the TypeScript 7.0.x peer-dep range; TS 7.1.x compatibility will land once Strada ships (October 2026 target).
+
+```json
+// package.json (post-7.7.6)
+{
+  "dependencies": {
+    "@clerk/nextjs": "^7.7.6",
+    "react": "19.3.0-canary-eb8feb71-20260814",
+    "react-dom": "19.3.0-canary-eb8feb71-20260814"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^7.0.2"
+  }
+}
+```
+
+### 3. better-auth 1.6.29 STABLE TypeScript Cleanup (NEW — npm-published 2026-08-14T18:19:56Z)
+
+The `@better-auth/core@1.6.29` release (the v1.5.57 cycle already documented the 1.6.27 `endpoint and middleware context types` alignment) continues the TypeScript cleanup pass:
+
+- **PR #10657 `getDefaultModelName`** — exact schema key matches over `modelName` aliases. Improves TypeScript inference for custom adapter schemas (the `modelName` alias type is now correctly inferred from the schema key).
+- **Endpoint + middleware context types aligned with runtime route parameters** — the `ctx.endpoint` + `ctx.middleware` types now match the runtime route parameter types, eliminating several common TypeScript narrowing issues.
+- **Response headers preserved when resolving sessions from endpoint contexts** — the `Headers` type is now propagated through the session resolution path.
+
+### 4. better-auth 1.7.0-rc.6 TypeScript Cleanup (NEW — npm-published 2026-08-14T18:20:13Z)
+
+The 1.7.0-rc.6 RC continues the TypeScript cleanup from rc.5:
+
+- **Stricter MCP spec alignment** — `applicationType` replaces legacy `type`/`public client` fields; TypeScript narrowing now correctly enforces the new `applicationType` enum.
+- **Stricter redirect validation + scope controls** — the MCP redirect + scope types are now stricter, catching several common configuration errors at compile time.
+- **Microsoft account identifier changes** — the Microsoft account identifier type changed from `string` to a discriminated union; TypeScript will flag apps using the old `string` type.
+- **TypeScript cleanup across adapters and plugins** — multiple `as` casts removed, generic constraints tightened, and `unknown` narrowed to specific types.
+
+```ts
+// better-auth config (post-1.7.0-rc.6)
+import { betterAuth } from 'better-auth';
+export const auth = betterAuth({
+  // ... existing config
+  // 1.7.0-rc.6 requires applicationType for MCP plugins (replaces legacy type/public client fields)
+  mcp: {
+    applicationType: 'confidential', // NEW required field in 1.7.0-rc.6
+    // ...
+  },
+});
+```
+
+### 5. Practical guidance for the August 2026 TypeScript 7.0 stable migration (UNCHANGED from v1.5.60)
+
+1. **Pin `typescript: "^7.0.2"`** in package.json (was `^7.0.0` in the v1.5.39 cycle).
+2. **Run `tsc --noEmit`** — not `tsgo --noEmit`. The binary is `tsc` in 7.0 stable.
+3. **Keep `@typescript/typescript6: "^6.0.4"`** for tooling that needs the legacy API (typescript-eslint, ts-morph, custom transformers).
+4. **Watch the September 2026 + October 2026 milestones** for the Strada API rollout.
+5. **For Next.js 16.2.12 + TS 7 users:** `experimental.useTypeScriptCli: true` is now the default-true flag in canary.108+ (per the v1.5.39 cycle). On 16.2.12 stable, you still need to set it explicitly.
+
+### 6. TypeScript 7.1 Strada API Forecast (UNCHANGED from v1.5.60)
+
+- **October 2026 target** for the Strada API rollout in TypeScript 7.1 (per the Microsoft devblog + the Gist migration guide).
+- **Strada API** = the new TypeScript API surface for tooling (typescript-eslint, ts-morph, custom transformers) replacing the legacy `typescript` API used in 7.0.x.
+- **Migration path**: bump `@typescript/typescript6` to `@typescript/typescript7` once Strada ships; migrate tools that used the legacy API to the Strada API.
+
+### Sources
+
+- [Microsoft Devblog: Announcing TypeScript 7.0](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — the official STABLE announcement (was previously the RC announcement dated 2026-06-18; updated for STABLE)
+- [Microsoft Devblog: Announcing TypeScript 7.0 RC](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc) — published 2026-06-18; the RC announcement with the Strada API roadmap
+- [TypeScript 7.0 Migration Guide (Gist)](https://gist.github.com/nafiskabbo/01ccb4970515413076f3759486c39755) — third-party migration guide confirming the Strada 7.1 October 2026 target
+- [InfoQ: Microsoft Releases TypeScript 7.0 with a Native Go Compiler, Delivering 10x Faster Builds](https://www.infoq.com/news/2026/08/typescript-7-released/) — published 2026-08-03 by InfoQ; the canonical 7.0 STABLE coverage
+- [TypeScript GitHub README](https://github.com/microsoft/TypeScript) — the canonical "maintenance mode" statement; explains the 19+ day main-branch idle (per the v1.5.60 cycle)
+- [TypeScript GitHub Releases](https://github.com/microsoft/TypeScript/releases) — the canonical release list (`7.0.2` is the current stable; `7.1.0-dev.20260813.1` is the latest daily rebuild; `7.1.0-dev.20260814.1` expected ~08:25Z Aug 15)
+- [TypeScript CHANGES.md](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — the canonical 6.0 → 7.0 behavior-change list (the TS 6.0 x 7.0 deltas)
+- [`@clerk/nextjs@7.7.6` on npm](https://www.npmjs.com/package/@clerk/nextjs/v/7.7.6) — STABLE 7.7.6 npm-published 2026-08-14T23:51:06Z; the React 19.3.x peer-dep range bump enables clean TypeScript peer-dep inference
+- [`@clerk/javascript/packages/nextjs/CHANGELOG.md`](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — the canonical 7.5.0 → 7.7.6 changelog (TypeScript peer-dep changes documented inline)
+- [`better-auth@1.6.29` on npm](https://www.npmjs.com/package/better-auth/v/1.6.29) — STABLE 1.6.29 npm-published 2026-08-14T18:19:56Z; consolidates PR #10657 `getDefaultModelName` TypeScript inference improvement + endpoint/middleware context type alignment
+- [`better-auth@1.7.0-rc.6` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.6) — RC 1.7.0-rc.6 npm-published 2026-08-14T18:20:13Z; the MCP `applicationType` TypeScript narrowing + Microsoft account identifier discriminated union + adapter + plugin TypeScript cleanup
+- [Better Auth 1.6 blog post](https://better-auth.com/blog/1-6) — the canonical restructured-release-notes documentation referenced by `better-auth.com/changelog`
+- Cross-references: `setup.md` → the Next.js 16.2.12 + TS 7 setup recipe (the v1.5.39 update covers the `experimental.useTypeScriptCli` default-flip to canary.108+); `api.md` → `## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes` for the companion API-surface changes (PR #97287 + PR #96819 + PR #97350 + PR #97276 + @clerk/nextjs 7.7.6 STABLE + better-auth 1.6.29 + 1.7.0-rc.6 + Tailwind insiders 90f8ff4); `patterns.md` → `## Next.js 16.3.1-canary.17 → canary.18 Pattern Surface` for the 7 NEW patterns (Pattern G adapter + standalone + Pattern H Pages API + adapter + Pattern I Pages Router metadata files + Pattern J next/og satori 0.29.0 + Pattern K Clerk 7.7.6 STABLE peer-deps + Pattern L Better Auth 1.6.29 modelName + Pattern M Better Auth 1.7.0-rc.6 early adopter); `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED

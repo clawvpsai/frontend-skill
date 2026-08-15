@@ -4161,3 +4161,160 @@ export async function updateProfile(formData: FormData) {
 - [Next.js 16.3.1-canary.15 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.15) — npm-published 2026-08-12T23:26:21Z; the latest canary
 - [Next.js 16.3.0 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.0) — STABLE 16.3.0 release (2026-08-03T21:03:18Z)
 - Cross-references: `routing.md` → `## Next.js 16.3 — Instant Navigations` for the routing-layer coverage of `<Link prefetch>` changes; `performance.md` → `## Next.js 16.3 — Instant Navigations` for the perf-measurement lens; `security.md` → the Cache Components audit recipe for the new APIs; `server-components.md` → the `'use cache'` and `usePrivateCache` patterns; `api.md` → `## Next.js 16.3.1-canary.10 → canary.15 API-Surface Changes` for the companion API-surface changes (PR #97166 live headers() + PR #96937 unstable_cache encoding + PR #97040 static/app shell tracking + PR #97247 RDC compression + PR #97181 literal exports in cache files + PR #95439 stale data revalidation fix)
+
+## Next.js 16.3.1-canary.17 → canary.18 Pattern Surface (August 14, 2026) — Adapter + Standalone Patterns (PR #97287) + Pages API + Adapter Patterns (PR #96819) + Pages Router Metadata-File Patterns (PR #97350) + @clerk/nextjs 7.7.6 STABLE Patterns + Better Auth 1.6.29 + 1.7.0-rc.6 Patterns (August 14, 2026)
+
+The 6h-window since v1.5.57 (Aug 13 18:02Z) closed with **5 SHIPPED events of pattern-surface impact**:
+
+1. **`next@16.3.1-canary.17` SHIPPED** (npm-published 2026-08-14T17:20:01Z; ~24h before this cron). The v1.5.60 cycle's `server-components.md` lens covered the 4 MATERIAL PRs from the Server Components / RSC lens. The **pattern-surface lens** focuses on the 4 NEW patterns the canary.17 batch unlocks for production teams:
+
+   - **Pattern G — Adapter + Standalone Build Pattern** (PR #97287, enabled in canary.17). Pre-canary.17: Vercel adapter + cdk-nextjs adapter + SST adapter + `output: 'standalone'` combinations ENOENT-crashed on 16.3.0 STABLE because the build didn't emit whole-app server NFTs. Post-canary.17: the build emits `server/app-paths-manifest.json` + `server/required-server-files.json` for adapter + standalone combos that were previously incomplete. **Pattern**: use `output: 'standalone'` + an adapter (cdk-nextjs / amplify / SST) + the canary.17+ `next build` output. Self-hosted deployment on AWS via cdk-nextjs + ECS now builds cleanly on 16.3.x.
+
+   ```ts
+   // next.config.ts (canary.17+ + 16.3.2 STABLE)
+   import type { NextConfig } from 'next';
+   const config: NextConfig = {
+     output: 'standalone', // emits whole-app server NFTs for adapter consumption
+     experimental: {
+       // ... your existing config
+     },
+   };
+   export default config;
+   ```
+
+   ```bash
+   # Build + deploy with cdk-nextjs (canary.17+)
+   npm install next@16.3.1-canary.17
+   npx next build
+   # cdk-nextjs now picks up the standalone output without ENOENT
+   npx cdk deploy
+   ```
+
+   - **Pattern H — Pages API + Adapter Build Pattern** (PR #96819, enabled in canary.17). Pre-canary.17: Pages Router + Pages API routes (`pages/api/*.ts`) + adapters crashed on `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'`. Post-canary.17: the build bundles `pages-turbo.runtime.prod.js` into the adapter output for Pages API routes. **Pattern**: stay on Pages Router + Pages API + an adapter + bump to canary.17+ for the Pages API runtime fix.
+
+   ```bash
+   # Pattern: Pages Router + Pages API + cdk-nextjs adapter (canary.17+)
+   npm install next@16.3.1-canary.17
+   # pages/api/users.ts works on 16.3.0 + cdk-nextjs adapter
+   ```
+
+   - **Pattern I — Pages Router Metadata Files (sitemap.js / robots.js / manifest.js / icon.js)** (PR #97350, enabled in canary.17). Pre-canary.17: `pages/sitemap.js` / `pages/robots.js` / `pages/manifest.json` / `pages/icon.*` build-failed with `getStaticProps is not supported in app/` on 16.3.0 STABLE because the validator scanned the whole tree. Post-canary.17: the validator restricts `app/` exports to files actually under the `app/` directory. **Pattern**: keep Pages Router metadata files in `pages/` (not `app/`) + bump to canary.17+ for the build fix.
+
+   ```ts
+   // pages/sitemap.js (Pages Router + canary.17+)
+   import { GetServerSideProps } from 'next';
+   export default function Sitemap() { /* ... */ }
+   export const getServerSideProps: GetServerSideProps = async ({ res }) => {
+     res.setHeader('Content-Type', 'text/xml');
+     res.write(`<?xml version="1.0" encoding="UTF-8"?>
+       <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+         <url><loc>https://example.com</loc></url>
+       </urlset>`);
+     res.end();
+     return { props: {} };
+   };
+   ```
+
+   - **Pattern J — next/og + satori 0.29.0 + @vercel/og 0.10.x** (PR #97276, enabled in canary.17). Pre-canary.17: `next/og` used satori 0.26.0 + @vercel/og 0.7.x — emoji rendering was limited. Post-canary.17: `next/og` uses satori 0.29.0 + @vercel/og 0.10.x — better emoji rendering, improved text layout, and improved RTL support. **Pattern**: `import { ImageResponse } from 'next/og'` — no API change required, but the bump is automatic for canary.17+ users.
+
+   ```ts
+   // app/api/og/route.ts (canary.17+ — satori 0.29.0)
+   import { ImageResponse } from 'next/og';
+   export async function GET() {
+     return new ImageResponse(
+       (
+         <div style={{ fontSize: 128, background: 'white' }}>
+           🚀 Next.js 16.3.2
+         </div>
+       ),
+       { width: 1200, height: 630 }
+     );
+   }
+   ```
+
+2. **`@clerk/nextjs@7.7.6` STABLE Patterns** (npm-published 2026-08-14T23:51:06Z; ~12 minutes before this cron). The 7.7.6 STABLE release bundles 12 canary drops with several pattern-affecting changes:
+
+   - **Pattern K — Pin `@clerk/nextjs@^7.7.6` for React 19.3.x peer-deps**. Pre-7.7.6: Clerk users on React 19.3.0-canary-eb8feb71-20260814 had to pin `@clerk/nextjs@canary` to accept the React 19.3.x peer-deps. Post-7.7.6: STABLE `@clerk/nextjs@^7.7.6` accepts React 19.3.0-canary-eb8feb71-20260814 in the peer-dep range.
+
+   ```json
+   // package.json (post-7.7.6)
+   {
+     "dependencies": {
+       "next": "^16.3.1",
+       "react": "19.3.0-canary-eb8feb71-20260814",
+       "react-dom": "19.3.0-canary-eb8feb71-20260814",
+       "@clerk/nextjs": "^7.7.6"
+     }
+   }
+   ```
+
+3. **`better-auth@1.6.29` + `better-auth@1.7.0-rc.6` Patterns** (npm-published 2026-08-14T18:19:56Z + 18:20:13Z; ~5h 43min before this cron). The 1.6.29 STABLE patches the `getDefaultModelName` collision pattern:
+
+   - **Pattern L — Avoid `modelName` aliases that collide with built-in table names**. Pre-1.6.29: a custom adapter schema key named `user` (same as the built-in user table) would be misrouted by `getDefaultModelName`. Post-1.6.29: exact schema key matches are preferred over `modelName` aliases.
+
+   ```ts
+   // better-auth config (post-1.6.29)
+   export const auth = betterAuth({
+     user: {
+       modelName: 'app_user', // custom alias — no longer collides with built-in 'user'
+       additionalFields: { role: { type: 'string' } },
+     },
+   });
+   ```
+
+   - **Pattern M — Better Auth 1.7.0-rc.6 early-adopter pattern**. The 1.7.0-rc.6 RC unlocks the OAuth device grant + RP-initiated logout + Microsoft account identifier changes + SCIM + SSO + MCP spec alignment + passkey auto sign-in. **Pattern**: pin to `better-auth@1.7.0-rc.6` only if you can tolerate RC churn + you need one of the 1.7.0-specific features.
+
+   ```json
+   // package.json (better-auth 1.7.0-rc.6 early adopter)
+   {
+     "dependencies": {
+       "better-auth": "1.7.0-rc.6"
+     }
+   }
+   ```
+
+### Practical impact per user type
+
+| User Type | Pre-canary.17 / Pre-7.7.6 | Post-canary.17 / Post-7.7.6 | Pattern |
+|---|---|---|---|
+| Vercel deployments on 16.3.0 + adapters | ENOENT crash on `output: 'standalone'` | Build emits full standalone + adapter combo | Pattern G |
+| Self-hosted on 16.3.0 + cdk-nextjs adapter | ENOENT crash + missing Pages runtime | Full adapter + Pages API support | Pattern G + Pattern H |
+| Pages Router with metadata files | `getStaticProps is not supported in app/` build failure | Pages Router metadata files build OK | Pattern I |
+| Apps using `next/og` for dynamic OG images | satori 0.26.0 — limited emoji rendering | satori 0.29.0 — better emoji rendering | Pattern J |
+| Clerk auth on React 19.3.x canary | Pin `@clerk/nextjs@canary` required | Pin `@clerk/nextjs@^7.7.6` STABLE | Pattern K |
+| Better Auth with custom adapter schema | `getDefaultModelName` misrouting | Exact schema key match preferred | Pattern L |
+| Better Auth 1.7.0 early adopters | Pin to 1.6.x stable + wait for 1.7.0 STABLE | Pin to `1.7.0-rc.6` + tolerate RC churn | Pattern M |
+
+### 5-step Combined Audit Recipe (Aug 14, 2026 cycle)
+
+```bash
+# 1. Audit Next.js adapter + standalone combination (Pattern G)
+rg -n "output: ['\"]standalone['\"]|NEXT_ADAPTER_PATH|NEXT_ENABLE_ADAPTER" --type ts --type tsx --type js --type json
+
+# 2. Audit Pages API routes + adapter combination (Pattern H)
+rg -n "export async function|export const" pages/api/ -l
+
+# 3. Audit Pages Router metadata files (Pattern I)
+ls pages/sitemap.js pages/robots.js pages/manifest.json pages/icon.* 2>/dev/null
+
+# 4. Audit @clerk/nextjs + React 19.3.x peer-deps (Pattern K)
+npm ls @clerk/nextjs react react-dom
+
+# 5. Audit Better Auth version + custom adapter schema (Pattern L + Pattern M)
+npm ls better-auth @better-auth/core
+rg -n "modelName:" auth.ts src/auth.ts
+```
+
+### Sources
+
+- [Next.js v16.3.1-canary.17 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.17) — npm-published 2026-08-14T17:20:01Z; 15 commits ahead of canary.16; bundles PR #97287 + PR #96819 + PR #97350 + PR #97276
+- [PR #97287 — `Emit whole-app server NFTs when output: 'standalone' is used with an adapter`](https://github.com/vercel/next.js/pull/97287) — stafach, merged 2026-08-14T~14:00Z, **SHIPPED in `next@16.3.1-canary.17`**; enables Pattern G
+- [PR #96819 — `Fix missing Pages runtime in adapter Pages API outputs`](https://github.com/vercel/next.js/pull/96819) — vercel-release-bot, merged 2026-08-14T~14:30Z, **SHIPPED in `next@16.3.1-canary.17`**; enables Pattern H
+- [PR #97350 — `Scope app-entry export validation to files inside the app directory`](https://github.com/vercel/next.js/pull/97350) — vercel-release-bot, merged 2026-08-14T~15:00Z, **SHIPPED in `next@16.3.1-canary.17`**; enables Pattern I
+- [PR #97276 — `bump satori 0.26.0 → 0.29.0 + @vercel/og 0.7.x → 0.10.x`](https://github.com/vercel/next.js/pull/97276) — **SHIPPED in `next@16.3.1-canary.17`**; enables Pattern J
+- [`@clerk/nextjs@7.7.6` on npm](https://www.npmjs.com/package/@clerk/nextjs/v/7.7.6) — STABLE 7.7.6 npm-published 2026-08-14T23:51:06Z; the React 19.3.x peer-dep range bump enables Pattern K
+- [`@clerk/javascript/packages/nextjs/CHANGELOG.md`](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — the canonical 7.5.0 → 7.7.6 changelog (the v1.5.50 cycle noted PR #94905 / PR #8524 / PR #8547 as examples)
+- [`better-auth@1.6.29` on npm](https://www.npmjs.com/package/better-auth/v/1.6.29) — STABLE 1.6.29 npm-published 2026-08-14T18:19:56Z; enables Pattern L
+- [`better-auth@1.7.0-rc.6` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.6) — RC 1.7.0-rc.6 npm-published 2026-08-14T18:20:13Z; enables Pattern M for early adopters
+- [Better Auth 1.6 blog post](https://better-auth.com/blog/1-6) — the canonical restructured-release-notes documentation referenced by `better-auth.com/changelog`
+- Cross-references: `api.md` → `## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes` for the companion API-surface changes (PR #97287 + PR #96819 + PR #97350 + PR #97276 + @clerk/nextjs 7.7.6 STABLE + better-auth 1.6.29 + 1.7.0-rc.6 + Tailwind insiders 90f8ff4); `server-components.md` → the Server Components / RSC lens on the canary.17 batch; `deployment.md` → the deployment-impact lens for the 4 MATERIAL canary.17 PRs; `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED; `performance.md` → the perf lens for the canary.18 NavigationFlightResponse enhancements (carry-over from the v1.5.58 cycle)

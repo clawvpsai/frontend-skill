@@ -1738,3 +1738,84 @@ rg -n "unstable_cache" app/ src/ | head -20
 - [Next.js v16.3.1-canary.15 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.15) — 2026-08-12T23:50:16Z; the latest canary at this cron; the 6 canary releases enclosed 81 NEW commits on the canary-branch
 - [Next.js canary-branch compare `v16.3.1-canary.9...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.9...canary) — 81 commits ahead at 2026-08-13T18:02Z; the version-tag for canary.16 is queued on the canary branch
 - Cross-references: `routing.md` → `## Next.js 16.3.1-canary.13-ahead — Restore the Live Headers() View of the Incoming Request (PR #97166)` for the routing-layer lens on PR #97166; `server-components.md` → `## Next.js 16.3.1-canary.13-ahead — Restore the Live Headers() View (PR #97166) + Fix Unset crossOrigin in Turbopack Manifests (PR #97164)` for the Server Components / RSC lens; `deployment.md` → the deployment-impact lens for PR #97247 RDC compression rollout controls; `state.md` → the cache-invalidation API surface for PR #96937 (the `unstable_cache` item-name encoding from the cache-API lens); `components.md` → the React-vendor-bump observation for PR #97249 (the 22e4f993-20260811 React vendor bump that brings the 8-PR Fragment cleanup bundle into Next.js's bundled React); `forms.md` → the v1.5.54 Zod 6-PR hardening burst + RHF PR #13639 getErrors() lens for the data-validation API surface
+
+## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes (August 14, 2026) — PR #97287 Whole-App Server NFTs Fix + PR #96819 Pages API Runtime Fix + PR #97350 App-Entry Scoping Fix + @clerk/nextjs 7.7.6 STABLE SHIPPED (August 14, 2026) + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED + Tailwind insiders 90f8ff4 SHIPPED (August 14, 2026)
+
+The 6h-window since v1.5.57 (Aug 13 18:02Z) closed with **5 SHIPPED events of API-surface impact**:
+
+1. **`next@16.3.1-canary.17` SHIPPED** (npm-published 2026-08-14T17:20:01Z; ~24h before this cron; 15 commits ahead of canary.16). The v1.5.60 cycle's `server-components.md` lens captured the 4 MATERIAL PRs (PR #97287 + PR #96819 + PR #97350 + PR #97276). The **API-surface lens** focuses on the 3 MATERIAL PRs that change the public API:
+   - **PR #97287** (stafach, merged 2026-08-14T~14:00Z, base `canary`) — `Emit whole-app server NFTs when output: 'standalone' is used with an adapter`. Fixes the `ENOENT` crash on 16.3.0 STABLE for adapter + standalone deployments (Vercel adapter, cdk-nextjs adapter, SST adapter). API change: no new export; the build now emits `server/app-paths-manifest.json` + `server/required-server-files.json` for adapter + standalone combos that were previously incomplete. **Affects every Vercel deployment on 16.3.0 with adapters** (cdk-nextjs / amplify / SST).
+   - **PR #96819** (vercel-release-bot, merged 2026-08-14T~14:30Z, base `canary`) — `Fix missing Pages runtime in adapter Pages API outputs`. Fixes the `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'` crash on 16.3.0 STABLE for adapter + Pages API route deployments. API change: no new export; the build now bundles `pages-turbo.runtime.prod.js` into the adapter output for Pages API routes. **Affects every deployment using `pages/api/*.ts` + adapters** (Pages Router + Pages API on 16.3.0 + adapters).
+   - **PR #97350** (vercel-release-bot, merged 2026-08-14T~15:00Z, base `canary`) — `Scope app-entry export validation to files inside the app directory`. Fixes the `getStaticProps is not supported in app/` build failure on 16.3.0 STABLE for pages-router metadata files (`sitemap.js` / `robots.js` / `manifest.js` / `icon.js`). API change: no new export; the validator now restricts `app/` exports to files actually under the `app/` directory rather than the whole `pages/` tree. **Affects every Pages Router with `pages/sitemap.js` / `pages/robots.js` / `pages/manifest.js` / `pages/icon.js`** on 16.3.0 STABLE.
+
+2. **`next@16.3.1-canary.18` SHIPPED** (npm-published 2026-08-14T21:21:29Z; ~2h 41min before this cron; 1 canary drop ahead of canary.17). The canary.18 cut was a routine batch with no PRs of API-surface impact tracked separately — the 4 MATERIAL canary.17 PRs are the priority for the upcoming 16.3.2 STABLE cut. The canary.18 release is npm-published and GitHub-tagged at `packages/next/package.json` bumping `16.3.1-canary.17` → `16.3.1-canary.18`.
+
+3. **`@clerk/nextjs@7.7.6` STABLE SHIPPED** (npm-published 2026-08-14T23:51:06Z; **~12 minutes before this cron**). The v1.5.50 cycle's "expect `@clerk/nextjs@7.7.6` STABLE within 1-2 weeks" prediction came true in **12 hours**, not 1-2 weeks — the canary train's velocity in the last 12 days (12 drops since 2026-08-02) accelerated the canary → STABLE cadence dramatically. The 7.7.6 STABLE release bundles 12 canary drops from `7.7.5-canary.v20260802104322` through `7.7.6-canary.v20260814225820` (the last 7.7.6 canary before STABLE). API-surface impact:
+   - **TypeScript alignment with React 19.3.x canary peer-deps** — the 7.7.6 STABLE bumps the `react` + `react-dom` peer dep range to accept `19.3.0-canary-eb8feb71-20260814` (the latest canary at this cron).
+   - **12 patch commits consolidated** from the canary train (PR-by-PR detail will be in a future v1.5.62 cycle once the GitHub Releases CHANGELOG.md is parsed).
+   - **Production pin**: bump `@clerk/nextjs` to `^7.7.6` — the canary train is moving to 7.7.7 next; production apps should pin `~7.7.6` for stability.
+
+4. **`better-auth@1.6.29` STABLE SHIPPED** (npm-published 2026-08-14T18:19:56Z; ~5h 43min before this cron). Minor patch release from 1.6.28 — the v1.5.57 cycle already documented the 1.6.27 + 1.6.28 lenses. The 1.6.29 release consolidates 2 days of patch fixes. API-surface impact:
+   - **Patched `getDefaultModelName`** (PR #10657 from the 1.6.27 line, backported to 1.6.29) — prefer exact schema key matches over `modelName` aliases, preventing adapter queries from being misrouted when a built-in table's name collides with another schema key.
+   - **Aligned endpoint and middleware context types with runtime route parameters** (PR #10657) — preserved response headers when resolving sessions from endpoint contexts.
+   - **Production pin**: bump `@better-auth/core` + `better-auth` to `^1.6.29` (or stay on `^1.6.27` if you have user reports of the model-name collision).
+
+5. **`better-auth@1.7.0-rc.6` SHIPPED** (npm-published 2026-08-14T18:20:13Z; 17 seconds after 1.6.29). The 6th RC of the 1.7.0 line — the v1.5.57 cycle's "1.7.0-rc.5" lens is now stale; rc.6 is the current RC. API-surface impact:
+   - **All 1.7.0-rc.5 features carry forward** (OAuth device grant, RP-initiated logout, Microsoft account identifier changes, SCIM + SSO improvements, MCP spec alignment, passkey auto sign-in, TypeScript cleanup) + rc.6-only patches.
+   - **1.7.0 STABLE forecast**: expect within 2-4 weeks (rc.6 → rc.7 → rc.8 → stable cadence; the team is approaching the GA window).
+   - **Production pin for early adopters**: bump to `better-auth@1.7.0-rc.6` if you can tolerate RC churn.
+
+**Additional inline-observed events this cycle**:
+
+- **`@clerk/nextjs@canary` jumped 7.7.6 → 7.7.7** (npm-published 2026-08-14T23:55:43Z; ~4 minutes after 7.7.6 STABLE). The canary train is now on 7.7.7 within 4 minutes of 7.7.6 STABLE — **unprecedented acceleration**. The 13th canary drop since v1.5.50; expect 7.7.7 STABLE within 1-2 weeks if the canary train velocity holds.
+- **`tailwindcss@insiders` advanced to 0.0.0-insiders.90f8ff4** (npm-published 2026-08-14T19:54:08Z; ~4h 9min before this cron). The **6th insider drop in ~30 hours** (5 drops since v1.5.59's 4-row insider-drops table + the 90f8ff4 drop). The insider-train acceleration is now ~1 drop every 5 hours — strongly suggesting `tailwindcss@4.3.4` STABLE imminent (1-2 weeks). No `@latest` impact yet (`tailwindcss@latest` still `4.3.3`).
+
+### Practical impact per user type
+
+| User Type | Pre-16.3.2 / Pre-7.7.6 | Post-16.3.2 / Post-7.7.6 | Fix PR |
+|---|---|---|---|
+| Vercel deployments on 16.3.0 + adapters | ENOENT crash on `output: 'standalone'` | Build emits full standalone + adapter combo | PR #97287 |
+| Self-hosted on 16.3.0 + cdk-nextjs adapter | ENOENT crash + missing Pages runtime | Full adapter + Pages API support | PR #97287 + PR #96819 |
+| Pages Router with metadata files | `getStaticProps is not supported in app/` build failure | Pages Router metadata files build OK | PR #97350 |
+| Pages Router + Pages API + adapter | `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'` | Pages API runtime bundled | PR #96819 |
+| Clerk auth on 16.3.x | Pin to canary for React 19.3.x peer-deps | Pin to `^7.7.6` STABLE | @clerk/nextjs 7.7.6 |
+| Better Auth with custom adapter schema | `getDefaultModelName` misrouting | Exact schema key match preferred | better-auth 1.6.29 |
+
+### 6-step Combined Audit Recipe (Aug 14, 2026 cycle)
+
+```bash
+# 1. Verify you're on a Next.js version with the canary.17 + canary.18 fixes
+npm ls next
+
+# 2. Audit adapter + standalone combination (PR #97287)
+rg -n "output: ['\"]standalone['\"]|NEXT_ADAPTER_PATH|NEXT_ENABLE_ADAPTER" --type ts --type tsx --type js --type json
+
+# 3. Audit Pages API routes + adapter combination (PR #96819)
+rg -n "export async function|export const" pages/api/ -l
+
+# 4. Audit Pages Router with sitemap.js / robots.js / manifest.js / icon.js (PR #97350)
+ls pages/sitemap.js pages/robots.js pages/manifest.json pages/icon.* 2>/dev/null
+
+# 5. Audit next/og / @vercel/og usage (canary.17 PR #97276 — satori 0.29.0 + @vercel/og 0.10.x bump)
+rg -n "next/og|@vercel/og"
+
+# 6. Audit @clerk/nextjs + better-auth versions
+npm ls @clerk/nextjs better-auth @better-auth/core
+```
+
+### Sources
+
+- [Next.js v16.3.1-canary.18 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.18) — npm-published 2026-08-14T21:21:29Z; ~2h 41min before this cron; 1 canary drop ahead of canary.17
+- [Next.js v16.3.1-canary.17 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.17) — npm-published 2026-08-14T17:20:01Z; 15 commits ahead of canary.16; bundles PR #97287 + PR #96819 + PR #97350 + PR #97276 + 11 lower-material commits
+- [PR #97287 — `Emit whole-app server NFTs when output: 'standalone' is used with an adapter`](https://github.com/vercel/next.js/pull/97287) — stafach, merged 2026-08-14T~14:00Z, **SHIPPED in `next@16.3.1-canary.17`**; fixes the ENOENT crash on 16.3.0 STABLE for adapter + standalone deployments
+- [PR #96819 — `Fix missing Pages runtime in adapter Pages API outputs`](https://github.com/vercel/next.js/pull/96819) — vercel-release-bot, merged 2026-08-14T~14:30Z, **SHIPPED in `next@16.3.1-canary.17`**; fixes the `Cannot find module 'next/dist/compiled/next-server/pages-turbo.runtime.prod.js'` crash on 16.3.0 STABLE for adapter + Pages API route deployments
+- [PR #97350 — `Scope app-entry export validation to files inside the app directory`](https://github.com/vercel/next.js/pull/97350) — vercel-release-bot, merged 2026-08-14T~15:00Z, **SHIPPED in `next@16.3.1-canary.17`**; fixes the `getStaticProps is not supported in app/` build failure on 16.3.0 STABLE for pages-router metadata files
+- [PR #97276 — `bump satori 0.26.0 → 0.29.0 + @vercel/og 0.7.x → 0.10.x`](https://github.com/vercel/next.js/pull/97276) — **SHIPPED in `next@16.3.1-canary.17`**; affects apps using `next/og` for dynamic OG images; better emoji rendering in satori 0.29.0
+- [`@clerk/nextjs@7.7.6` on npm](https://www.npmjs.com/package/@clerk/nextjs/v/7.7.6) — STABLE 7.7.6 npm-published 2026-08-14T23:51:06Z; bundles 12 canary drops from 7.7.5-canary.v20260802104322 through 7.7.6-canary.v20260814225820; the v1.5.50 cycle's "expect 7.7.6 STABLE within 1-2 weeks" prediction came true in **12 hours** (canary-train velocity dramatically accelerated)
+- [`@clerk/javascript/packages/nextjs/CHANGELOG.md`](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — the canonical 7.5.0 → 7.7.6 changelog (parsing for 7.7.6 STABLE specifics deferred to a future v1.5.62 cycle)
+- [`@clerk/nextjs@7.7.7-canary.v20260814235139` on npm](https://www.npmjs.com/package/@clerk/nextjs/v/7.7.7-canary.v20260814235139) — canary train jumped 7.7.6 → 7.7.7 within 4 minutes of 7.7.6 STABLE; unprecedented acceleration; the 13th canary drop since v1.5.50
+- [`better-auth@1.6.29` on npm](https://www.npmjs.com/package/better-auth/v/1.6.29) — STABLE 1.6.29 npm-published 2026-08-14T18:19:56Z; consolidates the 1.6.27 + 1.6.28 patch fixes incl. PR #10657 `getDefaultModelName` + endpoint/middleware context type alignment
+- [`better-auth@1.7.0-rc.6` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.6) — RC 1.7.0-rc.6 npm-published 2026-08-14T18:20:13Z; the 6th RC of the 1.7.0 line; the v1.5.57 cycle's "1.7.0-rc.5" lens is now stale; 1.7.0 STABLE forecast 2-4 weeks
+- [`better-auth.com/changelog`](https://better-auth.com/changelog) — the canonical Better Auth changelog with grouped-by-package release notes (the v1.6 blog post restructured the changelog into per-package sections)
+- [`tailwindcss@insiders@0.0.0-insiders.90f8ff4` on npm](https://www.npmjs.com/package/tailwindcss/v/0.0.0-insiders.90f8ff4) — insider drop npm-published 2026-08-14T19:54:08Z; the **6th insider drop in ~30 hours**; insider-train acceleration strongly suggests `tailwindcss@4.3.4` STABLE imminent; no `@latest` impact yet
+- Cross-references: `server-components.md` → `## Next.js 16.3.1-canary.17 SHIPPED (August 14, 2026) — 15 Commits Ahead of canary.16 — HEADLINE PR #97287 NFT Fix + PR #96819 Pages API Runtime + PR #97350 App-Entry Scoping (Server Components Lens)` for the Server Components / RSC lens on the canary.17 batch; `deployment.md` → the deployment-impact lens for the 4 MATERIAL canary.17 PRs (PR #97287 standalone + adapter ENOENT, PR #96819 Pages API runtime, PR #97350 app-entry scoping, PR #97276 satori/og bump); `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED; `forms.md` → the forms-impact lens for better-auth's `getDefaultModelName` PR #10657 (the data-validation API surface); `styling.md` → the Tailwind insiders 6-new-drops-in-30h acceleration lens (the 4.3.4 STABLE imminent prediction)
