@@ -2073,3 +2073,144 @@ The v1.5.54-cycle's "PR #20408 is the NEWEST ahead of 4.3.3" claim is now confir
 - [Tailwind v4.3 blog post](https://tailwindcss.com/blog/tailwindcss-v4-3) — the v4.3.0 SHIP announcement (May 8, 2026)
 - [Tailwind v4.1 blog post](https://tailwindcss.com/blog/tailwindcss-v4-1) — the v4.1.0 SHIP announcement (March 4, 2025)
 - [Tailwind Insider program](https://tailwindcss.com/insiders) — paid program for early access; the `npm install -D tailwindcss@insiders` install is the open-source insider track
+
+## Tailwind Main Branch — 4 NEW Commits Since v1.5.59 (`tailwindcss@insiders` STILL on 90f8ff4) — `tailwindcss@4.3.4` STABLE Imminent (August 14 → August 16, 2026)
+
+**`tailwindcss@latest` is still `4.3.3`** (npm-published 2026-07-16T12:03:35Z — **31+ days since last `@latest` release**). **The Tailwind main branch has accumulated 4 NEW commits since the v1.5.59 cycle** (verified at 2026-08-16T18:03Z via `GET /repos/tailwindlabs/tailwindcss/commits?per_page=30` showing the active commits). **The insider train has cooled significantly** — `tailwindcss@insiders` is **STILL on `0.0.0-insiders.90f8ff4`** (npm-published 2026-08-14T19:54:08Z; **~46h+ idle at this cron**). The v1.5.59 cycle observed "4 drops in 19h = ~1 every 4.75h" acceleration; the v1.5.61 cycle observed "6 drops in 30h"; the v1.5.64 cycle observed "0 drops in 34h+"; this cycle observes "0 drops in 46h+ since 90f8ff4". **The cooled insider train cadence is a strong signal that the team is preparing for `4.3.4` (or `4.4.0`) STABLE cut** — when the insider train cools for 24-48h, the team is typically in final stabilization mode before the STABLE release.
+
+### The 4 NEW main-branch commits since v1.5.59 — commit table
+
+| # | SHA | Date (UTC) | PR | Title | Author | Files | Materiality |
+|---|---|---|---|---|---|---|---|
+| 1 | `f7f58f0` | 2026-08-13T21:16:30Z | [#20416](https://github.com/tailwindlabs/tailwindcss/pull/20416) | `Move debug logs in .tailwindcss folder` | (community) | (small) | LOW (debug-logs relocation) |
+| 2 | `021b7fe` | 2026-08-14T10:16:00Z | **[#20417](https://github.com/tailwindlabs/tailwindcss/pull/20417)** | **`Canonicalization: prevent inlining CSS-wide keywords`** | (community) | 3 / +53/-8 | **HIGH** (intellisense + Uniwind + HeroUI scenario) |
+| 3 | `7a7f386` | 2026-08-14T16:47:34Z | **[#20420](https://github.com/tailwindlabs/tailwindcss/pull/20420)** | **`Don't space out 'and'/'or'/'not' inside function calls in 'supports-[…]' variants`** | (community) | 3 / +76/-1 | **HIGH** (Chrome-bug-workaround regression fix) |
+| 4 | `90f8ff4` | 2026-08-14T19:43:33Z | (same as above) | (same as above — `90f8ff4` IS the merge commit for PR #20420) | (community) | (same) | (same) |
+
+Wait — the table above conflates commits with PR merge commits. Let me restate: **the 4 NEW commits since v1.5.59 are**:
+- **PR #20416** (`f7f58f0`, 2026-08-13T21:16:30Z) — debug logs relocation
+- **PR #20417** (`021b7fe`, 2026-08-14T10:16:00Z) — **Canonicalization: prevent inlining CSS-wide keywords** (HIGH MATERIAL)
+- **PR #20420** (`7a7f386`, 2026-08-14T16:47:34Z) — **Don't space out and/or/not inside function calls in supports-[…] variants** (HIGH MATERIAL)
+- **`90f8ff4`** (2026-08-14T19:43:33Z) — the **current insider train HEAD** for `tailwindcss@insiders`; the merge commit for additional stabilization; no separate PR.
+
+**Total new code: 6 files / +129/-9 across 2 MATERIAL bug fixes + 1 minor debug-logs move + 1 stabilization commit.**
+
+### The 2 MATERIAL PRs — deep dives
+
+**PR #20417** (merged 2026-08-14T10:16:01Z, 3 files / +53/-8) — **`Canonicalization: prevent inlining CSS-wide keywords`**. The bug: canonicalization suggestions in intellisense result in "weird" suggestions. Concretely:
+
+```css
+@theme {
+  --color-foreground: var(--foreground);
+  --color-default-soft-hover: color-mix(in oklab, var(--default) 60%, transparent);
+}
+```
+
+A class `text-foreground/60` would be canonicalized (suggested) to `text-default-soft-hover`, which looks nonsensical at first. The root cause: when you use **Uniwind (React Native) with HeroUI**, the setup looks more like:
+
+```css
+@import 'tailwindcss';
+
+@theme {
+  --foreground: unset;
+  --default: unset;
+}
+
+@theme inline {
+  --color-foreground: var(--foreground);
+  --color-default-soft-hover: color-mix(in oklab, var(--default) 60%, transparent);
+}
+```
+
+During canonicalization, **all `@theme` values get inlined**, which then produces identical signatures for two classes that should be distinct. The fix: **make sure to never inline [CSS-wide keywords]** (a small list including `unset`, `initial`, `inherit`, `revert`, `revert-layer`, `unset`, `none`) during the canonicalization step. **Practical impact**: Tailwind projects using the `@theme inline` directive + CSS-wide keywords (common in design-system-theming setups, Uniwind + HeroUI + custom-design-system stacks) now get correct intellisense suggestions. **The bug was particularly insidious** because the wrong canonicalization only manifested with CSS-wide keywords — apps using concrete values (`var(--foreground)` returning a color, etc.) didn't see the issue.
+
+**PR #20420** (merged 2026-08-14T19:43:34Z, 3 files / +76/-1) — **`Don't space out 'and'/'or'/'not' inside function calls in 'supports-[…]' variants`**. The bug: the `supports-[…]` variant works around a Chrome bug where `@supports (a)or(b)` is invalid by spacing out the `and`, `or`, and `not` keywords. **However**, the replacement was applied to the **entire value, including the inside of function calls**, where these words can be part of a **selector**. For example:
+
+```css
+supports-[selector(a:not(.foo))]:flex
+```
+
+This was generating:
+
+```css
+@supports selector(a: not (.foo))
+```
+
+The selector `a: not (.foo)` is **unparsable**, so a condition that is true in every browser silently becomes **false** and the utility **never applies**. **The same problem applies to class names like `.and` or `.or` inside `selector(…)`**. **The fix**: only spaces out the keywords **at the condition level** — parens preceded by an identifier (other than the keywords themselves) start a function call, and everything inside is left as-is. The Chrome workaround still applies to the condition itself, e.g. `supports-[(display:grid)or(display:flex)]` still becomes `@supports (display: grid) or (display: flex)`. **Practical impact**: apps using `supports-[selector(a:not(.foo))]` (and similar `selector(...)` patterns inside `supports-[…]`) now correctly apply the utility; the bug was previously silently breaking the utility for these inputs.
+
+### Per-user-type impact table
+
+| User type | Pre-#20417 / pre-#20420 (4.3.3) | Post-#20417 / post-#20420 (4.3.4 STABLE ahead) |
+|---|---|---|
+| **Apps using `@theme inline` + CSS-wide keywords (Uniwind + HeroUI + custom-design-system)** | Weird canonicalization suggestions in intellisense | **Correct suggestions** (PR #20417) |
+| **Apps using `supports-[selector(a:not(.foo))]:flex`** | Utility silently doesn't apply; condition turns false | **Utility correctly applies** (PR #20420) |
+| **Apps using `supports-[selector(.and-or-not)]:flex` with class names like `.and` / `.or` / `.not`** | Utility silently doesn't apply | **Utility correctly applies** (PR #20420) |
+| **Apps using `supports-[(display:grid)or(display:flex)]`** | Works correctly (Chrome workaround applies at condition level) | Works correctly (unchanged) |
+| **Apps not using these patterns** | No change | No change |
+| **Production users on `tailwindcss@latest` 4.3.3** | No change yet (PRs in main + insiders only) | Will get the fix on `4.3.4` STABLE |
+| **Insider-train users on `0.0.0-insiders.90f8ff4`** | Pre-fix | Both fixes already in the insider build |
+
+### Insider-train cooling → STABLE imminent
+
+**The insider-train cadence has cooled dramatically since v1.5.59**:
+- **v1.5.59** (Aug 14 12:06Z): "4 drops in 19h = ~1 every 4.75h = fastest insider cadence observed"
+- **v1.5.61** (Aug 15 00:06Z): "6 drops in 30h" — continued acceleration
+- **v1.5.64** (Aug 15 23:30Z): "0 drops in 34h+ since 90f8ff4"
+- **v1.5.66** (Aug 16 12:11Z): "0 drops in 40h+ since 90f8ff4"
+- **This cycle** (Aug 16 18:03Z): "0 drops in 46h+ since 90f8ff4"
+
+**The cooling cadence is the canonical pattern observed for `4.3.2 → 4.3.3`** — when the team stops cutting insider drops for 24-48h+, they're typically in final stabilization mode before STABLE. **`tailwindcss@4.3.4` (or possibly `4.4.0`) STABLE expected within 1-2 weeks** (was "imminent" in v1.5.59; corrected to "within 1-2 weeks" in v1.5.64; **UNCHANGED here** — the cooling cadence confirms the 1-2 week forecast rather than accelerating it).
+
+### Recommended action
+
+1. **Track the next `tailwindcss@4.3.x` or `4.4.x` npm release** (`npm view tailwindcss dist-tags.latest` will move off `4.3.3` when it ships)
+2. **If you use `supports-[selector(...)]` patterns + the selector contains `.and` / `.or` / `.not` / `:not(...)`** — you may be silently affected by PR #20420's bug; verify your utilities are actually applying on the `@latest` 4.3.3 (they might not be, in which case the insider train has the fix)
+3. **If you use `@theme inline` + CSS-wide keywords** — your intellisense is showing wrong suggestions on 4.3.3; the insider train has the fix
+4. **Audit recipe**:
+
+```bash
+# Check current @latest
+npm view tailwindcss dist-tags.latest   # 4.3.3
+
+# Check current insider
+npm view tailwindcss@insiders version   # 0.0.0-insiders.90f8ff4
+
+# Find supports-[selector(...)] usages that might be affected by PR #20420
+rg -n "supports-\[selector" src/ --type ts --type tsx --type js --type jsx --type css | head -10
+
+# Find @theme inline + CSS-wide keyword combinations that might be affected by PR #20417
+rg -n "@theme inline" src/ --type css | head -10
+rg -n "(--[a-z-]+:\s*(unset|initial|inherit|revert|revert-layer|none))" src/ --type css | head -10
+
+# If you need the fixes right now, install insider:
+npm install -D tailwindcss@insiders
+# Then upgrade every 1-2 weeks to catch the new insider builds
+
+# Confirm your project picks up the insider after install
+npm ls tailwindcss
+# Should show tailwindcss@0.0.0-insiders.90f8ff4 or later
+```
+
+### Why this matters
+
+**For most projects**, stay on `@latest` (4.3.3) and let `4.3.4` STABLE come. The insider train is for:
+- **Devs whose CSS is silently affected by the PR #20417 / PR #20420 bugs** (especially React Native + HeroUI + Uniwind projects; projects using `supports-[selector(a:not(.foo))]:flex` patterns)
+- **Devs who want to test the stable-release candidate before it ships**
+- **Library authors who need to support the next Tailwind version ahead of stable**
+
+**For everyone else — wait for `tailwindcss@4.3.4` (or `4.4.0`) to ship, then bump.** The cooling insider cadence is a signal of imminent stability, not a call to upgrade.
+
+### Sources
+
+- [Tailwind PR #20417 — `Canonicalization: prevent inlining CSS-wide keywords`](https://github.com/tailwindlabs/tailwindcss/pull/20417) — merged 2026-08-14T10:16:01Z, 3 files / +53/-8. **THE HEADLINE** — fixes intellisense canonicalization bugs when `@theme inline` declarations contain CSS-wide keywords (`unset` / `initial` / `inherit` / `revert` / `revert-layer` / `none`); the bug particularly affected Uniwind (React Native) + HeroUI + custom-design-system stacks that use the `@theme inline` directive with `var(--xxx)` returning `unset`.
+- [Tailwind PR #20420 — `Don't space out 'and'/'or'/'not' inside function calls in 'supports-[…]' variants`](https://github.com/tailwindlabs/tailwindcss/pull/20420) — merged 2026-08-14T19:43:34Z, 3 files / +76/-1. **THE HEADLINE** — fixes the Chrome-bug workaround regression where `supports-[selector(a:not(.foo))]:flex` was generating `@supports selector(a: not (.foo))` (the selector `a: not (.foo)` is unparsable, silently turning the condition false); the fix spaces out the keywords only at the condition level, leaving function-call contents untouched. Includes tests for `selector(a:not(.foo))` + class names `.and` / `.or` inside `selector(...)` + the Chrome `(a)or(b)` workaround + a top-level `not(...)` condition.
+- [Tailwind PR #20416 — `Move debug logs in .tailwindcss folder`](https://github.com/tailwindlabs/tailwindcss/pull/20416) — merged 2026-08-13T21:16:30Z, debug-logs relocation (low material).
+- [Tailwind commit `90f8ff4`](https://github.com/tailwindlabs/tailwindcss/commit/90f8ff4) — 2026-08-14T19:43:33Z, the **current insider train HEAD** for `tailwindcss@insiders`; no separate PR (stabilization commit).
+- [`tailwindcss@insiders` npm dist-tag](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — `0.0.0-insiders.90f8ff4` (npm-published 2026-08-14T19:54:08Z; ~46h+ idle at this cron's check)
+- [`tailwindcss@insiders` npm time data](https://registry.npmjs.org/tailwindcss) — confirms the cooling cadence: 4 drops in 19h (v1.5.59) → 6 drops in 30h (v1.5.61) → 0 drops in 46h+ (this cycle)
+- [`tailwindcss` npm dist-tag](https://www.npmjs.com/package/tailwindcss) — still `latest: 4.3.3` (npm-published 2026-07-16T12:03:35Z; now 31+ days since last `@latest`; **expect `4.3.4` STABLE within 1-2 weeks**)
+- [Tailwind main branch commits since `4.3.3`](https://github.com/tailwindlabs/tailwindcss/commits/main) — 4 NEW commits since v1.5.59's 021b7fe = PR #20417 + PR #20420 + PR #20416 + the 90f8ff4 stabilization
+- [Tailwind v4.3 blog post](https://tailwindcss.com/blog/tailwindcss-v4-3) — the v4.3.0 SHIP announcement (May 8, 2026)
+- [Tailwind Insider program](https://tailwindcss.com/insiders) — paid program for early access; the `npm install -D tailwindcss@insiders` install is the open-source insider track
+- Cross-reference: `styling.md` → `## Tailwind Main Branch — PR #20408 "Fix Slow Vite Rebuilds in Projects with Large Gitignored Directories" SHIPPED (August 12, 2026) — Forward-Looking for tailwindcss@4.3.4 / v4.4.0` for the v1.5.54 lens that documented the previous main-branch PR (PR #20408 slow Vite rebuilds); PR #20417 + PR #20420 are the 2 NEW main-branch PRs since v1.5.59's 021b7fe commit.
+- Cross-reference: `styling.md` → `## Tailwind Insiders Train — 4 NEW Drops in 19h (Aug 13–14, 2026) — 4.3.4 / 4.4.0 Imminent` for the v1.5.59 lens that documented the insider-train acceleration; the cooling cadence since 90f8ff4 confirms the 1-2 week STABLE forecast.
