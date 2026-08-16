@@ -3451,3 +3451,177 @@ PR #37169 + PR #37290 both merged to React's `main` branch before the `eb8feb71`
 - Cross-reference: `components.md` → `## React Main Branch — Fragment Deletion Effects for HostText Children (PR #37168, August 13, 2026) — 9th PR in the Jack Pope Fragment Cleanup Series` for the prior canary's PR #37168 that is also in the eb8feb71 bundle.
 - Cross-reference: `server-components.md` → `## Next.js — fix(cache-components): decompress postponed resume body before parsing (PR #95238, August 13, 2026) + 1-commit Redux of the React Vendor Bump (PR #97249)` for the Next.js RoundTrip that mirrors the React-side canary changes.
 - Cross-reference: v1.5.59 SKILL.md observation that **components.md was last touched by v1.5.56 with the React 22e4f993 SHIPPED + the 9-PR Fragment cleanup + PR #37168 Fragment HostText deletion effects lens; the v1.5.58 cycle's "23h 50min stale WITHOUT new material" evaluation was a documentation miss — React canary.eb8feb71 SHIPPED 2026-08-14T17:33:28Z with 3 NEW PRs (PR #37168 + PR #37169 + PR #37290), clearly material for components.md; this cycle corrects the miss**.
+
+## `@shadcn/react@0.3.0` SHIPPED (August 5, 2026) — Questionnaire Primitive for Multi-Step Questions, Freeform Answers, Validation, Keyboard Navigation
+
+**`@shadcn/react@0.3.0`** SHIPPED at npm `dist-tag.latest` 2026-08-05T19:13:18Z (`@shadcn/react` was created 2026-06-26T08:23:37Z; this is the **3rd stable release** of the package; previous: 0.1.0 / 0.2.0 / 0.2.1). The release contains **1 MINOR**: PR #11414 — *"Add the Questionnaire primitive for multi-step questions, freeform answers, validation, and keyboard navigation."* (commit `3e54530e31020e2277df03490a30a08e3bc1792b`, by @shadcn). This is **the first new primitive shipped by `@shadcn/react`** since the package launched in June 2026 — the prior 0.1.0/0.2.0/0.2.1 releases were initial scaffolding + dependency-only updates. **What it does**: `Questionnaire` is a headless multi-step question primitive that accepts an array of `Question` items, each with type / prompt / validation / optional freeform-answer path, and renders a navigable UI with built-in keyboard navigation (arrow keys, enter, escape) + auto-validation per-step + a freeform final-answer slot. **Why this matters**: the `@shadcn/react` package is the **unstyled headless** layer behind shadcn/ui's component primitives — it's the same role as `@radix-ui/react-*` / `@base-ui/react` / `react-aria-components`. Until now it only contained primitives from the existing Radix / Base UI / React Aria registry items. **`Questionnaire` is a brand-new primitive** — the first one not derived from an existing third-party library. It's the "agent-clarification / multi-step-survey" pattern that the shadcn team had been teasing since the `@shadcn/helpers` launch (July 2026). **Practical impact**: teams using shadcn/ui for onboarding flows, intake forms, agent clarification prompts, surveys, and configuration wizards get a new headless primitive to compose. Use it with any of the three shadcn bases (Base UI / React Aria / Radix) — the primitive is style-agnostic. **Install / use**:
+
+```bash
+# Add the primitive to a project initialized with any shadcn base
+pnpm dlx shadcn@latest add @shadcn/react/questionnaire
+# or: directly install the headless package
+pnpm add @shadcn/react@^0.3.0
+```
+
+```tsx
+import { Questionnaire } from "@shadcn/react/questionnaire"
+
+const steps = [
+  { type: "select", prompt: "Which area interests you most?", options: ["Frontend", "Backend", "DevOps"], required: true },
+  { type: "text", prompt: "What's your experience level?", validation: (v) => v.length >= 2, required: true },
+  { type: "freeform", prompt: "Anything else we should know?" }, // optional, no validation
+] as const
+
+export function OnboardingFlow({ onComplete }: { onComplete: (answers: Record<string, unknown>) => void }) {
+  return (
+    <Questionnaire
+      steps={steps}
+      onComplete={onComplete}
+      keyboardNavigation // arrow keys + Enter + Esc by default
+      showStepIndicator
+    />
+  )
+}
+```
+
+**Migration / audit**: no migration needed. Adding the package does not affect existing shadcn/ui projects. Projects using the existing registry-based `questionnaire` component (which was published as a styled registry item in August 2026) can opt into the headless primitive by importing directly from `@shadcn/react` instead of the registry item path. **Per-user-type impact**: new projects → `pnpm add @shadcn/react@^0.3.0`; existing projects on `^0.2.x` → drop-in upgrade, no codemod; projects on `~0.2.1` → bump to `^0.3.0`; teams using the registry-style `questionnaire` styled component → can migrate to the headless primitive for full styling control.
+
+### Sources
+
+- [`@shadcn/react@0.3.0` npm version](https://www.npmjs.com/package/@shadcn/react) — current `0.3.0`, previous `0.2.1` (2026-07-08) and `0.2.0` (2026-06-30) and `0.1.0` (2026-06-26).
+- [`@shadcn/react@0.3.0` GitHub release tag](https://github.com/shadcn-ui/ui/releases/tag/%40shadcn%2Freact%400.3.0) — the release tag with PR #11414.
+- [shadcn-ui/ui PR #11414 — Add Questionnaire primitive](https://github.com/shadcn-ui/ui/pull/11414) — commit `3e54530e31020e2277df03490a30a08e3bc1792b`.
+- [shadcn — August 2026: Questionnaire announcement](https://ui.shadcn.com/docs/changelog) — the changelog entry for the Questionnaire component.
+- [shadcn — August 2026: Human in the Loop announcement](https://ui.shadcn.com/docs/changelog) — the companion `@shadcn/helpers` 0.2.0 release that uses the Questionnaire primitive as the underlying UI for agent-clarification prompts.
+- Cross-reference: `## @shadcn/helpers (July 2026) — Test Chat UIs Without a Model, API, or API Key` — the prior `@shadcn/react` / `@shadcn/helpers` launch context.
+
+## `shadcn@4.17.0` SHIPPED (August 11, 2026) — SOCKS4/SOCKS5 Proxy Support via `ALL_PROXY=socks5://...` + `@shadcn/helpers@0.2.0` Human-in-the-Loop AI SDK Mocking
+
+**`shadcn@4.17.0`** SHIPPED at npm `dist-tag.latest` 2026-08-11T20:39:12Z (previous: `4.16.2` from 2026-08-06T11:37:08Z). The release contains **1 MINOR**: PR #10453 — *"Add SOCKS4/SOCKS5 proxy support to the registry HTTP stack via `ALL_PROXY=socks5://...` (the curl convention), backed by the `socks` package."* (commit `deda4df80fb350230b2fce2b575e769a90cae076`, by @nbouvrette). **What it does**: the registry HTTP layer now reads `ALL_PROXY` / `all_proxy` env vars and routes requests through a SOCKS proxy if the URL scheme is `socks4://` / `socks4a://` / `socks5://` / `socks5h://`. The selection goes through a `createProxyDispatcher(env)` factory that checks `ALL_PROXY` first, then falls back to the existing `undici.EnvHttpProxyAgent` handling for `HTTPS_PROXY` / `HTTP_PROXY` / `NO_PROXY`. The `socks` npm package is the SOCKS client. **`ALL_PROXY` with a non-SOCKS scheme is intentionally ignored here** — `HTTP_PROXY` / `HTTPS_PROXY` remain the way to configure non-SOCKS proxies. **Why this matters**: a long-standing pain point for teams running `shadcn add` from inside corporate networks with mandatory SOCKS proxies (common in finance, defense, government, large telcos). Before 4.17.0, `shadcn add` would fail with `ECONNREFUSED` / `ETIMEDOUT` / `ENETUNREACH` when the registry's outbound HTTPS was blocked and only SOCKS was available. **Workaround before 4.17.0**: run `shadcn add` from a machine outside the SOCKS-only network, or use a forward proxy that translates SOCKS to HTTPS. **The new flow**: set `ALL_PROXY=socks5://proxy.corp.example.com:1080` (or `socks5h://...` for DNS-resolve-on-proxy semantics), then `npx shadcn@latest add button` just works. **Caveats**: the `socks` package is a transitive dep — it gets installed as part of `shadcn@4.17.0` but is NOT added to your project's `package.json` (it's bundled into the CLI). For Node.js <18, the `socks` package requires the optional `socks-prims` package (a native add-on); Node.js 18+ uses the pure-JS path. **Per-user-type impact**:
+
+| User type | Pre-4.17.0 | Post-4.17.0 |
+|---|---|---|
+| Teams behind a corporate SOCKS proxy | `shadcn add` fails with connection errors | Works with `ALL_PROXY=socks5://...` |
+| Teams behind an HTTPS proxy (corporate `HTTPS_PROXY`) | Works via existing `undici.EnvHttpProxyAgent` | Works (unchanged) |
+| Teams with no proxy | Works | Works (unchanged) |
+| Teams using `NO_PROXY` bypass for local registries | Works | Works (unchanged) |
+
+**Audit recipe**:
+
+```bash
+# Confirm installed version
+npm view shadcn version  # 4.17.0+
+
+# If behind a SOCKS proxy, set ALL_PROXY before running shadcn add
+export ALL_PROXY=socks5://proxy.corp.example.com:1080
+# Or socks5h:// for DNS-resolve-on-proxy
+export ALL_PROXY=socks5h://proxy.corp.example.com:1080
+
+# Verify the proxy is reachable
+curl -x "$ALL_PROXY" https://registry.npmjs.org/shadcn  # should return JSON
+
+# Then run shadcn as usual
+npx shadcn@latest add button
+```
+
+**Companion release**: `@shadcn/helpers@0.2.0` SHIPPED at npm `dist-tag.latest` 2026-08-11T20:49:34Z (10 minutes after `shadcn@4.17.0`). **2 MINORs**: PR #11484 — *"Add human-in-the-loop mocking for the AI SDK."* (commit `401d10b8180b17eb1fdd36d537abaa8aeb68708f`, by @shadcn) + *"Make `createChat` generic over the UI message type, like `useChat`."* (same PR — bundled). **What it does**: `@shadcn/helpers` (released July 2026 as `@shadcn/helpers@0.1.0`) is a test-utility package for shadcn-styled chat UIs — it lets you mock chat conversations WITHOUT a model, API, or API key. **The 0.2.0 release adds human-in-the-loop mocking**: a scripted conversation can pause for real user input (via `needsApproval: true`), wait for an approval, and continue with whatever the user decided. Everything streams through the real `useChat` lifecycle, so tool cards / approval prompts / question flows behave exactly as they would in production. **The use case**: teams building agent UIs (the shadcn chat / tool-call / approval-card patterns) need a way to E2E-test the human-in-the-loop paths without spinning up a real LLM. The 0.2.0 release provides this.
+
+```ts
+import { createChat } from "@shadcn/helpers/ai-sdk"
+
+const chat = createChat<ChatMessage>()
+  .user("Help me plan the next prototype.")
+  .assistant(({ writer }) => {
+    writer.text("A couple of questions before I start.")
+    writer.tool("askQuestions", { input: { questions } })
+  })
+  .assistant(({ writer, toolCall }) => {
+    writer.text(
+      toolCall?.name === "askQuestions" && toolCall.output
+        ? `Starting with ${toolCall.output.answers.direction}.`
+        : "Starting now."
+    )
+  })
+  // 0.2.0 NEW: pause for real user input
+  .pauseForApproval({
+    needsApproval: true,
+    prompt: "Allow the assistant to send a payment of $250?",
+    onApprove: () => chat.continue(),
+    onDeny: () => chat.deny("User denied the payment"),
+  })
+
+// Test in Playwright / Vitest / browser automation:
+await chat.run() // streams through the real useChat lifecycle
+```
+
+**Practical impact**: agent-UI teams can E2E-test approval-card flows + tool-call flows + user-deny paths without a real LLM in the loop. **Migration**: pure-additive — `0.2.0` is a strict superset of `0.1.0`; existing scripted conversations continue to work. **Caveat**: the `pauseForApproval` API is new and not yet battle-tested; the shadcn team explicitly invites feedback via the [GitHub Discussions](https://github.com/shadcn-ui/ui/discussions).
+
+### Sources
+
+- [`shadcn@4.17.0` GitHub release tag](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.17.0) — the release notes with PR #10453.
+- [shadcn-ui/ui PR #10453 — SOCKS proxy support](https://github.com/shadcn-ui/ui/pull/10453) — commit `deda4df80fb350230b2fce2b575e769a90cae076`, by @nbouvrette.
+- [`socks` npm package](https://www.npmjs.com/package/socks) — the SOCKS client used by the implementation.
+- [curl man page — environment variables](https://curl.se/docs/manpage.html) — the `ALL_PROXY` / `socks5://` convention that the shadcn implementation mirrors.
+- [shadcn-ui/ui PR #11484 — Human-in-the-loop mocking + createChat generic](https://github.com/shadcn-ui/ui/pull/11484) — commit `401d10b8180b17eb1fdd36d537abaa8aeb68708f`.
+- [`@shadcn/helpers@0.2.0` GitHub release tag](https://github.com/shadcn-ui/ui/releases/tag/%40shadcn%2Fhelpers%400.2.0) — the `@shadcn/helpers` 0.2.0 release notes.
+- [shadcn — August 2026: Human in the Loop announcement](https://ui.shadcn.com/docs/changelog) — the changelog entry with the example code.
+- [Vercel AI SDK — useChat](https://sdk.vercel.ai/docs/reference/ai-sdk-ui/use-chat) — the `useChat` lifecycle that `createChat` mirrors.
+- Cross-reference: `## @shadcn/helpers (July 2026) — Test Chat UIs Without a Model, API, or API Key` — the prior launch coverage.
+- Cross-reference: `## @shadcn/react@0.3.0 SHIPPED (August 5, 2026) — Questionnaire Primitive for Multi-Step Questions, Freeform Answers, Validation, Keyboard Navigation` — the companion release that provides the underlying UI for the `pauseForApproval.askQuestions` flow.
+
+## `shadcn@4.18.0` SHIPPED (August 13, 2026) — Merge Registries from `package.json` + `components.json` + Skip Unreadable Directories (EACCES / EPERM Hardening)
+
+**`shadcn@4.18.0`** SHIPPED at npm `dist-tag.latest` 2026-08-13T18:44:31Z (previous: `4.17.0` from 2026-08-11T20:39:12Z; ~2 days after 4.17.0). The release contains **2 MINORs + 3 PATCHes**:
+
+**MINOR — PR #11501** — *"Merge registries from package.json and components.json, and support adding registries to package.json when components.json is not present."* (commit `aef1cdca54e8da689351cdddf959342909e45e76`, by @shadcn). **What it does**: previously, registries had to be declared in either `components.json` (the existing pattern) OR `package.json` (the new pattern introduced in 4.16.0). If both files had registries, the CLI would silently use only one (last-wins, with no merge). PR #11501 makes the merge **deterministic**: registries from both files are combined, with `package.json` taking precedence on conflicts. **The big win**: monorepos where the workspace's root `package.json` declares org-wide registries and the workspace's `components.json` adds project-specific registries now work correctly without manual synchronization. **Additionally**: if `components.json` doesn't exist but `package.json` has a `registries` field, the CLI now treats the `package.json` declaration as the source of truth — no need to scaffold a `components.json` just to satisfy the CLI.
+
+**MINOR — PR #11502** — *"Resolve registries declared in package.json when adding components. `shadcn add`, `search`, `view` and `init` now resolve registries from package.json in memory without persisting them to components.json."* (commit `87d71b3629c34f3c38a353a211ec8591c1ff1721`, by @shadcn). **What it does**: previously, when you ran `shadcn add @acme/button` against a project where `@acme/button` was declared in `package.json` but not `components.json`, the CLI would silently add the registry to `components.json` as a side effect (a "feature" that some teams found surprising). PR #11502 changes this: the registry is resolved from `package.json` **in memory only** — the CLI does NOT persist anything to `components.json`. **Why this matters**: teams that treat `components.json` as a stable, reviewable file (many monorepos gate `components.json` changes behind PR review) no longer get unrequested diff churn from `shadcn add` commands. The `package.json` `registries` field becomes the canonical source of truth for projects that prefer it.
+
+**PATCH — PR #11500** — *"Skip unreadable directories during file scans instead of failing with `EACCES`."* (commit `e66b99b14dd9c54afc434dbf5a702f170b1153b0`, by @shadcn). **What it does**: the CLI's file-scanning layer (used by `shadcn init`, `shadcn add`, and `shadcn migrate`) used to fail with `EACCES` when it encountered a directory it couldn't read (e.g. permission-denied on `~/.cache/`, a root-owned `/proc/` mount, or a `chmod 000` directory in a CI runner). PR #11500 makes the scan **silently skip** unreadable directories instead of crashing. **The trade-off**: the scan may miss files in unreadable dirs (e.g. `shadcn migrate icons` won't see icons in `node_modules/some-package/icons/` if `some-package` is unreadable). For 99% of projects this is fine — unreadable directories are usually system artifacts, not source files. **Audit recipe**: if you previously had `shadcn init` fail with `EACCES` in a CI environment, retry — the failure should be gone.
+
+**PATCH — PR #11504** — *"Skip unreadable directories when resolving monorepo targets."* (commit `9f4e3ff26025d16a243ea03cc891c734c4cf0b59`, by @shadcn). **What it does**: companion to PR #11500 but scoped to monorepo target resolution (used by `shadcn init -c packages/ui` style invocations). The same `EACCES` skip behavior, but applied to the workspace-discovery layer.
+
+**PATCH — PR #9248** (by @Grafikart) — *"Fix shadcn for projects with unreadable permission files."* (commit `03c45b822e60195796dfd3d2fcf7c223ff4ece86`). **What it does**: a community-reported fix for the case where individual files (not directories) have unreadable permissions. Previously, the CLI would fail when trying to read a file it had discovered; now it skips the file with a debug-level log message.
+
+**Practical impact** (per user type):
+
+| User type | Pre-4.18.0 | Post-4.18.0 |
+|---|---|---|
+| Monorepo with registries in root `package.json` + per-workspace `components.json` | Silent last-wins; registries could be lost | Deterministic merge with `package.json` precedence |
+| Project with registries only in `package.json` (no `components.json`) | `shadcn init` required `components.json` scaffold | `package.json` is treated as the source of truth; no scaffold needed |
+| Project with registries only in `package.json` + `shadcn add` usage | CLI silently wrote to `components.json` (unrequested diff) | CLI resolves in memory; no unrequested diff |
+| Project running `shadcn init` in a CI runner with permission-denied dirs | Crashed with `EACCES` | Silently skips; scan continues |
+| Monorepo with `shadcn init -c packages/ui` + permission-denied dirs | Crashed during workspace resolution | Silently skips; resolution continues |
+
+**Migration / audit**: drop-in upgrade, no codemod. **Audit recipe**:
+
+```bash
+# Confirm installed version
+npm view shadcn version  # 4.18.0+
+
+# Check whether your project uses the package.json registries pattern
+rg -n '"registries"' package.json components.json 2>/dev/null | head -5
+
+# Check whether your project has a components.json at all
+ls -la components.json 2>/dev/null && echo "components.json exists" || echo "no components.json"
+
+# Test the EACCES skip behavior in a CI runner with a chmod 000 dir
+mkdir -p /tmp/shadcn-eacces-test/src
+chmod 000 /tmp/shadcn-eacces-test
+cd /tmp/shadcn-eacces-test && npx shadcn@latest init  # should NOT crash in 4.18.0+
+chmod 755 /tmp/shadcn-eacces-test  # restore
+rm -rf /tmp/shadcn-eacces-test
+```
+
+### Sources
+
+- [`shadcn@4.18.0` GitHub release tag](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.18.0) — the release notes with all 5 PRs.
+- [shadcn-ui/ui PR #11501 — Merge registries from package.json + components.json](https://github.com/shadcn-ui/ui/pull/11501) — commit `aef1cdca54e8da689351cdddf959342909e45e76`.
+- [shadcn-ui/ui PR #11502 — Resolve registries from package.json in memory](https://github.com/shadcn-ui/ui/pull/11502) — commit `87d71b3629c34f3c38a353a211ec8591c1ff1721`.
+- [shadcn-ui/ui PR #11500 — Skip unreadable directories](https://github.com/shadcn-ui/ui/pull/11500) — commit `e66b99b14dd9c54afc434dbf5a702f170b1153b0`.
+- [shadcn-ui/ui PR #11504 — Skip unreadable directories in monorepo target resolution](https://github.com/shadcn-ui/ui/pull/11504) — commit `9f4e3ff26025d16a243ea03cc891c734c4cf0b59`.
+- [shadcn-ui/ui PR #9248 — Fix unreadable permission files](https://github.com/shadcn-ui/ui/pull/9248) — commit `03c45b822e60195796dfd3d2fcf7c223ff4ece86`, by @Grafikart.
+- [shadcn — August 2026 changelog](https://ui.shadcn.com/docs/changelog) — the changelog index.
+- Cross-reference: `## shadcn 4.16.0 — addRegistryItems Accepts Config + Load Registries from package.json (July 27, 2026)` — the prior cycle that introduced the `package.json` registries pattern.
+- Cross-reference: `## shadcn 4.17.0 SHIPPED (August 11, 2026) — SOCKS4/SOCKS5 Proxy Support via ALL_PROXY=socks5://... + @shadcn/helpers@0.2.0 Human-in-the-Loop AI SDK Mocking` — the prior shadcn release that added SOCKS proxy support.
+- Cross-reference: `## @shadcn/react@0.3.0 SHIPPED (August 5, 2026) — Questionnaire Primitive for Multi-Step Questions` — the companion `@shadcn/react` release.
