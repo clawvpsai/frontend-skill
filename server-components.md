@@ -2092,3 +2092,108 @@ PR #97287 + PR #96819 + PR #97350 + PR #97276 + the 11 trace/Turbopack/docs/test
 - Cross-reference: `routing.md` → `## 16.3.1-canary.13-ahead — Restore the Live headers() View of the Incoming Request (PR #97166) + Fix Unset crossOrigin in Turbopack Manifests (PR #97164)` for the routing-impact angle on PR #96819 (Pages API route initialization).
 - Cross-reference: `setup.md` → `## Next.js 16.3.1-canary.12 SHIPPED (August 11, 2026) — Setup Recipe Lens` for the next.config.ts setup recipe that PR #97287's `is_standalone` gate interacts with.
 - Cross-reference: v1.5.59 SKILL.md observation that **server-components.md was last touched by v1.5.56 with the PR #95238 + PR #97249 lens; the v1.5.58 cycle's "23h 49min stale WITHOUT new material" evaluation was a documentation miss — Next.js canary.17 SHIPPED 2026-08-14T17:20:01Z with 15 NEW commits (4 MATERIAL PRs + 4 trace instrumentation PRs + 3 Turbopack PRs + 4 docs/test/CI PRs), clearly material for server-components.md; this cycle corrects the miss**.
+
+## Next.js 16.3.1-canary.20 SHIPPED (August 16, 2026) — 5 Commits + **Extract Metadata Resolution Primitives (PR #97388)** — Server Components / RSC Lens (npm-published 2026-08-16T00:02:44Z)
+
+The v1.5.60 cycle documented canary.17 with 15 NEW commits (PR #97287 + PR #96819 + PR #97350 + PR #97276 from a server-components/RSC lens). The v1.5.62 cycle deferred the routing.md lens to canary.19 PRs. The v1.5.63 cycle did NOT touch server-components.md. The v1.5.64 cycle did NOT touch server-components.md.
+
+canary.20 was published ~6h before this cron at 2026-08-16T00:02:44.804Z. **PR #97388** is the only canary.20 commit that materially affects the Server Components / RSC lens — it's a behavioral-preserving refactor that splits the metadata resolution pipeline into a reusable primitives module. The other 4 canary.20 commits (PR #94157 + PR #97372 + PR #97321 + PR #97415) are covered by routing.md (PR #94157 server route matcher stack) and performance.md (PR #97372 Turbopack retain conditions) and cross-referenced at the bottom of this section.
+
+### PR #97388 — Extract metadata resolution primitives — Server Components / RSC deep dive
+
+The metadata resolver (`resolve-metadata.ts`) previously combined two responsibilities:
+1. **Walking the loader tree** to collect + schedule route exports
+2. **Interpreting** the metadata or viewport value produced by an individual route layer
+
+This PR moves the route-layer operations into `metadata-resolution-primitives.ts`. The extracted module owns:
+
+- Wrapping `generateMetadata` and `generateViewport` (preserving their async semantics + parent-promise behavior)
+- Loading file-based metadata (`favicon.ico`, `icon.{ico,png,jpg,svg}`, `apple-icon.{jpg,png}`, `opengraph-image.*`, `twitter-image.*`, `sitemap.{js,ts}`, `robots.{js,ts}`, `manifest.{json,js,ts}`)
+- Merging values with their resolved parents (the cascade rule that turns nested `app/blog/[slug]/page.tsx` + `app/page.tsx` + root metadata into the final `<head>` payload)
+- Post-processing metadata (URL resolution, asset prefix application, Robots / Sitemap / Manifest shape normalization)
+- Producing `SelectedMetadata` for rendering (the wrapper that decides which tags to emit per platform — meta-name / meta-property / link / etc.)
+
+`resolve-metadata.ts` keeps the existing traversal + scheduling flow, imports the extracted operations back into the same call sites, and preserves its existing exports. **No new public-API surface**.
+
+**Behavior-preserving** by design — verified via `pnpm build-all` in the PR's verification step:
+
+- Traversal order — unchanged
+- Eager generator invocation — `generateMetadata` + `generateViewport` invoked at the same point in the request lifecycle
+- Parent-promise behavior — parent metadata is awaited before the merge step exactly as before
+- Warnings — `app-dir-metadata-static-export-warnings`, `Sitemap-robots-static-export-warnings`, etc. fire at the same points with the same messages
+- Rendered metadata tags + viewport tags — byte-identical to pre-canary.20
+
+### Why this matters for the RSC lens
+
+1. **Future traversal strategies**. The reusable boundary means alternative traversal paths can be plugged in without touching `resolve-metadata.ts`. Concrete candidates: parallel-route metadata composition (per-slot metadata with `<ParallelRoutePlaceholder>` injection), edge-cache-aware metadata (RDC-aware metadata that participates in the resume-data-cache compression rollout from PR #97247), request-metadata-coupled metadata (alongside PR #94157's route-definitions living in request metadata).
+
+2. **Test surface expansion**. With the operations extracted, future refactors of the **traversal** (resolve-metadata) and the **operations** (metadata-resolution-primitives) can be tested independently. The PR doesn't add tests in this batch, but the next metadata-system PR will.
+
+3. **`SelectedMetadata` is now self-contained**. PR #97387 (canary.19) adopted `SelectedMetadata` for metadata rendering. PR #97388 extracts the **production** of `SelectedMetadata` into the primitives. Combined, the two PRs move Next.js toward a single ownership: `metadata-resolution-primitives.ts` produces + `next/dist/server/render` consumes. Future canvas / ImageResponse / non-HTML rendering paths can adopt the same primitive without forking the metadata resolver.
+
+### Migration guide
+
+```ts
+// No code change required. Verify post-upgrade:
+import { resolveMetadata } from 'next/dist/lib/metadata-resolve-metadata'
+// The public surface is preserved. resolveMetadata() + resolveViewport() return the same shapes.
+
+// If you depend on @internal paths (anti-pattern, but documented for completeness):
+// The internal modules moved: src/server/lib/router-utils/resolve-metadata.ts → split into
+//   resolve-metadata.ts + metadata-resolution-primitives.ts
+// Imports like `'next/dist/server/lib/router-utils/resolve-metadata'` still resolve
+// (re-exports), but new code should import from the primitives module directly.
+
+import {
+  accumulateMetadata,
+  accumulateViewport,
+  resolveMetadataForRoute,
+  resolveViewportForRoute
+} from 'next/dist/server/lib/router-utils/metadata-resolution-primitives'
+// These are the new functions extracted from resolve-metadata.ts.
+```
+
+### Recommended version pin
+
+```bash
+# Production — stay on @latest (16.3.1 STABLE) unless you specifically need canary.20
+npm install next@latest  # → 16.3.1
+
+# Canary evaluator — upgrade
+npm install next@canary  # → 16.3.1-canary.20
+
+# Frame authors + RSC power users on canary.19 → upgrade to canary.20 to confirm
+# the behavior-preserving property (compare rendered <head> in production for
+# the same routes + the same metadata cascades)
+```
+
+### Audit recipe (verify the behavior-preserving property)
+
+```
+1. Choose 5 representative routes with metadata cascades (root metadata + nested metadata + page-level generateMetadata + viewport + file-based metadata)
+2. Capture the rendered HTML <head> on canary.19 (snapshot the bytes)
+3. Upgrade to canary.20 (npm install next@canary)
+4. Rebuild + restart production
+5. Re-capture the rendered HTML <head>
+6. Diff the two captures — they MUST be byte-identical (or differ only in path resolution orderings unrelated to <head> content)
+7. If any <head> tag differs in content or attribute order, OPEN AN ISSUE — the PR promises behavior-preserving
+```
+
+### Why canary.20 is significant for Server Components
+
+Next.js's metadata pipeline has been a contributor to RSC + SSR + Streaming SSR + Cache Components + RDC-compression correctness. The pipeline's two-responsibilities-in-one-module design was a constraint on every metadata-adjacent PR going back to 15.x. **PR #97388 is the first refactor that splits the module into reusable + traversable parts** without altering behavior. Expect follow-up PRs in canary.21+ to:
+
+1. Lift the metadata primitives into request-metadata alongside PR #94157's route-definitions
+2. Parallel-route per-slot metadata composition using the primitives (probably 16.4 if not before)
+3. RDC-cacheable metadata (the resume-data-cache compression rollout from PR #97247 could apply to metadata snapshots)
+
+### Sources
+
+- [Next.js `v16.3.1-canary.20` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.20) — released by `@next-js-bot` 2026-08-15T23:52Z; npm-published 2026-08-16T00:02:44Z; 5 commits; 0 CVE-class
+- [PR #97388 — Extract metadata resolution primitives](https://github.com/vercel/next.js/pull/97388) — by @byebyers; the metadata primitives split; behavior-preserving refactor
+- [Next.js `next@16.3.1-canary.20` npm publish time](https://registry.npmjs.org/next) — `2026-08-16T00:02:44.804Z`
+- [Cross-reference: `routing.md` → `## Next.js 16.3.1-canary.20 SHIPPED — 5 Commits: Remove Server Route Matcher Stack + Extract Metadata Resolution Primitives + ... — Routing-Lens` — PR #94157 + PR #97388 from the routing-system lens
+- [Cross-reference: `performance.md` → `## Next.js 16.3.1-canary.20 SHIPPED — PR #97372 Turbopack Retain Conditions for Resolve Request Keys — Performance-Lens` — PR #97372 from the Turbopack production-blocker lens
+- [Cross-reference: `components.md` → `## React 19.3.0-canary-eb8feb71 SHIPPED (August 14, 2026) — PR #37169 Fragment Once Listeners + PR #37290 enableParallelTransitions Flag Flipped ON` — the React canary SHIP event that canary.20 shares the bundling window with (PR #97249 vendor bump 22e4f993 followed by PR #97388 metadata pipeline refactor — neither is React-bundled; they ship with the next/react vendor bump 24e4f993 → beef6d60 → eb8feb71 ahead of itself)
+- [Cross-reference: v1.5.60 server-components.md `## Next.js 16.3.1-canary.17 SHIPPED — 4 MATERIAL PRs + 15 Commits` — the previous canary-batch to touch server-components.md (canary.17 was 1d 22h 42min before canary.20)
+- [PR #97387 — Adopt SelectedMetadata for metadata rendering](https://github.com/vercel/next.js/pull/97387) — the canary.19 consumer of `SelectedMetadata`; pairs with PR #97388 as producer

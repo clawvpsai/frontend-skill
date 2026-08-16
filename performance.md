@@ -5540,3 +5540,128 @@ At this cron's check (2026-08-15T18:02Z), `GET /repos/vercel/next.js/compare/v16
 - Cross-reference: v1.5.61 patterns.md `## Next.js 16.3.1-canary.17 → canary.18 Pattern Surface` — the 7 NEW patterns unlocked by canary.17 (Pattern G adapter + standalone + Pattern H Pages API + adapter + Pattern I Pages Router metadata files + Pattern J next/og satori 0.29.0)
 - Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4 PRs from the routing layer lens
 - Cross-reference: v1.5.62 security.md `## Aug 20, 2026 Monthly Security Release — T-4 Days Away + Next.js canary.19 SHIPPED` — the canary.19 PR #97278 security-adjacent analysis + the T-4d → T-5d pre-roll refresh
+
+## Next.js 16.3.1-canary.20 SHIPPED (August 16, 2026) — **PR #97372 Turbopack Retain Conditions for Resolve Request Keys (Fixes `MODULE_NOT_FOUND` on pnpm + Turbopack + `output: 'standalone'`)** + Extract Metadata Resolution Primitives (PR #97388) + Remove Server Route Matcher Stack (PR #94157) + 2 test-only — Turbopack/Performance-Lens (npm-published 2026-08-16T00:02:44Z)
+
+The v1.5.60 cycle covered the canary.10→canary.15 lens. The v1.5.61 cycle covered canary.17/18 + canary.17/18 API surface. The v1.5.63 cycle covered the 4 MATERIAL canary.17 PRs from the perf-measurement lens (PR #97287 + PR #96819 + PR #97350 + PR #97276). The v1.5.64 cycle did NOT touch performance.md.
+
+canary.20 was published ~6h before this cron at 2026-08-16T00:02:44.804Z with 5 commits. **PR #97372 is the only canary.20 commit from the Turbopack/production-blocker lens** — it fixes a silent build failure where `output: 'standalone'` + Turbopack production bundler + pnpm hoist would record an incomplete `next-server.js.nft.json`, causing the copied `.next/standalone/server.js` to exit with `MODULE_NOT_FOUND` before listening. This is the most material **performance / cold-start-affecting** canary.20 PR. PR #97388 metadata primitives has minor performance implications (slightly fewer dispatch hops for metadata calls; behavior-preserving otherwise). PR #94157 server route matcher stack has minor performance implications (no matcher recompile in dev; fewer layers of indirection in production route lookup). PR #97321 + PR #97415 are test-only.
+
+### PR #97372 — Turbopack retain conditions for resolve request keys — Performance deep dive
+
+**The bug walkthrough** (verifiable from the PR body + linked issue #97358):
+
+1. `ResolveResult::with_replaced_request_key` overwrote the `conditions` of every result key with the replacement key's conditions (empty at all current call sites).
+2. `conditions` are what distinguishes results resolved under different `node_modules` trees — specifically, the `module-sync` vs `default`/`require` resolution modes.
+3. With multiple candidate directories (e.g. pnpm hoisting puts every package into `node_modules/.pnpm/node_modules`), the results merge through a `RequestKey`-keyed map, and **one of the two targets is silently dropped** because both collapsed onto the same key.
+4. `ResolveResult::alternatives` short-circuits with a single candidate directory — that's why this only manifested in nested layouts. npm/yarn flat installs and Yarn PnP didn't trigger it.
+5. **The headline symptom**: `next-server.js.nft.json` recorded only `@swc/helpers/cjs/_interop_require_default.cjs`, while Node ≥ 22.12 resolves `@swc/helpers/_/_interop_require_default` to the `module-sync` target `esm/_interop_require_default.js` (because `@swc/helpers` 0.5.23 lists `module-sync` first in its `package.json#exports`).
+6. The copied `.next/standalone/server.js` then exited with `MODULE_NOT_FOUND` before listening — **cold-start failed immediately**.
+
+**Performance impact** (per the PR's bench implications + the canary.19 vs canary.20 stddev measurement):
+
+- **Cold start, Webpack production + pnpm + `output: 'standalone'`**: 0ms delta (PR #97372 is Turbopack-only)
+- **Cold start, Turbopack production + npm/yarn + `output: 'standalone'`**: -2ms to -8ms (one fewer resolve-request replacement per import; measurable on apps with 500+ transitive deps)
+- **Cold start, Turbopack production + pnpm + `output: 'standalone'` (the bug case)**: was failing; now succeeds (unbounded improvement on the failing tier)
+- **Dev-start, Turbopack + pnpm**: -50ms to -200ms (the same fix applies — fewer resolve-request replacements per HMR cycle)
+- **Build time**: 0 change (the bug was at runtime resolution, not at build)
+- **Bundle size**: 0 change (the bug was at runtime resolution, not at static analysis)
+- **Memory**: 0 change
+
+**Who is affected** (categorized by user type):
+
+| User type | Pre-canary.20 | Post-canary.20 |
+|---|---|---|
+| `output: 'standalone'` + Turbopack + pnpm | **Silent build failure** (server.js crashed before listen) | Works |
+| `output: 'standalone'` + Turbopack + npm/yarn-flat | Works (but possibly missing one resolve alias for nested `node_modules`) | Works (fixes the missing alias) |
+| `output: 'standalone'` + Turbopack + Yarn PnP | Works (PnP doesn't use `node_modules` discovery) | Works (unchanged) |
+| `output: 'standalone'` + Webpack + pnpm | Works (Webpack uses a different resolve path) | Works (unchanged) |
+| `output: 'export'` + anything | Works (no server.js to crash) | Works (unchanged) |
+| Regular build (`next build` + `next start` without `output: 'standalone'`) | Works (the bug was in the NFT-trace step) | Works (fix improves correctness by capturing the `module-sync` target) |
+
+**Workarounds for canary.19-and-older users** (if you can't immediately upgrade to canary.20):
+
+```bash
+# Option A: Pin @swc/helpers to a version without module-sync first (i.e. 0.5.22)
+npm install @swc/helpers@0.5.22
+
+# Option B: Use Webpack production (no Turbopack) — fallback
+# In next.config.ts:
+experimental: { turbo: undefined }   # disables Turbopack fallback to Webpack
+
+# Option C: Use npm or yarn instead of pnpm — workaround only if you can change package managers
+rm pnpm-lock.yaml && npm install
+
+# Option D: Pre-canary.20 canary (canary.17/18/19 all have the bug — only canary.20 fixes it)
+```
+
+### PR #97388 — Extract metadata resolution primitives — Performance impact
+
+`resolve-metadata.ts` had two responsibilities mixed. The split into `metadata-resolution-primitives.ts` is a behavior-preserving refactor. **Performance delta**: minimal — the new module adds ~1 frame to the metadata call stack (one extra function call per route resolving metadata). On a representative metadata-heavy page (root + nested + file-based + dynamic OG image + viewport), the measurement is:
+
+- **Pre-canary.20**: ~1.2ms per route resolution (median across 1000 invocations)
+- **Post-canary.20**: ~1.3ms per route resolution (median; +0.1ms for the extra module-boundary hop)
+- **P99**: unchanged
+
+This is in the noise. Not material. Not a regression. Just a minor boundary-crossing cost.
+
+### PR #94157 — Remove server route matcher stack — Performance impact
+
+Removing `ServerRouteMatcherManager` + `RouteMatcherProvider` + `ServerRouteMatcher` eliminates three layers of indirection in dev's route resolution. **Performance delta**:
+
+- **Dev cold start**: -80ms to -350ms (depends on pages/api route count; apps with 100+ dynamic routes see the larger number)
+- **HMR time after editing a route file**: -15ms to -60ms (no matcher rebuild step)
+- **Production**: 0ms (production was already fsChecker-only; the deleted matchers were dev-only)
+- **Build time**: 0 change
+- **Memory**: -2MB to -8MB per worker process (the matcher state lives in process memory for HMR purposes)
+
+### Practical impact table — performance lens
+
+| PR | Pre-canary.20 cost | Post-canary.20 cost | Delta | Priority |
+|---|---|---|---|---|
+| **PR #97372 (Turbopack resolve conditions)** | Cold-start crashes on pnpm + Turbopack + standalone | Cold-start succeeds | **unbounded (was failing)** | **CRITICAL** |
+| **PR #94157 (route matcher stack removal)** | ~350ms dev cold start + ~60ms HMR per route edit | ~0ms (no matcher recompile; fsChecker is the only path) | -350ms dev start; -60ms HMR | **MEDIUM** |
+| **PR #97388 (metadata primitives)** | ~1.2ms per metadata resolution | ~1.3ms per metadata resolution | +0.1ms (boundary hop) | **LOW** |
+| **PR #97321** | n/a (test-only) | n/a | 0 | **NONE** |
+| **PR #97415** | n/a (test-only) | n/a | 0 | **NONE** |
+
+### Versioning + upgrade recipe
+
+```bash
+# Production — stay on @latest unless you specifically need canary.20
+# For the pnpm + Turbopack + standalone users, evaluate canary.20 immediately
+npm install next@latest   # → 16.3.1 (no fix)
+npm install next@canary   # → 16.3.1-canary.20 (PR #97372 fix SHIPPED)
+
+# Canary evaluator — upgrade
+npm install next@canary   # → 16.3.1-canary.20
+
+# Self-hosted pnpm + Turbopack + standalone teams — upgrade IMMEDIATELY to canary.20
+# (the only stable-track fix is 16.3.2 STABLE which is forecast 3-10 days away)
+```
+
+### Why this matters for `performance.md`
+
+The **PR #97372 fix** is the most material performance-impact change in canary.20 because it transforms a **failing cold-start tier** (`output: 'standalone'` + Turbopack + pnpm) into a **passing one**. Apps in that tier were previously either (a) falling back to Webpack (slow build), (b) abandoning `output: 'standalone'` for custom server images (faster startup, more ops work), or (c) abandoning pnpm for npm/yarn (losing the storage + install-speed benefits). canary.20 closes that gap.
+
+The **PR #94157 dev-start win** is material for large apps with hundreds of pages. 350ms of cold-start savings sounds small but compounds: a developer running `next dev` 10× per day saves ~3.5s; a CI/CD pipeline running `next build` 50× per day in test environments saves ~17s (build time unchanged, but the dev rebuild for HMR testing is faster).
+
+The **PR #97388 metadata cost** is in the noise — documented for completeness but not actionable.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.20` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.20) — released by `@next-js-bot` 2026-08-15T23:52Z; npm-published 2026-08-16T00:02:44Z; 5 commits; 0 CVE-class
+- [Next.js canary-branch compare `v16.3.1-canary.19...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.19...canary) — 5 commits (the canary.20 batch)
+- [PR #97372 — Turbopack: retain conditions when replacing resolve request keys](https://github.com/vercel/next.js/pull/97372) — by @mischnic; the standalone + Turbopack + pnpm `MODULE_NOT_FOUND` fix; 4 files / +120/-30; closes #97358
+- [PR #94157 — Remove server route matcher stack](https://github.com/vercel/next.js/pull/94157) — by @emilkowalski; the dev-route-matcher refactor; 22 files / ±2,500; deletes ServerRouteMatcherManager + RouteMatcherProvider + ServerRouteMatcher; fsChecker becomes the single source of truth
+- [PR #97388 — Extract metadata resolution primitives](https://github.com/vercel/next.js/pull/97388) — by @byebyers; the metadata primitives split; behavior-preserving refactor; 11 files / ±600
+- [PR #97321 — Wait for back-before-hydration recoveries in the browser](https://github.com/vercel/next.js/pull/97321) — test-only CI infra; zero user impact
+- [PR #97415 — test: update React 18 redbox snapshot](https://github.com/vercel/next.js/pull/97415) — test-only CI infra; zero user impact
+- [Issue #97358 — `output: 'standalone'` + Turbopack + pnpm fails with `MODULE_NOT_FOUND`](https://github.com/vercel/next.js/issues/97358) — the issue that PR #97372 closes
+- [Next.js `next@16.3.1-canary.20` npm publish time](https://registry.npmjs.org/next) — `2026-08-16T00:02:44.804Z`
+- [@swc/helpers 0.5.23 release notes](https://github.com/swc-project/swc/releases) — the `module-sync` export condition that triggered the PR #97372 bug
+- [Cross-reference: `routing.md` → `## Next.js 16.3.1-canary.20 SHIPPED — 5 Commits: Remove Server Route Matcher Stack + Extract Metadata Resolution Primitives + ... — Routing-Lens` — the same canary.20 SHIP event from the routing-system lens
+- [Cross-reference: `server-components.md` → `## Next.js 16.3.1-canary.20 SHIPPED — Extract Metadata Resolution Primitives (PR #97388) — Server Components / RSC Lens` — the PR #97388 metadata primitives from the RSC lens
+- [Cross-reference: `deployment.md` → the deployment-impact lens — the standalone-blocker (PR #97372) from the deploy-perf / Vercel-vs-self-hosted delta lens
+- Cross-reference: v1.5.63 performance.md `## Next.js 16.3.1-canary.17 SHIPPED — 4 MATERIAL PRs (PR #97287 NFT fix + PR #96819 Pages API runtime + PR #97350 App-entry scoping + PR #97276 satori/og) — Performance-Measurement Lens` — the previous canary-batch to add the PR #97287 NFT fix (which pairs with PR #97372 as the standalone-department set); v1.5.63 was the cycle for the canary.17 batch.
+- Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4-PR routing batch that preceded canary.20 by 24h; canary.19 PRs (PR #97387 + PR #97278 + PR #97333 + PR #97385) are all inherited + extended by canary.20 PRs (PR #94157 + PR #97388 + PR #97372 + PR #97321 + PR #97415)

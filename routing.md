@@ -2720,3 +2720,82 @@ Minor Turbopack improvement. Makes the unreachable code elimination codegen path
 - [Next.js canary-branch compare `v16.3.1-canary.18...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.18...canary) — 4 commits (the canary.19 batch)
 - [Next.js security release program](https://nextjs.org/blog/next-security-release-program) — the formal monthly security release schedule
 - [Next.js August 2026 security release — pre-announcement tracking](https://nextjs.org/blog/category/security) — monitor for new CVEs ahead of Aug 20
+
+## Next.js 16.3.1-canary.20 SHIPPED (August 16, 2026) — 5 Commits: **Remove Server Route Matcher Stack (PR #94157)** + **Extract Metadata Resolution Primitives (PR #97388)** + Back-Before-Hydration Browser Wait (PR #97321 test-only) + React 18 Redbox Snapshot Update (PR #97415 test-only) + Turbopack Retain Conditions for Resolve Request Keys (PR #97372) — Routing-Lens (npm-published 2026-08-16T00:02:44Z)
+
+The v1.5.62 cycle documented canary.19. **The v1.5.64 cycle skipped the routing lens for the canary.19 batch** (the lens was used to document Aug 20 security pre-roll + the @clerk/nextjs 7.7.6 STABLE event). canary.20 was published ~6h before this cron at 2026-08-16T00:02:44.804Z and contains 5 commits — **3 material** (PR #94157 + PR #97388 + PR #97372 — 1 routing-system refactor + 1 RSC-adjacent refactor + 1 Turbopack production-blocker fix) + **2 test-only** (PR #97321 + PR #97415).
+
+### Per-PR deep dive
+
+**PR #94157 — Remove server route matcher stack** (emilkowalski, merged 2026-08-15T11:07:23Z; 22 files / ±2,500) — **THE HEADLINE**. The legacy `ServerRouteMatcherManager` / `RouteMatcherProvider` / `ServerRouteMatcher` classes are deleted. Route definitions + params metadata now come from the filesystem-checker (`fsChecker`) and live in request metadata instead. The change: build pages + app route definitions in `fsChecker` from production manifests + the dev route inventory (one path), thread matched route definitions + params through `resolve-routes` and `router-server` request metadata into `base-server` and `next-server` (one path), remove `reloadMatchers` propagation. Verified across 16 custom-routes / middleware-rewrites / basepath / rewrites-redirects / custom-server / i18n test paths. **Practical impact**:
+
+- Dev/prod alignment closes — production previously used fsChecker's normalized lookup while dev went through the matchers, so on pages-router + dynamic APIs the two could disagree on which segments matched.
+- Custom-server `render()` / `renderToHTML()` / `render404()` / `serveStatic()` / `prepare()` / `getRequestHandler()` paths preserved (per the PR's `dev ensurePage` carry-over). Apps using `next()` from a custom server are NOT affected.
+- Edge runtime routes (`middleware-rewrites`, `edge-route-rewrite`) still load — they were verifying in the test paths listed.
+- Pages API loading uses matched route definitions while loading compiled dev modules where needed (covers the cases where Pages Router + Pages API dev modules were falling through to legacy matchers).
+
+The stateful matchers also carried a reload path that propagated through several layers of indirection. With fsChecker owning the source of truth, that plumbing is gone — measurable on cold dev-start (no matcher compile), and the diff is `+something / -something large`.
+
+**PR #97388 — Extract metadata resolution primitives** (byebyers, merged 2026-08-15T15:28:41Z; 11 files / ±600) — **RSC / metadata-adjacent**. Refactor: splits `resolve-metadata.ts` (the loader-tree walker that schedules route exports) from `metadata-resolution-primitives.ts` (the route-layer operations: wrapping `generateMetadata` and `generateViewport`, loading file-based metadata, merging values with resolved parents, post-processing metadata, producing `SelectedMetadata` for rendering). The two existing call sites in `resolve-metadata.ts` import the extracted operations back so the public exports + traversal order are unchanged. **Behavior-preserving**: traversal order, eager generator invocation, parent-promise resolution, warnings, and rendered metadata + viewport tags are unchanged. The benefit is a reusable boundary for **other traversal strategies** that may want to consume metadata differently (think global `notFound.tsx` flows, parallel routes with per-slot metadata, or future edge metadata). For the routing lens, this sets the stage for follow-up PRs that make the metadata pipeline plumb through request metadata alongside the PR #94157 route-definitions — those PRs will likely ship in canary.21+ over the next 1-2 weeks.
+
+**PR #97372 — Turbopack: retain conditions when replacing resolve request keys** (mischnic, merged 2026-08-15T12:37:14Z; 4 files / +120/-30) — **production-blocker fix for `output: 'standalone'` on pnpm**. `ResolveResult::with_replaced_request_key` overwrote the `conditions` of every result key with the replacement key's conditions (empty at all current call sites). Those conditions distinguish results resolved under different `node_modules` trees, so the `module-sync` and the `default`/`require` target of the same subpath collapsed onto one `RequestKey`. With multiple candidate directories, results merge through a `RequestKey`-keyed map, and one of the two targets was silently dropped. `ResolveResult::alternatives` short-circuits with a single candidate, which is why this only manifested in nested pnpm layouts. The breakage: `output: 'standalone'` + Turbopack production bundler + pnpm hoist (which puts every package into `node_modules/.pnpm/node_modules`) made `next-server.js.nft.json` only record `@swc/helpers/cjs/_interop_require_default.cjs`, while Node ≥ 22.12 resolves `@swc/helpers/_/_interop_require_default` to the `module-sync` target `esm/_interop_require_default.js` (`@swc/helpers` 0.5.23 lists `module-sync` first). The copied `.next/standalone/server.js` then exited with `MODULE_NOT_FOUND` before listening. **Closes issue #97358**. **Practical impact**: every project using `output: 'standalone'` + Turbopack + pnpm (a common combo for AWS Lambda, Cloudflare Workers via `@cloudflare/next-on-pages`, custom Docker, Fly.io, Railway) had a silent build that wouldn't start. Workaround: pin `@swc/helpers` to a version without `module-sync` first (i.e. downgrade @swc/helpers to 0.5.22 or earlier) or fall back to Webpack production.
+
+**PR #97321 — Wait for back-before-hydration recoveries in the browser** (CI/test infra; test-only). The `back-before-hydration` assertions read the heading with `browser.elementByCss`, which waits for the load event before returning. The load event cannot fire until stalled scripts release, so the first `retry` blocks for ~3s, looks at DOM once, then `retry` refuses a second look. The fix waits in the browser with the load event out of the picture and gives each search page a unique heading id so `waitForSelector` resolves at the moment a page commits. **Zero user-facing impact**; CI quality-of-life.
+
+**PR #97415 — test: update React 18 redbox snapshot** (CI/test infra; test-only). Updates the circular-`getInitialProps` redbox snapshot for all React 18 test runs to match the `new Promise <anonymous>` stack frame observed in the React 18 webpack canary CI group. **Zero user-facing impact**.
+
+### Practical impact table
+
+| User type | Impact | Pre-canary.20 → post-canary.20 |
+|---|---|---|
+| **Pages Router + dynamic routes users** | Neutral to improved | Production route lookup uses fsChecker only; dev/prod alignment improved; no public-API change |
+| **Custom-server users (`next()` API)** | Neutral | `render()` / `render404()` / `serveStatic()` / `prepare()` / `getRequestHandler()` preserved; no code change required |
+| **Edge middleware users** | Neutral | Middleware matches still route through verified test paths (`middleware-rewrites`, `edge-route-rewrite`) |
+| **`output: 'standalone'` + Turbopack + pnpm users** | **CRITICAL FIX** | `next-server.js.nft.json` now records BOTH `@swc/helpers/cjs/_interop_require_default.cjs` AND the `module-sync` target — `MODULE_NOT_FOUND` crash eliminated |
+| **`output: 'standalone'` + Turbopack + npm/yarn users** | Improved | Some pnpm-only edge cases fixed; npm/yarn users with nested `node_modules` also benefit |
+| **`output: 'standalone'` + Webpack users** | Neutral | The bug was Turbopack-only |
+| **`generateMetadata` / `generateViewport` users** | Neutral | Behavior-preserving refactor; no observable diff in rendered metadata |
+| **Pages-router file-based metadata (`pages/sitemap.js`, `pages/robots.js`, `pages/icon.*`)** | Neutral | Already covered by PR #97350 in canary.17; PR #97388 doesn't change this |
+
+### Versioning + upgrade recipe
+
+```bash
+# Production — stay on @latest unless you specifically need canary.20
+npm install next@latest  # → still 16.3.1 (STABLE)
+
+# Canary evaluator — upgrade to canary.20
+npm install next@canary  # → 16.3.1-canary.20 (npm-published 2026-08-16T00:02:44Z)
+
+# Self-hosted pnpm + Turbopack + standalone teams — upgrade IMMEDIATELY to canary.20
+# (the PR #97372 fix is the only stable-track fix coming until 16.3.2 STABLE)
+
+# Audit recipe (find pnpm + Turbopack + standalone users)
+1. grep -r "output: 'standalone'" next.config.* && grep -r "Turbopack\|turbopack" next.config.*
+2. cat package.json | jq '.packageManager, .dependencies, .devDependencies' | grep -E 'pnpm|next@|@swc/helpers'
+3. node --version   # must be >= 22.12 to see the original bug; pre-22.12 is unaffected
+4. If all 3 match → upgrade to next@canary.20 OR pin @swc/helpers@0.5.22 OR set turbopack: false
+```
+
+### Why this matters for `routing.md`
+
+The **PR #94157 route-matcher-stack removal** is the largest change to Next.js routing internals since 16.x launched. The `ServerRouteMatcher*` stack was the layer that decided which handler ran for a given URL in development (with hot-reloadable matchers), while production used the fsChecker's normalized lookup. The two paths could disagree on dynamic-API behaviors (`notFound`, `redirect`, `permanentRedirect` in pages-router API routes, basepath rewrites, i18n beforefiles rewrites). canary.20 closes that gap. Apps that were relying on the dev-side matcher behavior specifically (rather than the production-side fsChecker behavior) will see no diff in production but may see faster page-replacement in dev (because matcher recompile is gone). Apps using a **custom server** with `next()` should re-run their e2e suite to confirm.
+
+The **PR #97388 metadata primitives** split is the same architectural pattern: a stable, reusable module boundary (`metadata-resolution-primitives.ts`) so future traversal strategies can be added without touching `resolve-metadata.ts`. Expect follow-up PRs (canary.21+) to plumb metadata through request metadata alongside the PR #94157 route-definitions, both on the same `RouterServer` request path.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.20` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.20) — released by `@next-js-bot` 2026-08-15T23:52Z; npm-published 2026-08-16T00:02:44Z; 5 commits; 0 CVE-class
+- [Next.js canary-branch compare `v16.3.1-canary.19...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.19...canary) — 5 commits (the canary.20 batch)
+- [PR #94157 — Remove server route matcher stack](https://github.com/vercel/next.js/pull/94157) — by @emilkowalski; the headline routing-system refactor; 22 files; closes the dev/prod route-inventory duplication
+- [PR #97388 — Extract metadata resolution primitives](https://github.com/vercel/next.js/pull/97388) — by @byebyers; the metadata primitives split; behavior-preserving refactor
+- [PR #97372 — Turbopack: retain conditions when replacing resolve request keys](https://github.com/vercel/next.js/pull/97372) — by @mischnic; the standalone + Turbopack + pnpm `MODULE_NOT_FOUND` fix; closes #97358
+- [PR #97321 — Wait for back-before-hydration recoveries in the browser](https://github.com/vercel/next.js/pull/97321) — test-only CI infra; zero user impact
+- [PR #97415 — test: update React 18 redbox snapshot](https://github.com/vercel/next.js/pull/97415) — test-only CI infra; zero user impact
+- [Issue #97358 — `output: 'standalone'` + Turbopack + pnpm fails with `MODULE_NOT_FOUND`](https://github.com/vercel/next.js/issues/97358) — the issue that PR #97372 closes
+- [Next.js `next@16.3.1-canary.20` npm publish time](https://registry.npmjs.org/next) — `2026-08-16T00:02:44.804Z`
+- [Next.js `next.config.ts` `output: 'standalone'` docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/output) — the `output: 'standalone'` reference (still unchanged in canary.20)
+- [@swc/helpers 0.5.23 release notes](https://github.com/swc-project/swc/releases) — the `module-sync` export condition that triggered the PR #97372 bug
+- [Cross-reference: `performance.md` → `## Next.js 16.3.1-canary.20 SHIPPED — PR #97372 Turbopack Retain Conditions for Resolve Request Keys — Performance-Lens` — the same canary.20 SHIP event from the Turbopack / production-blocker lens
+- [Cross-reference: `server-components.md` → `## Next.js 16.3.1-canary.20 SHIPPED — Extract Metadata Resolution Primitives (PR #97388) — Server Components / RSC Lens` — the PR #97388 metadata primitives split from the RSC lens
+- [Cross-reference: `deployment.md` → the deployment-impact lens — same PR #94157 + PR #97372 + PR #97388 entries; deployment-relevant fix is the standalone-blocker (PR #97372)
+- Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4-PR routing batch that preceded canary.20 by 24h
