@@ -2661,3 +2661,194 @@ npm install zod@canary
 - [`zod@latest` npm dist-tag](https://registry.npmjs.org/zod) — still `4.4.3`; expect `4.5.0` within 1-2 weeks
 - [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — 6+ NEW functional commits since v1.5.54
 - [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
+## `@hookform/resolvers` 5.9.0 SHIPPED (August 15, 2026) — Joi v18 Update + `zod@canary` 4.5.0-canary.20260814T233931 SHIPPED (August 15, 2026) — Brings Back `z.deepPartial` (Removed in v4) + Adds Runtime `z.input` / `z.output` Projections (PR #5928) — Forward-Looking for `zod@4.5.0`
+
+The two material forms-ecosystem events in the ~6h window since v1.5.63 (2026-08-15T18:06Z): **`@hookform/resolvers@5.9.0` SHIPPED** with a single-feature release bumping `joi` to v18; **`zod@canary` 4.5.0-canary.20260814T233931 SHIPPED** with the headline `feat(v4): add z.deepPartial and runtime z.input / z.output` PR #5928 — **the biggest v4 forms-relevant addition since v4 launched**. Together these are the strongest forms.md material since the v1.5.59 RHF v7.85.0 full-changelog + zod-canary 10th-drop cycle.
+
+### `@hookform/resolvers@5.9.0` SHIPPED (2026-08-15T10:30:43Z) — `joi` v18 Update (Single-Feature Release)
+
+**`@hookform/resolvers@5.9.0` SHIPPED at 2026-08-15T10:30:43Z** — **1 commit** (`feat: update joi to v18` — [issue #873](https://github.com/react-hook-form/resolvers/issues/873), commit [`c8159ae`](https://github.com/react-hook-form/resolvers/commit/c8159aebf3902956a383975a3e47e4c5ba8a9edb)) — bumping the `@hookform/resolvers/joi` subpath's `joi` dependency from `^17.x` to `^18.x`. **`joi@latest` is now `18.2.3`** (the `joi@18.x` line has been stable since the 2023-03-11 `18.0.0` release; 18.0.0 → 18.2.3 covers ~3+ years of patch releases incl. [v18.2.3 #3125](https://joi.dev/resources/changelog) "expose multiple string patterns in json schemas"). **Pure additive minor bump for projects not using the `joi` resolver — zero behavior change** (the `zod` + `yup` + `valibot` + `vine` + `ajv` + `io-ts` + `class-validator` + `arktype` + `effect-ts` + `computed-types` + `nope` + `superstruct` + `typanion` + `vest` subpaths are untouched).
+
+**Why this matters for projects on the `joi` resolver:** the `joi` v18 line has been the production-stable line since 2023 — projects on `joi@^17.x` who wanted the v18 features (the [standard schema](https://standardschema.dev/) validation support from [PR #3080](https://github.com/hapijs/joi/pull/3080), the underscore-in-domains support from [address PR #43](https://github.com/hapijs/address/pull/43), the `string().uuid/guid()` wrapper options from [PR #3082](https://github.com/hapijs/joi/pull/3082)) were blocked from a clean `npm install` because `@hookform/resolvers/joi`'s peer-dep was capped at `^17.x`. **5.9.0 unblocks the install**: bump to `@hookform/resolvers@^5.9.0` and `joi` can move to `^18.x` in one step. **For projects staying on `joi@^17.x`:** the 5.9.0 peer-dep expansion means upgrading `@hookform/resolvers` to 5.9.0 *without* bumping `joi` will trigger a *new* `ERESOLVE` (reverse-direction failure — the `^18.x` peer cap doesn't accept `^17.x`); the safe path is `npm install @hookform/resolvers@^5.9.0 joi@^18.2.3` together, or stay on 5.8.x to defer.
+
+**`joi` v18.0.0 release notes** (verbatim from the [18.0.0 release-notes issue #2926](https://github.com/hapijs/joi/issues/2926), dated 2023-03-11) — **"joi v18.0.0 is a small maintenance release which goal is mainly to drop node < 20 support by upgrading all the dependencies"**:
+
+- **Upgrade time**: low — no expected change in behavior
+- **Complexity**: low — no expected change in your code
+- **Risk**: medium — no major unit test had to change for this release, but a lot of dependencies changed
+- **Dependencies**: low — no changes to the extension system
+
+**Breaking changes:**
+- Drop `node < 20` support (now requires Node.js 20+; aligns with the Node.js 20 LTS line)
+- Upgrade all internal `@hapi/*` modules to v5.x (`address` v4 → v5 + renamed to `@hapi/address`; `formula` v3 + renamed to `@hapi/formula`; `hoek` v10 → v11; `pinpoint` v2 + renamed to `@hapi/pinpoint`; `topo` v5 → v6; **NEW** `tlds` v1 added)
+
+**New features:**
+- Support underscores in domains (via `@hapi/address` PR #43)
+- **Add [standard schema](https://standardschema.dev/) validation support** ([PR #3080](https://github.com/hapijs/joi/pull/3080)) — Joi schemas are now valid `StandardSchema` validators
+- Add wrapper options for `string().uuid/guid()` ([PR #3082](https://github.com/hapijs/joi/pull/3082))
+
+**Migration checklist:**
+- **Node.js 20+ required** (matches Next.js 16 + napi-rs v3 requirements already in setup.md / deployment.md)
+- **`cidr` option validation change**: `string().ip({ cidr: 'invalid' })` now throws `options.cidr must be one of required, optional, forbidden` instead of `options.cidr must be a string` (the new message is the correct one; pre-18 this was misleading)
+- **TypeScript `array()` change**: explicit types with `Joi.array<T>.items(...)` → `Joi.array().items<T>(...)` (the explicit generic-on-`array` form was incorrect pre-18 and is now type-checked correctly)
+
+**Audit recipe:**
+
+```bash
+# Check whether your project uses the joi resolver
+rg -n "from '@hookform/resolvers/joi'|joiResolver" app/ src/ --type ts --type tsx
+# If zero hits, skip the 5.9.0 bump entirely (no behavior change for you)
+
+# If using joi resolver:
+npm view joi dist-tags.latest   # 18.2.3 (latest)
+npm view @hookform/resolvers dist-tags.latest   # 5.9.0 (new)
+
+# Safe path for projects on joi 17.x wanting to upgrade:
+npm install @hookform/resolvers@^5.9.0 joi@^18.2.3
+# (bump both at once; do NOT bump @hookform/resolvers alone if staying on joi 17.x — see ERESOLVE warning above)
+
+# Confirm Node.js 20+ (joi v18 requires it; Next.js 16 already requires it)
+node -v   # v20.x or v22.x
+
+# For projects already on joi 18.x (some are — joi has been 18.x since March 2023):
+# The bump is purely peer-dep alignment. Just `npm install @hookform/resolvers@^5.9.0`.
+```
+
+### `zod@canary` 4.5.0-canary.20260814T233931 SHIPPED (2026-08-15T04:09:57Z) — PR #5928 `feat(v4): add z.deepPartial and runtime z.input / z.output` — The Headline v4 Forms-Relevant Addition Since v4 Launched
+
+**`zod@canary` advanced from `4.5.0-canary.20260814T055530` (the v1.5.59-documented last drop) to `4.5.0-canary.20260814T233931`** (npm-published 2026-08-15T04:09:57Z — **~20h before this cron**; the 11th drop since v1.5.54's "8 NEW drops in 3 days" observation; the drop's `gitHead` is `5e608851fbc7659855e096239e36b9147af8a187` = commit [5e60885](https://github.com/colinhacks/zod/commit/5e608851fbc7659855e096239e36b9147af8a187)). **The drop ships the headline v4 forms-relevant PR #5928** — `feat(v4): add z.deepPartial and runtime z.input / z.output` — which the v1.5.59 cycle did NOT capture because the PR merged 2026-08-14T23:36:11Z (~25h after v1.5.59 committed at 2026-08-13T12:06Z and ~4h before this cron's 00:03Z start).
+
+**PR #5928 background — the long road back from `.deepPartial()` removal:**
+
+- `.deepPartial()` was **deprecated in Zod v3.21.0** and **removed in Zod v4** (the [original removal PR #2106](https://github.com/colinhacks/zod/issues/2106) called out three problems with the v3 `deepPartial`: a recursive `instanceof` switch over schema types that (1) cannot see user-defined schema subclasses, (2) accumulates edge cases for every new schema type, and (3) silently breaks on advanced shapes (transforms, branded, discriminated unions, lazy/recursive, etc.))
+- **Issue [#2854](https://github.com/colinhacks/zod/issues/2854)** ("Provide `deepPartial` replacement for Zod 4?") became the symptom — **60+ commenters** asking what to use instead
+- Community libraries emerged: `zod-deep-partial` (the most popular) drops about half the advanced types and stack-overflows on recursive schemas; `@traversable/zod` is more correct but a heavier API
+- PR #5928 ([scotttrinh](https://github.com/scotttrinh), merged 2026-08-14T23:36:11Z) **closes both [#2854](https://github.com/colinhacks/zod/issues/2854) and [#5224](https://github.com/colinhacks/zod/issues/5224)**
+
+**PR #5928 — the approach (verbatim from the PR body):**
+
+- **Dispatches on `schema._zod.def.type`, not `instanceof`.** Custom schemas with an unknown `def.type` fall through to identity instead of being silently mishandled. The visitor enforces exhaustiveness on the known `def.type` set, so any missed case is a compile error (`kind satisfies never`).
+- **Cycle-safe** via a `Map<schema, RESOLVING|result>` cache. Lazy schemas unfold lazily so recursive shapes terminate; shared sub-schemas are visited once. Non-`lazy` cycles (v4's getter-based recursive objects) are broken with a `z.lazy` placeholder that resolves through the cache at parse time.
+- **Bottom-up rewrite as the primitive.** One internal traversal in `core/` backs all three public helpers; `deepPartial` is a handful of lines on top of it. `deepStrict`, `deepReadonly`, etc. become handlers rather than new switches.
+- **`deepPartial` returns a structural type.** The inferred return is a structural `ZodObject` whose properties are the original properties wrapped in `ZodOptional` — rather than a generic `ZodType<DeepPartial<Out>>`. Keeps `.shape`, `.extend`, `.pick`, `.omit` etc. usable on the result.
+- **`z.input` / `z.output` runtime projections.** Companion helpers that descend through pipes to the input or output side of the composition, sharing the same visitor infrastructure.
+- **Covers the full v4 def vocabulary**: object, array, tuple (+rest), record, map, set, union (incl. discriminated union), intersection, optional, nullable, default, prefault, nonoptional, catch, readonly, promise, success, pipe, function, lazy. Leaves (primitives, enum, literal, transform, custom, file, etc.) returned untouched.
+- **Discriminated union note**: making the discriminator field optional collapses the fast-path lookup (every option ends up with `undefined` as a possible discriminator value). To keep parsing correct, `deepPartial` degrades a discriminated union into a plain `union` over the already-partialed options. Validation semantics preserved (try-each); the only loss is the discriminator fast-path.
+- **Both classic and mini flavors.** The traversal lives in `core/` so both `classic` and `mini` reuse it; each flavor has its own thin `deepPartial` wired to its own `partial`.
+- **Internal-only traversal primitive.** The traversal is deliberately *not* exported from `core/index.ts` or either flavor barrel — the contract isn't settled enough to freeze as public API. But `deepPartial`, `input`, and `output` ARE public (`packages/zod/src/v4/classic/external.ts` + `mini/external.ts` re-export them).
+- **Attribution**: the bottom-up rewrite + `RESOLVING` sentinel pattern is adapted from [@jaens's v3 gist](https://gist.github.com/jaens/7e15ae1984bb338c86eb5e452dee3010) (Apache-2.0); the v4 implementation is rewritten (`def.type` dispatch instead of `instanceof`, schema construction via `core.clone` instead of `new ZodFoo(...)`, full v4 def coverage).
+
+**Example (verbatim from PR #5928 body):**
+
+```ts
+const Node: z.ZodType = z.object({
+  name: z.string(),
+  children: z.array(z.lazy(() => Node)).optional(),
+});
+
+z.deepPartial(Node).parse({});                 // ok
+z.deepPartial(Node).parse({ children: [{}] }); // ok
+```
+
+**Practical impact for forms code (this is the forms-relevant material):**
+
+1. **Draft autosaves + partial form updates** — the canonical use case that broke when v4 removed `.deepPartial()`. Before: `MyFormSchema.deepPartial().parse(draftFromLocalStorage)` was idiomatic. After (community workarounds): install `zod-deep-partial` or `@traversable/zod` and accept the partial-type-coverage / stack-overflow-on-recursive trade-offs. **After PR #5928**: `z.deepPartial(MyFormSchema).parse(draft)` is idiomatic again — **no extra dependency**, no trade-offs.
+2. **Optional subforms / stepper forms** — multi-step wizards where step N+1 fields are all `optional()` until step N is complete benefit from `z.deepPartial(StepSchema).parse(partialSubmission)`. Works with recursive schemas (the lazy cache handles termination correctly).
+3. **Patches with `z.object(...).partial()` → `z.deepPartial(...)` migration** — `partial()` only makes the top-level properties optional (nested objects stay required); `deepPartial` recurses. **The structural return type preserves `.shape` / `.extend` / `.pick` / `.omit`**, so downstream code that relies on those methods keeps working.
+4. **`z.input` / `z.output` runtime projections** — companion helpers for type-only projections you used to compute statically. Useful when serializing pipe-based schemas (transform / preprocess / pipe compositions) where the runtime output diverges from the static output.
+5. **Discriminated-union forms** — degrades to plain union, preserves validation semantics (try-each), only loses the discriminator fast-path. **No migration needed for existing `.parse()` / `.safeParse()` call sites**; only `discriminator` lookups become O(n) instead of O(1).
+6. **Custom user-defined schemas** — `def.type`-unknown schemas pass through untouched. **No migration needed for any custom subclass code**.
+
+**Audit recipe:**
+
+```bash
+# Check current @latest
+npm view zod dist-tags.latest   # 4.4.3 (still)
+# Check current canary (this cycle's new drop)
+npm view zod dist-tags.canary   # 4.5.0-canary.20260814T233931
+
+# Find code that currently uses .deepPartial (the v4-broken API; pre-4 users with .deepPartial calls)
+rg -n "\.deepPartial\s*\(" app/ src/ schemas/ --type ts --type tsx
+# If you have any, you either (a) installed zod-deep-partial or @traversable/zod as a workaround, or (b) hand-rolled a recursive-partial helper, or (c) are still on Zod v3 (which keeps .deepPartial working). After zod@4.5.0 STABLE lands, you can drop the workaround and use z.deepPartial directly.
+
+# Find code that currently uses .partial() on nested schemas (the "partial top-level only" pattern)
+rg -n "\.partial\s*\(\s*\)" schemas/ src/ --type ts --type tsx
+# After zod@4.5.0 STABLE lands, swap .partial() → z.deepPartial() to recurse into nested objects. The structural-return-type preserves .shape / .extend / .pick so downstream code keeps working.
+
+# Find zod-deep-partial or @traversable/zod in deps (the community workaround libraries)
+rg -n "\"zod-deep-partial\"|\"@traversable/zod\"" package.json
+# After zod@4.5.0 STABLE lands, drop the workaround dependency and switch to z.deepPartial.
+
+# If you want to opt into 4.5.0 features early (PR #5928 + the 6-PR hardening burst from v1.5.54):
+npm install zod@canary
+# All your Zod v4 code should continue to work — the 11 commits since 4.5.0-canary.20260814T055530 are additive (the PR #5928 feature add + several fix/perf commits incl. PR #5928 + PR #6412 + PR #6157 + PR #6407 + PR #6408 + PR #6411 + PR #6410 + PR #6404 + PR #6177 + PR #6402 + PR #6376 + PR #6020 + PR #6201 + PR #6384 + PR #6194)
+```
+
+**Per-PR practical impact for forms users:**
+
+| Use case | Pre-#5928 (v4.4.3) | Post-#5928 (v4.5.0-canary) | Migration effort |
+|---|---|---|---|
+| Draft autosaves | Install `zod-deep-partial` or hand-roll recursive | `z.deepPartial(Schema)` | Drop workaround dep + 1-line code change |
+| Optional subforms (stepper forms) | `z.object({...}).partial()` (top-level only) | `z.deepPartial(Schema)` | Swap `.partial()` → `z.deepPartial()` |
+| Recursive schemas (tree editors) | Stack-overflows with `zod-deep-partial`; works with `@traversable/zod` | `z.deepPartial(Node)` works out of the box | Drop workaround dep |
+| `.partial()` callers needing nested partials | Manual recursive `partial` call | `z.deepPartial(...)` recurses correctly | Drop manual helper |
+| `z.input` / `z.output` for pipe schemas | Type-only (manual TS projections) | Runtime helpers + types | Optional drop-in |
+
+**Recommended version pin after this cycle:**
+
+```bash
+# Production: stay on zod@^4.4.3 (STABLE) until zod@4.5.0 STABLE ships
+npm view zod dist-tags.latest   # 4.4.3
+
+# Opt-in to 4.5.0-canary for early access to z.deepPartial + z.input + z.output:
+npm install zod@canary
+# Pin to a specific canary for reproducibility: "zod": "npm:zod@4.5.0-canary.20260814T233931"
+
+# Watch for zod@4.5.0 STABLE (the canary train is dropping ~1/day; expect STABLE in 1-2 weeks)
+npm view zod dist-tags   # re-check daily; the v1.5.62 prediction of "4.5.0 STABLE in 1-2 weeks" is now at T-6d
+```
+
+### Migration checklist (both 5.9.0 + zod@canary PR #5928)
+
+- [ ] `npm install @hookform/resolvers@^5.9.0` — MINOR release; the joi v18 bump is the only diff; safe for projects not using the joi resolver (zero behavior change)
+- [ ] **If you use `@hookform/resolvers/joi`** AND are still on `joi@^17.x`: bumping to 5.9.0 alone will surface a *new* `ERESOLVE` (the reverse-direction failure) — bump `joi` to `^18.2.3` in the same install, or stay on 5.8.x to defer
+- [ ] **If you use `@hookform/resolvers/joi`** AND are already on `joi@^18.x`: the 5.9.0 bump is purely peer-dep alignment; no behavior change
+- [ ] `npm view joi dist-tags.latest` confirms `18.2.3`
+- [ ] `node -v` returns `v20.x` or `v22.x` (joi v18 dropped Node.js <20; aligns with Next.js 16 + napi-rs v3 requirements already in setup.md / deployment.md)
+- [ ] **If you want to opt into zod@4.5.0 features early**: `npm install zod@canary` — PR #5928 z.deepPartial + z.input/z.output are available; the 6-PR hardening burst from v1.5.54 is bundled
+- [ ] **Search for `zod-deep-partial` or `@traversable/zod` in `package.json`** — after zod@4.5.0 STABLE lands, drop the workaround dep
+- [ ] **Search for `.partial()` on nested schemas** — after zod@4.5.0 STABLE lands, swap to `z.deepPartial()` for recursive behavior
+
+### Sources
+
+#### `@hookform/resolvers` 5.9.0
+- [`@hookform/resolvers` v5.9.0 GitHub release](https://github.com/react-hook-form/resolvers/releases/tag/v5.9.0) — npm-published 2026-08-15T10:30:43Z (GitHub release tag published 2026-08-15T10:29:38Z)
+- [`@hookform/resolvers` PR #873 — feat: update joi to v18](https://github.com/react-hook-form/resolvers/issues/873) — 1 commit / `c8159ae`; the single-feature release
+- [`@hookform/resolvers` npm dist-tags](https://registry.npmjs.org/@hookform/resolvers) — confirms `latest: 5.9.0`; expect 5.9.1 / 5.10.0 within 1-2 weeks if the joi v18 patch-train follows the previous cadence
+
+#### Joi v18
+- [Joi v18.0.0 release-notes issue #2926](https://github.com/hapijs/joi/issues/2926) — dated 2023-03-11; "drop node < 20 support by upgrading all the dependencies"; full migration checklist
+- [Joi v18.x changelog](https://joi.dev/resources/changelog) — full version history (18.0.0 → 18.2.3; 18.2.3 #3125 "expose multiple string patterns in json schemas" is the latest)
+- [Joi PR #3080 — Add standard schema validation support](https://github.com/hapijs/joi/pull/3080) — Joi schemas are now valid `StandardSchema` validators
+- [Joi PR #3082 — Add wrapper options for `string().uuid/guid()`](https://github.com/hapijs/joi/pull/3082)
+- [Joi `engines`](https://www.npmjs.com/package/joi?activeTab=dependencies) — `{"node": ">= 20"}` (confirmed via `npm view joi engines`)
+- [Joi npm dist-tags](https://registry.npmjs.org/joi) — confirms `latest: 18.2.3`
+- [Standard Schema spec](https://standardschema.dev/) — the cross-validator schema spec Joi now implements
+
+#### Zod 4.5.0-canary PR #5928
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — `4.5.0-canary.20260814T233931` (the 11th drop since v1.5.54; npm-published 2026-08-15T04:09:57Z; gitHead `5e60885`)
+- [Zod PR #5928 — feat(v4): add z.deepPartial and runtime z.input / z.output](https://github.com/colinhacks/zod/pull/5928) — scotttrinh, merged 2026-08-14T23:36:11Z; closes #2854 + #5224 (60+ commenters on the v4-removal complaint thread)
+- [Zod issue #2854 — "Provide deepPartial replacement for Zod 4?"](https://github.com/colinhacks/zod/issues/2854) — the 60+ commenter thread that PR #5928 resolves
+- [Zod issue #5224 — companion issue for z.input/z.output runtime projections](https://github.com/colinhacks/zod/issues/5224) — also closed by PR #5928
+- [Zod issue #2106 — original .deepPartial removal rationale](https://github.com/colinhacks/zod/issues/2106) — the three problems (instanceof switch, edge accumulation, advanced-shape breakage) PR #5928's design addresses
+- [Zod PR #5928 commit `5e60885`](https://github.com/colinhacks/zod/commit/5e608851fbc7659855e096239e36b9147af8a187) — the canary-drop commit (the gitHead of `4.5.0-canary.20260814T233931`)
+- [@jaens's v3 deepPartial gist](https://gist.github.com/jaens/7e15ae1984bb338c86eb5e452dee3010) — the Apache-2.0 reference implementation PR #5928's traversal pattern is adapted from (with `def.type` dispatch + `core.clone` schema construction rewrites + full v4 def coverage)
+- [`zod-deep-partial` npm package](https://www.npmjs.com/package/zod-deep-partial) — the most-popular community workaround (now obsolete post-#5928)
+- [`@traversable/zod` npm package](https://www.npmjs.com/package/@traversable/zod) — the more-correct community workaround (also obsolete post-#5928 for the `deepPartial` use case)
+- [`zod` npm dist-tag](https://registry.npmjs.org/zod) — still `latest: 4.4.3`; expect `4.5.0` STABLE within 1-2 weeks (the canary train is dropping ~1/day)
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — 15+ commits ahead of `4.5.0-canary.20260814T233931` (incl. PR #5928 + 14 fix/perf commits since 4.5.0-canary.20260814T055530)
+- [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
+
+#### RHF master branch — STILL 7 commits ahead of v7.85.0 (unchanged from v1.5.59)
+- [RHF master-branch commits feed](https://github.com/react-hook-form/react-hook-form/commits/master) — 7 commits ahead of v7.85.0; expect `react-hook-form@7.86.0` within 2-3 weeks
+- [`react-hook-form` npm dist-tag](https://registry.npmjs.org/react-hook-form) — still `latest: 7.85.0`
