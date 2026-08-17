@@ -2852,3 +2852,81 @@ npm view zod dist-tags   # re-check daily; the v1.5.62 prediction of "4.5.0 STAB
 #### RHF master branch — STILL 7 commits ahead of v7.85.0 (unchanged from v1.5.59)
 - [RHF master-branch commits feed](https://github.com/react-hook-form/react-hook-form/commits/master) — 7 commits ahead of v7.85.0; expect `react-hook-form@7.86.0` within 2-3 weeks
 - [`react-hook-form` npm dist-tag](https://registry.npmjs.org/react-hook-form) — still `latest: 7.85.0`
+
+## zod@canary 4.5.0-canary.20260816T230800 SHIPPED (August 16, 2026) — THE 12th-Drop Burst: `.exactPartial()` on ZodObject (PR #6065 — Complements PR #5928 `.deepPartial()`) + Owning Schema on Check-Originated Issues (PR #6420) + 5 JSON-Schema/`fromJSONSchema` Fixes + 5 New Locales — Zod v4 Forms-Validation Lens (npm-published 2026-08-16T23:33:19Z)
+
+**Current npm state at this cron's check (2026-08-17T00:02Z):** `zod@canary` dist-tag is **`4.5.0-canary.20260816T230800`** (gitHead `234c407`, npm-published 2026-08-16T23:33:19Z by GitHub Actions trusted-publisher) — a **substantial burst**: **14 new `4.5.0-canary.20260816T*` drops published 2026-08-16T22:44Z → 23:48Z** (a ~65-minute release train, far denser than the prior ~1/day cadence). The v1.5.64-cycle document left the dist-tag at `4.5.0-canary.20260814T233931` (the 11th drop, gitHead `5e60885` = PR #5928) — this cycle captures the **12th-dash drop's content burst**. `zod@latest` STILL `4.4.3`; `zod@4.5.0` STABLE forecast remains **5-10 days** (the burst's density further supports that).
+
+**gitHead `234c407`** = commit `234c407d0eec716a31ad5ef47568b49f6832c43f` = **PR #6065 `.exactPartial()`** merged 2026-08-16T23:43:41Z. The drop batch's material PRs since `4.5.0-canary.20260814T233931` (PR #5928):
+
+| PR | Commit | What it ships | Materiality |
+|---|---|---|---|
+| **#6065** | `234c407` | **`feat: add .exactPartial() to ZodObject`** — `.exactPartial()` mirrors `.partial()` but wraps fields in `ZodExactOptional` instead of `ZodOptional`: missing keys accepted, **explicit `undefined` rejected**; matches TS builtin `Partial<>` under `exactOptionalPropertyTypes`; fix #5983 | **HEADLINE** (7 files / +170 / −2) |
+| **#6420** | `79cfede` | **`feat(v4): expose the owning schema on check-originated issues`** — adds optional `schema` on the raw issue for check codes (`too_small`/`too_big`/`invalid_format`/`not_multiple_of`) so an error map can reach a schema's `meta()`/`title`; `iss.inst` is the `$ZodCheck` (no `meta()`), `iss.schema` names the owning schema; colinhacks; closes #5240 (+ #4681, #5329, #5259) | **MEDIUM** (5 files / +177 / −1) |
+| **#6418** | `eb4682c` | `fix(json-schema): resolve tuple minItems past transform and catch in input mode` | MEDIUM |
+| **#6409** | `973b1b4` | `fix(v4): strip output-typed catch values from the input JSON Schema` | MEDIUM |
+| **#6133** | `78b523f` | `fix(json-schema): keep preprocess object properties required in input mode` | MEDIUM |
+| **#6305** | `578e1cd` | `feat(v4): support format: "hostname" in fromJSONSchema` | LOW-MEDIUM |
+| **#6387** | `942bf8c` | `feat(v4): parse input containing reference cycles` | LOW-MEDIUM |
+| `4d6b5cd` | `4d6b5cd` | `fix(json-schema): route unrepresentable default values through unrepresentable` | LOW |
+| #5974 / #6168 / #6092 / #6078 / #5999 | `234c407`-adjacent | 5 locale additions/fixes (Bengali `bn`, Turkmen `tk`, Norwegian Nynorsk `nn`, Central Kurdish `ckb`, French `fr` "non-optionnel" fix) | LOW |
+
+### The HEADLINE: PR #6065 `.exactPartial()` — verbatim from the PR body
+
+> `.exactPartial()` mirrors `.partial()` but wraps fields in `ZodExactOptional` instead of `ZodOptional`, so **missing keys are accepted while explicit `undefined` is rejected**.
+>
+> `.exactPartial()` therefore matches TypeScript's builtin [`Partial<>`](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype) utility type, whereas `.partial()` only matches `Partial<>` when [`exactOptionalPropertyTypes`](https://www.typescriptlang.org/tsconfig/#exactOptionalPropertyTypes) is off. Also, the difference may be important at runtime, e.g., `{k: 1, ...{}}.k !== {k: 1, ...{k: undefined}}.k`.
+>
+> — Fixes #5983. ([@andersk], 7 files / +170 / −2, merged 2026-08-16T23:43:41Z)
+
+**Forms-relevant practical impact of `.exactPartial()`:** The v1.5.64 cycle documented PR #5928 `.deepPartial()` (nested partials). **#6065 `.exactPartial()` is its sibling that addresses the exact-optional distinction the v4-removal complaints raised.** Now every level of the partial story is covered: `.partial()` (loose — `undefined` allowed), `.exactPartial()` (exact — `undefined` rejected, matches TS `Partial<>` with `exactOptionalPropertyTypes` on), and `.deepPartial()` (nested recursion). For forms:
+1. **Draft autosaves / partial form updates** — use `.exactPartial()` when the DB/API layer distinguishes "field absent" from "field explicitly undefined" (a common drift bug: a leftover `field: undefined` property passed to a `PUT` serializer).
+2. **Optional subforms / stepper forms** — `.exactPartial()` rejects a subform object whose keys are present-but-undefined, catching the "renderer put undefined keys in" bug `.partial()` silently accepted.
+3. **`.partial()` → `.exactPartial()` migration** — the runtime difference `{k:1,...{}}.k !== {k:1,...{k:undefined}}.k` is exactly the class of bug that shows up as phantom empty/null values in form payloads.
+4. **`zod-form-data`/JSON-schema integration** — `ZodExactOptional` also interacts with the input-mode JSON-schema fixes in the same drop (#6418, #6409, #6133) for `unrepresentable`/catch/transform edge cases.
+
+**PR #6420 owning-schema-on-issue — what it unblocks (verbatim from the PR body):** Before, an error map could reach a schema's metadata only when the schema itself raised the issue; for check-originated codes (`too_small`/`too_big`/`invalid_format`/`not_multiple_of`) `iss.inst` is the `$ZodCheck`, which has no `meta()` and no link back to the schema — so the most common case, labelling a `.min()` failure with the field's own `title`, was unreachable (`"undefined is invalid."`). **Now** `iss.schema` always names the owning schema:
+
+```ts
+z.config({
+  customError: (iss) => {
+    const meta = iss.schema && z.globalRegistry.get(iss.schema);
+    return `${meta?.title ?? "Field"} is invalid.`;
+  },
+});
+z.string().min(5).meta({ title: "Password" }).safeParse("abc"); // => "Password is invalid."
+```
+
+**For forms UX:** this is the fix that makes **field-title-annotated validation messages work for length/format/range checks** (the most common form validation path) — not just for type-mismatch checks. Teams building `customError`-based internationalized per-field message systems should re-verify `.min()`/`.max()`/`.regex()` error labelling after upgrading.
+
+### Per-user-type practical-impact table
+
+| User type | Impact |
+|---|---|
+| Draft-autosave / partial-update forms on Zod v4 | **HIGH** — `.exactPartial()` is the exact-optional sibling of `.deepPartial()`; adopt it for "absent ≠ undefined" semantics |
+| Forms with `customError` + `meta({title})` per-field labels | **HIGH** — PR #6420 fixes `.min()`/`.format()`-style labels that returned "undefined is invalid." |
+| `fromJSONSchema` / OpenAPI-driven forms | MEDIUM — JSON-schema fixes (#6419/#6409/#6133) + `format: "hostname"` (#6305) tighten round-trip fidelity |
+| Stepper / optional-subform forms | MEDIUM — `.exactPartial()` rejects present-but-undefined subform keys |
+| Error-map internationalization (RHF `errors` via `zodResolver`) | MEDIUM — owning-schema `meta` makes per-schema localized messages reachable for check codes |
+
+### Compare-to-canary.20260814T233931 verification & migration checklist
+
+1. `rg -n "\\.deepPartial|\\.exactPartial|\\.partial" src/` — find partial usages; decide loose vs exact per form-save boundary
+2. Search for `zod-deep-partial` / `@traversable/zod` — obsolete post-#5928/#6065, remove
+3. Search `customError` / `globalRegistry.get` in custom error maps — upgrade to the PR #6420 `iss.schema` pattern for field-title labels
+4. `zod@4.5.0` STABLE within 5-10 days — production stays `^4.4.3` until then; `zod@canary` for early access to `.exactPartial()` + `.deepPartial()`
+
+### Sources
+
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — `4.5.0-canary.20260816T230800` (gitHead `234c407`, npm-published 2026-08-16T23:33:19Z, trusted GitHub-Actions identity)
+- [Zod PR #6065 — feat: add .exactPartial() to ZodObject](https://github.com/colinhacks/zod/pull/6065) — andersk, merged 2026-08-16T23:43:41Z, fixes #5983; the exact-partial sibling of PR #5928
+- [Zod PR #6420 — feat(v4): expose the owning schema on check-originated issues](https://github.com/colinhacks/zod/pull/6420) — colinhacks, merged 2026-08-16T22:50:33Z; closes #5900 (+ #4681, #5329, #5259); the `.schema`-on-issue fix
+- [Zod PR #5928 — feat(v4): add z.deepPartial and runtime z.input / z.output](https://github.com/colinhacks/zod/pull/5928) — the v1.5.64-cycle target; `.deepPartial()` predecessor of `.exactPartial()`; both now in the same canary train
+- [Zod issue #5983 — the `.exactPartial()` request](https://github.com/colinhacks/zod/issues/5983) — closed by PR #6065
+- [Zod issue #5900 — the "owning schema on check-originated issues" gap](https://github.com/colinhacks/zod/issues/5900) — closed by PR #6420
+- [Zod PR #6418 — tuple minItems input-mode fix](https://github.com/colinhacks/zod/pull/6418) — JSON-schema input-mode fidelity
+- [Zod PR #6305 — format: "hostname" in fromJSONSchema](https://github.com/colinhacks/zod/pull/6305) — new JSON-schema format support
+- [Zod PR #6387 — parse input containing reference cycles](https://github.com/colinhacks/zod/pull/6387) — cycle-safe parsing
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — the 14-drop Aug 16 burst behind `4.5.0-canary.20260816T230800`
+- [TypeScript `exactOptionalPropertyTypes` tsconfig docs](https://www.typescriptlang.org/tsconfig/#exactOptionalPropertyTypes) — the TS flag `.exactPartial()` matches (`Partial<>` under exact)
+- [TypeScript `Partial<>` utility type docs](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype) — the TS builtin `.exactPartial()` mirrors

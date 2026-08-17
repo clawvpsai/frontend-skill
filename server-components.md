@@ -2197,3 +2197,71 @@ Next.js's metadata pipeline has been a contributor to RSC + SSR + Streaming SSR 
 - [Cross-reference: `components.md` → `## React 19.3.0-canary-eb8feb71 SHIPPED (August 14, 2026) — PR #37169 Fragment Once Listeners + PR #37290 enableParallelTransitions Flag Flipped ON` — the React canary SHIP event that canary.20 shares the bundling window with (PR #97249 vendor bump 22e4f993 followed by PR #97388 metadata pipeline refactor — neither is React-bundled; they ship with the next/react vendor bump 24e4f993 → beef6d60 → eb8feb71 ahead of itself)
 - [Cross-reference: v1.5.60 server-components.md `## Next.js 16.3.1-canary.17 SHIPPED — 4 MATERIAL PRs + 15 Commits` — the previous canary-batch to touch server-components.md (canary.17 was 1d 22h 42min before canary.20)
 - [PR #97387 — Adopt SelectedMetadata for metadata rendering](https://github.com/vercel/next.js/pull/97387) — the canary.19 consumer of `SelectedMetadata`; pairs with PR #97388 as producer
+
+## Next.js 16.3.1-canary.21 (Repo-Tagged August 16, 2026 — NOT Yet npm-Published) — PR #97255 Anchor the Async Local Storage Instances to Global Symbols (Fatal Cache Components / revalidatePath / sync-IO Crash in `next dev` under pnpm) — Server Components / RSC Lens (commit `5817bd1`, merged 2026-08-16T21:15:52Z)
+
+**Current npm state at this cron's check (2026-08-17T00:02Z):** `next@canary` dist-tag is STILL `16.3.1-canary.20` — the `v16.3.1-canary.21` version commit (`d45672c`, tagged 2026-08-16T23:21:52Z) is **repo-tagged but NOT yet npm-published**. The canary-branch compare `v16.3.1-canary.20...canary` now returns `ahead_by: 5, behind_by: 0` (was `ahead_by: 2` at the v1.5.67 check) — the **3 NEW commits ahead of canary.20 since the last cycle** are:
+
+| Commit | Merged | PR | Classification |
+|---|---|---|---|
+| `c18acf5` | 2026-08-16T14:40:01Z | **PR #97421** — `test: deflake use-cache-size-zero warm reload` | test-only CI infra |
+| `5817bd1` | 2026-08-16T21:15:52Z | **PR #97255** — Anchor the async local storage instances to global symbols | **MATERIAL** (10 files / +91/−121) |
+| `d45672c` | 2026-08-16T23:21:52Z | `v16.3.1-canary.21` | version-bump commit |
+
+The **v1.5.66/67-cycle forecast "canary.21 npm-publish expected within 16-24h on the accelerated 24h cadence, forecast ~2026-08-16T23:30Z ±6h"** landed **on time at the repo level** — the canary.21 tag commit `d45672c` was authored 2026-08-16T23:21:52Z (few minutes inside the ±6h window). The npm publish is the release-bot step that trails the tag; it had not propagated at this cron's 00:02Z check. **The v1.5.69 cycle should re-verify `next@canary` and record the npm-published `16.3.1-canary.21` if it landed.**
+
+### The HEADLINE: PR #97255 — the six AsyncLocalStorages must be singletons within a realm
+
+**[@unstubbable], merged 2026-08-16T21:15:52Z, 10 files / +91 / −121.** This is a **correctness bug fix** for `next dev` with **Cache Components** — the most RSC-adjacent crash fix in the canary train this cycle.
+
+**The 5-step bug walkthrough (verbatim from the PR body):**
+
+1. **The invariant:** The six async local storages (`workAsyncStorage`, `workUnitAsyncStorage`, plus the request/params/headers-adjacent storages) **must be singletons within a realm** — a store entered through one reference has to be readable through every other reference, otherwise code running inside the scope sees no store at all.
+2. **The old (weaker) guarantee:** Until now that relied on **module identity**. But a realm evaluates the same `next` file more than once if the package is reachable through more than one path, and each evaluation then creates a storage of its own. The `.external.js` rewrite in `handle-externals.ts` pins which specifier every layer requires, but **it cannot help when one specifier resolves to two filenames**.
+3. **The intermittent trigger:** A bug in **Node's `fs.realpathSync`** can return a path with its symlinks unresolved (nodejs/node#65113), and the module loader keys the module cache on that path — so **on a pnpm install, `next/dist/...` is evaluated twice**. Consequences:
+   - a **Route Handler calling `revalidatePath`** read a `workAsyncStorage` that nothing had ever entered → **crashed**;
+   - **`io()` read a `workUnitAsyncStorage`** that was not the one `app-render` had entered → **sync IO went untracked** (Cache Components rely on sync-IO tracking to know what to cache/revalidate).
+4. **The Node fix** is nodejs/node#65113, **not yet in a release** — and versions without it stay affected once it is (the bug is in a realpath edge path, not fixed by upgrading Node alone).
+5. **The fix:** Each storage instance is now **anchored to a global symbol** — `getOrCreateGlobalAsyncLocalStorage` holds the singleton for any number of copies. **Worker threads and edge sandboxes still get their own storages** (each has its own `globalThis`). **The key includes the Next.js version**, so a realm holding two different Next.js versions keeps them apart (can't assume cross-version shape compatibility). The helper is stateless — all state lives on `globalThis` — so `async-local-storage.ts` being duplicated alongside everything else doesn't matter. The same helper **replaces the equivalent code in `request-insights-identity.ts`**, which was already anchoring its storage this way.
+
+**The test-coverage change:** The tests that skipped this under Turbopack are **enabled again** and are what covers the fix. In `dev-warmup.util.ts`, `testInitialLoad` and `testNavigation` returned early under Turbopack (before the revalidation + every assertion after it), and the two sync-IO tests were never registered — **taking that suite from 72 → 88 tests under Turbopack**. `cache-components-tasks.test.ts` had the same two early returns.
+
+**Honest scope note (verbatim):** *"This does not make duplicate module instances go away, it only removes the consequence that is fatal. A realm that loads `next/dist` twice still pays for two module registries and twice the memory."*
+
+### Why this matters for the Server Components lens
+
+This is the **third canary in a row with a Cache Components–adjacent fix** (canary.19 PR #97387 SelectedMetadata, canary.20 PR #97388 metadata primitives, now canary.21 PR #97255 ALS-singleton anchoring). The through-line: Next 16's Cache Components + RDC compression rollout (PR #97247) depends on **correct sync-IO + per-request/work async-scope tracking**, and that tracking was being silently corrupted on pnpm installs by dual module evaluation. This PR removes the *fatal* failure mode (crash + untracked IO) without fixing the memory duplication — teams on pnpm + Turbopack + Cache Components in dev should treat **canary.21 as the fix for intermittent `revalidatePath` crashes and "sync IO went untracked" symptoms**.
+
+### 5-row practical-impact table
+
+| User type | Impact |
+|---|---|
+| pnpm + Turbopack + Cache Components in `next dev` | **CRITICAL** — intermittent `revalidatePath` crash + untracked sync IO fixed; the whole reason this PR exists |
+| npm/yarn + Turbopack + Cache Components | LOW — the dual-evaluation path is pnpm-symlink-specific; benign but harmless to take the fix |
+| Webpack `next dev` | LOW — same correctness guarantee, no crash path to hit |
+| Edge middleware / external-store users | No change — edge sandboxes keep their own storages by design (per-`globalThis`) |
+| Monorepo / multi-Next-version realms | No change — version-keyed symbols keep two Next versions apart |
+
+### 4-step audit recipe (for teams who hit the crash)
+
+1. `rg -n "revalidatePath" app/ routes/` — find Route Handlers calling `revalidatePath`
+2. `rg -n "io\\(" app/` + `rg -n "use cache" app/` — find Cache Components relying on sync-IO tracking
+3. `cat package.json | jq '.packageManager'` + `npm ls next --depth=0` — confirm pnpm + single `next` version
+4. Upgrade to `next@canary` (canary.21 once npm-published) and re-run the failing dev flow; the intermittent crash + untracked-IO symptoms should disappear
+
+### Recommended version pin
+
+- **Production:** stay on `@latest` `16.3.1` STABLE — PR #97255 is dev/correctness, not a production-blocker.
+- **Evaluators + Cache Components users:** `next@canary` `16.3.1-canary.20` today; move to `16.3.1-canary.21` the moment it npm-publishes (it is the ALS-singleton fix).
+- **pnpm + Turbopack + Cache Components dev users:** canary.21 is the fix — upgrade on publish.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.21` GitHub tag commit `d45672c`](https://github.com/vercel/next.js/commit/d45672c) — the version-tag commit, authored 2026-08-16T23:21:52Z; **npm-publish pending at this cron's check**
+- [PR #97255 — Anchor the async local storage instances to global symbols](https://github.com/vercel/next.js/pull/97255) — @unstobbable, merged 2026-08-16T21:15:52Z, 10 files / +91 / −121; the ALS-singleton fix
+- [Next.js canary-branch compare (`v16.3.1-canary.20...canary`)](https://github.com/vercel/next.js/compare/v16.3.1-canary.20...canary) — returned `ahead_by: 5, behind_by: 0` at 2026-08-17T00:02Z
+- [PR #97421 — `test: deflake use-cache-size-zero warm reload`](https://github.com/vercel/next.js/pull/97421) — test-only; re-enabled Cache Components warm-reload assertions
+- [nodejs/node#65113 — the `fs.realpathSync` symlink-unresolved bug](https://github.com/nodejs/node/issues/65113) — the upstream Node bug (not yet released) that triggers the dual module evaluation
+- [Next.js `next@canary` npm dist-tag](https://registry.npmjs.org/next) — still `16.3.1-canary.20` at 2026-08-17T00:02Z
+- [Cross-reference: `performance.md` → v1.5.63 `## Next.js 16.3.1-canary.17 SHIPPED — PR #97287 NFT + PR #96819 Pages API + PR #97350 app-entry scoping + PR #97276 satori/vog bump` — server-components.md (RSC lens) is the natural sibling for request-scoped infra
+- [Cross-reference: canary.19 PR #97387 + canary.20 PR #97388 — the two previous CacheComponents-adjacent PRs this PR Nears; v1.5.65 + v1.5.66 covered them]
