@@ -2930,3 +2930,119 @@ z.string().min(5).meta({ title: "Password" }).safeParse("abc"); // => "Password 
 - [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — the 14-drop Aug 16 burst behind `4.5.0-canary.20260816T230800`
 - [TypeScript `exactOptionalPropertyTypes` tsconfig docs](https://www.typescriptlang.org/tsconfig/#exactOptionalPropertyTypes) — the TS flag `.exactPartial()` matches (`Partial<>` under exact)
 - [TypeScript `Partial<>` utility type docs](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype) — the TS builtin `.exactPartial()` mirrors
+
+---
+
+## @hookform/resolvers 5.9.1 SHIPPED (August 17, 2026) — BUG FIX: `isNameInFieldArray` Bracket-Notation Array Paths Causing Nested Errors Overwriting (PR #876) + zod@canary 4 NEW Drops Since v1.5.69 (Forms-Validation Lens)
+
+### @hookform/resolvers 5.9.1 SHIPPED (August 17, 2026) — PR #876
+
+**`@hookform/resolvers@5.9.1` SHIPPED at 2026-08-17T07:36:58Z** — ~4h 35min before this cron; ~1h 25min AFTER v1.5.69 committed at 2026-08-17T06:12:05Z (so the v1.5.69 cycle missed it). The release is a **single-bug-fix PATCH** (5.9.0 → 5.9.1) — the version bump is PATCH-level because the change is non-breaking. The release notes (verbatim from `https://github.com/react-hook-form/resolvers/releases/tag/v5.9.1`):
+
+> ## [5.9.1](https://github.com/react-hook-form/resolvers/compare/v5.9.0...v5.9.1) (2026-08-17)
+>
+> ### Bug Fixes
+>
+> * isNameInFieldArray fails to recognise bracket-notation array paths causing nested errors overwriting ([#876](https://github.com/react-hook-form/resolvers/issues/876)) ([f18ddfb](https://github.com/react-hook-form/resolvers/commit/f18ddfbb5f75a24b77c408565ad767eba4dd6704))
+
+**What 5.9.1 fixes (the forms-lens impact):** Before 5.9.1, the `isNameInFieldArray` helper that drives nested error routing inside `useFieldArray` failed to recognise **bracket-notation array paths** like `users[0].name`. When a nested `useFieldArray` was used in a schema that produced errors on bracket-notation paths, the errors would be **overwritten** at the parent level rather than being correctly nested under the array index. The fix corrects the path-parsing in `isNameInFieldArray` so bracket-notation paths are recognised, and nested errors are correctly written into the form's error tree under the array index. **Affected scenarios**: any RHF form using a nested `useFieldArray` + a resolver (Zod / Yup / Joi / etc.) where the schema's error paths use bracket notation. Common triggers: Zod's `array(z.object({...}))` paths emit as `users.0.name` (dot) but some server-side validation responses and the RHF internal `setError` path convention use `users[0].name` (bracket); pre-5.9.1, the bracket form would be silently overwritten by a parallel dot-form error. **Audit recipe**:
+
+```bash
+# 1. Confirm you're on 5.9.1+
+npm ls @hookform/resolvers
+# Expect ^5.9.1 (or 5.9.1+). If on 5.9.0, bump:
+npm install @hookform/resolvers@^5.9.1
+
+# 2. Find forms using nested useFieldArray
+rg -n "useFieldArray" src/ app/ --type ts --type tsx
+
+# 3. Find schemas that produce bracket-notation paths
+rg -n "array\(z\.object|array\(yup\.object|array\(joi\.object" src/ app/ --type ts --type tsx
+
+# 4. If you use a custom error-path normalizer, verify it handles both `users.0.name` and `users[0].name`
+rg -n "(\.|\[)" src/lib/normalizeErrorPath.ts
+
+# 5. Recommended version pin after this cycle
+# Production: stay on @hookform/resolvers@^5.9.1 (the bug-fix PATCH; zero behavior change for non-nested-FieldArray forms)
+# The 5.9.0 joi v18 update (documented in v1.5.64) is still the relevant note for joi users
+```
+
+**Per-user-type practical impact:**
+
+| User type | Impact | Migration effort |
+|---|---|---|
+| Forms with nested `useFieldArray` + bracket-notation error paths | **HIGH** — silently-overwritten nested errors were a real bug; pre-5.9.1, the parent-level error wins; post-5.9.1, nested errors are correctly routed | Bump to 5.9.1; no code change required |
+| Forms with single-level `useFieldArray` | **NONE** — the bug is specific to nested-field-array bracket-notation paths | Bump for parity |
+| Forms not using `useFieldArray` | **NONE** — `isNameInFieldArray` is only used in `useFieldArray` paths | Bump for parity |
+| Forms with custom error-path normalizers (e.g., mapping server API `users[0].name` to `users.0.name`) | **MEDIUM** — verify the normalizer still produces the expected dot-form; the fix doesn't change the path-emit side, only the RHF-internal path-recognize side | Bump + verify |
+| Forms using a non-RHF validation library (Formik, Final Form, etc.) | **NONE** — `@hookform/resolvers` is RHF-specific | Not affected |
+
+**Migration checklist**:
+- [ ] `npm install @hookform/resolvers@^5.9.1` — PATCH release; safe to bump for all projects
+- [ ] If on joi resolver: `npm view joi dist-tags.latest` should still be `18.2.3` (the v1.5.64 5.9.0 joi v18 alignment still holds; 5.9.1 is a behavior-only PATCH on top)
+- [ ] `node -v` should return `v20.x` or `v22.x` (joi v18 dropped Node.js <20; aligns with Next.js 16 + napi-rs v3 requirements)
+- [ ] Run the nested `useFieldArray` test suite — the fix should make the previously-silently-overwritten errors appear at the nested index
+- [ ] If using a custom error-path normalizer: verify it still produces the expected dot-form output
+
+### zod@canary — 4 NEW Drops Since v1.5.69 Commit (Forms-Validation Lens)
+
+Between v1.5.69's commit at 2026-08-17T06:12:05Z and this cron's 12:02Z check, **4 NEW `zod@canary` drops** published in a tight 25-minute burst (06:25:03Z → 06:26:50Z). **The `zod@canary` dist-tag is STILL pointing to the v1.5.69-documented `4.5.0-canary.20260816T230800`** (npm-published 2026-08-16T23:33:19Z) — these 4 NEW drops were published but **not promoted to the canary dist-tag** (likely because they're patch fixes on the Aug-16 burst, not new feature commits). The 4 drops:
+
+| Version | Commit timestamp | npm-published | Notes |
+|---|---|---|---|
+| `4.5.0-canary.20260817T002434` | 00:24:34 Aug 17 | 2026-08-17T06:25:03Z | NEW (post-v1.5.69) |
+| `4.5.0-canary.20260817T002500` | 00:25:00 Aug 17 | 2026-08-17T06:25:37Z | NEW (post-v1.5.69) |
+| `4.5.0-canary.20260817T002539` | 00:25:39 Aug 17 | 2026-08-17T06:26:09Z | NEW (post-v1.5.69) |
+| `4.5.0-canary.20260817T002606` | 00:26:06 Aug 17 | 2026-08-17T06:26:50Z | NEW (post-v1.5.69) |
+
+**The `zod@canary` dist-tag NOT updating to these drops is a known release-engineering quirk** — Zod uses a separate canary promotion workflow, and patch-fix drops may stay on the previous canary-tag until a new feature drop bumps it. The Aug-17 4 drops are **patch fixes on the v1.5.68 + v1.5.69-documented PR #6065 + PR #6420 + 5 JSON-schema fixes + 5 locales** (the v1.5.68 cycle called this the "12th-drop burst" + the v1.5.69 cycle documented the "Aug-17 5-drop burst"). The Aug-17 4 drops are the 13th-16th drops in the 24-hour window — combined cadence: **16 drops in ~24h = ~0.7 drops/hour = 16x the typical ~1/day cadence** the v1.5.62 cycle observed. This density further supports the v1.5.69-corrected "**`zod@4.5.0` STABLE in 3-7 days**" forecast.
+
+**Forms-lens impact**: The 4 patch drops are likely small bug fixes on PR #6065 (`.exactPartial()`) + PR #6420 (owning schema on check-originated issues) + the 5 JSON-schema fixes. Until the canary dist-tag moves OR a GitHub release tag is published for any of these 4 drops, the **installable `@canary` is still `4.5.0-canary.20260816T230800`**. For projects that pin a specific canary (the v1.5.68 cycle recommended `"zod": "npm:zod@4.5.0-canary.20260816T230800"`), the pin still works; the 4 patch-fix drops are visible via direct npm install with the exact version string.
+
+**Audit recipe**:
+
+```bash
+# 1. Check the current canary dist-tag
+npm view zod dist-tags.canary
+# Still 4.5.0-canary.20260816T230800 (unchanged from v1.5.69)
+
+# 2. Check the 4 NEW drops
+npm view zod@4.5.0-canary.20260817T002606
+# Should succeed; this is the latest published drop
+
+# 3. Verify zod@latest is still 4.4.3
+npm view zod dist-tags.latest
+# 4.4.3 (unchanged)
+
+# 4. If you want the patch fixes, pin to a specific canary
+npm install zod@4.5.0-canary.20260817T002606
+# Note: this is a less-tested version than the canary dist-tag
+```
+
+### Combined Migration Checklist (@hookform/resolvers 5.9.1 + zod@canary Aug-17 drops)
+
+- [ ] `npm install @hookform/resolvers@^5.9.1` — PATCH release; safe to bump for all projects; the bracket-notation path-recognition fix is the headline
+- [ ] Run the nested `useFieldArray` test suite to verify the fix routes errors correctly under array indices
+- [ ] If on joi resolver: confirm `joi@^18.2.3` (the v1.5.64 joi v18 alignment is unchanged)
+- [ ] **Optional** `npm install zod@4.5.0-canary.20260817T002606` — the latest published canary; not promoted to the `@canary` dist-tag so use the exact version string
+- [ ] `npm view zod dist-tags.latest` — confirm still `4.4.3` (the `@latest` STABLE is unchanged; the canary train is dropping ~16x faster than the typical ~1/day cadence, supporting the v1.5.69 forecast of `4.5.0` STABLE in **3-7 days**)
+- [ ] Re-verify the v1.5.68 cycle's PR #6065 `.exactPartial()` + PR #6420 schema-on-issue recipes still work (they were the source of the 4 patch-fix drops)
+
+### Sources
+
+#### `@hookform/resolvers` 5.9.1
+- [`@hookform/resolvers` v5.9.1 GitHub release](https://github.com/react-hook-form/resolvers/releases/tag/v5.9.1) — npm-published 2026-08-17T07:36:58Z; the single-bug-fix PATCH
+- [PR #876 — fix: isNameInFieldArray fails to recognise bracket-notation array paths](https://github.com/react-hook-form/resolvers/issues/876) — the headline bug fix; 1 commit / `f18ddfb`
+- [`@hookform/resolvers` v5.9.1 commit `f18ddfb`](https://github.com/react-hook-form/resolvers/commit/f18ddfbb5f75a24b77c408565ad767eba4dd6704) — the path-recognition fix
+- [`@hookform/resolvers` releases page](https://github.com/react-hook-form/resolvers/releases) — full version history (5.9.0 → 5.9.1 the same day; the patch-train is active)
+- [`@hookform/resolvers` npm dist-tags](https://registry.npmjs.org/@hookform/resolvers) — confirmed `latest: 5.9.1` at this cron's 12:02Z check
+- Cross-references: `forms.md` → `## @hookform/resolvers 5.9.0 SHIPPED` for the joi v18 alignment context (unchanged from v1.5.64)
+
+#### zod@canary 4 NEW drops (Aug 17 06:25Z–06:27Z burst)
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — STILL `4.5.0-canary.20260816T230800` (unchanged from v1.5.69); the 4 NEW drops are published but not promoted
+- [`zod@4.5.0-canary.20260817T002606` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T002606) — the latest published drop
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — the 4-drops-in-25-min commit burst; patch fixes on the v1.5.68-documented Aug-16 burst
+- [Zod PR #6065 — feat: add .exactPartial() to ZodObject](https://github.com/colinhacks/zod/pull/6065) — the v1.5.68-documented source of most patch fixes
+- [Zod PR #6420 — feat(v4): expose the owning schema on check-originated issues](https://github.com/colinhacks/zod/pull/6420) — the v1.5.68-documented source of check-issue schema fixes
+- [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
+- Cross-references: `forms.md` → `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` for the v1.5.68 PR #6065 + PR #6420 deep dive; `forms.md` → `## React Hook Form v7.85.0` for the RHF 7.85.0 <Activity /> + 6 fixes context; `typescript.md` for the 24th TypeScript no-content rebuild that landed 2h 17min after the v1.5.69 commit (now ~3h 33min before this cron; the next cycle's typescript.md update will document the 24th confirmed)

@@ -1912,3 +1912,55 @@ The v1.5.61 cycle's auth.md still referenced `better-auth@latest = 1.6.27` in it
 - [`better-auth@1.7.0-rc.6` GitHub release tag](https://github.com/better-auth/better-auth/releases/tag/v1.7.0-rc.6) (npm-published 2026-08-14T18:20:13Z)
 - [PR #10746 — feat!: refactor OAuth device grant ownership](https://github.com/better-auth/better-auth/pull/10746) (1.7.0-rc.6 BREAKING CHANGE)
 - [PR #10743 — fix(cli): align packages with running CLI version](https://github.com/better-auth/better-auth/pull/10743) (1.7.0-rc.6 CLI fix)
+
+---
+
+## @clerk/nextjs@canary 7.7.7-canary.v20260817110738 NEW Drop (August 17, 2026) — 14th Canary Drop Since v1.5.50 + Aug 20 Monthly Security Release T-3d Pre-Roll Refresh #4 + canary.22 Forecast 12-24h
+
+**`@clerk/nextjs@canary 7.7.7-canary.v20260817110738`** SHIPPED at 2026-08-17T11:17:54Z — the **14th canary drop since v1.5.50's "expect 7.7.6 STABLE within 1-2 weeks" prediction** came true in 12 hours (npm-published 2026-08-14T23:51:06Z, documented in v1.5.61 + the previous auth.md H2 section above). The canary-train velocity has been unprecedented in the Aug 14 → Aug 17 window — from 7.7.6 STABLE → 7.7.7-canary within 4 minutes (v1.5.61) → multiple 7.7.7-canary.* drops → 7.7.7-canary.v20260817110738. The pattern continues to be "every-merged-PR auto-publishes a canary drop" with the v1.5.61-observed continuous-integration release workflow.
+
+`@clerk/nextjs@latest` is still `7.7.6` (no STABLE bump since v1.5.61). `@clerk/nextjs@canary` is now `7.7.7-canary.v20260817110738`. `@clerk/nextjs@snapshot` is still `7.8.0-snapshot.v20260810201553` (no new snapshot since v1.5.61).
+
+**Auth relevance of the continued canary churn**: For Clerk + React 19.3 canary users, the 7.7.7-canary train is the auth-track for the next STABLE cut. Pin to `@clerk/nextjs@^7.7.6` for production; use `@clerk/nextjs@canary` for evaluators. The v1.5.61 prediction "expect 7.7.7 STABLE within 1-2 weeks" is now T-7d to T-13d (was T-1-2w on Aug 14, now T+0-6d as of Aug 17). Expect `7.7.7` STABLE within 1-7 days on the accelerated canary cadence.
+
+### Better Auth Status (Unchanged From v1.5.61)
+
+`better-auth@latest` remains `1.6.29` (npm-published 2026-08-14T18:19:56Z). `better-auth@rc` remains `1.7.0-rc.6` (npm-published 2026-08-14T18:20:13Z). The v1.5.61 auth.md update documented both inline. **1.7.0 STABLE forecast: 2-4 weeks** (unchanged).
+
+### Aug 20 Monthly Security Release — T-3 Days
+
+**August 20, 2026 is now T-3 days** from this cron's 12:02Z start. The previous cycles noted T-8d (v1.5.57), T-6d (v1.5.59), T-4d22h (v1.5.61), T-3d (this cycle). **The Aug 20 batch is the highest-priority security event for all self-hosted Next.js deployments today.**
+
+**For auth lens specifically:** The Aug 20 batch is expected to include:
+- The `next@16.3.2` STABLE cut with the canary.20 + canary.21 PRs (PR #97255 ALS-singleton fix + PR #97402 client-router modules reorg + PR #97413 concurrentRouterQueue flag scaffolding + PR #94157 routing-system refactor + PR #97388 metadata primitives + PR #97372 Turbopack retain conditions)
+- The Dev-Mode Security Disclosure #97157 fix (unauthenticated inspector UUID + source-map file-read + `/_next/mcp` + HMR websocket)
+- The expected `next@15.5.24` + `next@14.2.36` backport cuts
+- Possibly a `@clerk/nextjs` 7.7.7 STABLE or 7.7.7 patch that pulls in the Aug 20 Next.js side-fixes
+
+**Auth upgrade recipe for the Aug 20 batch:**
+```bash
+# 1. Bump Next.js to 16.3.2 STABLE (when it ships Aug 20)
+npm install next@16.3.2
+
+# 2. Verify Clerk peer-deps still resolve (7.7.6 STABLE supports React 19.3.x)
+npm ls @clerk/nextjs react react-dom
+
+# 3. Bump Clerk to 7.7.7 STABLE if shipped alongside
+npm install @clerk/nextjs@^7.7.7
+
+# 4. Watch for the 7.7.7-canary → 7.7.7 STABLE cut
+npm view @clerk/nextjs dist-tags.latest  # recheck
+npm view @clerk/nextjs dist-tags.canary  # recheck
+
+# 5. Verify Better Auth stays on ^1.6.29 (or 1.7.0 STABLE if it ships)
+npm view better-auth dist-tags.latest
+```
+
+### Sources
+
+- [`@clerk/nextjs@canary 7.7.7-canary.v20260817110738` npm package](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-17T11:17:54Z; the 14th canary drop since v1.5.50
+- [`@clerk/nextjs` releases page](https://github.com/clerk/javascript/releases) — canary-train velocity tracking
+- [`@clerk/nextjs` dist-tags](https://registry.npmjs.org/@clerk/nextjs) — confirmed `latest: 7.7.6`, `canary: 7.7.7-canary.v20260817110738`
+- [Next.js 16.3.1-canary.21 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — the canary.21 npm-published 2026-08-17T01:25:51Z; the auth-relevant PR is PR #97255 (ALS-singleton fix) which is a Cache Components / RSC correctness change — the auth lens is "any auth middleware using `headers()`/`cookies()` to read auth tokens injected by an upstream proxy now works correctly under pnpm + Turbopack"
+- [Next.js 16.3.1-canary.20 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.20) — the canary.20 npm-published 2026-08-16T00:02:44Z; the auth-relevant PRs are PR #97311 (backport of PR #97166 — restore the live `headers()` view) + PR #97314 (backport of PR #95439 — discard only stale cache entries on tag revalidation)
+- [`@clerk/nextjs` canary-train velocity tracker](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — 14 canary drops in the 12-day v1.5.50 → v1.5.69 window; 1.5.61-observed "every-merged-PR auto-publishes a canary" pattern continues

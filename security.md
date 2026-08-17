@@ -2013,3 +2013,78 @@ curl -I https://yourdomain.com/__nextjs_attach-nodejs-inspector
 - [Next.js `v16.3.1-canary.19` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.19) — npm-published 2026-08-14T23:46:30Z
 - [PR #97278 — fix(next/image): reject empty image on read/write to disk cache](https://github.com/vercel/next.js/pull/97278) — security-adjacent: prevents empty-file cache serving vulnerability
 - [July 20, 2026 Security Release — 9 CVEs disclosed](https://www.netlify.com/changelog/2026-07-21-nextjs-security-vulnerabilities/) — 4 HIGH + 5 MEDIUM; reference severity ranking for Aug 20 batch candidates
+
+---
+
+## Aug 20 Monthly Security Release — T-3 Days (Pre-Roll Refresh #4) + Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026) Confirmed + canary.22 Forecast 12-24h (3 lukesandberg Turbopack GC PRs Ahead) + 16.3.2 STABLE Forecast 3-5d Coincident With Aug 20
+
+**August 20, 2026 is now T-3 days** from this cron's 12:02Z start (was T-4d22h in v1.5.61, T-3d in v1.5.69 inline observation). This is the **4th consecutive cycle with an Aug 20 pre-roll refresh entry**.
+
+### The 3 lukesandberg Turbopack GC PRs Ahead of canary.21 — canary.22 Forecast 12-24h
+
+The `next` canary-branch is now **3 commits ahead of canary.21** at this cron's check (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.21...canary` returning `ahead_by: 3, behind_by: 0` at 2026-08-17T12:02Z). All 3 are by **lukesandberg** — Turbopack persistence/GC infrastructure. **These will ship as canary.22 within 12-24h on the accelerated 24h cadence** (v1.5.69's "16-24h" forecast was made at 06:02Z; we are now at 12:02Z = 6h later, so the canary.22 npm-publish is expected between 2026-08-17T18:00Z and 2026-08-18T06:00Z).
+
+| PR | Author | Merged | Files / Lines | What it ships | Security relevance |
+|---|---|---|---|---|---|
+| **#96929** | lukesandberg | 2026-08-17T00:28:17Z | 16 files / +1350/-169 | `turbo-persistence: add key-value tombstones for MultiValue families` — the tombstone format + GC primitive for MultiValue cache entries | **MEDIUM** — fix for a known MultiValue tombstone-omission bug; reduces on-disk DB bloat; no direct CVE but the dev-mode disk-usage class |
+| **#95975** | lukesandberg | 2026-08-17T02:53:18Z | 5 files / +208/-71 | `turbo-tasks-backend: add persistence delete/tombstone plumbing for GC` — the GC plumbing that consumes the #96929 tombstones | **LOW** — the consumer-side of the #96929 fix; not a security boundary |
+| **#96043** | lukesandberg | 2026-08-17T02:53:19Z | 5 files / +289/-108 | `turbo-tasks-backend: Enforce that tasks exist when accessing them` — task-existence enforcement for the GC | **LOW** — invariant enforcement; reduces a class of "task accessed after GC" races |
+
+**Security lens for canary.22**: These are **infrastructure hardening** PRs, not CVE-class fixes. The Turbopack persistence layer is dev-mode + cache-only — the GC work is mostly to keep dev-mode disk usage bounded (the v1.5.49 PR #96941 was the first stage, the v1.5.69 PR #96929/#95975/#96043 are the second stage). No new attack surface; no new disclosure; no new mitigated CVE. **However**, the GC changes are the kind of pre-Aug-20 batch hardening Vercel typically batches into a 16.3.x patch — so **there is non-zero chance these land as part of `next@16.3.2` STABLE on Aug 20** rather than shipping as a canary first.
+
+### Next.js 16.3.2 STABLE Forecast 3-5d (Coincident With Aug 20)
+
+The v1.5.69 inline observation "**`next@16.3.2` STABLE in 3-5 days** (Aug 20 window; the canary.21 PRs are strong candidates for the 16.3.2 STABLE cut)" is **now narrowed to 3-5 days from this cron's 12:02Z start = 2026-08-20 to 2026-08-22**. Strong candidates for the 16.3.2 STABLE bundle:
+
+- **PR #97255** (ALS-singleton fix, unstubbable) — Cache Components / `revalidatePath` / sync-IO crash under pnpm + Turbopack; the **headline** 16.3.2 candidate
+- **PR #97402** (acdlite, client-router modules reorg) — pure structural refactor + router-queue rewrite preparation
+- **PR #97413** (acdlite, concurrentRouterQueue flag scaffolding) — flag scaffolding, no implementation yet
+- **PR #94157** (emilkowalski, server route matcher stack removal) — dev/prod route-inventory alignment fix; -80ms to -350ms dev cold-start win
+- **PR #97388** (byebyers, metadata primitives extract) — RSC-adjacent refactor; behavior-preserving
+- **PR #97372** (mischnic, Turbopack retain conditions) — pnpm + Turbopack + `output: 'standalone'` `MODULE_NOT_FOUND` fix
+- **PR #97278** (styfle, next/image empty cache reject) — security-adjacent MED-severity self-hosted bug fix
+- **PR #96929** + **#95975** + **#96043** (lukesandberg, Turbopack GC) — IF included; lower confidence
+
+**The 6-step `next@16.3.2` STABLE readiness recipe:**
+1. `npm view next@canary version` — confirm 16.3.1-canary.21 (or 16.3.1-canary.22 if shipped by Aug 20)
+2. `npm view next dist-tags.latest` — confirm 16.3.2 when shipped
+3. `npm install next@16.3.2` — the canary.21 PRs are the priority candidates
+4. `npm ls next` — verify no peer-dep conflicts
+5. Re-run audit recipes from the prior cycle's #97157 mitigations (T-3d from the fix shipping)
+6. If on `pnpm + Turbopack + output: 'standalone'`: the canary.20 PR #97372 fix should already be in 16.3.1-canary.20 — verify by checking the canary.20 commit log
+
+### The Aug 20 Pre-Batch Triage State
+
+- **Issue #97157** (dev-mode inspector UUID + source-map file-read + `/_next/mcp` + HMR websocket) — still closed-by-bot-not-fix at 2026-08-11T07:18:25Z; **canonical fix expected in the Aug 20 batch**
+- **No new pre-announced CVEs** as of this cron's check (verified via `GET https://github.com/advisories?query=next.js`)
+- **`next@16.3.1` STABLE + all 16.3.1-canary.0..21** are pre-patched for the Aug 20 batch
+- **Expected Aug 20 patch versions**: `next@16.3.2` + `next@15.5.24` + `next@14.2.36` (one each for the 3 active branches; the 16.3.1-patch intermediate is unlikely given 16.3.2 ships in the same window)
+- **The Aug 20 monthly security release is independent of next@16.3.1 STABLE** — upgrading to 16.3.1 STABLE does NOT address #97157. Continue applying the 5 mitigations from v1.5.50 until 16.3.2 STABLE ships.
+
+### The 5 #97157 Mitigations (Refresh, Unchanged From v1.5.50)
+
+1. **DO NOT bind `next dev` to all interfaces** — explicitly bind to `127.0.0.1` or use `--hostname 127.0.0.1`
+2. **DO NOT expose `next dev` to a LAN** (common Docker dev setups forward port 3000 to the LAN)
+3. **DO NOT visit malicious sites while running `next dev`** — the DNS rebinding drive-by is the worst case
+4. **Disable MCP explicitly** in `next.config.ts` via `experimental: { mcpServer: false }` if not using it
+5. **Watch for the fix** in canary.22+ and in the Aug 20 Vercel monthly security release (`next@16.3.2` STABLE)
+
+### Sources
+
+- [Next.js 16.3.1-canary.21 release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — npm-published 2026-08-17T01:25:51Z; 5 commits = PR #97402 + PR #97413 + PR #97255 + 2 test-only
+- [Next.js canary-branch ahead of canary.21](https://github.com/vercel/next.js/compare/v16.3.1-canary.21...canary) — 3 PRs: PR #96929 + PR #95975 + PR #96043 (all lukesandberg Turbopack GC); verified at 2026-08-17T12:02Z
+- [PR #96929 — turbo-persistence: add key-value tombstones for MultiValue families](https://github.com/vercel/next.js/pull/96929) — lukesandberg, merged 2026-08-17T00:28:17Z
+- [PR #95975 — turbo-tasks-backend: add persistence delete/tombstone plumbing for GC](https://github.com/vercel/next.js/pull/95975) — lukesandberg, merged 2026-08-17T02:53:18Z
+- [PR #96043 — turbo-tasks-backend: Enforce that tasks exist when accessing them](https://github.com/vercel/next.js/pull/96043) — lukesandberg, merged 2026-08-17T02:53:19Z
+- [PR #97255 — Anchor the async local storage instances to global symbols](https://github.com/vercel/next.js/pull/97255) — unstubbable, merged 2026-08-16T21:15:52Z; the headline 16.3.2 STABLE candidate
+- [PR #97402 — Reorganize client router modules](https://github.com/vercel/next.js/pull/97402) — acdlite, merged 2026-08-16T03:46:33Z; client-router modules reorg
+- [PR #97413 — Scaffolding for concurrentRouterQueue flag](https://github.com/vercel/next.js/pull/97413) — acdlite, merged 2026-08-16T03:46:34Z; concurrentRouterQueue flag scaffolding
+- [PR #94157 — Remove server route matcher stack](https://github.com/vercel/next.js/pull/94157) — emilkowalski, merged 2026-08-15T11:07:23Z; -80ms to -350ms dev cold-start
+- [PR #97388 — Extract metadata resolution primitives](https://github.com/vercel/next.js/pull/97388) — byebyers, merged 2026-08-15T15:28:41Z; RSC metadata refactor
+- [PR #97372 — Turbopack: retain conditions for resolve request keys](https://github.com/vercel/next.js/pull/97372) — mischnic, merged 2026-08-15T12:37:14Z; pnpm + Turbopack + `output: 'standalone'` fix
+- [PR #97278 — fix(next/image): reject empty image on read/write to disk cache](https://github.com/vercel/next.js/pull/97278) — styfle, merged 2026-08-14T21:49:50Z; security-adjacent MED-severity
+- [Vercel next.js security advisories feed](https://github.com/advisories?query=next.js) — verified at 2026-08-17T12:02Z; no new pre-announced CVEs
+- [Next.js issue #97157 — Dev-Mode Security Disclosure (closed-by-bot-not-fix at 2026-08-11T07:18:25Z)](https://github.com/vercel/next.js/issues/97157) — the headline Aug 20 candidate
+- [Node.js issue nodejs/node#65113](https://github.com/nodejs/node/issues/65113) — the Node fix not yet released; the trigger for PR #97255's global-symbol anchoring
+- [Endoflife.date Next.js page](https://endoflife.date/nextjs) — confirmed 16.x Active LTS, 15.x Maintenance LTS, 14.x EOL
+- [Cross-references: `auth.md` → `## @clerk/nextjs@canary 7.7.7-canary.v20260817110738 NEW Drop` for the Clerk 7.7.7 STABLE forecast context; `routing.md` → `## Next.js 16.3.1-canary.20` for the PR #94157 + PR #97388 routing-system lens; `performance.md` → `## Next.js 16.3.1-canary.20` for the PR #97372 Turbopack retain conditions lens; `server-components.md` → `## Next.js 16.3.1-canary.21` for the PR #97255 ALS-singleton RSC lens]
