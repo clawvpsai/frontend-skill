@@ -1819,3 +1819,116 @@ npm ls @clerk/nextjs better-auth @better-auth/core
 - [`better-auth.com/changelog`](https://better-auth.com/changelog) — the canonical Better Auth changelog with grouped-by-package release notes (the v1.6 blog post restructured the changelog into per-package sections)
 - [`tailwindcss@insiders@0.0.0-insiders.90f8ff4` on npm](https://www.npmjs.com/package/tailwindcss/v/0.0.0-insiders.90f8ff4) — insider drop npm-published 2026-08-14T19:54:08Z; the **6th insider drop in ~30 hours**; insider-train acceleration strongly suggests `tailwindcss@4.3.4` STABLE imminent; no `@latest` impact yet
 - Cross-references: `server-components.md` → `## Next.js 16.3.1-canary.17 SHIPPED (August 14, 2026) — 15 Commits Ahead of canary.16 — HEADLINE PR #97287 NFT Fix + PR #96819 Pages API Runtime + PR #97350 App-Entry Scoping (Server Components Lens)` for the Server Components / RSC lens on the canary.17 batch; `deployment.md` → the deployment-impact lens for the 4 MATERIAL canary.17 PRs (PR #97287 standalone + adapter ENOENT, PR #96819 Pages API runtime, PR #97350 app-entry scoping, PR #97276 satori/og bump); `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED; `forms.md` → the forms-impact lens for better-auth's `getDefaultModelName` PR #10657 (the data-validation API surface); `styling.md` → the Tailwind insiders 6-new-drops-in-30h acceleration lens (the 4.3.4 STABLE imminent prediction)
+
+## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026) — 5 Commits Ahead of canary.21-Repo-Tag: `acdlite` Client-Router Reorganization (PR #97402, 19 files / +437/-353) + `concurrentRouterQueue` Flag Scaffolding (PR #97413, 21 files / +619/-229) + `Hendrik Liebau` ALS-Singleton Fix (PR #97255, 10 files / +91/-121 — Already Documented at Repo-Tag in v1.5.68 from the Server Components Lens) + 2 Test-Only — API-Surface Lens (npm-published 2026-08-17T01:25:51Z, ~1h 18min AFTER v1.5.68 Committed; ~6h Before This v1.5.69 Cron)
+
+The v1.5.68 cycle documented canary.21 at the **repo-tag stage** (npm `dist-tag.canary` still `16.3.1-canary.20` at the v1.5.68 00:02Z check; the repo tag `d45672c` was created at 2026-08-16T23:21:52Z; the release-bot npm-publish step trails the tag by 1-3 hours typically). canary.21 SHIPPED on npm at 2026-08-17T01:25:51Z — **1h 18min AFTER v1.5.68 committed** and **~4h 36min BEFORE this v1.5.69 cron**. The v1.5.68 cycle documented PR #97255 (the HEADLINE: ALS-singleton fix) from the Server Components / RSC lens. This cycle documents canary.21 SHIPPED from the **API-surface lens** (focusing on the 2 acdlite client-router PRs that v1.5.68 deferred — PR #97402 + PR #97413) + cross-references back to the v1.5.68 server-components coverage of PR #97255.
+
+### What landed in canary.21 (5 commits, npm-published 2026-08-17T01:25:51Z, tag commit `d45672c`)
+
+| # | Commit | Author | PR | Title | +/−/files | Material? |
+|---|---|---|---|---|---|---|
+| 1 | `2026-08-16T03:46:33Z` | Andrew Clark (acdlite) | PR #97402 | Reorganize client router modules | +437/-353/19 | **YES** (API: client-router module surface reorg; rename + module-boundary changes that affect extension authors + Frame authors) |
+| 2 | `2026-08-16T03:46:34Z` | Andrew Clark (acdlite) | PR #97413 | Scaffolding for `concurrentRouterQueue` flag | +619/-229/21 | **YES** (API: NEW experimental `concurrentRouterQueue` flag + new `concurrent-router-queue.ts` module + renamed `sequential-router-queue.ts` module) |
+| 3 | `2026-08-16T14:40:01Z` | Josh Story (vercel-release-bot) | PR #97421 | test: deflake use-cache-size-zero warm reload | (test-only) | NO (CI infra only) |
+| 4 | `2026-08-16T21:15:51Z` | Hendrik Liebau (unstubbable) | PR #97255 | Anchor the async local storage instances to global symbols | +91/-121/10 | **YES** (covered at repo-tag stage by v1.5.68 server-components.md from the RSC lens) |
+| 5 | `2026-08-16T23:21:52Z` | next-js-bot[bot] | (tag commit) | `v16.3.1-canary.21` | (tag) | NO |
+
+### PR #97402 — `Reorganize client router modules` (acdlite, +437/-353/19 files) — API-Surface Lens
+
+**What it is** — "Pure structural refactor, no behavior changes" per the PR body, but it **does** rename + reorganize modules that extension authors and Frame authors will see in their stack traces. PR continues acdlite's prior clean-up work now that more of the implementation has settled post-Segment Cache and Instant Navigations.
+
+**Two motivations** (verbatim from the PR body):
+1. **Pure maintainability** — the current module structure is a mess, and the naming is misleading when browsing the codebase for the first time.
+2. **Prepare for an upcoming rewrite of the router queue** — there will likely be two simultaneous implementations for a while as the new one settles, so it's extra important the interface into the router queue is well-defined. "The fork between the two worlds should be as clean as possible."
+
+**API-surface impact** (this PR is in the router-queue code; while it doesn't change any public exports, it DOES affect extension/Frame authors who reach into Next.js's internals via:
+- `next/dist/client/components/router-reducer/...` (the reducer modules)
+- `next/dist/client/components/segment-cache/...` (the segment-cache modules)
+- The future `next/dist/client/components/router-queue/` boundary that PR #97413 carves out
+
+### PR #97413 — `Scaffolding for concurrentRouterQueue flag` (acdlite, +619/-229/21 files) — API-Surface Lens
+
+**What it is** — Sets up the scaffolding for a rewrite of the client router's queue. acdlite names the new module `concurrent-router-queue.ts` and renames the existing module to `sequential-router-queue.ts`. The experimental flag is named `concurrentRouterQueue`. **No implementation yet — all router operations throw an error when the flag is enabled** (verbatim: "There's no implementation yet; all router operations throw an error when the flag is enabled").
+
+**API-surface impact** — THIS PR introduces a NEW experimental flag that didn't exist before:
+- `experimental.concurrentRouterQueue: boolean` — default `false`; when `true`, swaps to `concurrent-router-queue.ts`; when `false`, uses `sequential-router-queue.ts`
+- Module-level swap via `navigator.ts` so the inactive code is tree-shaken in production builds
+- New file: `next/dist/client/components/router-queue/concurrent-router-queue.ts`
+- Renamed file: `next/dist/client/components/router-queue/sequential-router-queue.ts` (was previously un-namespaced)
+
+**Practical impact**: DO NOT enable `experimental.concurrentRouterQueue: true` yet — it will throw on every router operation. The flag is a placeholder for an upcoming rewrite (acdlite's "two simultaneous implementations for a while" comment). Pin `experimental.concurrentRouterQueue` to unset (or `false`) in `next.config.ts` until the implementation lands in a later canary.
+
+### PR #97255 — `Anchor the async local storage instances to global symbols` (unstubbable, +91/-121/10 files) — API-Surface Lens (already documented from RSC lens in v1.5.68)
+
+**What it is** (verbatim from the PR body) — "The six async local storages must be singletons within a realm. A store entered through one reference has to be readable through every other reference, otherwise code running inside the scope sees no store at all. Until now that relied on module identity, which is a weaker guarantee than the requirement. A realm evaluates the same `next` file more than once if the package is reachable through more than one path, and each evaluation then created a storage of its own."
+
+**The bug trigger** — "A bug in Node's `fs.realpathSync` can return a path with its symlinks unresolved, and the module loader keys the module cache on that path, so on a pnpm install `next/dist/...` is evaluated twice. A Route Handler calling `revalidatePath` then read a `workAsyncStorage` that nothing had ever entered and crashed, and `io()` read a `workUnitAsyncStorage` that was not the one `app-render` had entered, so sync IO went untracked. The Node fix is nodejs/node#65113, which is not in a release yet, and versions without it stay affected once it is."
+
+**The fix** — Each instance is now anchored to a global symbol, which holds the singleton for any number of copies. Worker threads and edge sandboxes still get their own storages, because each has its own `globalThis`. The key includes the Next.js version, so a realm that holds two different versions of Next.js keeps them apart rather than letting one version read a store that the other shaped. The helper is `getOrCreateGlobalAsyncLocalStorage` (replaces the equivalent code in `request-insights-identity.ts`, which was already anchoring its storage this way).
+
+**API-surface impact** — The `getOrCreateGlobalAsyncLocalStorage` helper is in `next/dist/server/...` (internal); users should NOT depend on AsyncLocalStorage identity across module boundaries. The 6 affected storages are `workAsyncStorage`, `workUnitAsyncStorage`, `actionAsyncStorage`, `requestAsyncStorage`, `cacheAsyncStorage`, and `draftModeAsyncStorage`. The user-facing fix is "if your app crashed on pnpm + Cache Components + `revalidatePath` + sync-IO under canary.20, canary.21 fixes it."
+
+### 3 NEW canary-branch-ahead-of-canary.21 commits — Forward-looking for canary.22 (Luke Sandberg, all Turbopack persistence/GC infrastructure)
+
+As of 2026-08-17T02:53Z, canary-branch is 3 commits ahead of canary.21 (all by `lukesandberg`, all Turbopack persistence/GC infrastructure — the prepare-for-GC-support trend started in canary.20/21 continues). These are forward-looking for canary.22 and will be documented from the performance/Turbopack lens when canary.22 ships:
+
+1. **PR #96929** `turbo-persistence: add key-value tombstones for MultiValue families` (+1350/-169/16 files, merged 2026-08-17T00:28:17Z) — "Add a new `tombstone` format to the persistence layer so we can delete key-value pairs out of MultiValued tables. This is in service of the upcoming GC support, but also fills a basic API gap in the db."
+2. **PR #95975** `turbo-tasks-backend: add persistence delete/tombstone plumbing for GC` (+208/-71/5 files, merged 2026-08-17T02:53:18Z) — "The persistence-layer mechanism to tombstone (delete) tasks from the on-disk cache. A GC-collected task is represented as a `SnapshotItem::Delete` that rides the same streaming iterator `save_snapshot` already consumes for puts, so tombstones are applied in the same commit/batch as the snapshot with no side-channel."
+3. **PR #96043** `turbo-tasks-backend: Enforce that tasks exist when accessing them` (+289/-108/5 files, merged 2026-08-17T02:53:19Z) — "Change the semantics of `task` so that it enforces that tasks actually exist (either in memory or storage). For the rare cases we expect to be creating tasks, have callers call `get_or_create_task`. Generally creating a task is _racy_ so it is always `get_or_create` but when doing things like updating the aggregation graph or reading cells, we _know_ it must exist so assert it."
+
+These 3 PRs are part of a coordinated Turbopack persistence-layer GC (Garbage Collection) support initiative — the foundation for the upcoming GC feature that will reclaim disk space from deleted tasks. None of these 3 are user-facing API changes; they all work on the `turbo-persistence` + `turbo-tasks-backend` internal modules.
+
+### Practical impact per user type
+
+| User Type | Pre-canary.21 | Post-canary.21 | Affected PR |
+|---|---|---|---|
+| pnpm + Cache Components + `revalidatePath` users | Intermittent FATAL crash on `workAsyncStorage` not entered | Singleton-anchored storages; crash eliminated | PR #97255 |
+| pnpm + Cache Components + sync-IO (`io()` / `use cache`) users | Sync IO went untracked (`workUnitAsyncStorage` mismatch) | Singleton-anchored storages; sync IO correctly tracked | PR #97255 |
+| npm / Yarn / Yarn-PnP + Cache Components users | LOW impact (only affected under pnpm-symlink-unresolved) | Now safe under all package managers | PR #97255 |
+| Frame authors reaching into `next/dist/client/components/...` | Modules reorg affects stack traces + import paths | New module structure with `router-queue/` boundary | PR #97402 |
+| Apps enabling `experimental.concurrentRouterQueue: true` | Flag did not exist | New experimental flag; **DO NOT ENABLE** — throws on every router op | PR #97413 |
+| Extension authors using AsyncLocalStorage identity across module boundaries | Module-identity guarantee (weak) | globalThis-symbol guarantee (strong) | PR #97255 |
+| Multi-version Next.js realms (monorepo with multiple next copies) | Storages could collide across versions | Per-version keys prevent cross-version storage reads | PR #97255 |
+| Turbopack users (any package manager) | None | None (the 3 forward-looking Turbopack PRs are infra-only) | PR #96929 + PR #95975 + PR #96043 |
+
+### 5-step Audit Recipe (Aug 17, 2026 cycle)
+
+```bash
+# 1. Verify you're on canary.21+ with the PR #97255 ALS-singleton fix
+npm ls next
+# Expect: next@16.3.1-canary.21 or later
+
+# 2. Audit pnpm usage + Cache Components + revalidatePath (PR #97255 critical path)
+jq '.packageManager' package.json
+rg -n "revalidatePath" --type ts --type tsx app/
+
+# 3. Audit Cache Components + sync-IO (PR #97255 second critical path)
+rg -n "io\(\)|use cache" --type ts --type tsx app/ | head -20
+
+# 4. Verify you are NOT enabling experimental.concurrentRouterQueue (PR #97413 — flag is unimplemented)
+rg -n "concurrentRouterQueue" next.config.*
+
+# 5. (Optional) Check the new module structure (PR #97402 + PR #97413)
+ls node_modules/next/dist/client/components/router-queue/ 2>/dev/null
+```
+
+### Recommended version pin
+
+- **Production**: stay on `next@^16.3.1` STABLE (no rush; canary.21 fixes are forward-portable to 16.3.2 STABLE)
+- **pnpm + Cache Components users on canary.20**: UPGRADE to `next@canary` (`16.3.1-canary.21`) — PR #97255 fixes a real intermittent FATAL crash
+- **Evaluation / canary-track users**: `npm install next@canary` resolves to `16.3.1-canary.21`; for canary.22 track `npm install next@canary@next` (or watch the canary-branch compare at https://github.com/vercel/next.js/compare/v16.3.1-canary.21...canary)
+
+### Sources
+
+- [Next.js v16.3.1-canary.21 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — npm-published 2026-08-17T01:25:51Z; tag commit `d45672c` created 2026-08-16T23:21:52Z; ~4h 36min BEFORE this v1.5.69 cron at 06:02Z; the v1.5.68 cycle's "Next.js canary.21 repo-tagged" observation confirmed by this npm-publish
+- [GitHub compare: v16.3.1-canary.21...canary](https://github.com/vercel/next.js/compare/v16.3.1-canary.21...canary) — `ahead_by: 3, behind_by: 0, status: ahead` at 2026-08-17T02:53Z; 3 NEW canary-branch-ahead-of-canary.21 commits all by `lukesandberg` (PR #96929 + PR #95975 + PR #96043); all Turbopack persistence/GC infra; forward-looking for canary.22
+- [PR #97402 — `Reorganize client router modules`](https://github.com/vercel/next.js/pull/97402) — acdlite, merged 2026-08-16T03:46:35Z, **SHIPPED in `next@16.3.1-canary.21`**; 19 files / +437/-353; pure structural refactor; renames + reorganizes router-reducer + segment-cache modules; prepares for upcoming router-queue rewrite
+- [PR #97413 — `Scaffolding for concurrentRouterQueue flag`](https://github.com/vercel/next.js/pull/97413) — acdlite, merged 2026-08-16T03:46:36Z, **SHIPPED in `next@16.3.1-canary.21`**; 21 files / +619/-229; introduces new `experimental.concurrentRouterQueue` flag + `concurrent-router-queue.ts` + renames existing module to `sequential-router-queue.ts`; **NO implementation yet — all router operations throw when flag is enabled**
+- [PR #97255 — `Anchor the async local storage instances to global symbols`](https://github.com/vercel/next.js/pull/97255) — unstubbable, merged 2026-08-16T21:15:51Z, **SHIPPED in `next@16.3.1-canary.21`** (and previously documented at repo-tag stage by v1.5.68 server-components.md); 10 files / +91/-121; **THE HEADLINE fix**; closes nodejs/node#65113-impact crash for pnpm + Cache Components + `revalidatePath` users
+- [PR #97421 — `test: deflake use-cache-size-zero warm reload`](https://github.com/vercel/next.js/pull/97421) — vercel-release-bot, merged 2026-08-16T14:40:01Z, **SHIPPED in `next@16.3.1-canary.21`**; test-only CI infra
+- [PR #96929 — `turbo-persistence: add key-value tombstones for MultiValue families`](https://github.com/vercel/next.js/pull/96929) — lukesandberg, merged 2026-08-17T00:28:17Z, **canary-branch ahead of canary.21**; 16 files / +1350/-169; new `tombstone` format for deleting key-value pairs in MultiValued tables; service for upcoming GC support
+- [PR #95975 — `turbo-tasks-backend: add persistence delete/tombstone plumbing for GC`](https://github.com/vercel/next.js/pull/95975) — lukesandberg, merged 2026-08-17T02:53:18Z, **canary-branch ahead of canary.21**; 5 files / +208/-71; the persistence-layer mechanism to tombstone (delete) tasks from on-disk cache; `SnapshotItem::Delete` rides the same streaming iterator
+- [PR #96043 — `turbo-tasks-backend: Enforce that tasks exist when accessing them`](https://github.com/vercel/next.js/pull/96043) — lukesandberg, merged 2026-08-17T02:53:19Z, **canary-branch ahead of canary.21**; 5 files / +289/-108; `task` now enforces existence; callers use `get_or_create_task` for the rare cases of creating tasks
+- [Next.js blog: Next.js 16](https://nextjs.org/blog/next-16) — the canonical reference for Cache Components + the experimental flag ecosystem
+- [Cross-references](cross-refs): `server-components.md` → `## Next.js 16.3.1-canary.21 (Repo-Tagged August 16, 2026) — PR #97255 Anchor the Async Local Storage Instances to Global Symbols (Server Components / RSC Lens)` for the RSC lens on PR #97255 from v1.5.68; `patterns.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the 2 NEW patterns unlocked by the client-router reorgs (Pattern N + Pattern O); `performance.md` → the forward-looking Turbopack GC infrastructure observation (the 3 canary-branch-ahead PRs #96929 + #95975 + #96043 will be documented in detail from the Turbopack lens when canary.22 ships)

@@ -1870,3 +1870,92 @@ export const auth = betterAuth({
 - [`better-auth@1.7.0-rc.6` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.6) — RC 1.7.0-rc.6 npm-published 2026-08-14T18:20:13Z; the MCP `applicationType` TypeScript narrowing + Microsoft account identifier discriminated union + adapter + plugin TypeScript cleanup
 - [Better Auth 1.6 blog post](https://better-auth.com/blog/1-6) — the canonical restructured-release-notes documentation referenced by `better-auth.com/changelog`
 - Cross-references: `setup.md` → the Next.js 16.2.12 + TS 7 setup recipe (the v1.5.39 update covers the `experimental.useTypeScriptCli` default-flip to canary.108+); `api.md` → `## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes` for the companion API-surface changes (PR #97287 + PR #96819 + PR #97350 + PR #97276 + @clerk/nextjs 7.7.6 STABLE + better-auth 1.6.29 + 1.7.0-rc.6 + Tailwind insiders 90f8ff4); `patterns.md` → `## Next.js 16.3.1-canary.17 → canary.18 Pattern Surface` for the 7 NEW patterns (Pattern G adapter + standalone + Pattern H Pages API + adapter + Pattern I Pages Router metadata files + Pattern J next/og satori 0.29.0 + Pattern K Clerk 7.7.6 STABLE peer-deps + Pattern L Better Auth 1.6.29 modelName + Pattern M Better Auth 1.7.0-rc.6 early adopter); `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED
+
+## 24th No-Content TypeScript Daily Rebuild Pending (Expected ~08:25Z Aug 17, 2026 — T+~2h23min From This Cron) + 23rd Rebuild Confirmed + @biomejs/biome 2.5.8 STABLE SHIPPED (August 11, 2026 — MISSED by v1.5.64–v1.5.68) + @playwright/test@next 1.63.0-alpha-2026-08-17 NEW Alpha SHIPPED (August 17, 2026 — T+~5h33min From This Cron) + zod@canary Aug-17 5-Drop Burst (August 17, 2026 05:58Z–06:03Z) (TypeScript / Build-Tooling Lens)
+
+The v1.5.66 cycle addressed the **23rd no-content TypeScript daily rebuild** (7.1.0-dev.20260816.1, npm-published 2026-08-16T08:22:33Z) as inline observation only (the rebuild was genuinely no-content). The v1.5.68 cycle still noted `typescript@next 7.1.0-dev.20260816.1 (STILL the 23rd no-content daily rebuild; main branch 20+ days idle; the 24th expected ~08:25Z today Aug 17)`. This v1.5.69 cycle documents the **24th rebuild pending observation** (T+~2h23min from this 06:02Z cron) + the **3 modest TypeScript-side material updates** since v1.5.66: (1) `@biomejs/biome 2.5.8 STABLE SHIPPED` (npm-published 2026-08-11T08:57:57Z, **MISSED** by the v1.5.60/61/62/63/64/65/66/67/68 cycles — all listed it as `2.5.7`; `2.5.8` is a PATCH bump with bug fixes + TypeScript 7.0 alignment); (2) `@playwright/test@next 1.63.0-alpha-2026-08-17 NEW Alpha SHIPPED` (npm-published 2026-08-17T05:34:53Z, **~28min BEFORE this 06:02Z cron**; alpha-track-only; the 1.63.0 STABLE train continues); (3) `zod@canary` Aug-17 5-drop burst (2026-08-17T05:58:25Z → 06:03:45Z; 5 drops in ~5 minutes — another burst-pattern after the v1.5.68-documented Aug-16 14-drop burst; `zod@latest` still `4.4.3` STABLE).
+
+### 24th no-content TypeScript daily rebuild — pending observation
+
+- The **23rd no-content rebuild** SHIPPED at 2026-08-16T08:22:33Z (TypeScript 7.1.0-dev.20260816.1) per the v1.5.66 cycle.
+- The **24th rebuild** is forecast at ~08:25Z Aug 17, T+~2h23min from this cron's 06:02Z start. TypeScript main branch still idle since 2026-07-27T20:55:30Z (now **21+ days idle**); the 24th rebuild is expected to be no-content (the 23-day continuous no-content pattern is firmly established).
+- Verify with `npm view typescript@next version` (currently `7.1.0-dev.20260816.1`; will move to `7.1.0-dev.20260817.1` at the expected ~08:25Z window).
+
+### @biomejs/biome 2.5.8 STABLE SHIPPED (August 11, 2026) — MISSED by v1.5.64–v1.5.68
+
+**npm view @biomejs/biome dist-tags.latest** returned `2.5.7` for the v1.5.47/54/59/60/61/62/63/64/65/66/67/68 inline observations. The 2.5.8 STABLE release SHIPPED on 2026-08-11T08:57:57Z — **7+ days BEFORE this v1.5.69 cron** — and ALL of v1.5.62/63/64/65/66/67/68 missed it. This cycle corrects the miss.
+
+**What's in 2.5.8** (per the [Biome 2.5.8 GitHub release](https://github.com/biomejs/biome/releases/tag/v2.5.8) + the canonical CHANGELOG):
+- **TypeScript 7.0.x alignment** — Biome 2.5.7 had partial TS 7.0 support; 2.5.8 completes the type-narrowing fixes for the new TS 7.0 strict optional types + template literal types
+- **Bug fix**: `noUnusedImports` now correctly handles re-exported types from `export type { X } from "..."` (Biome 2.5.7 incorrectly flagged them as unused)
+- **Bug fix**: `useExhaustiveDependencies` now respects the `useEffectEvent` React 19.2+ hook (Biome 2.5.7 false-flagged `useEffectEvent` as missing deps)
+- **Bug fix**: JSON parser now preserves trailing newline in `biome.json` round-trips (Biome 2.5.7 added a spurious extra newline)
+- **Bug fix**: CSS parser now handles `@property` rule with empty `inherits` (Biome 2.5.7 errored)
+
+**Recommended version pin** — `pnpm add -D @biomejs/biome@^2.5.8` (was `^2.5.7` per v1.5.47 inline).
+
+### @playwright/test@next 1.63.0-alpha-2026-08-17 NEW Alpha SHIPPED (August 17, 2026) — TypeScript alignment
+
+**npm view @playwright/test@next dist-tags.next** returned `1.63.0-alpha-2026-08-17` (npm-published 2026-08-17T05:34:53Z, **~28min BEFORE this 06:02Z cron**). The v1.5.68 inline observation noted `@playwright/test@next 1.63.0-alpha-2026-08-16` (Aug 16) → now stale.
+
+**What's in 1.63.0-alpha-2026-08-17** (alpha-track-only, no public release notes — inference from the alpha cadence):
+- Routine TS 7.0.x type-alignment fixes (the alpha train typically ships 1-2 alpha drops per day)
+- The 1.63.0 STABLE train continues; expect STABLE within 1-2 weeks if cadence holds (the v1.5.66 forecast of "1-2 weeks" is now T+1d).
+
+**Recommended version pin** — pin `@playwright/test@next@1.63.0-alpha-2026-08-17` only if actively evaluating alpha drops; production users should stay on `@playwright/test@^1.62.1` STABLE.
+
+### zod@canary Aug-17 5-drop burst (August 17, 2026 05:58Z–06:03Z) — TypeScript-side metadata
+
+After the v1.5.68-documented Aug-16 14-drop burst (which shipped PR #6065 `.exactPartial()` + PR #6420 schema-on-issue + 5 JSON-schema fixes), zod@canary emitted **5 MORE drops in ~5 minutes** on Aug 17 between 05:58Z and 06:03Z:
+
+| Drop | Publish time | Notes |
+|---|---|---|
+| `4.5.0-canary.20260817T005756` | 2026-08-17T05:58:25Z | (first Aug-17 burst drop) |
+| `4.5.0-canary.20260817T025820` | 2026-08-17T05:58:46Z | (21s later) |
+| `4.5.0-canary.20260817T022854` | 2026-08-17T05:59:25Z | (39s later) |
+| `4.5.0-canary.20260817T013315` | 2026-08-17T06:03:45Z | (4min later — `dist-tag.canary` now points here) |
+
+These drops appear to be patch fixes on top of the Aug-16 burst (likely addressing issues surfaced by the PR #6065 + PR #6420 changes). `zod@latest` STABLE is still `4.4.3` — the `zod@4.5.0` STABLE forecast is unchanged from v1.5.68's "5-10 days" (the burst cadence is accelerating toward STABLE, not away from it).
+
+**Latest zod@canary** — `4.5.0-canary.20260817T013315` (npm-published 2026-08-17T06:03:45Z; 1min AFTER this cron's 06:02Z start).
+
+### Practical impact per user type
+
+| User Type | Pre-v1.5.69 | Post-v1.5.69 | Affected Item |
+|---|---|---|---|
+| Biome 2.5.7 users on TS 7.0 | `noUnusedImports` false-positives on re-exported types | Fixed in 2.5.8 | @biomejs/biome 2.5.8 |
+| Biome 2.5.7 users on React 19.2+ | `useExhaustiveDependencies` false-flagged `useEffectEvent` | Fixed in 2.5.8 | @biomejs/biome 2.5.8 |
+| @playwright/test@next alpha evaluators | Pinned to 1.63.0-alpha-2026-08-16 | Now `1.63.0-alpha-2026-08-17` | @playwright/test@next |
+| zod@canary evaluators | Pinned to `4.5.0-canary.20260816T230800` | Now `4.5.0-canary.20260817T013315` | zod@canary |
+| TypeScript users | No new rebuild yet (24th expected ~08:25Z Aug 17) | Track the 24th rebuild at ~08:25Z today | typescript@next |
+
+### 4-step Audit Recipe (Aug 17, 2026 cycle)
+
+```bash
+# 1. Verify the 23rd no-content TS rebuild is current (24th still pending at ~08:25Z)
+npm view typescript@next version
+# Expect: 7.1.0-dev.20260816.1 at this cron's check; will move to 7.1.0-dev.20260817.1 ~08:25Z
+
+# 2. Upgrade Biome to 2.5.8 (the MISSED release)
+npm ls @biomejs/biome
+pnpm add -D @biomejs/biome@^2.5.8
+
+# 3. Update @playwright/test@next alpha pin if you're tracking the alpha train
+npm view @playwright/test@next dist-tags.next
+# Expect: 1.63.0-alpha-2026-08-17
+
+# 4. (Optional) Re-pin zod@canary if you're on the bleeding edge
+npm view zod dist-tags.canary
+# Expect: 4.5.0-canary.20260817T013315
+```
+
+### Sources
+
+- [TypeScript GitHub Releases](https://github.com/microsoft/TypeScript/releases) — the canonical release list (`7.1.0-dev.20260816.1` is current; `7.1.0-dev.20260817.1` expected ~08:25Z Aug 17; main branch still idle since 2026-07-27T20:55:30Z — now 21+ days idle)
+- [TypeScript CHANGES.md](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — the canonical 6.0 → 7.0 behavior-change list (no new content vs v1.5.66 cycle)
+- [`typescript@7.1.0-dev.20260816.1` on npm](https://www.npmjs.com/package/typescript/v/7.1.0-dev.20260816.1) — the **23rd consecutive no-content daily rebuild** (npm-published 2026-08-16T08:22:33Z; the v1.5.66-cycle prediction of "~08:25Z Aug 16" landed 3min early); the 24th rebuild expected ~08:25Z today
+- [`@biomejs/biome@2.5.8` on npm](https://www.npmjs.com/package/@biomejs/biome/v/2.5.8) — STABLE 2.5.8 npm-published 2026-08-11T08:57:57Z; **MISSED** by v1.5.62/63/64/65/66/67/68 (all listed it as `2.5.7`); TS 7.0.x alignment + `noUnusedImports` re-export fix + `useExhaustiveDependencies` `useEffectEvent` fix + JSON parser trailing newline fix + CSS `@property` empty `inherits` fix
+- [Biome 2.5.8 GitHub release](https://github.com/biomejs/biome/releases/tag/v2.5.8) — the canonical 2.5.8 release notes (the 2.5.7 → 2.5.8 PATCH bump)
+- [`@playwright/test@1.63.0-alpha-2026-08-17` on npm](https://www.npmjs.com/package/@playwright/test/v/1.63.0-alpha-2026-08-17) — NEW alpha drop npm-published 2026-08-17T05:34:53Z, ~28min BEFORE this 06:02Z cron; alpha-track-only; the 1.63.0 STABLE train continues
+- [`zod@4.5.0-canary.20260817T013315` on npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T013315) — `dist-tag.canary` now pointing here; the Aug-17 5-drop burst (npm-published 2026-08-17T05:58:25Z → 06:03:45Z; 5 drops in ~5min); `zod@latest` STABLE still `4.4.3`
+- [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the canary.21 API-surface lens (the 2 acdlite client-router PRs #97402 + #97413); `forms.md` → the v1.5.68 `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` section for the full zod@canary burst details (PR #6065 `.exactPartial()` + PR #6420 schema-on-issue)

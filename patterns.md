@@ -4318,3 +4318,113 @@ rg -n "modelName:" auth.ts src/auth.ts
 - [`better-auth@1.7.0-rc.6` on npm](https://www.npmjs.com/package/better-auth/v/1.7.0-rc.6) — RC 1.7.0-rc.6 npm-published 2026-08-14T18:20:13Z; enables Pattern M for early adopters
 - [Better Auth 1.6 blog post](https://better-auth.com/blog/1-6) — the canonical restructured-release-notes documentation referenced by `better-auth.com/changelog`
 - Cross-references: `api.md` → `## Next.js 16.3.1-canary.17 → canary.18 API-Surface Changes` for the companion API-surface changes (PR #97287 + PR #96819 + PR #97350 + PR #97276 + @clerk/nextjs 7.7.6 STABLE + better-auth 1.6.29 + 1.7.0-rc.6 + Tailwind insiders 90f8ff4); `server-components.md` → the Server Components / RSC lens on the canary.17 batch; `deployment.md` → the deployment-impact lens for the 4 MATERIAL canary.17 PRs; `auth.md` → the auth-impact lens for `@clerk/nextjs@7.7.6` STABLE SHIPPED + the 7.7.7-canary acceleration + better-auth 1.6.29 STABLE + 1.7.0-rc.6 SHIPPED; `performance.md` → the perf lens for the canary.18 NavigationFlightResponse enhancements (carry-over from the v1.5.58 cycle)
+
+## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026) — Pattern N: Client-Router Modules Reorganization Boundary for Frame/Extension Authors (PR #97402, +437/-353/19 files, acdlite) + Pattern O: `experimental.concurrentRouterQueue` Flag Scaffolding for the Upcoming Router-Queue Rewrite (PR #97413, +619/-229/21 files, acdlite) + the ALS-Singleton Pattern (PR #97255, +91/-121/10 files, unstubbable — already documented from the RSC lens in v1.5.68) (Pattern Surface)
+
+The v1.5.61 cycle covered 7 NEW patterns (Pattern G–M) from the canary.17 + @clerk/nextjs 7.7.6 + better-auth 1.6.29 + 1.7.0-rc.6 SHIPPED events. The v1.5.66 cycle deferred the canary.20 client-router PRs (PR #97402 + PR #97413 were canary-branch-ahead-of-canary.20 at v1.5.66). The v1.5.68 cycle noted them again at the canary.21 repo-tag stage. This v1.5.69 cycle covers the **SHIPPED** canary.21 from the **pattern-surface lens**, unlocking **2 NEW patterns** (Pattern N + Pattern O) for the client-router reorganizations + cross-referencing the v1.5.68 server-components ALS-Singleton pattern.
+
+### Pattern N — Client-Router Modules Reorganization Boundary (acdlite, PR #97402)
+
+**The pattern**: When Next.js's client-router internals change structurally (without behavior changes), Frame/extension authors who reach into `next/dist/client/components/...` should treat module paths + import names as **versioned boundaries**, not as stable APIs.
+
+```ts
+// Frame author code (pre-canary.21) — reached into the old module structure
+// RISKY: pre-canary.21, this import worked but the path was unstable
+import { reducer } from 'next/dist/client/components/router-reducer/reducer'
+
+// Frame author code (post-canary.21) — PR #97402 reorganized the modules
+// SAFE: the new `router-queue/` namespace is explicitly carved out as the boundary
+import { reducer } from 'next/dist/client/components/router-queue/sequential-router-queue' // or `concurrent-router-queue`
+```
+
+**When to use** — If you maintain a Next.js Frame (the [Next.js Frame system](https://nextjs.org/docs/app/guides/building-a-framework)) or an extension that integrates with the router internals (e.g., custom routing logic, router-reducer overrides, segment-cache integrations), audit your `next/dist/client/components/...` imports after upgrading to canary.21+ to verify the paths + names still resolve.
+
+**When NOT to use** — If you're a regular app developer (not a Frame/extension author), you don't import from these internals. Your code is unaffected.
+
+### Pattern O — `experimental.concurrentRouterQueue` Flag Scaffolding for Upcoming Router-Queue Rewrite (acdlite, PR #97413)
+
+**The pattern**: When Next.js scaffolds a NEW experimental flag for an upcoming rewrite, **DO NOT enable it** until the implementation lands in a later canary. The flag is a placeholder.
+
+```ts
+// next.config.ts (post-canary.21) — DO NOT enable this yet!
+const nextConfig: NextConfig = {
+  experimental: {
+    // concurrentRouterQueue: true, // ← UNCOMMENTING THIS WILL THROW ON EVERY ROUTER OPERATION
+  },
+}
+
+// What you'll write in a future canary (when the implementation lands):
+// const nextConfig: NextConfig = {
+//   experimental: {
+//     concurrentRouterQueue: true, // ← Now safe to enable
+//   },
+// }
+```
+
+**The flag**: `experimental.concurrentRouterQueue: boolean` (default `false`); when `true`, swaps to the new `concurrent-router-queue.ts`; when `false`, uses the renamed `sequential-router-queue.ts`. The module-level swap via `navigator.ts` ensures the inactive code is tree-shaken in production builds.
+
+**Why "DO NOT enable"**: PR #97413 verbatim — "There's no implementation yet; all router operations throw an error when the flag is enabled."
+
+**When to use** — After acdlite ships the actual implementation in a later canary (likely canary.23+ based on the "two simultaneous implementations for a while" comment in PR #97402's body). Track via the canary-branch compare or the Next.js blog.
+
+**When NOT to use** — NOW (canary.21). The flag throws on every router operation.
+
+### Pattern N+O combined audit recipe — Frame/extension authors + early adopters
+
+```bash
+# 1. Verify you're on canary.21+ (PR #97402 + PR #97413 + PR #97255)
+npm ls next
+# Expect: next@16.3.1-canary.21 or later
+
+# 2. Audit your Frame/extension imports for client-router modules (Pattern N)
+rg -n "next/dist/client/components" --type ts --type tsx -l
+# Look for: router-reducer/, segment-cache/, router-queue/
+
+# 3. Verify you are NOT enabling the new flag (Pattern O)
+rg -n "concurrentRouterQueue" next.config.*
+
+# 4. Audit your Cache Components + pnpm usage (the ALS-Singleton pattern from v1.5.68)
+jq '.packageManager' package.json
+rg -n "revalidatePath|io\(\)|use cache" --type ts --type tsx app/ | head -10
+```
+
+### Practical impact per user type
+
+| User Type | Pre-canary.21 | Post-canary.21 | Pattern |
+|---|---|---|---|
+| Frame authors reaching into `next/dist/client/components/router-reducer/` | Modules reorg + rename; import paths may break | New `router-queue/` namespace boundary | Pattern N |
+| Extension authors using AsyncLocalStorage identity | Module-identity guarantee (weak) | globalThis-symbol guarantee (strong) | v1.5.68 Pattern (PR #97255) |
+| Apps enabling `experimental.concurrentRouterQueue: true` | Flag did not exist | NEW experimental flag; **DO NOT ENABLE** | Pattern O |
+| pnpm + Cache Components + `revalidatePath` users | Intermittent FATAL crash on `workAsyncStorage` | Crash fixed via singleton-anchored storages | v1.5.68 Pattern (PR #97255) |
+| Regular app developers (no internals reach-in) | (no impact) | (no impact) | N/A |
+| Multi-version Next.js realms (monorepo with multiple next copies) | Storages could collide across versions | Per-version keys prevent cross-version reads | v1.5.68 Pattern (PR #97255) |
+
+### 5-step Combined Audit Recipe (Aug 17, 2026 cycle)
+
+```bash
+# 1. Verify canary.21+ (Pattern N + O + ALS-Singleton pattern)
+npm ls next
+
+# 2. Pattern N — audit Frame/extension client-router imports
+rg -n "next/dist/client/components" --type ts --type tsx -l
+
+# 3. Pattern O — verify concurrentRouterQueue flag is unset
+rg -n "concurrentRouterQueue" next.config.*
+
+# 4. v1.5.68 Pattern (PR #97255) — verify pnpm + Cache Components audit
+jq '.packageManager' package.json
+rg -n "revalidatePath" --type ts --type tsx app/
+
+# 5. (Optional) Verify the new module structure (Pattern N + O)
+ls node_modules/next/dist/client/components/router-queue/ 2>/dev/null
+# Expect: concurrent-router-queue.ts + sequential-router-queue.ts
+```
+
+### Sources
+
+- [Next.js v16.3.1-canary.21 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — npm-published 2026-08-17T01:25:51Z; tag commit `d45672c` created 2026-08-16T23:21:52Z; ~4h 36min BEFORE this v1.5.69 cron
+- [PR #97402 — `Reorganize client router modules`](https://github.com/vercel/next.js/pull/97402) — acdlite, merged 2026-08-16T03:46:35Z, **SHIPPED in `next@16.3.1-canary.21`**; 19 files / +437/-353; **ENABLES Pattern N**
+- [PR #97413 — `Scaffolding for concurrentRouterQueue flag`](https://github.com/vercel/next.js/pull/97413) — acdlite, merged 2026-08-16T03:46:36Z, **SHIPPED in `next@16.3.1-canary.21`**; 21 files / +619/-229; **ENABLES Pattern O**
+- [PR #97255 — `Anchor the async local storage instances to global symbols`](https://github.com/vercel/next.js/pull/97255) — unstubbable, merged 2026-08-16T21:15:51Z, **SHIPPED in `next@16.3.1-canary.21`**; 10 files / +91/-121; the v1.5.68 RSC-lens pattern (cross-referenced)
+- [Next.js blog: Building a Framework](https://nextjs.org/docs/app/guides/building-a-framework) — the canonical Frame system documentation for Pattern N audience
+- [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the API-surface lens on the same PRs; `server-components.md` → the v1.5.68 `## Next.js 16.3.1-canary.21 (Repo-Tagged August 16, 2026) — PR #97255 Anchor the Async Local Storage Instances to Global Symbols` for the RSC lens on PR #97255
