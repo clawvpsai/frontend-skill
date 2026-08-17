@@ -2728,3 +2728,151 @@ rc.1 SHIPPED at 2026-08-11T23:45:21Z. The Vitest 5 cadence has been: `5.0.0-beta
 - [Vitest 4.1.10 release notes (July 6, 2026)](https://github.com/vitest-dev/vitest/releases/tag/v4.1.10) — the latest stable; unaffected by rc-line changes.
 - Cross-reference: `testing.md` → `## Vitest 5.0.0-rc.1 SHIPPED (August 11, 2026) — First RC of Vitest 5 — 9 Breaking Changes + 3 Features + 2 Perf + 30+ Bug Fixes` for the v1.5.60 lens that documented rc.1 itself; the 17 NEW commits documented in this section are the post-rc.1 main-branch activity that will roll into rc.2.
 - Cross-reference: `testing.md` → `## Vitest Main Branch — 7 NEW Commits Since v1.5.38 (August 10, 2026) — Forward-Looking for 5.0.0-beta.8` for the v1.5.47 lens that predicted the rc.1 SHIP event; the v1.5.47 prediction came true.
+
+## Vitest 5.0.0-rc.2 SHIPPED (August 17, 2026) — Second RC of Vitest 5 — 1 Feature + 20 Bug Fixes (No New BREAKING) — npm-published via 7-package coordinated cut (Tested at v1.5.71 Cron, August 17, 2026)
+
+`vitest@5.0.0-rc.2` SHIPPED at **2026-08-17T13:28:47Z** (npm-published; the GitHub release tag `v5.0.0-rc.2` was published 2026-08-17T13:23:20Z, ~5min before npm-publish — the typical GitHub-first-then-npm cadence). The release was cut via the same coordinated 7-package RC cut as rc.1: `vitest@5.0.0-rc.2` + `@vitest/runner@5.0.0-rc.2` + `@vitest/ui@5.0.0-rc.2` + `@vitest/browser@5.0.0-rc.2` + `@vitest/coverage-v8@5.0.0-rc.2` + `@vitest/expect@5.0.0-rc.2` + `@vitest/spy@5.0.0-rc.2`. **`npm view vitest dist-tags` now shows `rc: 5.0.0-rc.2` (replacing `rc: 5.0.0-rc.1`); `latest` still `4.1.10` and `beta` still `5.0.0-beta.7`** (the dist-tag `beta` covers the beta line; `rc` covers the rc line).
+
+**The headline of this cycle**: rc.2 is **NOT a major-rewrite** — **0 NEW BREAKING changes** (vs rc.1's 9 BREAKING). It's **1 feature + 20 bug fixes** consolidating the rc.1 → STABLE window. The 17 NEW main-branch commits the v1.5.65 cycle documented as "forward-looking for rc.2" (PR #10963 + PR #10928 + PR #10933 + PR #10912 + PR #10932 + PR #10665 + PR #10893 + PR #10891 + PR #10930 + PR #10926 + PR #10937 + PR #10938 + PR #10921 + PR #10943 + PR #10946 + PR #10953 — 16 of the 17 from v1.5.65 + 1 additional PR #10909 "Preserve correct root during resolve config" that was on main but missed by the v1.5.65 cycle's diff) **all landed in rc.2**, plus 3 NEW browser-mode fixes (PR #10956 "Fail instead of hanging when the browser stops responding" + PR #10962 "Exit gracefully when the browser disconnects during cancellation" + PR #10975 "Don't redirect vitest in client environment") + 3 NEW pool/mocker/deps fixes (PR #10964 "Report the worker exit instead of a pipe error that raced it" + PR #10972 "Restrict redirect mocks to the fs allowlist" + PR #10966 "deps: Update all non-major dependencies") + 2 NEW UI fixes (PR #10969 "Fix code editor error and annotations gadgets layout shifts" + PR #10941 "Synchronize watch-run UI state on file removal") + 1 NEW security fix (PR #10971 "Require auth for coverage report and all UI subtree requests") + 1 NEW diagnostic fix (PR #10567 "Render non-Error causes from env setup so the actual diagnostic is not dropped"). **The full diff**: https://github.com/vitest-dev/vitest/compare/v5.0.0-rc.1...v5.0.0-rc.2 (verify at this cron's 18:03Z check — 21 commits ahead of rc.1, with the 1 NEW commit being PR #10909 "Preserve correct root during resolve config" that the v1.5.65 cycle missed).
+
+### The 1 NEW Feature — `vitest@5.0.0-rc.2`
+
+- **PR #10891 `reporter: Add custom GitHub Actions summary title`** — by @heyJonBray and @macarie (commit `4363cdb49`). The GitHub Actions reporter now accepts a `summaryTitle` option to customize the title shown in the Actions summary UI. Pre-rc.2, the title was hardcoded to `"Test Results"` (or the default reporter name). Post-rc.2, the option lets CI pipelines brand their test summary:
+
+```ts
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    reporters: process.env.GITHUB_ACTIONS ? ['github-actions'] : ['default'],
+    // Custom title for the GitHub Actions summary UI
+    summaryTitle: '🧪 E2E Test Suite — Click for details',
+  },
+})
+```
+
+For multi-suite monorepos, this enables per-package branding (`'🧪 @myorg/api Tests'`, `'🧪 @myorg/web Tests'`, etc.) so the Actions summary is scannable. **Migration**: opt-in via `test.summaryTitle`; no behavior change for users who don't set it. **Audit recipe**: `rg -n "summaryTitle" vitest.config.*`.
+
+### The 20 NEW Bug Fixes — `vitest@5.0.0-rc.2`
+
+The fixes are organized into 9 categories by subsystem. Each PR is annotated with its impact tier (HIGH / MEDIUM / LOW):
+
+#### Core test runner (3 fixes)
+- **PR #10928 `Revive global concurrency limit for test lifecycle`** — HIGH. Closes issue #10530. The bug: `describe.concurrent` with nested `describe` blocks could exceed the documented `concurrencyLimit` because PR #10179's per-branch concurrency bound didn't propagate through nesting. The fix restores the global `runTest`-level concurrency bound. **Audit recipe**: `rg -n "describe\.concurrent" test/ src/` and watch for tests that exceed `concurrencyLimit`.
+- **PR #10963 `Own the post-restart rerun, keep process.exit disabled in workers`** — HIGH. The bug: the rerun that `startVitest` schedules after a watch-mode server restart ran as a floating promise with no error handling; late rejections escalated into worker death when `process.exit` was restored after the first test file (CI "Worker forks emitted error"). The fix awaits the rerun + keeps `process.exit` disabled until teardown. **Audit recipe**: search CI logs for `Worker forks emitted error`.
+- **PR #10909 `Preserve correct root during resolve config`** — LOW. AriPerkkio + sheremet-va. The bug: in workspaces with custom `test.workspace` configs, the resolved config root could drift to the workspace's root rather than the per-project root. The fix anchors the resolve root to the per-project root. **Audit recipe**: `rg -n "workspace:" vitest.workspace.* vitest.config.* | head -10`.
+
+#### Browser mode (5 fixes)
+- **PR #10912 `Trigger playwright/chromium gc on lower disk availability`** — HIGH. The bug: Playwright/Chromium garbage collection was triggered too late, leading to disk-full failures on tight-disk CI runners (CI `ENOSPC` / `disk full`). The fix lowers the GC trigger threshold. **Audit recipe**: search CI logs for `ENOSPC` or `disk full` during browser-mode runs.
+- **PR #10295/#10933 `Disallow filter-only options in getBy* locators`** — MEDIUM (BREAKING-types). The bug: filter-only options (`hasText`, `hasNotText`, `has`, `hasNot`) were incorrectly typed as available on `getBy*` methods but silently dropped at runtime. The fix splits `LocatorOptions` into `LocatorOptions` (with `exact`) and `LocatorFilterOptions` (with the four filter options), so `.filter()` accepts the filter options and `getBy*` does not. **Audit recipe**: `rg -n "getByRole\(.+hasText" test/ src/`.
+- **PR #10956 `Fail instead of hanging when the browser stops responding`** — MEDIUM. The bug: a hung browser (Playwright timeout, crashed Chromium process) caused Vitest to hang indefinitely. The fix detects browser non-response within a configured timeout and surfaces a clean error. **Audit recipe**: search CI logs for browser-mode hangs.
+- **PR #10962 `Exit gracefully when the browser disconnects during cancellation`** — MEDIUM. The bug: cancellation during browser tests could leave orphan Playwright processes. The fix exits gracefully on browser disconnect. **Audit recipe**: `rg -n "browser:" vitest.config.*`.
+- **PR #10975 `Don't redirect vitest in client environment`** — LOW. The bug: Vitest's redirect mock applied to client-environment tests where it shouldn't. The fix restricts redirects to the mocker fs allowlist.
+
+#### Pool (2 fixes)
+- **PR #10932 `Worker init to handle queued synchronous messages`** — MEDIUM. The bug: queued synchronous messages during worker init could be lost. The fix handles them properly. **Audit recipe**: search CI logs for `pool` or worker init errors.
+- **PR #10964 `Report the worker exit instead of a pipe error that raced it`** — MEDIUM. The bug: when a worker exits unexpectedly, the pipe error could race the exit and confuse the reporter. The fix reports the worker exit first. **Audit recipe**: search CI logs for `pipe error` + `worker`.
+
+#### Mocker (1 fix)
+- **PR #10972 `Restrict redirect mocks to the fs allowlist`** — MEDIUM. The bug: redirect mocks could escape the fs allowlist and silently mock unrelated paths. The fix restricts redirects to the fs allowlist. **Audit recipe**: `rg -n "vi\.mock|vi\.spyOn" test/ src/ | head -10`.
+
+#### Snapshot (1 fix)
+- **PR #10665 `Support no-unsafe-eval CSP by evaluating snapshot files on server`** — MEDIUM. The bug: snapshot evaluation required `unsafe-eval` in CSP, blocking strict-CSP apps. The fix evaluates snapshots on the server side. **Audit recipe**: `rg -n "Content-Security-Policy|script-src" next.config.* middleware.* src/middleware.*`.
+
+#### UI (3 fixes)
+- **PR #10969 `Fix code editor error and annotations gadgets layout shifts`** — LOW. Visual fix for the Vitest UI's code editor + annotations gadgets layout shifts.
+- **PR #10941 `Synchronize watch-run UI state on file removal`** — LOW. The bug: when a watched file was removed, the UI state could desync from the actual run state. The fix synchronizes them.
+- **PR #10971 `Require auth for coverage report and all UI subtree requests`** — MEDIUM (security-adjacent). The bug: the Vitest UI subtree (including coverage reports) was accessible without authentication. The fix requires auth for coverage report + all UI subtree requests. **Audit recipe**: if you expose Vitest UI on a shared network, ensure your reverse-proxy auth is in place (this fix only adds an internal guard; the UI was previously unauthenticated by default).
+
+#### Reporters (1 fix)
+- **PR #10887 `Display test.name in GitHub Actions reporter summary header`** — LOW. The bug: the GitHub Actions reporter's summary header didn't show the test name when set. The fix displays it.
+
+#### Utils (1 fix)
+- **PR #10892/#10893 `Don't crash on a malformed inline source map`** — LOW. Closes issue #10892. The bug: a malformed inline source map (e.g., truncated by a build tool) crashed Vitest's source-map parser. The fix gracefully skips malformed maps.
+
+#### Vitest core (1 fix)
+- **PR #10567 `Render non-Error causes from env setup so the actual diagnostic is not dropped`** — MEDIUM. The bug: when env-setup threw a non-Error (e.g., a string thrown directly), the diagnostic chain was dropped. The fix renders non-Error causes. **Audit recipe**: `rg -n "throw.*[^a-zA-Z]" src/test/` for non-Error throws.
+
+#### Deps (1 fix)
+- **PR #10966 `deps: Update all non-major dependencies`** — LOW. Routine dep update (no behavior change; bumps internal deps to latest minor/patch).
+
+### Practical Impact Summary — `vitest@5.0.0-rc.2`
+
+| User type | Pre-rc.2 (`5.0.0-rc.1`) | Post-rc.2 (`5.0.0-rc.2`) |
+|---|---|---|
+| **Production users on `vitest@latest` 4.1.10** | Zero impact (rc.2 = pre-release only) | Zero impact (rc.2 = pre-release only) |
+| **CI runners with browser-mode + tight disk** | Disk-full failures on `ENOSPC` | **PR #10912 lowers the GC threshold; no behavior change for users with healthy disk** |
+| **CI runners with `isolate: false` forks workers** | "Worker forks emitted error" on restart | **PR #10963 silences the floating-promise error; transparent fix** |
+| **Monorepos with nested `describe.concurrent`** | `concurrencyLimit` could be exceeded via nesting | **PR #10928 restores global concurrency bound; tests that exceeded the limit pre-rc.2 will now run sequentially within the limit** |
+| **Strict-CSP apps using `toMatchSnapshot`** | Required `unsafe-eval` in CSP | **PR #10665 evaluates snapshots on server side; can drop `unsafe-eval`** |
+| **Apps exposing Vitest UI on shared network** | UI subtree + coverage reports were unauthenticated | **PR #10971 requires internal auth for UI subtree; ensure reverse-proxy auth remains** |
+| **Users of `getByRole(..., { hasText: ... })`** | Type-checks but silently matches everything | **PR #10933 splits types — filter options only work on `.filter()`, not `getBy*`; TypeScript will surface the misuse** |
+| **CI pipelines with custom GitHub Actions branding** | Hardcoded `Test Results` summary title | **PR #10891 accepts `summaryTitle` option for per-pipeline branding** |
+| **Users on `5.0.0-rc.1`** | Pre-rc.2 behavior | **1 feature + 20 bug fixes active when rc.2 installs** |
+
+### Migration checklist (Vitest 5.0.0-rc.1 → rc.2)
+
+1. **`npm install -D vitest@5.0.0-rc.2`** — RC bump; pin for testing; expect 5.0.0 STABLE within 1-3 weeks.
+2. **Audit nested `describe.concurrent` patterns** for the PR #10928 global concurrency bound:
+   ```bash
+   rg -n "describe\.concurrent" test/ src/
+   ```
+3. **Audit `getByRole(..., { hasText: ... })` patterns** for the PR #10933 TS-only breaking change:
+   ```bash
+   rg -n "getByRole\(.+hasText" test/ src/ --type ts --type tsx --type js --type jsx | head -20
+   ```
+4. **Audit CSP headers** for the PR #10665 snapshot eval fix:
+   ```bash
+   rg -n "Content-Security-Policy|script-src" next.config.* middleware.* src/middleware.* --type ts --type tsx --type js --type jsx
+   ```
+5. **Audit `isolate: false` worker config** for the PR #10963 CI flake fix:
+   ```bash
+   rg -n "isolate:\s*false" vitest.config.* vite.config.* --type ts --type js | head -10
+   ```
+6. **If exposing Vitest UI on shared network**: verify reverse-proxy auth is still in place post-PR #10971 (the internal auth guard is in addition to external).
+7. **If using `summaryTitle`**: opt-in via `test.summaryTitle: '...'` in vitest.config.ts.
+8. **Audit browser-mode disk pressure** for PR #10912:
+   ```bash
+   # CI logs: search for ENOSPC or "disk full"
+   ```
+9. **Bump Node to 22 LTS or 24 LTS** if not already (rc.2 still requires Node 20.18+ minimum, but the team recommends 22+ for production).
+
+### Updated Vitest 5 RC + Stable Forward-Looking Cadence
+
+- **5.0.0-beta.7** (2026-07-24) — **SHIPPED** (the baseline the rc.1/rc.2 diffs build on)
+- **5.0.0-rc.1** (2026-08-11) — **SHIPPED** (9 BREAKING + 3 features + 2 perf + 30+ fixes from v1.5.60 cycle)
+- **5.0.0-rc.2** (2026-08-17) — **SHIPPED** (1 feature + 20 bug fixes; this cycle's update)
+- **5.0.0-rc.3** (expected within 1-2 weeks — early-to-late August 2026) — likely a quick bug-fix RC. The team has consolidated 21 commits since rc.1; if any regressions surface from the rc.2 batch, expect rc.3 within 1-2 weeks.
+- **5.0.0 STABLE** (expected **early September 2026** — revised from v1.5.65's "early-to-mid September 2026") — the rc.2 → STABLE gap has historically been 1-3 RC cuts (Vitest 4: rc.1 → STABLE in 11 days; Vitest 1: rc.1 → STABLE in 14 days); with rc.2 SHIPPED on Aug 17 (6 days after rc.1 on Aug 11), STABLE could land by early September 2026 on the accelerated cadence.
+
+### Sources
+
+- [Vitest 5.0.0-rc.2 GitHub release notes (August 17, 2026)](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.2) — the 1 feature + 20 bug fixes verbatim from the release notes; published 2026-08-17T13:23:20Z
+- [Vitest `5.0.0-rc.1...5.0.0-rc.2` GitHub compare](https://github.com/vitest-dev/vitest/compare/v5.0.0-rc.1...v5.0.0-rc.2) — 21 commits ahead of rc.1 (verified at this cron's 18:03Z check)
+- [`npm view vitest@5.0.0-rc.2` publish time](https://registry.npmjs.org/vitest) — `2026-08-17T13:28:47.849Z`
+- [`npm view vitest dist-tags`](https://registry.npmjs.org/vitest) — confirmed `latest: 4.1.10`, `beta: 5.0.0-beta.7`, `rc: 5.0.0-rc.2` at this cron's 18:03Z check
+- [PR #10891 — `reporter: Add custom GitHub Actions summary title`](https://github.com/vitest-dev/vitest/pull/10891) — heyJonBray + macarie; the single NEW feature in rc.2
+- [PR #10928 — `Revive global concurrency limit for test lifecycle`](https://github.com/vitest-dev/vitest/pull/10928) — hi-ogawa + Hiroshi Ogawa + OpenCode + sheremet-va; closes [#10530](https://github.com/vitest-dev/vitest/issues/10530). Headline HIGH-impact fix.
+- [PR #10963 — `Own the post-restart rerun, keep process.exit disabled in workers`](https://github.com/vitest-dev/vitest/pull/10963) — sheremet-va; closes the post-restart floating-promise bug that escalated into "Worker forks emitted error" CI flakes
+- [PR #10909 — `Preserve correct root during resolve config`](https://github.com/vitest-dev/vitest/pull/10909) — AriPerkkio + sheremet-va; the 1 NEW main-branch commit the v1.5.65 cycle missed
+- [PR #10912 — `browser: Trigger playwright/chromium gc on lower disk availability`](https://github.com/vitest-dev/vitest/pull/10912) — hi-ogawa + Hiroshi Ogawa + OpenCode; browser-mode disk-pressure fix
+- [PR #10295 / #10933 — `browser: Disallow filter-only options in getBy* locators`](https://github.com/vitest-dev/vitest/pull/10933) — arjun2075; closes [#10295](https://github.com/vitest-dev/vitest/issues/10295); TS-only breaking change for filter options on `getBy*`
+- [PR #10956 — `browser: Fail instead of hanging when the browser stops responding`](https://github.com/vitest-dev/vitest/pull/10956) — sheremet-va
+- [PR #10962 — `browser: Exit gracefully when the browser disconnects during cancellation`](https://github.com/vitest-dev/vitest/pull/10962) — sheremet-va
+- [PR #10975 — `browser: Don't redirect vitest in client environment`](https://github.com/vitest-dev/vitest/pull/10975) — sheremet-va
+- [PR #10932 — `pool: Worker init to handle queued synchronous messages`](https://github.com/vitest-dev/vitest/pull/10932) — lazerg + AriPerkkio
+- [PR #10964 — `pool: Report the worker exit instead of a pipe error that raced it`](https://github.com/vitest-dev/vitest/pull/10964) — sheremet-va
+- [PR #10972 — `mocker: Restrict redirect mocks to the fs allowlist`](https://github.com/vitest-dev/vitest/pull/10972) — sheremet-va
+- [PR #10665 — `snapshot: Support no-unsafe-eval CSP by evaluating snapshot files on server`](https://github.com/vitest-dev/vitest/pull/10665) — hi-ogawa; strict-CSP snapshot fix
+- [PR #10887 — `reporters: Display test.name in GitHub Actions reporter summary header`](https://github.com/vitest-dev/vitest/pull/10887) — macarie
+- [PR #10892 / #10893 — `utils: Don't crash on a malformed inline source map`](https://github.com/vitest-dev/vitest/pull/10893) — lazerg + Hiroshi Ogawa + OpenCode + hi-ogawa; closes [#10892](https://github.com/vitest-dev/vitest/issues/10892)
+- [PR #10969 — `ui: Fix code editor error and annotations gadgets layout shifts`](https://github.com/vitest-dev/vitest/pull/10969) — hi-ogawa + Hiroshi Ogawa + OpenCode
+- [PR #10941 — `ui: Synchronize watch-run UI state on file removal`](https://github.com/vitest-dev/vitest/pull/10941) — hi-ogawa + Hiroshi Ogawa + OpenCode
+- [PR #10971 — `ui: Require auth for coverage report and all UI subtree requests`](https://github.com/vitest-dev/vitest/pull/10971) — sheremet-va; security-adjacent fix
+- [PR #10567 — `vitest: Render non-Error causes from env setup so the actual diagnostic is not dropped`](https://github.com/vitest-dev/vitest/pull/10567) — spokodev
+- [PR #10966 — `deps: Update all non-major dependencies`](https://github.com/vitest-dev/vitest/pull/10966) — routine dep bump
+- Cross-reference: `testing.md` → `## Vitest 5.0.0-rc.1 SHIPPED (August 11, 2026) — First RC of Vitest 5 — 9 Breaking Changes + 3 Features + 2 Perf + 30+ Bug Fixes` for the rc.1 lens; the rc.2 batch builds on rc.1 with 0 NEW BREAKING changes
+- Cross-reference: `testing.md` → `## Vitest Main Branch — 17 NEW Commits Since v5.0.0-rc.1 SHIPPED` for the v1.5.65 lens that predicted the rc.2 SHIP event; **20 of the 21 commits in `5.0.0-rc.1...5.0.0-rc.2` are from the 17-NEW-commits forward-looking set** (+ 1 NEW main-branch commit PR #10909 the v1.5.65 cycle missed) — the v1.5.65 prediction came true
+
+

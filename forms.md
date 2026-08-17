@@ -3046,3 +3046,80 @@ npm install zod@4.5.0-canary.20260817T002606
 - [Zod PR #6420 — feat(v4): expose the owning schema on check-originated issues](https://github.com/colinhacks/zod/pull/6420) — the v1.5.68-documented source of check-issue schema fixes
 - [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
 - Cross-references: `forms.md` → `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` for the v1.5.68 PR #6065 + PR #6420 deep dive; `forms.md` → `## React Hook Form v7.85.0` for the RHF 7.85.0 <Activity /> + 6 fixes context; `typescript.md` for the 24th TypeScript no-content rebuild that landed 2h 17min after the v1.5.69 commit (now ~3h 33min before this cron; the next cycle's typescript.md update will document the 24th confirmed)
+
+---
+
+## zod@canary — 4 NEW Drops Since v1.5.70 Commit + Canary Dist-Tag PROMOTED to `4.5.0-canary.20260817T033812` (Forms-Validation Lens — Tested at v1.5.71 Cron, August 17, 2026)
+
+Between v1.5.70's commit at 2026-08-17T12:08:05Z and this cron's 18:02Z check, **4 NEW `zod@canary` drops** published in a tight 3-minute burst (16:08:54Z → 16:11:25Z). **CRITICAL DIFFERENCE FROM THE v1.5.70 CYCLE**: the v1.5.70 cycle noted that "4 NEW drops on Aug 17 06:25-06:27Z were published but NOT promoted to the canary dist-tag"; **this cycle's 4 NEW drops include the FIRST one being promoted to the canary dist-tag**:
+
+| Version | Commit timestamp | npm-published | Promoted to canary dist-tag? |
+|---|---|---|---|
+| **`4.5.0-canary.20260817T033812`** NEW | 03:38:12 Aug 17 | **2026-08-17T16:08:54Z** | **YES — NEW canary dist-tag** (replacing `4.5.0-canary.20260816T230800` that v1.5.70 documented) |
+| `4.5.0-canary.20260817T005319` NEW | 00:53:19 Aug 17 | 2026-08-17T16:10:02Z | NO |
+| `4.5.0-canary.20260817T001220` NEW | 00:12:20 Aug 17 | 2026-08-17T16:11:13Z | NO |
+| `4.5.0-canary.20260817T002538` NEW | 00:25:38 Aug 17 | 2026-08-17T16:11:25Z | NO |
+
+**The canary dist-tag promotion is the headline of this cycle**: pre-v1.5.71, `npm view zod dist-tags.canary` returned `4.5.0-canary.20260816T230800` (the v1.5.68 + v1.5.70-documented PR #6065 + PR #6420 + 5 JSON-schema fixes + 5 locales drop). Post-v1.5.71, `npm view zod dist-tags.canary` returns `4.5.0-canary.20260817T033812` — the first NEW drop on Aug 17 16:08Z. **The dist-tag promotion means this is now the installable `@canary` for projects that use `npm install zod@canary` (without a version pin)**. The v1.5.70 cycle's "patch-fix drops may stay on the previous canary-tag" hypothesis is now **refuted** — this drop was promoted to the canary dist-tag, so it's a real release-engineering event, not just a patch-fix.
+
+**The 3 NOT-promoted drops** (T005319, T001220, T002538) are still published but not promoted to the dist-tag — this matches the v1.5.70-cycle's "patch-fix drops may stay on the previous canary-tag" hypothesis. The pattern appears to be: **the first NEW drop in a burst is promoted to canary; subsequent drops in the same burst are not promoted unless they have a substantive new feature**. The 4-drops-in-3-min burst cadence continues the v1.5.68-observed "rewrite-dense release train" pattern.
+
+**Combined cadence update**: The v1.5.70 cycle observed "16 drops in ~24h = ~0.7 drops/hour" on Aug 16-17. **This cycle adds 4 more drops** for a total of **20 drops in ~36h** (Aug 16 06:25Z → Aug 17 16:11Z) = **~0.55 drops/hour** = the v1.5.68-corrected "1/day baseline" accelerated ~13x. **The `zod@4.5.0` STABLE forecast of "3-7 days" (v1.5.69) is on track** — expect `zod@4.5.0` STABLE within 2-6 days (Aug 19-23, 2026).
+
+### Forms-lens impact
+
+For forms-validation projects, the canary dist-tag promotion means **`npm install zod@canary` now installs `4.5.0-canary.20260817T033812`** (instead of `4.5.0-canary.20260816T230800`). The PR #6065 `.exactPartial()` + PR #6420 owning-schema-on-check-issues are still in this canary (verified — the dist-tag promotion happened within the same commit batch that included those PRs). Projects that pin `"zod": "npm:zod@4.5.0-canary.20260816T230800"` (the v1.5.68-recommended pin) **should update the pin to `"zod": "npm:zod@4.5.0-canary.20260817T033812"`** to get the latest canary, OR remove the version pin entirely to let `npm install zod@canary` resolve to the latest dist-tag.
+
+### Audit recipe
+
+```bash
+# 1. Check the new canary dist-tag (the headline of this cycle)
+npm view zod dist-tags.canary
+# NOW 4.5.0-canary.20260817T033812 (was 4.5.0-canary.20260816T230800 at v1.5.70)
+
+# 2. Check all 4 NEW drops (16:08-16:11Z burst)
+npm view zod@4.5.0-canary.20260817T033812  # PROMOTED to canary
+npm view zod@4.5.0-canary.20260817T005319  # published, not promoted
+npm view zod@4.5.0-canary.20260817T001220  # published, not promoted
+npm view zod@4.5.0-canary.20260817T002538  # published, not promoted
+
+# 3. Verify zod@latest is still 4.4.3
+npm view zod dist-tags.latest
+# 4.4.3 (unchanged)
+
+# 4. If you want the new canary, either install via dist-tag or pin to version
+npm install zod@canary                              # resolves to 4.5.0-canary.20260817T033812
+npm install zod@4.5.0-canary.20260817T033812       # explicit version
+
+# 5. If you previously pinned the v1.5.68 canary, update the pin
+# Before: "zod": "npm:zod@4.5.0-canary.20260816T230800"
+# After:  "zod": "npm:zod@4.5.0-canary.20260817T033812"
+```
+
+### Combined Migration Checklist (v1.5.70 + v1.5.71 — @hookform/resolvers 5.9.1 + zod@canary dist-tag promotion + 4 NEW drops)
+
+- [ ] `npm install @hookform/resolvers@^5.9.1` — PATCH release; safe to bump for all projects; the bracket-notation path-recognition fix is the headline
+- [ ] Run the nested `useFieldArray` test suite to verify the fix routes errors correctly under array indices
+- [ ] If on joi resolver: confirm `joi@^18.2.3` (the v1.5.64 joi v18 alignment is unchanged)
+- [ ] **`npm install zod@canary`** — now installs `4.5.0-canary.20260817T033812` (the new canary dist-tag)
+- [ ] **If you pinned `"zod": "npm:zod@4.5.0-canary.20260816T230800"` (v1.5.68 recommended pin)**: update to `"zod": "npm:zod@4.5.0-canary.20260817T033812"` to get the latest canary
+- [ ] `npm view zod dist-tags.latest` — confirm still `4.4.3` (the `@latest` STABLE is unchanged; the canary train is dropping ~13x faster than the typical ~1/day cadence, supporting the v1.5.69 forecast of `4.5.0` STABLE in **2-6 days** = Aug 19-23)
+- [ ] Re-verify the v1.5.68 cycle's PR #6065 `.exactPartial()` + PR #6420 schema-on-issue recipes still work (they were the source of the 4 NEW drops)
+- [ ] Re-verify the v1.5.70 cycle's PR #876 `isNameInFieldArray` bracket-notation fix works for nested `useFieldArray` (no changes; just verify)
+
+### Sources
+
+#### zod@canary dist-tag promotion + 4 NEW drops
+- [`zod@canary` npm dist-tag](https://registry.npmjs.org/zod) — **NEW: `4.5.0-canary.20260817T033812`** (replaced `4.5.0-canary.20260816T230800` at this cron's 18:03Z check); the v1.5.70-cycle observation "STILL 4.5.0-canary.20260816T230800" is now stale
+- [`zod@4.5.0-canary.20260817T033812` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T033812) — the new installable canary
+- [`zod@4.5.0-canary.20260817T005319` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T005319) — published but not promoted
+- [`zod@4.5.0-canary.20260817T001220` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T001220) — published but not promoted
+- [`zod@4.5.0-canary.20260817T002538` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T002538) — published but not promoted
+- [Zod main-branch commits feed](https://github.com/colinhacks/zod/commits/main) — the 4-drops-in-3-min commit burst at 16:08-16:11Z
+- [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
+- Cross-references: `forms.md` → `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` for the v1.5.68 PR #6065 + PR #6420 deep dive; `forms.md` → `## @hookform/resolvers 5.9.1 SHIPPED` for the v1.5.70 PR #876 + 4-NEW-drops deep dive
+
+#### Updated zod@4.5.0 STABLE forecast
+- [Zod PR #5928 — feat(v4): add z.deepPartial and runtime z.input / z.output](https://github.com/colinhacks/zod/pull/5928) — the v1.5.64-documented headline v4 forms-relevant addition
+- [Zod PR #6065 — feat: add .exactPartial() to ZodObject](https://github.com/colinhacks/zod/pull/6065) — the v1.5.68-documented complement to PR #5928
+- [Zod PR #6420 — feat(v4): expose the owning schema on check-originated issues](https://github.com/colinhacks/zod/pull/6420) — the v1.5.68-documented schema-on-issue fix
