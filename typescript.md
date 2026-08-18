@@ -21,7 +21,6 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   }
 }
@@ -1959,3 +1958,70 @@ npm view zod dist-tags.canary
 - [`@playwright/test@1.63.0-alpha-2026-08-17` on npm](https://www.npmjs.com/package/@playwright/test/v/1.63.0-alpha-2026-08-17) — NEW alpha drop npm-published 2026-08-17T05:34:53Z, ~28min BEFORE this 06:02Z cron; alpha-track-only; the 1.63.0 STABLE train continues
 - [`zod@4.5.0-canary.20260817T013315` on npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260817T013315) — `dist-tag.canary` now pointing here; the Aug-17 5-drop burst (npm-published 2026-08-17T05:58:25Z → 06:03:45Z; 5 drops in ~5min); `zod@latest` STABLE still `4.4.3`
 - [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the canary.21 API-surface lens (the 2 acdlite client-router PRs #97402 + #97413); `forms.md` → the v1.5.68 `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` section for the full zod@canary burst details (PR #6065 `.exactPartial()` + PR #6420 schema-on-issue)
+
+
+## TypeScript 6.0 → 7.0 production baseline and upgrade order (verified 2026-08-18)
+
+**Current registry state:** `typescript@latest` is `7.0.2`; `typescript@next` is `7.1.0-dev.20260817.1`, the 24th no-content daily rebuild. The 25th rebuild is expected around 2026-08-18 08:25Z; it is not published at this check. TypeScript 6.0.3 is the last JavaScript-based line and is the recommended compatibility pass before adopting 7.0/7.1.
+
+### Recommended Next.js / Vite tsconfig shape
+
+Set the important behavior explicitly, use CSS-variable-free `paths` instead of `baseUrl`, and let the bundler resolve packages:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2025",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noUncheckedSideEffectImports": true,
+    "stableTypeOrdering": true,
+    "jsx": "react-jsx",
+    "paths": { "@/*": ["./src/*"] }
+  }
+}
+```
+
+TS 6 defaults to `strict: true`, `target: es2025`, ESM-oriented module output, an empty ambient `types` list, and `noUncheckedSideEffectImports: true`. For a Node-targeted build, choose `module: "NodeNext"` plus `moduleResolution: "NodeNext"` explicitly; for Next.js/Vite, `module: "ESNext"` plus `"bundler"` is the clearer fit.
+
+### Migration order that avoids toolchain surprises
+
+1. **Run TS 6 as a compatibility pass** — install a locked `typescript@6.0.3`, fix `moduleResolution: node/node10`, `baseUrl`, `outFile`, AMD/UMD/SystemJS, and legacy `target: es5` settings.
+2. **Turn on the strictness that TS 6 now defaults to** — keep `strict: true`; add `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, and `noUncheckedSideEffectImports` where the code can support them.
+3. **Adopt TS 7 separately** — production installs use the `tsc` binary. `@typescript/native-preview` / nightly builds may expose `tsgo`; do not make a blanket `tsgo --noEmit` assumption for a TS 7 app.
+4. **Check tooling peer ranges** — `typescript-eslint`, `ts-morph`, Volar, Vue/Svelte/Astro checkers, and custom AST transformers may still advertise a TS 6 compatibility range. Keep a separate TS 6 package for tools that need the legacy API until the Strada migration is actually available.
+5. **Pin and run in CI** — commit the lockfile, run `tsc --noEmit`, then run the framework build and test suite. Do not infer that a green TS 6 typecheck means every plugin supports TS 7.
+
+```bash
+# Inspect the actual compiler and toolchain, not only package.json ranges
+pnpm exec tsc --version
+pnpm exec tsc --showConfig
+pnpm why typescript typescript-eslint ts-morph
+
+# Migration audit
+rg -n "moduleResolution.*node|baseUrl|outFile|target.*es5|AMD|SystemJS|@typescript/typescript6" . --glob '!node_modules/**' --glob '!*lock*'
+
+# Verify the final production command
+pnpm exec tsc --noEmit
+pnpm run build
+```
+
+### Common mistakes
+
+- Keeping `moduleResolution: "node"` or `target: "es5"` and assuming the old defaults are still stable.
+- Using `tsc` for a third-party tool that loads `typescript` as a library without checking its supported range.
+- Treating the TS 7 native compiler as a drop-in replacement for every ESLint/LSP/transformer integration.
+- Keeping `baseUrl` as a convenience mapping; use `paths` and an explicit `moduleResolution` instead.
+- Assuming a nightly `typescript@next` rebuild contains language changes. The current 7.1 train is still a no-content daily rebuild.
+
+### Sources
+
+- [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html) — new defaults, deprecations, `import defer`, and TS 7 preparation
+- [TypeScript TSConfig reference](https://www.typescriptlang.org/tsconfig/) — `strict`, module resolution, `noUncheckedSideEffectImports`, and `stableTypeOrdering`
+- [TypeScript 6.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-6-0) — the official transition release and subpath-import changes
+- [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — Go-native compiler and the tooling/Strada roadmap
+- [TypeScript 7.0/7.1 changelog](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — migration behavior and API compatibility notes
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.0.2` stable and `7.1.0-dev.20260817.1` next at the check

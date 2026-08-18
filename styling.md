@@ -2214,3 +2214,89 @@ npm ls tailwindcss
 - [Tailwind Insider program](https://tailwindcss.com/insiders) — paid program for early access; the `npm install -D tailwindcss@insiders` install is the open-source insider track
 - Cross-reference: `styling.md` → `## Tailwind Main Branch — PR #20408 "Fix Slow Vite Rebuilds in Projects with Large Gitignored Directories" SHIPPED (August 12, 2026) — Forward-Looking for tailwindcss@4.3.4 / v4.4.0` for the v1.5.54 lens that documented the previous main-branch PR (PR #20408 slow Vite rebuilds); PR #20417 + PR #20420 are the 2 NEW main-branch PRs since v1.5.59's 021b7fe commit.
 - Cross-reference: `styling.md` → `## Tailwind Insiders Train — 4 NEW Drops in 19h (Aug 13–14, 2026) — 4.3.4 / 4.4.0 Imminent` for the v1.5.59 lens that documented the insider-train acceleration; the cooling cadence since 90f8ff4 confirms the 1-2 week STABLE forecast.
+
+
+## Tailwind CSS v4.3.3 production baseline — CSS-first tokens, themes, and tooling (verified 2026-08-18)
+
+**Current version check:** `tailwindcss@latest` is still `4.3.3`; `tailwindcss@insiders` is still `0.0.0-insiders.90f8ff4`; no stable `4.3.4` or `4.4.0` release is present. The insider build is useful for testing, not a production default. The current insider includes Tailwind PR #20417 (do not inline CSS-wide keywords during canonicalization) and PR #20420 (only space `and`/`or`/`not` at the condition level in `supports-*` variants).
+
+### A production-safe v4.3 setup
+
+Keep source tokens in CSS, use `@theme inline` only when a utility should resolve a runtime CSS variable, and define the dark selector once:
+
+```css
+@import "tailwindcss";
+
+/* Explicit class-based dark mode. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --brand: 222.2 47.4% 11.2%;
+  --brand-foreground: 210 40% 98%;
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --radius-card: 1rem;
+}
+
+.card {
+  @variant hover {
+    border-color: var(--color-brand);
+  }
+}
+
+/* Add this when Tailwind cannot discover a non-standard package. */
+@source "../packages/ui/src";
+```
+
+`@theme` values are compiled into utilities and remain available as CSS variables. `@theme inline` is the correct bridge for semantic shadcn-style variables such as `--color-background: var(--background)`. Keep the underlying runtime values (`:root` / `.dark`) outside `@layer base`; do not define a second, conflicting theme inside the variant.
+
+### Tooling and migration audit
+
+- **Vite:** use the first-party plugin; do not keep the v3 PostCSS plugin name:
+
+  ```ts
+  // vite.config.ts
+  import tailwindcss from '@tailwindcss/vite'
+  import { defineConfig } from 'vite'
+
+  export default defineConfig({
+    plugins: [tailwindcss()],
+  })
+  ```
+
+- **PostCSS/CLI:** use `@tailwindcss/postcss` or `@tailwindcss/cli`; Next.js 16 uses its built-in Tailwind integration and does not need a second Tailwind plugin.
+- **Upgrade:** run `npx @tailwindcss/upgrade` on a branch, then audit `tailwind.config.js` and dynamic class strings. Use `@config` only for legacy JS plugin compatibility; move theme values and custom utilities into CSS.
+- **shadcn/ui:** use `@theme inline`, keep semantic `--background` / `--foreground` values in CSS, and use `tw-animate-css` instead of the retired `tailwindcss-animate` package.
+- **v4.3 correctness:** test `@variant hover:focus`, stacked variants, scrollbar utilities, `@container-size`, and `supports-[selector(a:not(.foo))]` in the real project. A class that looks valid can still generate an unparsable `@supports` condition on an older stable build.
+
+```bash
+# Version and source-discovery checks
+npm view tailwindcss dist-tags.latest
+npm view tailwindcss@insiders version
+rg -n "@tailwind|theme\(|plugins|@source|@theme" src postcss.config.* vite.config.* 2>/dev/null
+
+# Migration and build checks
+npx @tailwindcss/upgrade
+npm run build
+```
+
+### Common mistakes
+
+- Keeping `@tailwind base`, `@tailwind components`, and `@tailwind utilities`; v4 starts with `@import "tailwindcss"`.
+- Defining a dark mode with both a media-query default and an unrelated `.dark` selector; choose one variant and test it.
+- Using `@theme inline` with literal values where a static `@theme` token is sufficient; the inline form exists to resolve CSS variables.
+- Constructing class names from runtime strings and assuming Tailwind can discover them; add an explicit `@source` or keep the class set static.
+- Promoting `tailwindcss@insiders` to production just to obtain the PR #20417/#20420 fixes before the next stable release.
+
+### Sources
+
+- [Tailwind CSS upgrade guide](https://tailwindcss.com/docs/upgrade-guide) — v3 → v4 migration, `@import`, Vite/PostCSS/CLI integration
+- [Tailwind CSS v4 announcement](https://tailwindcss.com/blog/tailwindcss-v4) — CSS-first `@theme`, CSS variables, container queries, and the Vite plugin
+- [Tailwind CSS v4.3 announcement](https://tailwindcss.com/blog/tailwindcss-v4-3) — scrollbar utilities, stacked/compound `@variant`, functional utilities, and `@container-size`
+- [Tailwind PR #20417](https://github.com/tailwindlabs/tailwindcss/pull/20417) — CSS-wide-keyword canonicalization fix
+- [Tailwind PR #20420](https://github.com/tailwindlabs/tailwindcss/pull/20420) — `supports-[selector(...)]` parsing fix
+- [shadcn/ui Tailwind v4 guide](https://ui.shadcn.com/docs/tailwind-v4) — `@theme inline`, CSS variables, `tw-animate-css`, and v4 component migration
+- [Tailwind v4 theme variables reference](https://tailwindcss.com/docs/theme) — namespace and CSS-variable behavior

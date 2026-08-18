@@ -2088,3 +2088,73 @@ The v1.5.69 inline observation "**`next@16.3.2` STABLE in 3-5 days** (Aug 20 win
 - [Node.js issue nodejs/node#65113](https://github.com/nodejs/node/issues/65113) — the Node fix not yet released; the trigger for PR #97255's global-symbol anchoring
 - [Endoflife.date Next.js page](https://endoflife.date/nextjs) — confirmed 16.x Active LTS, 15.x Maintenance LTS, 14.x EOL
 - [Cross-references: `auth.md` → `## @clerk/nextjs@canary 7.7.7-canary.v20260817110738 NEW Drop` for the Clerk 7.7.7 STABLE forecast context; `routing.md` → `## Next.js 16.3.1-canary.20` for the PR #94157 + PR #97388 routing-system lens; `performance.md` → `## Next.js 16.3.1-canary.20` for the PR #97372 Turbopack retain conditions lens; `server-components.md` → `## Next.js 16.3.1-canary.21` for the PR #97255 ALS-singleton RSC lens]
+
+
+## Next.js 16.3.1-canary.22 SHIPPED — Turbopack persistence/GC hardening; August 20 security window (2026-08-18)
+
+**Current state at the 2026-08-18 00:02Z check:** `next@canary` is `16.3.1-canary.22` (npm published 2026-08-17T23:55:48.714Z; GitHub release 2026-08-17T23:45:39Z), `next@latest` is `16.3.1`, and the maintenance backport tag is `15.5.23`. `15.5.24` and `16.3.2` have **not** shipped yet.
+
+The canary.22 release notes contain six changes, not a security advisory:
+
+1. **PR #96929** — key-value tombstones for `MultiValue` families in `turbo-persistence`; this is the first half of the persistence/GC foundation.
+2. **PR #95975** — persistence delete/tombstone plumbing for `turbo-tasks-backend` GC.
+3. **PR #96043** — enforce that tasks exist when accessed; callers that intentionally create a task must use `get_or_create_task`.
+4. **PR #97288** — allow 32-bit `usize` conversion in `turbo-persistence`.
+5. **PR #97459** — restore missing NFT `exports*` unit fixtures.
+6. **PR #97383** — fix backport canary release dispatch.
+
+This is useful build and cache reliability hardening, especially for long-lived Turbopack sessions and self-hosted incremental builds. It is **not** evidence that the August disclosure / dev-mode inspector issue is fixed. Keep the existing dev-server isolation and MCP mitigations until the official August 20 release or an advisory says otherwise.
+
+### Next.js 15 maintenance baseline
+
+Next.js 15.5 is the Maintenance LTS line. The current registry check shows `15.5.23`; do not claim that `15.5.24` exists until `npm view next@backport version` returns it. For a 15.x app, run the same security audit as 16.x:
+
+```bash
+npm ls next react react-dom
+npm view next@backport version
+npm audit --omit=dev
+```
+
+Use the Next.js 15.5 codemod/release guidance for typed route helpers and `next typegen`, but do not apply the Next.js 16 `proxy.ts` migration to 15.x: the `proxy` convention and Node-only runtime are 16.x changes.
+
+### React 19.2.8 and RSC hardening baseline
+
+`react@latest` is currently `19.2.8`; `react@canary` is still `19.3.0-canary-eb8feb71-20260814` and has not moved in this window. Keep `react`, `react-dom`, and the `react-server-dom-*` packages version-aligned when a framework packages RSC.
+
+- Treat Server Actions as public POST endpoints: authenticate and authorize the resource **inside** the action, not only in the page or `proxy.ts`.
+- For RSC cancellation, pass `cacheSignal()` to a fetch-like request. It is Server Components-only and may be `null` outside rendering; do not use it as a client-side abort signal.
+- Use `useActionState` for server-returned form state and `useFormStatus` inside the submitted form; do not expose a second client-only copy of the authorization decision.
+- `useEffectEvent` is for event-like logic whose latest props should be read without adding it to the effect dependency array; it is not a security boundary.
+- `Activity` preserves hidden UI state/effects under React 19.2, but hidden state is not a substitute for access control.
+
+### 5-step security audit
+
+```bash
+# 1. Confirm the exact production lines and RSC package alignment
+npm ls next react react-dom react-server-dom-webpack react-server-dom-turbopack
+
+# 2. Keep dev servers loopback-only; never expose a dev-only inspector to a LAN
+next dev --hostname 127.0.0.1
+
+# 3. Verify action-level auth/ownership and return data from schema validation
+rg -n "'use server'|auth\(|notFound\(|revalidateTag|updateTag" app/
+
+# 4. Check current security advisories rather than relying on npm audit alone
+npm audit --omit=dev
+curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.22` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — six release entries; published 2026-08-17T23:45:39Z
+- [Next.js canary.21 → current compare](https://github.com/vercel/next.js/compare/v16.3.1-canary.21...canary) — current branch delta; the six changes above are the material portion of canary.22
+- [PR #96929](https://github.com/vercel/next.js/pull/96929) — persistence tombstones
+- [PR #95975](https://github.com/vercel/next.js/pull/95975) — persistence GC plumbing
+- [PR #96043](https://github.com/vercel/next.js/pull/96043) — task existence invariant
+- [PR #97288](https://github.com/vercel/next.js/pull/97288) — 32-bit persistence conversion fix
+- [Next.js 15.5 release notes](https://nextjs.org/blog/next-15-5) — Turbopack build beta, Node middleware, typed routes, and `next typegen`
+- [Next.js 16 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — codemod, `proxy.ts`, and Async Request APIs
+- [Next.js July 2026 security release](https://nextjs.org/blog/july-2026-security-release) — 16.2.11 / 15.5.21 security baseline; do not treat it as the August 20 release
+- [React 19.2 announcement](https://react.dev/blog/2025/10/01/react-19-2) — Activity, useEffectEvent, and cacheSignal
+- [React `cacheSignal` reference](https://react.dev/reference/react/cacheSignal) — RSC-only cancellation signal
+- [Next.js data security guide](https://nextjs.org/docs/app/guides/data-security) — Server Actions and public endpoint threat model
