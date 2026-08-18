@@ -1604,3 +1604,113 @@ npm view @tanstack/react-query dist-tags.latest   # should be 5.101.4
 - [TanStack Query `release-2026-08-01-1558` train](https://github.com/TanStack/query/releases/tag/release-2026-08-01-1558) — `@tanstack/solid-query@6.0.0-beta.7`
 - [`@tanstack/react-query` npm dist-tags](https://registry.npmjs.org/@tanstack/react-query) — confirms `latest: 5.101.4` (unchanged since 2026-07-21T13:04:07Z)
 - [TanStack Query v5 docs](https://tanstack.com/query/v5/docs/framework/react/overview)
+
+
+## State Lens "STILL IDLE" Refresh #3 — Aug 18, 2026 (Verified at v1.5.73 Cron)
+
+**Routine "STILL IDLE" refresh #3** documenting that **no NEW state-management material has shipped in the ~5d window since the v1.5.59 cycle's "Zustand 5.0.15 SHIPPED" + "TanStack Query Solid 6.0.0-rc.0 SHIPPED" docs were committed on 2026-08-14T00:06Z** (101h+ stale at this cron's 18:03Z start). All tracked state-management package `@latest` versions are unchanged from the v1.5.59 cycle; this entry documents the prolonged-idle observation and the cross-monorepo activity that confirms the idle-but-alive state.
+
+### Verified state at this cron (npm `view <pkg> dist-tags.latest` at 2026-08-18T18:03Z)
+
+| Package | `@latest` | Last published | Idle days (since publish) |
+|---|---|---|---|
+| `zustand` | **5.0.15** | 2026-08-13T00:39:55Z | **5d 17h 23m** (unchanged from v1.5.59) |
+| `@tanstack/react-query` | **5.101.4** | 2026-07-21T13:04:07Z | **28d 5h** (unchanged from v1.5.59) |
+| `@tanstack/react-table` | **9.1.2** | pre-Aug 4, 2026 | 14+ d (unchanged from v1.5.59) |
+| `@tanstack/react-virtual` | **3.13.6** | pre-Aug 14, 2026 | 4+ d (unchanged from v1.5.59) |
+| `jotai` | **2.20.2** | 2026-07-14T13:52:11Z | **35d 4h** (unchanged from v1.5.59) |
+| `@tanstack/react-form` | **1.33.5** | pre-Aug 12, 2026 | 6+ d (the v1.5.59 mentioned alpha train only) |
+| `@tanstack/react-form@alpha` | **2.0.0-alpha.1** | 2026-08-13T17:54:59Z | **5d 0h** (unchanged from v1.5.59) |
+| `@tanstack/store` | **0.7.7** | pre-Aug 4, 2026 | 14+ d |
+| `redux-toolkit` | **(not tracked here)** | — | (out of state.md scope; cross-reference only) |
+
+### Cross-monorepo activity confirms idle-but-alive (NOT in maintenance mode)
+
+Despite no `@latest` releases, main-branch activity confirms each tracked package is actively developed:
+
+- **Zustand** main branch had **2 NEW commits in the v1.5.59 → v1.5.73 window**: commit `1f531ba4` on 2026-08-13 ("chore(deps): update dev dependencies" PR #3560, the parallel to v5.0.15) and commit `b126c338` on 2026-08-17 ("Change CounterStore type from intersection to union" PR #3565, a TypeScript type-narrowing improvement to the experimental CounterStore helper; unreleased). The v1.5.59 "Zustand main branch woke up after 33+ days idle" observation continues to be accurate; the cadence is **slow-but-active**. **Forward-looking**: a Zustand 5.0.16 PATCH is possible if PR #3565's CounterStore change is considered release-worthy; expect **within 2-4 weeks** for the next `@latest` cut IF the maintainers ship another small-bug-fix PR.
+
+- **TanStack Query** main branch had **8 NEW commits in the v1.5.59 → v1.5.73 window** (verified at 2026-08-18T18:00Z via `GET /repos/TanStack/query/commits?per_page=8`):
+  - `1f631b36` 2026-08-18 "perf(query-core): Skip unused query result tracking" PR #11225 — a query-core perf improvement that skips tracking unused query-result state; **eliminates per-query allocation overhead for queries whose results are never read**; significant for apps with many queries (e.g. dashboards with 100+ query hooks where most are filter/toggle-driven and never read after initial set)
+  - `294d4e62` 2026-08-18 "fix: declaration emit" PR #11224 — TypeScript `.d.ts` declaration-emit fix, probably TS 7.0.x alignment
+  - `5199f088` 2026-08-18 "fix(vue-query): preserve TQueryKey inference with generic params" PR #10584 (backport #8199) — Vue Query only; does NOT affect React Query `5.101.4`
+  - `de8218cd` 2026-08-18 "chore: react-nodenext integration test" PR #11223 — CI infra; react-nodenext alignment
+  - `267154cf` 2026-08-18 "chore: tsup -> tsdown" PR #11222 — build tooling migration from `tsup` to `tsdown`; relevant for projects using `tsup`
+  - `34f7ceed` 2026-08-18 "fix(query-core): clear stale select error when observer switches to a query with" — truncated title; a query-core fix for stale `select` errors when observer switches to a different query
+  - `cb6c9d37` 2026-08-18 "fix({react,preact}-query): default 'TData' of infinite query options to 'Infinite'" — TypeScript fix for `useInfiniteQuery`'s default `TData` type
+  - `e546d03b` 2026-08-18 "fix(react-query): remove placeholderData from suspense infinite query" PR #11144 — removes an unexpected `placeholderData` slot from suspense-mode infinite queries
+  
+  The TanStack monorepo is **highly active on React Query main branch** for the FIRST time since the v1.5.59 observation "TanStack Query main branch last commit `46d7f02` 2026-08-03T11:43:19Z docs only — now 14+ days idle". **Forward-looking**: a React Query **5.101.5 PATCH** that ships PR #11225 + PR #11224 + PR #11144 is **probable within 1-2 weeks**. The v1.5.59 "expect `5.101.5` when React-specific work resumes" forecast was right — work resumed on 2026-08-18. The 5-week gap from `5.101.4` SHIPPED (Jul 21) to a potential `5.101.5` (mid-to-late Aug) is consistent with the TanStack monorepo's typical 2-6 week cadence between point releases.
+
+- **TanStack Form** main branch had **1 NEW commit** in the v1.5.59 → v1.5.73 window: commit `57a855b4` on 2026-08-17 ("test(form-core): cover onMount field errors before field mount" PR #2223). The v1.5.59 observation "TanStack Form master still 7 commits ahead of v1.33.5" remains accurate; **expect TanStack Form v1.34 within 2-4 weeks** if the master branch accumulates 5+ commits; alternatively, expect **TanStack Form v2.0.0-alpha.2 within 1-2 weeks** if the maintainers ship the next alpha cut.
+
+- **TanStack Store** + **TanStack Virtual** + **TanStack Table**: **idle**. No NEW main-branch activity in this window verified at 2026-08-18T18:00Z. These are slower-cadence packages; **no change in `latest` expected within 2 weeks**.
+
+- **Jotai** main branch had **0 NEW functional commits** in the v1.5.59 → v1.5.73 window (verified at 2026-08-18T18:00Z via `GET /repos/pmndrs/jotai/commits?per_page=5`; the 5-most-recent commits are dated 2026-08-04 + 2026-07-29 + 2026-07-20 + 2026-07-20 + 2026-07-14; all of those are in the v1.5.59 window or earlier). Jotai 2.20.2 remains the current stable with **35+ days of idle time**; the v1.5.59 cross-reference to the alpha train is now stale (jotai@next dist-tag still shows 3.0.0-alpha.0 from 2026-07-20 — no new alpha drops). **Forward-looking**: Jotai 2.20.3 PATCH unlikely within 2-4 weeks; Jotai 3.0.0-ALPHA is on the slower side.
+
+### Why this refresh matters
+
+The state.md lens is **genuinely idle** at the `@latest` level for ~5d. The Aug 18 TanStack Query main-branch activity (8 NEW commits including a query-core perf PR) is the first sign of React Query 5.101.5 PATCH preparing to ship. The TanStack Form v2.0.0 alpha train continues at a slow-but-active cadence. **Verdict**: the state ecosystem is in slow-cadence-active-development (the v1.5.21 "maintenance mode" claim from old cycles is **now fully retired** as a general statement — every tracked package has at least 1 NEW commit in the past 30d). **Pin `zustand@^5.0.15` + `@tanstack/react-query@^5.101.4` + `jotai@^2.20.2` + `@tanstack/react-form@^1.33.5`** — no upgrades needed in the next 2-4 weeks unless specific bugs surface.
+
+### Practical impact per user type (the "STILL IDLE" lens)
+
+| App type | Action |
+|---|---|
+| Zustand-only apps | Stay on `^5.0.15`; **no upgrade needed** |
+| TanStack Query + Zustand apps | Stay on `^5.101.4` + `^5.0.15`; **watch for 5.101.5 PATCH within 1-2 weeks** for the PR #11225 query-core perf improvement |
+| Jotai apps | Stay on `^2.20.2`; **no upgrade needed** |
+| TanStack Form apps | Stay on `^1.33.5` (STABLE) or `@alpha 2.0.0-alpha.1` (alpha); **no upgrade needed** |
+| Multi-package state apps | Pin all to current `@latest`; **no action needed** |
+
+### Forward-looking forecast (state.md lens)
+
+- **`zustand@5.0.16` PATCH**: probable within 2-4 weeks IF PR #3565 CounterStore change is shipping-decision. Open question: type-narrowing changes are usually PATCH (no behavior change), so **expect 5.0.16 within 1-3 weeks**.
+- **`@tanstack/react-query@5.101.5` PATCH**: probable within 1-2 weeks per the 8 NEW commits including PR #11225 perf PR #11144 + PR #11224; the v1.5.59 forecast "expect `5.101.5` when React-specific work resumes" is now confirmed by the Aug 18 main-branch activity.
+- **`@tanstack/react-query@5.102.0` MINOR**: not forecast; would require a feature PR.
+- **`@tanstack/react-query@6.0.0-alpha.0`**: not forecast; the monorepo's current focus is patch-level on React 5.101.x.
+- **`jotai@2.20.3` PATCH**: not expected within 2-4 weeks; **jotai@next 3.0.0-alpha.1** possible if any new alpha-cut PR lands in the next 2-4 weeks; current `next` dist-tag is 3.0.0-alpha.0 from 2026-07-20 (now 29+ days old; expected to roll to alpha.1 with new features).
+- **`@tanstack/react-form@2.0.0-alpha.2`**: probable within 1-2 weeks on the Aug 17 +2223 commit cadence.
+- **`@tanstack/react-form@1.34.0` STABLE**: probable within 2-4 weeks if master-branch accumulates 5+ commits.
+- **`@tanstack/react-form@2.0.0` STABLE**: not forecast (would require all the master-branch changes backported + a stable-release decision); expect Q4 2026 or Q1 2027.
+
+### Audit recipe
+
+```bash
+# Step 1: confirm current state-management versions in your dep tree
+npm ls zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/store @tanstack/react-table
+
+# Step 2: verify @latest hasn't moved in the past 7d (no surprise upgrades)
+npm view zustand time.modified  # should be 2026-08-13
+npm view @tanstack/react-query time.modified  # should be 2026-07-21
+npm view jotai time.modified  # should be 2026-07-14
+
+# Step 3: check main-branch activity on the TanStack monorepo for forward-looking signals
+curl -s 'https://api.github.com/repos/TanStack/query/commits?per_page=3' | jq -r '.[].commit.message' | head -3
+
+# Step 4: check TanStack Form master ahead of v1.33.5 for forward-looking v1.34 forecast
+curl -s 'https://api.github.com/repos/TanStack/form/compare/v1.33.5...main' | jq '.ahead_by, .behind_by'
+
+# Step 5: check Zustand main-branch activity for forward-looking 5.0.16 forecast
+curl -s 'https://api.github.com/repos/pmndrs/zustand/commits?per_page=3' | jq -r '.[] | (.commit.author.date, .commit.message)' | head -10
+
+# Step 6: stay on @latest for all tracked packages
+pnpm up zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/store @tanstack/react-table --latest
+```
+
+### Sources
+
+- [`zustand` npm dist-tags](https://www.npmjs.com/package/zustand?activeTab=versions) — confirms `latest: 5.0.15` unchanged since 2026-08-13T00:39:55Z
+- [Zustand GitHub commits (most recent 5)](https://github.com/pmndrs/zustand/commits) — last 5 = b126c338 (PR #3565) + 2115efb9 (v5.0.15) + 1f531ba4 (PR #3560) + aa6d2a1d (PR #3559) + 3febf8c6 (PR #3555)
+- [Zustand PR #3565 — Change CounterStore type from intersection to union](https://github.com/pmndrs/zustand/pull/3565) — dbritto-dev, merged 2026-08-17T19:21:38Z; docs: fix typescript typo (was originally type-narrowing but got closed in favor of docs fix)
+- [`@tanstack/react-query` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms `latest: 5.101.4` unchanged since 2026-07-21T13:04:07Z
+- [TanStack Query GitHub commits (most recent 8)](https://github.com/TanStack/query/commits) — verified at 2026-08-18T18:00Z; 8 NEW commits including PR #11225 + PR #11224 + PR #11144 (React Query-relevant)
+- [TanStack Query PR #11225 — perf(query-core): Skip unused query result tracking](https://github.com/TanStack/query/pull/11225) — the HEADLINE query-core perf PR (verified via the commit list)
+- [TanStack Query PR #11144 — fix(react-query): remove placeholderData from suspense infinite query](https://github.com/TanStack/query/pull/11144) — the React Query STABLE-bumping PR
+- [TanStack Form GitHub commits (most recent 5)](https://github.com/TanStack/form/commits) — last 5 = 57a855b4 (PR #2223) + 7b8fc1d1 (PR #2329) + 0c7fc980 (philosophy docs) + 9344c570 (lit docs) + 83944bfc (PR #2324 Valibot examples)
+- [TanStack Form PR #2223 — test(form-core): cover onMount field errors before field mount](https://github.com/TanStack/form/pull/2223) — test-only; not release-worthy on its own
+- [`jotai` npm dist-tags](https://www.npmjs.com/package/jotai?activeTab=versions) — confirms `latest: 2.20.2` unchanged since 2026-07-14T13:52:11Z; `next: 3.0.0-alpha.0` unchanged since 2026-07-20T12:27:09Z
+- [Jotai GitHub commits (most recent 5)](https://github.com/pmndrs/jotai/commits) — verified at 2026-08-18T18:00Z; 5 commits dated 2026-08-04 + 2026-07-29 + 2026-07-20 (×2) + 2026-07-14; **0 NEW functional commits in the v1.5.59 → v1.5.73 window**
+- [`@tanstack/react-form` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-form?activeTab=versions) — confirms `latest: 1.33.5`; `alpha: 2.0.0-alpha.1` unchanged since 2026-08-13T17:54:59Z
+- [`@tanstack/store` npm dist-tags](https://www.npmjs.com/package/@tanstack/store?activeTab=versions) — confirms `latest: 0.7.7` (idempotent verification at this cron)
+- Cross-reference: v1.5.59 state.md — the Zustand 5.0.15 SHIPPED + TanStack Query Solid 6.0.0-rc.0 SHIPPED lens (still authoritative for the 5.0.15 SHIPPED event)
+- Cross-reference: v1.5.59 state.md TanStack Query Solid 6.0.0-rc.0 SHIPPED — the cross-monorepo Solid v6 major

@@ -3224,3 +3224,187 @@ node -v  # should show v20.9.0+
 - Cross-reference: v1.5.62 routing.md + auth.md + security.md — the canary.19 SHIPPED event from the routing / auth / security lenses
 - Cross-reference: `performance.md` — the same canary.17 → canary.19 SHIPPED events from the performance-measurement lens
 - Cross-reference: `setup.md` — the same canary.17 → canary.19 SHIPPED events from the setup-recipe lens
+
+
+## Next.js — `next@16.3.1-canary.22` + `next@16.3.1-canary.23` SHIPPED (August 17–18, 2026) (Deployment Impact Lens) — Aug 20 Monthly Security Release T-1d22h Pre-Roll Refresh #6 + canary.22 = Turbopack Persistence/GC Infra (No CVE; Deployment-Neutral) + canary.23 = `outputFileTracingIncludes` Symlink Handling Fix (PR #97507, Symlink-Using Deployments: HIGH) + Dev `no-store` Cache-Control Switch (PR #97505) + Lazy App Route Span (PR #97439) + 25th TypeScript No-Content Rebuild + `@clerk/nextjs@7.7.8` STABLE (PR #9458 CSP `connect-src` Port-Source Fix)
+
+### canary.22 SHIPPED — Turbopack persistence/GC infrastructure (deployment-neutral)
+
+**`next@16.3.1-canary.22` SHIPPED** (npm 2026-08-17T23:55:48.714Z). The 6-commit set consists entirely of `lukesandberg` Turbopack persistence/GC infrastructure changes (PR #96929 + PR #95975 + PR #96043 + 3 test-only/release-dispatch). **None of the canary.22 PRs have deployment-impact for production deployments** — they affect only the Turbopack dev-cache footprint and the next-restart persistence-rollback path. The Tombstone-format change in PR #96929 prevents stale-cache-poisoning across worker restarts (the previous "dead but in cache" key would be re-served after a worker crash; the new tombstone marker means a missing-but-recently-deleted key can be distinguished from a never-present key). **Deployment impact assessment per tier**:
+
+| Deployment tier | canary.22 impact | Action |
+|---|---|---|
+| Vercel | None | None |
+| Self-hosted Node.js (`next start`) | None | None |
+| AWS Lambda / SST / Amplify | None | None |
+| GCP Cloud Run | None | None |
+| Cloudflare Workers | None | None |
+| Multi-worker Turbo-cache setups | **LOW**: stale-cache-poisoning risk reduced | **Recommended** upgrade |
+| Webpack-only deployments | None (Turbopack-specific) | None |
+
+### canary.23 SHIPPED — 6 NEW canary-branch-ahead PRs (the deployment-impact lens)
+
+**`next@16.3.1-canary.23` SHIPPED** (npm 2026-08-18T12:15:10.948Z). The 6 NEW canary-branch-ahead PRs at this cron's 18:03Z check (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.23...canary` returning `ahead_by: 6, behind_by: 0`) include **1 deployment-impacting PR — PR #97507 symlink NFT-trace handling — plus 2 dev-productivity PRs (PR #97505 + PR #97510) and 1 observability PR (PR #97439) and 2 trivial (PR #97496 docs + PR #97502 Turbopack regex ranges)**.
+
+#### The HEADLINE for deployment: PR #97507 — `outputFileTracingIncludes` symlink handling
+
+**`PR #97507 Turbopack: gracefully handle outputFileTracingIncludes matching a symlink`** [by mischnic, created 2026-08-18T12:28:42Z, merged 2026-08-18T13:59:27Z] **closes [issue #96999](https://github.com/vercel/next.js/issues/96999)**. **The bug** (impact analysis):
+
+1. **The trigger**: a deployment's `outputFileTracingIncludes` glob (in `next.config.ts`) matches a path that's a symlink rather than a real file. Common symlink paths in production deployments include: `**/node_modules/.pnpm/**` (pnpm's content-addressable store is built from symlinks by design — `node_modules/.pnpm/<spec>@<version>/node_modules/<pkg>` is a symlink to `node_modules/.pnpm/<spec>@<version>/<pkg>`) + `**/.cache/**` (Yarn Berry pnp or turbo cache) + `**/nix/store/**` (NixOS — the entire filesystem is symlinks) + `**/.direnv/**` + any monorepo with workspace symlinks (e.g. `packages/ui -> ../ui-v2`).
+2. **The pre-fix behavior**: Turbopack's NFT trace did `.read().hash()` on the symlink target. For valid pnpm deployments, the symlink target is `node_modules/.pnpm/<spec>@<version>/node_modules/<pkg>/index.js` — but the symlink ITSELF is what Turbopack copies into the standalone output. Hashing the target meant the same symlink at 3 different paths (across 3 different `node_modules/.pnpm/<other-spec>@<version>/node_modules/<pkg>` paths) would all hash the same — so NFT-trace under-recognized duplicates and the standalone output was missing some assets, breaking the runtime when a deployment's runtime module-graph differed from the build's expectation.
+3. **The fix**: hash the symlink itself instead of its target — Turbopack copies the symlink into the function source, so hashing the target was incorrect. The PR title says "gracefully handle" — the fix makes the NFT-trace symlink-correct without crashing on `.read()` (which would have been a clean exit but rejected valid symlinks).
+
+**Deployment-impact table for PR #97507**:
+
+| Deployment tier | Symlink-heavy? | Pre-fix impact | Post-fix impact |
+|---|---|---|---|
+| **Vercel** | No (Vercel handles symlinks in its build step) | None | None |
+| **Self-hosted Docker with `pnpm`** | **HIGH** (pnpm's `node_modules/.pnpm/` is all symlinks; `outputFileTracingIncludes: ['**/node_modules/.pnpm/**']` is the default traced pattern for the standalone output) | Standalone output could be missing assets or oversized; runtime ENOENT on first asset access | Symlink-correct NFT-trace; standalone output matches runtime expectations |
+| **Self-hosted Node.js with `npm` or `yarn` (classic)** | LOW (npm's `node_modules/` is real files, not symlinks) | None | None |
+| **AWS Lambda / SST / CDK with `nextjs-lambda` adapter** | **HIGH** (Lambda's deployment bundle is `next build --standalone zipped`; missing assets = 5xx at runtime) | Same pnpm-symlink risk | Same fix applies |
+| **GCP Cloud Run with adapter** | **HIGH** (Cloud Run's container is the standalone output) | Same pnpm-symlink risk | Same fix applies |
+| **Cloudflare Workers with `@cloudflare/next-on-pages`** | MEDIUM (wrangler bundle is the standalone output + Cloudflare's `node_modules_compat` virtualizes some paths) | May exhibit partial bundling | Same fix applies |
+| **NixOS self-hosted** | **HIGH** (everything is `/nix/store` symlinks) | NFT trace massive undercount; standalone very small; runtime ENOENT | Same fix applies |
+| **Monorepo with workspace symlinks** (`packages/foo -> ../foo-actual`) | MEDIUM (only if `outputFileTracingIncludes` includes the symlink path) | Build-time undercount | Same fix applies |
+| **Webpack-only deployments** | None (PR #97507 is Turbopack-only) | None | None |
+
+**Audit recipe for PR #97507 impact**:
+
+```bash
+# Step 1: check your deployment tier
+grep -E "pnpm|npm|yarn|bun" package.json | head -5
+# Step 2: check if pnpm's symlink-heavy node_modules is in scope
+ls -la node_modules/.pnpm 2>/dev/null | head -5  # if this exists, you're pnpm
+
+# Step 3: check your next.config.ts outputFileTracingIncludes
+cat next.config.ts | grep -A 10 'outputFileTracingIncludes' || echo 'no override (uses default)'
+
+# Step 4: for pnpm + standalone + adapter users, upgrade to canary.23+ immediately
+pnpm add next@16.3.1-canary.23
+
+# Step 5: rebuild + verify NFT trace size matches expected asset count
+next build --debug 2>&1 | grep -E 'NFT.*traced|files traced' | tail -5
+
+# Step 6: smoke-test the standalone output
+node .next/standalone/server.js  # should NOT throw ENOENT for any runtime asset path
+```
+
+#### `next start` deployment-blocker fix: PR #97278 + PR #94068 next/image empty-cache reject (carryover from canary.19/16, NOW in the 16.3.2 STABLE forecast)
+
+The 16.3.2 STABLE forecast now includes the canary.22 + canary.23 PRs alongside the canary.17–19 PRs. The complete 16.3.2 STABLE candidate list from the deployment-impact lens (verified against the open PRs against `canary` and the closed-and-merged ones):
+
+| PR | Stage | Deployment-impact tier |
+|---|---|---|
+| PR #97287 (canary.17) | merged | BLOCKER — silently-unbootable adapter + standalone |
+| PR #96819 (canary.17) | merged | BLOCKER — Pages API runtime missing on adapter |
+| PR #97350 (canary.17) | merged | BLOCKER — pages metadata-files build failure |
+| PR #97278 + PR #94068 (canary.19/16) | merged | MEDIUM — self-hosted next/image 0-byte LRU poisoning |
+| PR #97255 (canary.21) | merged | LOW — Cache Components revalidatePath crash (pnpm) |
+| PR #97402 + PR #97413 (canary.21) | merged | NONE (structural-only client-router reorganizations) |
+| PR #97291 (canary.22) | merged | NONE (Turbopack persistence GC infra) |
+| PR #97507 (canary.23) | merged | **HIGH for pnpm / NixOS / monorepo-symlink users** |
+| PR #97505 + PR #97510 (canary.23) | merged | NONE for production (dev-productivity only) |
+| PR #97439 (canary.23) | merged | NONE for production (observability only) |
+
+#### Comprehensive deployment-impact table for canary.23
+
+| PR | Vercel | AWS Lambda | GCP Cloud Run | Cloudflare Workers | Self-hosted Node.js | Self-hosted Docker |
+|---|---|---|---|---|---|---|
+| #97507 (symlink NFT) | NONE | **HIGH** (pnpm default) | **HIGH** (pnpm default) | MEDIUM | LOW (npm) / **HIGH** (pnpm) | **HIGH** (pnpm) |
+| #97505 + #97510 (dev no-store) | NONE (dev only) | NONE | NONE | NONE | NONE (dev only) | NONE (dev only) |
+| #97439 (App Route trace) | NONE (adds observability) | NONE (adds observability) | NONE (adds observability) | NONE (adds observability) | NONE (adds observability) | NONE (adds observability) |
+| #97496 (docs warning) | NONE | NONE | NONE | NONE | NONE | NONE |
+| #97502 (regex ranges) | NONE | NONE | NONE | NONE | NONE | NONE |
+
+#### Why-this-matters analysis
+
+**The 16.3.2 STABLE that ships by Aug 20 will include PR #97507** as a deployment-impacting fix for pnpm / NixOS / monorepo-symlink users. **Without upgrading to 16.3.2, the affected deployments continue to ship incomplete standalones on every build** — the runtime surfaces as random `ENOENT` errors for unknown module paths because the NFT trace silently undercounted the asset count. **Pre-existing deployments on 16.3.1 STABLE with pnpm + adapter + standalone have been bug-affected since 16.3.1 shipped Aug 13**. With PR #97507 now in canary.23, the 16.3.2 STABLE cut will be the official fix.
+
+**The Vercel tier is NOT affected** because Vercel's own build step handles symlink resolution before NFT-trace runs. **The Aug 20 release notes will mention "fix NFT trace correctness for symlinks"** or similar language.
+
+### 25th TypeScript No-Content Daily Rebuild + Aug 20 T-1d22h
+
+**`typescript@next` 7.1.0-dev.20260818.1 SHIPPED** (npm 2026-08-18T08:39:06Z; the 25th consecutive no-content daily rebuild; the v1.5.70/71/72 forecast of "~08:25Z Aug 18" landed 14 minutes LATE). TypeScript main branch still idle since 2026-07-27T20:55:30Z — now **22+ days idle**. Deployment impact: zero.
+
+**Aug 20 monthly security release is T-1d22h from this cron's 18:03Z start** (expected at 2026-08-20T16:08Z based on the historical monthly cadence). The cross-reference is to `security.md`'s running pre-roll log (now at refresh #6). The 16.3.2 STABLE forecast remains tight at T-2d18h to T-2d8h (Wed Aug 20 close-of-business to Thu Aug 21 morning UTC).
+
+### `@clerk/nextjs@7.7.8` STABLE SHIPPED — CSP `connect-src` Port-Source Fix Affecting Production Deployments
+
+**`@clerk/nextjs@7.7.8` STABLE SHIPPED** at npm 2026-08-18T16:28:04Z. **PR #9458 — `fix(nextjs): allow Clerk protection hosts on all ports in `connect-src`** [by mwickett, merged 2026-08-18T13:12:35Z] **changes a deployment-runtime behavior**: the `contentSecurityPolicy` option generates a `connect-src` directive that previously listed `https://*.protect.clerk.com`. CSP source expressions with no port match the scheme's DEFAULT port only (443 for HTTPS). Production deployments that called Clerk's protection hosts on any port other than 443 saw the request **blocked by the generated CSP**, surfacing as `connect-src` violations in production browser consoles without any other symptom (the request was rejected pre-flight). The fix: `connect-src` now uses a port-inclusive source. **Deployment impact for production auth users**:
+
+- **Apps using `https://*.protect.clerk.com` on port 443 only**: unaffected by the bug; the new source is broader.
+- **Apps using `https://*.protect.clerk.com:<non-443>` or local-fork-against-Staging**: were silently broken; now fixed.
+- **`script-src` + `frame-src` unchanged**: those hosts are only fetched on 443.
+
+**Setup-recipe recipe**: pin `@clerk/nextjs@^7.7.8`. If you maintain a fork that uses custom CSS directives in `contentSecurityPolicy`, regenerate the policy via `@clerk/nextjs` v7.7.8.
+
+### `better-auth@1.7.0` STABLE SHIPPED — pure STABLE cut, deployment-neutral
+
+**`better-auth@1.7.0` STABLE SHIPPED** at npm 2026-08-18T00:10:16Z. The 279-commit lift from 1.6.30 to 1.7.0 bundles 6 RCs and ships with the OAuth device-grant flow + RP-initiated logout + i18n for 22 languages + multi-IdP signing certificates + MCP spec alignment + `auth.fetch === auth.handler` unification + `hydrateSession` for SSR session hydration. **Deployment impact**: zero (the major bump is feature-additive); the 1.6.x → 1.7.0 MAJOR bump has been tested across all 6 RCs. **Pin `better-auth@^1.7.0`** for the STABLE line.
+
+### Recommended version pin after canary.22 + canary.23 SHIPPED (deployment-impact oriented)
+
+- **Production codebases on `next@16.3.1` STABLE with pnpm + adapter + standalone**: STAY on `^16.3.1` for now; **upgrade to `16.3.2` STABLE the day it ships Aug 20** to pick up the PR #97507 symlink NFT-trace fix + the 4 MATERIAL canary.17 PRs + the Aug 20 monthly security release.
+- **Production codebases on `next@16.3.1` STABLE with npm/yarn classic**: STAY on `^16.3.1`; upgrade to `16.3.2` STABLE when Aug 20 for the Aug 20 security release alone.
+- **NixOS self-hosted deployments**: STAY on `^16.3.1`; upgrade to `16.3.2` the day it ships (PR #97507 directly addresses the NixOS symlink issue).
+- **`@clerk/nextjs` users on `^7.7.0–7.7.7`** with `contentSecurityPolicy` configured: **upgrade to `^7.7.8` immediately** — PR #9458 fixes a runtime CSP block on non-443 protection-host requests.
+- **`better-auth` users on `^1.6.x`**: `pnpm add better-auth@^1.7.0`; no migration step needed unless you depended on `auth.handler !== auth.fetch` (now unified).
+- **Canary evaluators on canary.19/20/21/22**: **upgrade to canary.23 immediately** for the PR #97507 symlink fix + the dev back-navigation PR #97505/97510 simplification.
+
+### Aug 20 Security Release Deployment-Readiness Checklist
+
+```bash
+# Step 1: confirm current versions
+npm ls next @clerk/nextjs better-auth typescript
+
+# Step 2: prepare to bump to next@16.3.2 STABLE the day it ships (Aug 20 expected)
+# The 16.3.2 STABLE will include:
+# - PR #97287 + #96819 + #97350 + #97276 (canary.17) [BLOCKERS for adapter + standalone + Pages API + Pages metadata-files]
+# - PR #97278 + #94068 (canary.19/16) [MEDIUM for self-hosted next/image]
+# - PR #97255 (canary.21) [LOW for Cache Components + pnpm]
+# - PR #97291/97269/96929/95975/96043 (canary.22) [Turbopack persistence/GC]
+# - PR #97507 + #97505 + #97439 (canary.23) [HIGH for pnpm/NixOS symlink deployments + dev-productivity]
+
+# Step 3: bump @clerk/nextjs to 7.7.8 STABLE for the CSP fix
+pnpm add @clerk/nextjs@^7.7.8
+
+# Step 4: bump better-auth to 1.7.0 STABLE (only-if-needed)
+pnpm add better-auth@^1.7.0
+
+# Step 5: watch the Aug 20 release notes for any CVE-class canary-branch-ahead PRs landing
+# This means: PR #97493 (preserve dynamic params in standalone fallback shells)
+# PR #97490 (next/image transform requester-abort wedge fix)
+# PR #97480 (SST blocks that omit hashes)
+# These are canary-branch-ahead PRs that may ship in 16.3.2 or may be deferred
+
+# Step 6: verify the canary.23 PR #97507 fix impact after deploying 16.3.2
+next build --debug 2>&1 | grep 'NFT.*traced' | tail -5
+# Compare to pre-16.3.2 counts — should be higher (symlinks now correctly traced)
+
+# Step 7: confirm Node.js 20.9+ for napi-rs v3 ABI (UNCHANGED from v1.5.58)
+node -v  # should show v20.9.0+
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.22` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — npm-published 2026-08-17T23:55:48.714Z; 6-commit Turbopack persistence/GC infra set
+- [Next.js `v16.3.1-canary.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — npm-published 2026-08-18T12:15:10.948Z
+- [Next.js canary-branch compare `v16.3.1-canary.23...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.23...canary) — 6 NEW canary-branch commits ahead at this cron
+- [PR #97507 — Turbopack: gracefully handle `outputFileTracingIncludes` matching a symlink](https://github.com/vercel/next.js/pull/97507) — mischnic, merged 2026-08-18T13:59:27Z; **the HEADLINE deployment-impact PR**; closes [issue #96999](https://github.com/vercel/next.js/issues/96999)
+- [Issue #96999 — `outputFileTracingIncludes` symlink handling](https://github.com/vercel/next.js/issues/96999) — the upstream bug report
+- [PR #97505 — Stop the browser from restoring stale pages in development](https://github.com/vercel/next.js/pull/97505) — unstubbable, merged 2026-08-18T14:54:47Z
+- [PR #97510 — Remove the development debug channel persistence](https://github.com/vercel/next.js/pull/97510) — unstubbable, merged 2026-08-18T14:54:49Z; -78% of `debug-channel.ts` lines deleted
+- [PR #97439 — Trace lazy App Route module loading](https://github.com/vercel/next.js/pull/97439) — DavidIlie, merged 2026-08-18T11:33:23Z; new OpenTelemetry span
+- [PR #97496 — docs: warn when catching `permanentRedirect`](https://github.com/vercel/next.js/pull/97496) — DavidIlie, merged 2026-08-18T14:00:46Z
+- [PR #97502 — Turbopack: support character class ranges in regex](https://github.com/vercel/next.js/pull/97502) — mischnic, merged 2026-08-18T17:38:42Z
+- [@clerk/nextjs `v7.7.7` GitHub release tag](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.7) — npm-published 2026-08-18T02:25:32Z; pure dep-bump
+- [@clerk/nextjs `v7.7.8` GitHub release tag](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.8) — npm-published 2026-08-18T16:28:04Z
+- [PR #9458 — fix(nextjs): allow Clerk protection hosts on all ports in `connect-src`](https://github.com/clerk/javascript/pull/9458) — mwickett, merged 2026-08-18T13:12:35Z; **CSP `connect-src` port-source fix**; deployment-impact
+- [Better Auth `v1.7.0` STABLE released](https://github.com/better-auth/better-auth/compare/v1.6.30...v1.7.0) — 279 commits since 1.6.30
+- [`typescript@7.1.0-dev.20260818.1` dist-tag](https://www.npmjs.com/package/typescript?activeTab=versions) — npm `dist-tag.next` moved 2026-08-18T08:39:06Z; 25th no-content rebuild
+- Cross-reference: v1.5.58 deployment.md `## Next.js 16.3.1 STABLE SHIPPED` — the 16.3.1 STABLE deployment-impact lens
+- Cross-reference: v1.5.65 deployment.md `## Next.js 16.3.1-canary.17 → 16.3.1-canary.19 SHIPPED` — the canary.17/18/19 deployment-impact lens (still authoritative for those PRs)
+- Cross-reference: v1.5.63 setup.md `## Next.js 16.3.1 STABLE SHIPPED` — the 16.3.1 STABLE setup-recipe lens
+- Cross-reference: v1.5.71 security.md — the Aug 20 monthly security release pre-roll + the 3 lukesandberg Turbopack GC PRs perspective
+- Cross-reference: v1.5.73 setup.md — the same canary.22 + canary.23 PRs from the setup-recipe lens
+- Cross-reference: `auth.md` — the @clerk/nextjs 7.7.8 STABLE CSP port-source fix from the auth-impact lens

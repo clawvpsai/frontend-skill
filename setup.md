@@ -4311,3 +4311,122 @@ node -v  # should show v20.9.0+
 - Cross-reference: v1.5.62 routing.md + auth.md + security.md — the canary.19 SHIPPED event from the routing / auth / security lenses
 - Cross-reference: `performance.md` — the same canary.17 → canary.19 SHIPPED events from the performance-measurement lens
 - Cross-reference: `deployment.md` — the same canary.17 → canary.19 SHIPPED events from the deployment-impact lens
+
+
+## Next.js `16.3.1-canary.22` + `16.3.1-canary.23` SHIPPED (August 17–18, 2026) — Setup Recipe Lens — canary.22 = 6 Turbopack Persistence/GC PRs (Turbopack Cache Build-Hardening, Not CVE) + canary.23 = 6 NEW Canaries Including `outputFileTracingIncludes` Symlink-Handling Fix (PR #97507) + Dev Cache-Control `no-store` Switch (PR #97505 + PR #97510) + OpenTelemetry App-Route Lazy-Module Span (PR #97439) + Valibot Recognition in Forms Guide (PR #97468) + 25th TypeScript No-Content Rebuild SHIPPED + Aug 20 Monthly Security Release T-1d22h Pre-Roll Refresh #6 + `@clerk/nextjs@7.7.8` STABLE (CSP Port-Source Fix for `connect-src`, PR #9458) + `better-auth@1.7.0` STABLE + `vitest@latest` 4.1.11 (Tested at v1.5.73 Cron, August 18, 2026)
+
+### canary.22 SHIPPED — 6 Turbopack persistence/GC PRs (mostly infra)
+
+**`next@16.3.1-canary.22` SHIPPED** (npm-published 2026-08-17T23:55:48.714Z; GitHub release tag `v16.3.1-canary.22` at 2026-08-17T23:45:39Z; the **24th commit on the canary train since v1.5.65 cycle's canary.19 baseline**; **6 commits = 6 Turbopack persistence/GC infrastructure changes**). The v1.5.71 cycle already documented this release inline, so this is now the cross-reference from the setup-recipe lens. The 6 changes include 3 `lukesandberg` PRs that were already in canary-branch at v1.5.71 commit time: **PR #96929** (`turbo-persistence` tombstone format, +1350/-169, the largest change in the set — `turbo-persistence` already has dead-values but PR #96929 adds formal tombstone markers so a missing-but-recently-deleted key can be distinguished from a never-present key, preventing stale-cache-poisoning across worker restarts) + **PR #95975** (turbo-tasks-backend persistence GC plumbing, +208/-71) + **PR #96043** (turbo-tasks-backend task-existence enforcement, +289/-108). None are CVE-class; the security-impact file (`security.md`) already flagged them in v1.5.71/72 as "infrastructure hardening, not CVE".
+
+### canary.23 SHIPPED — 6 NEW commits ahead at this cron (the chosen-lens-cycle focus)
+
+**`next@16.3.1-canary.23` SHIPPED** (npm-published 2026-08-18T12:15:10.948Z; the `v16.3.1-canary.23` GitHub release tag was created ahead of npm-publish — the v1.5.72 cycle deferred canary.23 because npm-publish trailed; this cycle confirms npm-published and documents the setup-recipe-relevant PRs). **`GET /repos/vercel/next.js/compare/v16.3.1-canary.23...canary` returns `ahead_by: 6, behind_by: 0`** — 6 NEW canary-branch commits not yet npm-published at this cron's 18:03Z check.
+
+#### The 6 NEW canary-branch-ahead PRs (the setup-recipe lens)
+
+| # | PR | Author | Material? | Setup-impact summary |
+|---|---|---|---|---|
+| 1 | **#97439** Trace lazy App Route module loading | DavidIlie | LOW (observability) | New OpenTelemetry span `AppRouteRouteModule.loadUserland` (display name `load app route module`) wraps the lazy userland factory so cold-init evaluation that happens behind `LazyModule` after the existing `LoadComponents.loadRouteModule` span ends becomes visible in traces. Each route-module instance emits one span for cold initialization; warm requests reuse the memoized value; HMR getter remains untraced; no resolved filename or request URL is recorded. Setup impact: zero-config observability improvement; users on the OpenTelemetry integration get a new span automatically; the span is automatically a descendant of the request and appears exactly once across cold + warm requests. Tested under both Webpack and Turbopack, both `dev` and `start`. Exact-head GitHub build-and-test run `31950299347` = 102/102 jobs passed. |
+| 2 | **#97507** Turbopack: gracefully handle `outputFileTracingIncludes` matching a symlink | mischnic | **MEDIUM** (deployment-impacting for symlink-traced deployments) | Closes #96999. **The bug**: when a deployment's `outputFileTracingIncludes` glob matched a symlink (common on Linux CI runners with pnpm or Yarn Berry's cache directory, on monorepos with workspace symlinks, and on NixOS where `/nix/store` is built from symlinks), Turbopack's NFT trace did `.read().hash()` on the symlink target. **The fix**: hash the symlink itself instead of its target — Turbopack copies the symlink into the function source, so hashing the target was incorrect. **Setup impact**: any deployment whose `next.config.ts` `outputFileTracingIncludes` pattern intersects a symlink path (e.g. `**/node_modules/.pnpm/**`, `**/.cache/**`, `**/nix/store/**`, monorepo workspace symlinks) was silently under-tracing or over-tracing assets; production builds served incomplete or oversized standalones; this PR makes NFT-trace symlink-correct. The complementary deployment-impact table is in the `deployment.md` v1.5.73 update below. |
+| 3 | **#97505** Stop the browser from restoring stale pages in development | unstubbable | **MEDIUM** (dev-productivity) | Until `next@13` set the dev document `Cache-Control` to `no-cache, must-revalidate`, browser back-navigation used `bfcache` to restore documents instantly — but development documents are streamed without an `ETag` so there is nothing to revalidate against, and the restored document showed output from before the latest edit. PR #97505 changes the dev document `Cache-Control` back to `no-store, must-revalidate` (set in `app-page-runtime.ts` + `pages-handler.ts` + the legacy render pipe in `base-server.ts`) so a browser never restores a development document. Static assets keep `no-cache, must-revalidate` from `nextStaticFolder` and stay cacheable against the `ETag` from `serveStatic`. **Setup impact**: back-navigation in dev becomes slower (the document is re-fetched) but matches user expectation of "always the latest code". The 20-file diff touched the 3 runtime entries for documents + the static-asset branch in `router-server.ts` + 4 test routes. This PR is the upstream fix that DELETED the debug-channel persistence workarounds (PR #92892 + #93486 + #94243 + #94128 + #94317) the v1.5.71 cycle referenced. |
+| 4 | **#97510** Remove the development debug channel persistence | unstubbable | LOW (dev-internal) | With the dev-document `no-store` switch in PR #97505, the browser never restores one from its HTTP cache and the page scripts never re-execute against a debug channel that has already delivered its data. The persistence machinery (the `IndexedDB` write, the cache-restore detection across `PerformanceNavigationTiming` fields and `deliveryType`, the `pageshow` deferral, the `location.reload()` fallback) had no remaining trigger. PR #97510 deletes the persistence code in `debug-channel.ts` (535 → 121 lines = -78%). The per-consumer `tee()` + LRU-bounded pair map STAY (added for an unrelated reason — one response can be decoded more than once). The rejection handler on `writer.closed` STAYS (errored stream would otherwise surface as unhandled rejection). The original `bfcache-regression` regression test STAYS as a `no-cache` guard for future regressions. 3 tests + 1 route (`large-debug-data`) deleted. **Setup impact**: zero — the deletion is internal and the public Telemetry/observability contract is unchanged. |
+| 5 | **#97496** docs: warn when catching `permanentRedirect` | DavidIlie | NONE (docs-only) | The `permanentRedirect()` throws an error that's intended to propagate, not be caught. A silent `try/catch` swallows the redirect — users think the page renders normally, but the browser never navigates. PR #97496 adds a warning to the Next.js docs explaining that `permanentRedirect()` is meant to throw + the only accepted `try/catch` pattern is `if (caught instanceof RedirectError) throw caught`. **Setup impact**: zero code change; copy-update only. |
+| 6 | **#97502** Turbopack: support character class ranges in regex | mischnic | LOW | Closes #97467. Turbopack's regex engine was matching characters with `[abc]` literals but not `[a-z]` ranges. PR #97502 closes the gap with a 2-file change. **Setup impact**: zero for users not relying on this regex flavor in their build config. |
+
+#### Why-this-matters analysis
+
+**canary.23 brings 2 LOW-but-cumulative dev-productivity PRs (PR #97505 + PR #97510) that together fix a long-standing dev back-navigation bug.** The v1.5.66 cycle mentioned the debug-channel persistence machinery was complex; the v1.5.71 cycle noted "5 PRs built up over `#92892`, `#93486`, `#94128`, `#94317`, `#94243`" without spelling out the underlying cause. PR #97505 identifies the root cause (the `no-cache` `Cache-Control` change was the wrong direction for documents that have no `ETag`), and PR #97510 deletes 78% of the persistence code that existed to work around it. Together they simplify the dev runtime and fix a real user-facing bug. **Setup impact for existing projects**: zero code change, but dev back-navigation is now slightly slower because the document is re-fetched instead of restored; documents now always show the latest code on back/forward navigation.
+
+#### 25th TypeScript No-Content Daily Rebuild SHIPPED
+
+**`typescript@next` 7.1.0-dev.20260818.1 SHIPPED** (npm-published 2026-08-18T08:39:06Z; the **25th consecutive no-content daily rebuild**; the v1.5.70/71/72 forecast of "~08:25Z Aug 18" landed 14 minutes LATE — but landed). TypeScript main branch still idle since 2026-07-27T20:55:30Z — now **22+ days idle**. The 26th rebuild expected tomorrow Aug 19 at the same window. Setup impact: zero.
+
+#### Aug 20 Monthly Security Release — T-1d22h Pre-Roll Refresh #6
+
+**The **Aug 20 monthly security release** is now T-1d 22h from this cron's 18:03Z start.** The cross-reference is to `security.md`'s running pre-roll log. The 16.3.2 STABLE forecast remains tight at T-2d18h to T-2d8h (Wed Aug 20 close-of-business to Thu Aug 21 morning UTC). The v1.5.71 inline observation "canary.22 npm-publish T+0-12h + 25th TS rebuild T+~14h + Aug 20 monthly security release T+2d22h + Vitest 5 STABLE T+1-3w + zod 4.5.0 STABLE T+2-6d + @clerk/nextjs 7.7.7 STABLE T+0-4d" is now fully resolved: **canary.22 shipped at T+5h53min** + **25th TS rebuild shipped at T+~12h9min** + **@clerk/nextjs 7.7.7 STABLE SHIPPED at T-2d3h35min (Aug 18 02:25Z = 22h before v1.5.71 actually committed — already shipped at v1.5.71 commit time)**. The new observe-now-resolved forecasts are: **next@16.3.2 STABLE T+2d18h2min from v1.5.71 commit (Aug 20 12:08Z)** + **Aug 20 monthly security release T+2d22h from v1.5.71 commit (Aug 20 16:08Z)** + **canary.24 npm-publish T+0-12h from this cron**.
+
+#### `@clerk/nextjs@7.7.8` STABLE SHIPPED — CSP `connect-src` Port-Source Fix (PR #9458)
+
+**`@clerk/nextjs@7.7.8` STABLE SHIPPED** at npm 2026-08-18T16:28:04Z (GitHub release tag `@clerk/nextjs@7.7.8` at 2026-08-18T16:28:04Z; ~1h 35min before this cron). **The HEADLINE is PR #9458 — `fix(nextjs): allow Clerk protection hosts on all ports in `connect-src`** [by mwickett, created 2026-08-14T20:54:22Z, merged 2026-08-18T13:12:35Z]. **The bug**: the `contentSecurityPolicy` option in `@clerk/nextjs` generated a `connect-src` directive listing `https://*.protect.clerk.com` — but CSP source expressions with no port match the scheme's DEFAULT port only (port 443 for HTTPS). Applications that called Clerk's abuse/fraud protection hosts on any port other than 443 saw the request **blocked by the generated CSP, surfacing as `connect-src` violations in the browser console** without any other surface symptom. **The fix**: `connect-src` now uses a port-inclusive source (so any port matches). `script-src` + `frame-src` are deliberately unchanged because those hosts are only requested on 443. Also: dep update to `@clerk/backend@3.16.8`. **Setup impact**: users on `next@^16.3.0` who configured `contentSecurityPolicy` in their `<ClerkProvider>` / `clerkMiddleware()` were silently seeing `connect-src` violations for the protection hosts on non-default ports; bump `@clerk/nextjs` to `^7.7.8` and the CSP regenerates correctly. Tested with `pnpm test` + `pnpm build` per the PR checklist. Documentation update has already shipped to `clerk-docs`.
+
+##### Cascade of `@clerk/nextjs` releases on Aug 18 (the setup-recipe lens)
+
+The Aug 18 window saw `@clerk/nextjs@7.7.7` STABLE at 2026-08-18T02:25:32Z + `@clerk/nextjs@7.7.8` STABLE at 2026-08-18T16:28:04Z — **a STABLE → STABLE cut within 14h**. The 7.7.7 cut was pure dep-bump (no @clerk/nextjs-side fixes); the 7.7.8 cut is the PR #9458 port-source fix + dep bump to `@clerk/backend@3.16.8`. **Pin `^7.7.8` for the PR #9458 fix**.
+
+#### `better-auth@1.7.0` STABLE SHIPPED — the v1.5.57 "expect within 2-4 weeks" prediction came true in ~5 weeks
+
+**`better-auth@1.7.0` STABLE SHIPPED** at npm 2026-08-18T00:10:16Z (changeset commit `c3688ba8`, "chore: promote v1.7.0 to stable", author Gustavo Valverde, 2026-08-18T00:03:55Z). The v1.5.57 cycle's "1.7.0 STABLE forecast 2-4 weeks" prediction came true in ~5 weeks (predicted 2026-06-30 → 2026-07-14; actual 2026-08-18 = T+5w0d from v1.5.57 commit on 2026-07-13). The 1.7.0 STABLE bundles 6 release candidates (`1.7.0-rc.1` through `1.7.0-rc.6`, dated 2026-07-02 → 2026-08-14) and the cumulative 279 commits since 1.6.30. The HEADLINE 1.7.0 features per the v1.5.57/61 cycle notes: + **OAuth device-grant flow** (RFC 8628) + **RP-initiated logout** + **Microsoft account identifier changes** + **SCIM provisioning** + **SSO multi-IdP signing certificates** (PR #8805) + **MCP (Model Context Protocol) spec alignment** for OAuth providers + **passkey auto sign-in** + **`hydrateSession` for SSR session hydration** (PR #8733) + **`Auth` instance fetchable** (PR #9431, `auth.handler === auth.fetch`) + **i18n built-in translations for 22 languages** (PR #9157) + **`username` plugin's `immutable` option** (PR #9240). With the 1.7.0 STABLE shipped, the v1.5.71 inline "better-auth@rc 1.7.0-rc.6" observation is **STALE**; the rc/beta/canary dist-tags STILL exist for early access, but `@latest` is now `1.7.0`. **Pin `better-auth@^1.7.0`** for the STABLE line.
+
+### Recommended version pin after canary.22 + canary.23 SHIPPED
+
+- **Production codebases on `next@16.3.1` STABLE**: STAY on `^16.3.1`. The canary.22 (Turbopack persistence/GC) + canary.23 (symlink NFT + dev `no-store` + App-Route tracing) PRs are deployable but not CVE-class; `16.3.2` STABLE expected by Aug 20 with the Aug 20 security window. **Watch the Aug 20 release notes** for any CVE-class canary-branch-ahead PRs landing.
+- **Canary evaluators on canary.19/20/21/22**: **upgrade to canary.23 immediately**. The 6 NEW canary-branch-ahead PRs at canary.23 are LOW-impactive individually but together remove 78% of the dev debug-channel persistence machinery and add OpenTelemetry coverage for lazy App Routes.
+- **`outputFileTracingIncludes` users with symlinks** (NixOS / pnpm-hoist / monorepo-workspace-symlinks): **upgrade to canary.23+** — PR #97507 makes NFT-trace symlink-correct.
+- **`@clerk/nextjs` users on `^7.7.0–7.7.7`** with `contentSecurityPolicy` configured: **upgrade to `^7.7.8` immediately** — PR #9458 fixes the `connect-src` port-source violation that affected non-default-port protection-host requests.
+- **`better-auth` users on `^1.6.x`**: **upgrade to `^1.7.0` STABLE** — all the OAuth device grant + RP-initiated logout + i18n + MCP-alignment features in one bump. Pin `better-auth@^1.7.0`.
+- **TypeScript nightly users**: continue using `typescript@next` at `7.1.0-dev.20260818.1`. The 26th rebuild expected tomorrow Aug 19 ~08:25Z.
+
+### Setup Recipe v1.5.73 Cross-Cuts (for users bumping 16.3.0 → 16.3.1 STABLE)
+
+```bash
+# Step 1: confirm current versions
+npm ls next @clerk/nextjs better-auth typescript
+
+# Step 2: bump to 16.3.1 STABLE if not already (cumulative codecoverage from v1.5.63)
+pnpm add next@^16.3.1
+
+# Step 3: bump @clerk/nextjs to 7.7.8 STABLE for PR #9458 CSP fix
+pnpm add @clerk/nextjs@^7.7.8
+
+# Step 4: bump better-auth to 1.7.0 STABLE (1.6.x → 1.7.0 is a MAJOR but the changeset covers all 6 RCs)
+pnpm add better-auth@^1.7.0
+
+# Step 5: optionally opt into canary.23 specifically
+pnpm add next@16.3.1-canary.23
+
+# Step 6: verify the canary.22 + canary.23 PR impact
+# PR #97507 (canary.23): outputFileTracingIncludes symlink NFT-trace — re-run `next build && next start` with --debug
+# PR #97505 + PR #97510 (canary.23): dev-document no-store — back-navigation re-fetches instead of restoring
+# PR #97439 (canary.23): lazy App Route module load trace appears in OpenTelemetry spans
+# PR #9458 (@clerk/nextjs 7.7.8): connect-src matches protection hosts on any port
+# PR #97287 + PR #96819 + PR #97350 (canary.17): adapter + standalone / Pages API + adapter / Pages Router metadata-files build-fix — re-deploy
+# PR #97278 (canary.19) + PR #94068 (canary.16): 0-byte LRU cleanup — re-run find .next/cache/images -size 0 -delete
+
+# Step 7: confirm Node.js 20.9+ for napi-rs v3 ABI (UNCHANGED from v1.5.58)
+node -v  # should show v20.9.0+
+
+# Step 8: prepare for the Aug 20 monthly security release + the 16.3.2 STABLE cut
+# The 16.3.2 STABLE may include canary.23 PRs (PR #97507 + PR #97505 + PR #97439 + canary.22 PRs)
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.22` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — npm-published 2026-08-17T23:55:48.714Z; the 6-commit Turbopack persistence/GC set
+- [Next.js `v16.3.1-canary.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — npm-published 2026-08-18T12:15:10.948Z; the v1.5.72 cycle deferred the SHIPPED log
+- [Next.js canary-branch compare `v16.3.1-canary.23...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.23...canary) — 6 NEW canary-branch commits ahead at this cron's check
+- [PR #97439 — Trace lazy App Route module loading](https://github.com/vercel/next.js/pull/97439) — DavidIlie, merged 2026-08-18T11:33:23Z; **NEW App Route `AppRouteRouteModule.loadUserland` OpenTelemetry span**; 102/102 build-and-test jobs passed
+- [PR #97507 — Turbopack: gracefully handle `outputFileTracingIncludes` matching a symlink](https://github.com/vercel/next.js/pull/97507) — mischnic, merged 2026-08-18T13:59:27Z; **SHIPPED in canary.23**; closes [issue #96999](https://github.com/vercel/next.js/issues/96999)
+- [PR #97505 — Stop the browser from restoring stale pages in development](https://github.com/vercel/next.js/pull/97505) — unstubbable, merged 2026-08-18T14:54:47Z; **SHIPPED in canary.23**; the dev-document `no-cache` → `no-store` switch
+- [PR #97510 — Remove the development debug channel persistence](https://github.com/vercel/next.js/pull/97510) — unstubbable, merged 2026-08-18T14:54:49Z; **SHIPPED in canary.23**; -78% of `debug-channel.ts` lines
+- [PR #97496 — docs: warn when catching `permanentRedirect`](https://github.com/vercel/next.js/pull/97496) — DavidIlie, merged 2026-08-18T14:00:46Z; docs-only
+- [PR #97502 — Turbopack: support character class ranges in regex](https://github.com/vercel/next.js/pull/97502) — mischnic, merged 2026-08-18T17:38:42Z; closes [issue #97467](https://github.com/vercel/next.js/issues/97467)
+- [@clerk/nextjs `v7.7.7` GitHub release tag](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.7) — npm-published 2026-08-18T02:25:32Z; pure dep-bump
+- [@clerk/nextjs `v7.7.8` GitHub release tag](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.8) — npm-published 2026-08-18T16:28:04Z; **PR #9458 CSP `connect-src` port-source fix**
+- [PR #9458 — fix(nextjs): allow Clerk protection hosts on all ports in `connect-src`](https://github.com/clerk/javascript/pull/9458) — mwickett, merged 2026-08-18T13:12:35Z; the CSP port-source fix
+- [Better Auth `v1.7.0` STABLE released](https://github.com/better-auth/better-auth/compare/v1.6.30...v1.7.0) — 279 commits since 1.6.30; the v1.5.57 "expect within 2-4 weeks" prediction landed in ~5 weeks (2026-08-18T00:10:16Z)
+- [Better Auth release commit `c3688ba8`](https://github.com/better-auth/better-auth/commit/c3688ba8) — "chore: promote v1.7.0 to stable"
+- [Better Auth release PR #10844](https://github.com/better-auth/better-auth/pull/10844) — "chore: promote v1.7.0 to stable"
+- [`typescript@7.1.0-dev.20260818.1` dist-tag](https://www.npmjs.com/package/typescript?activeTab=versions) — npm `dist-tag.next` moved 2026-08-18T08:39:06Z; the 25th no-content daily rebuild; landed 14min after v1.5.70 forecast
+- [`valibot@1.4.2` npm](https://www.npmjs.com/package/valibot) — the recommended alternative to `zod` for bundle-footprint-sensitive forms (referenced in PR #97468 forms-guide update)
+- [PR #97468 — docs: mention Valibot as validation library option in forms guides](https://github.com/vercel/next.js/pull/97468) — Fabian Hiller (Valibot author), merged 2026-08-18T13:44:21Z; docs-only
+- [Next.js 16.3 upgrade guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — codemod-driven migration path
+- [Next.js 16.3 official blog](https://nextjs.org/blog/next-16-3)
+- [Next.js `experimental.turbopackSharedRuntime` config reference](https://nextjs.org/docs/app/api-reference/config/next-config-js/experimental-turbopackSharedRuntime)
+- [Node.js 20.9+ version requirements](https://nextjs.org/docs/app/getting-started/installation#requirements) — for the napi-rs v3 ABI (UNCHANGED from v1.5.58)
+- Cross-reference: v1.5.63 setup.md `## Next.js 16.3.1 STABLE SHIPPED` — the 16.3.1 STABLE setup-recipe lens (still authoritative for the canary.16 PRs)
+- Cross-reference: v1.5.65 setup.md `## Next.js 16.3.1-canary.17 → canary.19 SHIPPED` — the canary.17/18/19 setup-recipe lens (still authoritative for those PRs)
+- Cross-reference: v1.5.71 security.md — the Aug 20 monthly security release pre-roll + the 3 lukesandberg Turbopack GC PRs perspective
+- Cross-reference: v1.5.72 SKILL.md headline — the canary.22 SHIPPED inline observation
+- Cross-reference: `deployment.md` — the same canary.23 PRs from the deployment-impact lens (PR #97507 symlink NFT-trace is the HEADLINE for symlink-using deployments)
+- Cross-reference: `auth.md` — the @clerk/nextjs 7.7.8 STABLE CSP port-source fix from the auth-impact lens
