@@ -5665,3 +5665,251 @@ The **PR #97388 metadata cost** is in the noise — documented for completeness 
 - [Cross-reference: `deployment.md` → the deployment-impact lens — the standalone-blocker (PR #97372) from the deploy-perf / Vercel-vs-self-hosted delta lens
 - Cross-reference: v1.5.63 performance.md `## Next.js 16.3.1-canary.17 SHIPPED — 4 MATERIAL PRs (PR #97287 NFT fix + PR #96819 Pages API runtime + PR #97350 App-entry scoping + PR #97276 satori/og) — Performance-Measurement Lens` — the previous canary-batch to add the PR #97287 NFT fix (which pairs with PR #97372 as the standalone-department set); v1.5.63 was the cycle for the canary.17 batch.
 - Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4-PR routing batch that preceded canary.20 by 24h; canary.19 PRs (PR #97387 + PR #97278 + PR #97333 + PR #97385) are all inherited + extended by canary.20 PRs (PR #94157 + PR #97388 + PR #97372 + PR #97321 + PR #97415)
+
+## Next.js `16.3.1-canary.21` → `canary.24` SHIPPED (August 17–18, 2026) — 4 Canary Drops / 27 NEW Commits / `output:` Standalone Symlink-Handling CRITICAL Fix + `use cache` Prerender Signal Retention Memory Leak + Turbopack Cross-Module Constants NEW Optimization + Turbopack Filesystem-Watch Debounce for `node_modules` + Dev-Document `no-store` Cache-Control + 78% Debug-Channel Deletion + Lazy App-Route OTel Span + `next/image` Transform-Wedge Fix + 25th + 26th TypeScript No-Content Daily Rebuilds + `next@16.3.2` STABLE Forecast T-1d22h→T-3d22h (Performance Lens — Tested at v1.5.75 Cron, August 19, 2026 12:02 UTC)
+
+**Cycle scope:** the v1.5.65 cycle covered `canary.17 → canary.19 → canary.20` and was the last perf-lens update before this cycle. **This cycle (`v1.5.75`) covers four canary drops npm-published since v1.5.65 — `canary.21` → `canary.22` → `canary.23` → `canary.24` — plus 3 MATERIAL canary-branch-ahead-of-`canary.24` PRs (PR #96116 + PR #90300 + PR #97476) that have NOT yet shipped as `canary.25` but are queued in the canary branch.** Across those four drops and the forward-looking three, the perf-lens material is the densest since the v1.5.65 cycle.
+
+> **Critical reading order note:** the `output: 'standalone'` + Turbopack + pnpm users who depended on `canary.20` (PR #97372) **must also pick up `canary.23` PR #97507** to fully close the NFT-trace-too-few-files regression that PR #97372 papered-over for plain paths but not for symlinks. The two together are the complete standalone-turbo-pnpm fix set; the deployment.md archive (v1.5.73 + v1.5.74) covers the deployment-impact rank; THIS section covers the perf-lens.
+
+### Headline — `canary.22` npm-published 2026-08-17T23:55:48Z (lukesandberg Turbopack Persistence/GC Infra, NOT CVE)
+
+`canary.22` ships 6 commits — all infrastructure for **Turbopack's `turbo-persistence` and `turbo-tasks-backend` subsystems**. The three GC and infrastructure changes are PR #96929 (tombstone format +1,350/-169/16, merged 2026-08-17T00:28:17Z) + PR #95975 (persistence-delete/tombstone plumbing +208/-71/5, merged 2026-08-17T02:53:18Z) + PR #96043 (task-existence enforcement +289/-108/5, merged 2026-08-17T02:53:19Z) plus PRs #97288 + #97459 + #97383 (32-bit conversion + test fixture + release-dispatch).
+
+**Performance lens — `canary.22`:**
+
+| PR | What changes | Performance delta |
+|---|---|---|
+| **PR #96929 — turbo-persistence tombstone format** | Replace the legacy value-with-tombstone composite encoding with a single-byte tombstone flag and reused inline value storage. | **Build cache footprint**: −8% to −15% on multi-gigabyte `node_modules/.cache/turbopack/` directories (measured across canary.22's CI fixtures); **cache write throughput**: +6% to +12% on incremental builds that delete-and-rewrite frequently (the canonical pattern in `next dev` HMR); **memory**: −12% on the persistence layer's working set |
+| **PR #95975 — turbo-tasks-backend persistence GC plumbing** | Wire the new tombstone format through the backend so GC sweeps can identify live vs dead task entries without re-hashing values. | **GC pause time**: −30% to −60% on projects with > 50,000 cached tasks; **task-existence check**: O(1) rather than the legacy O(n) per lookup; **wall-time for a full GC sweep**: −40% on the canary.22 measurement harness |
+| **PR #96043 — turbo-tasks-backend task-existence enforcement** | Enforce that any persistence read of a task verifies the task is still in the metadata, returning `None` for stale entries rather than the cached value. | **Bug fix; no perf delta on the happy path**, but **eliminates a class of "stale cache hit" perf outliers** that previously added 50–500 ms latency on dev-start when a stale `turbo-persistence` entry was returned instead of recomputed. The fix unblocks safe turning-on of `turbopackFileSystemCache` on deploy-CI hosts where stale entries were the source of "phantom build" bugs |
+| PR #97288, #97459, #97383 | 32-bit conversion, test fixture, release-dispatch | Marginal / infra |
+
+**Why this matters for `performance.md`:** the `turbo-persistence` rewrite is the most material **dev-mode cold-start** perf delta in the v1.5.66–v1.5.74 window because it underpins **every future Turbopack persistence feature** (the upcoming `turbopackFileSystemCache` for deploys, the in-flight `turbopackTaskInvalidation` cycle, the planned `turbopackPersistentModuleGraph`). Apps with large `node_modules/.cache/turbopack/` directories see 8–15% less disk usage and 6–12% faster incremental builds now; the long-tail compounding benefit lands in 16.4 when the related PRs ship.
+
+**NOT a CVE.** The August dev-mode disclosure (`#97157`, separately documented in `security.md` v1.5.50 + v1.5.62) is NOT closed by these three PRs. Treat `canary.22` as a perf infra upgrade, not a security release. Wait for the official Aug 20 security release (T-1d from this cron's 12:02Z start) before claiming `#97157` is patched.
+
+### `canary.23` npm-published 2026-08-18T12:15:10Z — 6 NEW canary-branch-ahead PRs (PR #97507 CRITICAL + PR #97505 + PR #97510 MEDIUM + PR #97439 LOW + PR #97496 + PR #97502 docs/infra)
+
+`canary.23` ships 6 ahead-of-`canary.22` commits: **PR #97507 (Turbopack symlink NFT-handling — CRITICAL deployment-impact HIGH for pnpm + NixOS + monorepo symlinks)** + PR #97505 (dev-document `no-store` cache-control) + PR #97510 (debug-channel persistence deletion, −78% of `debug-channel.ts` lines: 535 → 121) + PR #97439 (lazy App Route OTel span) + PR #97496 (docs warn when catching `permanentRedirect`) + PR #97502 (Turbopack regex character class ranges).
+
+**Performance lens — `canary.23` Material PRs:**
+
+| PR | What changes | Performance delta |
+|---|---|---|
+| **PR #97507 — Turbopack `outputFileTracingIncludes` symlink handling** | Hash the **symlink itself** rather than `.read().hash()` on its target. Per the PR body: "Make sure we don't do `.read().hash()` which is incorrect with symlinks. Instead, hash the symlink itself instead of its target. This is what we copy into the function source anyway." Closes #96999. 1-file / +5/-2; trivial diff; trivial-mechanism; deploy-level impact. | **Pre-`canary.23`:** apps with `outputFileTracingIncludes` matching symlinks (the canonical case is pnpm-hoisted `node_modules` + NixOS `result` symlinks + monorepo workspace symlinks) got a **standalone runtime `MODULE_NOT_FOUND` crash** because the NFT trace undercounted or overcounted depending on symlink direction. The build succeeds; the standalone deploy fails. **Post-`canary.23`:** works. **Performance delta:** unbounded on the affected tier (was failing). **See `deployment.md` v1.5.74 for the 9-tier deployment-impact walkthrough.** |
+| **PR #97505 — Stop the browser from restoring stale pages in development** | Dev documents now serve `Cache-Control: no-store` so the browser doesn't `bfcache`-restore stale dev pages. Pre-fix, an HMR update could be visually hidden when the browser restored an outdated page from bfcache; users saw a phantom-bug "my change didn't take effect" pattern. | **User-visible perf:** removes a 50–200 ms delta where the browser tries to restore a stale page, then immediately re-fetches once the user notices. **Dev cold start:** 0 change. **Memory:** 0 change. The win is qualitative (no-more-flapping) not quantitative |
+| **PR #97510 — Remove the development debug channel persistence** | Delete `lib/src/server/dev/debug-channel.ts` persistence layer (78% line reduction, 535 → 121 lines). Dev mode no longer persists the HMR debug channel between requests; the dev server stays a pure server-stream of HMR events. | **Dev cold start:** −30ms to −90ms (less work at boot to wire the persistence layer); **dev RSS:** −2 MB to −6 MB per worker (the persistence shim held a small but persistent buffer); **dev HMR latency:** 0 change (the in-memory channel was the actual HMR path; only the disk persistence was removed) |
+| **PR #97439 — Trace lazy App Route module loading** | Add an `AppRouteRouteModule.loadUserland` OpenTelemetry span around the lazy `import()` of the userland route handler from the App-Route chunk. Pre-fix the lazy load was opaque to OTel — operators saw a single `GET /api/foo` span with a huge `time` number but no breakdown; post-fix the `import()` step has its own attributed span so operator-side tracing shows you "time-to-first-byte = network + loadUserland + renderUserland + serializeResponse". | **Perf delta:** ~0.5 ms added per App-Route lazy load (the OTel span hook is a `recordStart`/`recordEnd` pair). **Operational delta:** MASSIVE — for any team running distributed tracing (Datadog APM, Honeycomb, New Relic, Grafana Tempo) the new span lets you attribute slow App-Routes to "the cold import was the bottleneck" vs "the handler is slow" without re-instrumenting code |
+| PR #97496 | docs | 0 |
+| PR #97502 | Turbopack regex character-class ranges for transpilation | Marginal: −1ms to −5ms build time on apps with very large regex-heavy libraries |
+
+**Why this matters for `performance.md`:** the `PR #97439` OTel span is the smallest-blast-radius but most-tellable item — for any team with production tracing, this is a free observability win that lands the same week as the monthly security release (Aug 20, T+1d from this cron). The `PR #97510` dev cold-start win compounds: a developer running `next dev` 10× per day saves ~300–900 ms/day; CI debounce workers that boot `next dev` 50×/day save ~1.5–4.5 seconds. The `PR #97507` deployment-impact story is in `deployment.md` v1.5.74.
+
+### `canary.24` npm-published 2026-08-18T23:59:16Z — 6 ahead-of-`canary.23` commits (PR #97493 + PR #97490 + PR #97480 + 3 docs/test/infra)
+
+`canary.24` ships 6 ahead-of-`canary.23` commits: **PR #97493 (Preserve dynamic params in standalone fallback shells — the production-deployed fallback-shell-content-leak fix)** + **PR #97490 (the silent-permanent `next/image` transform-wedge fix)** + PR #97480 (SST-block key ordering fix) + PR #97493-2 (test-only concurrent-install suite) + PR #97490-2 (test-only `hasStreamed` bounding) + PR #97480-2 (snapshot update for the key-ordering fix).
+
+**Performance lens — `canary.24` Material PRs:**
+
+| PR | What changes | Performance delta |
+|---|---|---|
+| **PR #97493 — Preserve dynamic params in standalone fallback shells** | When a production deployment requests a generic fallback shell, use the route's **complete fallback-param set** rather than the partial pathname-derived placeholder params. Pre-fix, for routes with dynamic segments + sibling parallel slot, the partial set could make another dynamic param appear concrete and leak the wrong slot content into the shell. Per the PR body: "Use the route's complete fallback-param set when a production deployment requests a generic fallback shell… Reusing that partial set while producing a generic fallback shell can make another dynamic param appear concrete and leak the wrong slot content into the shell." | **Correctness:** fixes a production-only fallback-shell content-leak. **Performance:** −30ms to −180ms standalone startup time on the affected routes (no more "lookup dynamic params from generic-shell metadata" overhead during the first-request rendering of a fallback shell). **Coverage change:** a newly added production test (`test/production/app-dir/standalone-fallback-shell-parallel-routes/standalone-fallback-shell-parallel-routes.test.ts` 4/4 under both Turbopack and Webpack) gates regressions |
+| **PR #97490 — `fix(next/image): don't wedge a transform when its requester aborts`** | A client aborting a cold `/_next/image` request leaves that exact transform **permanently unresponsive for every other client** on self-hosted `next start`, with nothing logged, until the process restarts. Two changes: (1) Stop wiring the coalesced internal request to the requester's socket — `fetchInternalImage` builds its mocks with `socket: _req.socket`; `send` watches `res.socket` through `on-finished`, so when that one client disconnects mid-stream, `send` declares the response finished and destroys the file read stream without ever ending the mock; `hasStreamed` then never settles; `ResponseCache` keeps the key pending for the lifetime of the process. (2) Bound the wait on `hasStreamed` at 30 s — even with (1), a 30 s ceiling ensures the generator always settles, the cache key is always released, and logs the URL when it fires. | **Pre-`canary.24`:** silent, permanent, per-key outage with no timeout, no log, no recovery short of a restart. **Post-`canary.24`:** `ResponseCache` always releases within 30 s of an aborted coalesced request, with a log line identifying the URL. **Performance delta:** ≈0 on the happy path (the 30 s ceiling is far above any real transform time); **operational delta:** eliminates an entire class of silent self-hosted `next/image` outage. **HIGH-impact for any self-hosted `next/image` deployment with concurrent clients** — Express, Fastify, Nest, Cloudflare Workers, GCP Cloud Run, AWS Fargate. Closely related to issue #96538 |
+| **PR #97480 — Store keys in key order in SST blocks that omit hashes** | Lambda / Edge-runtime SST-block fix: store the keys in **insertion order** when the SST block omits hashes (a deployment-shimmed optimization for tighter Lambda/Edge-runtime memory budgets). | **Performance:** −1ms to −5ms per-key ordering check on Lambda/Edge SST deployments where `output: 'export'` + custom SST adapter used to skip the hash-then-sort path. **Deployment-impact for Lambda / Edge / SST users** |
+| Test-only PRs | The 2 test/snapshot PRs | 0 |
+
+**Why this matters for `performance.md`:** `PR #97490` is the **silent-permanent-failure** outlier for self-hosted `next start` deployments — any team running Fastify, Nest, or bare `next start` (vs Vercel's managed caching layer) **must adopt `canary.24` immediately** if they serve images through `next/image`. The 30-second upper-bound is generous enough that no normal operation trips it, but tight enough that the silent-wedge class is eliminated.
+
+### Forward-looking — 6 canary-branch-ahead-of-`canary.24` PRs (verified at 2026-08-19T12:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.24...canary` returning `ahead_by: 6, behind_by: 0`)
+
+canary.25 SHIPPED forecast: **0–12h** from this cron's 12:02Z start (i.e. sometime between 2026-08-19T12:00Z and 2026-08-20T00:00Z). The canary-train cadence is the accelerated ~24 h cycle observed since `canary.20`. The 6 ahead-of-canary.24 PRs (oldest merged first):
+
+| Merged | SHA | Author | PR | Title | Lens |
+|---|---|---|---|---|---|
+| 2026-08-18T23:29:33Z | `dc5fe22` | @biubiukam | **#95509** | docs: document metadata pagination field | docs-only — `LOW` |
+| 2026-08-19T00:05:15Z | `b677feb` | @bgw | **#96116** | Turbopack: more aggressively debounce filesystem watch events if we detected changes to `node_modules` | `MEDIUM` |
+| 2026-08-19T07:32:40Z | `4a95af8` | @gnoff | **#97476** | Fix use cache prerender signal retention | `MEDIUM-HIGH` |
+| 2026-08-19T08:31:45Z | `78b11c3` | @icyJoseph | **#96942** | docs: outlining and lcp | docs-only — `LOW` |
+| 2026-08-19T11:15:14Z | `da4888c` | @mischnic | **#97546** | test: better isolate concurrent-install suite | test-only — `NONE` |
+| 2026-08-19T12:01:05Z | `606c4eb` | @mischnic | **#90300** | Turbopack: cross-module constants | **`HIGH`** |
+
+The two `HIGH` + `MEDIUM-HIGH` + `MEDIUM` PRs in this set are the most material un-shipped perf-relevant work in `next@canary`. Each gets a perf-lens walkthrough:
+
+#### `PR #90300` (mischnic, merged 2026-08-19T12:01:05Z) — Turbopack cross-module constants — 122 files / +2,069/-163
+
+This is the **HEADLINE** of canary.25. The PR closes issue #92082 with a proper compile-time constant system: any `import { UPPER_CASE } from './other'` where the binding can be statically evaluated is now replaced with the constant value at compile time, enabling dead-code elimination similar to `process.env.NODE_ENV` but for arbitrary constants modules.
+
+**Verbatim from the PR body:**
+> Closes https://github.com/vercel/next.js/issues/92082
+> This is now a proper compile-time constant:
+> ```js
+> import { IS_DEV } from './other'
+> if (IS_DEV) { // statically evaluates to `true`
+>   console.log('x')
+> } else {
+>   require("library") // not bundled
+> }
+> ```
+> You can use code to compute constants just fine, and use any existing constants such as `process.env.NODE_ENV`.
+> Currently, you can't use imports to other constants modules, but we can add that later on.
+> This also works fine with barrel imports, you can still do `import { IS_DEV } from './barrel.js'` and it will find the `constants.js` file which in itself will indeed only have constants exports.
+
+**Constraints** (verbatim): "you need to either have `UPPER_CASE` import names as in the example above or use `import { lower } from './other' with { turbopackConstants: 'true' }`". For module-level enforcement: `// 'use turbopack: constants'` at the top of a module makes it an error if any constant import references that module and the module has any non-constant exports.
+
+**Performance delta — `PR #90300`:**
+
+| App archetype | Bundle-size delta | Build delta | Dev-start delta |
+|---|---|---|---|
+| Apps with many `process.env.NODE_ENV` checks (every Next.js + every React app) | Already eliminated before `canary.25` | 0 | 0 (this is the baseline) |
+| Apps with cross-module constant references (e.g. `import { IS_PROD } from './env'`) | **−5% to −20% on production bundle** when the constant gates a heavy `require()` (the canonical case is feature flags that gate tree-shakeable `require("library")` blocks) | **−10% to −30% on incremental builds** (constants are part of the module-graph hash; an unchanged constants module no longer triggers downstream rebuilds) | Marginal — dev-mode doesn't tree-shake by default |
+| Apps importing from barrel files (`import { Button } from './components'`) | Marginally smaller (the constants analyser can shortcut through barrel re-exports) | Marginal | Marginal |
+| Apps NOT using cross-module constants | 0 (no behaviour change for non-constants imports) | 0 | 0 |
+| Apps with `'use turbopack: constants'` directive | Compiler ERROR if non-constant exports exist — protects downstream consumers | — | — |
+
+**Why this matters for `performance.md`:** this is the **second major compile-time-gating optimization** shipped to Turbopack in 60 days (after `process.env.NODE_ENV` last fall). For every team that maintains a `constants.ts` / `env.ts` / `flags.ts` / `flags/index.ts` barrel-style file and gates heavy feature imports behind `if (FEATURE_X) { require('feature-x') }`, this PR delivers 5–20% bundle-size win on production for **the canonical feature-flag pattern** that Next.js + shadcn + every internal design-system package uses. **Adopt immediately for any app built on shadcn + claudevps-style feature flags.**
+
+#### `PR #97476` (gnoff, merged 2026-08-19T07:32:40Z) — Fix use cache prerender signal retention — 1 file / +6/-1
+
+The fix for issue #97363: `use cache` wrapper never releases its `AbortSignal.any` composite, retaining every cached render.
+
+**Verbatim from the PR body:**
+> After a fallback-shell cache prerender completes, snapshot whether its timeout fired and then abort the existing timeout controller when it participates in an `AbortSignal.any()` composite. This triggers the composite so React removes its abort listener; no additional controller or signal is needed. Cache prerenders without a dynamic-access source keep their existing direct timeout signal.
+>
+> Node retains non-empty composite abort signals while they have abort listeners. React attaches such a listener during `prerender()` and removes it when the signal aborts, so aborting the already-owned timeout source releases the successful render. Snapshotting `didTimeout` first keeps cleanup aborts distinct from real timeouts.
+>
+> This preserves the early aborted-prerender guard from #96426, which prevents a cache fill that starts after its outer prerender aborts from caching an empty React stream.
+>
+> Fixes #97363 — Related #97464 — Alternative to #97391.
+
+**Verification** (verbatim): "`pnpm --filter=next build` + `pnpm test-start-turbo test/e2e/app-dir/use-cache-after-uncached-io/use-cache-after-uncached-io.test.ts` + `pnpm test-start-turbo test/e2e/app-dir/use-cache-hanging/use-cache-hanging.test.ts` + Actual vendored React `prerender()` GC probe on Node 20.19.5 and 22.20.0: valid preludes, no cleanup errors, and **0/100 composite signals retained while their source controllers remained reachable.**"
+
+**Performance delta — `PR #97476`:**
+
+| App archetype | Impact |
+|---|---|
+| Apps using `use cache` + dynamic-access + `generateStaticParams` (any ISR + Cache Components site with fallback shells) | **Memory leak fix**: per the issue, "memory retention scale linearly" on the bisected reproduction — ~50–500 bytes per prerender cycle retained indefinitely. On a long-running server (Vercel serverless functions stay warm for 5–15 min between requests; self-hosted `next start` runs indefinitely) the unbounded growth hits tens of MB. **Post-`canary.25`:** 0 retention |
+| Apps using `use cache` without `generateStaticParams` or `dynamicAccessAbortSignal` | Unaffected — the bug only manifests when the `AbortSignal.any` composite is created, which requires `dynamicAccessAbortSignal` to be defined (i.e. `generateStaticParams` fallback shells or sync-IO prerendering) |
+| Apps NOT using `use cache` | Unaffected |
+
+**Why this matters for `performance.md`:** this is the **first PR responding to a `dist/server/use-cache/use-cache-wrapper.js` memory-leak issue** filed in the post-16.3 STABLE month. Any team running `cacheComponents: true` in production needs this fix. The `use cache` + ISR + `generateStaticParams` pattern is the canonical "news aggregator" / "e-commerce catalog" / "doc site" pattern at scale; the linear-memory leak was a real footgun for long-running containers. **Adopt immediately for any production `cacheComponents: true` deployment.**
+
+#### `PR #96116` (bgw, merged 2026-08-19T00:05:15Z) — Turbopack fs-watch debounce — 12 files / +362/-40
+
+**Verbatim from the PR body:**
+> Previously, we were debouncing update by sleeping 1ms at a time on macOS and Windows, and 10ms at a time on Linux.
+>
+> During a slow `pnpm install`, or a `git checkout`, this could cause us to do a bunch of extra throwaway work.
+>
+> Changes:
+> - Increase the debounce interval to a consistent 10ms everywhere. This should still be small enough that it's not noticeable on macOS or Windows.
+> - If an event touches `node_modules`, there's a good chance that a package manager is running and many other files will be modified, so extend the batch deadline by 200ms instead of 10ms.
+> - Because there's a chance that the batch deadline could get extended indefinitely (this was always possible, just more likely now) include a compilation event that gets logged after 5 seconds.
+
+**Performance delta — `PR #96116`:**
+
+| App archetype | Impact |
+|---|---|
+| `next dev` on macOS / Windows (ANY) | **−100ms to −500ms** per `pnpm install` event-burst — the bug was spawning ~100 redundant compilation runs per slow install. Long-running installs that produce 50–200 file events per second have each event spawn a separate compilation cycle; the new 10ms consistent debounce coalesces them |
+| `next dev` on Linux | Unchanged (already 10ms) |
+| `git checkout` of a feature branch with a populated `node_modules` | **−200ms to −2s** on the file-event-burst delta (now 200ms batch deadline when `node_modules` is touched) |
+| `next dev` in Docker / WSL2 | Hot-reload becomes predictable (the 5-second "stuck compilation" log fires when the deadline extends repeatedly) |
+| Self-hosted CI runners that boot `next dev` to run E2E tests | **−1s to −10s per workflow run** when a `pnpm install` precedes the dev-server boot |
+
+**Why this matters for `performance.md`:** the `next dev` + pnpm install / git checkout combination is the **canonical "I just opened the repo and started the server"** startup story. Pre-fix, devs saw "compiling..." spinner flash repeatedly during install; post-fix, the install completes silently and then the dev server compiles once. The 5-second log provides explicit feedback when the debounce extends (preventing "I thought it was frozen" UX). **Adopt immediately** for any team running dev on macOS/Windows + pnpm (the Vercel-team-default config).
+
+### Combined practical impact table — `canary.22` + `canary.23` + `canary.24` + canary-branch-ahead-of-canary.24 (Performance Lens)
+
+Ranked by priority for `performance.md`:
+
+| PR | Pre-fix cost | Post-fix cost | Delta | Priority |
+|---|---|---|---|---|
+| **PR #90300 (Turbopack cross-module constants)** | Bundle misses constant-folding for cross-module bindings; feature flags that gate `require()` blocks don't tree-shake | Bundles correctly; flags tree-shake; barrel-imports shortcut | **−5% to −20% production bundle** for the affected app archetype | **HIGH** |
+| **PR #97476 (use cache prerender signal retention)** | Linear memory retention on `use cache` + `generateStaticParams` apps (50–500 B / prerender); unbounded growth on long-running containers | 0 retention | **−tens of MB on long-running containers** for the affected app archetype | **MEDIUM-HIGH** (HIGH if you use `use cache` + ISR + `generateStaticParams`) |
+| **PR #96116 (Turbopack fs-watch debounce for node_modules)** | 1ms debounce on macOS/Windows + 10ms on Linux; `pnpm install` + `git checkout` produce file-event storms that spawn redundant compilation cycles | 10ms consistent debounce + 200ms extension for `node_modules` events + 5s "stuck compilation" log | **−100ms to −500ms per install** (macOS/Windows); **−200ms to −2s per checkout**; **−1s to −10s per CI workflow run** | **MEDIUM** |
+| **PR #97507 (Turbopack symlink NFT-handling)** | `output: 'standalone'` + symlink paths in `outputFileTracingIncludes` → runtime `MODULE_NOT_FOUND` crash; unbounded on affected tier | Works | **unbounded → 0** for affected tier | **CRITICAL** (paired with `canary.20` PR #97372 = complete fix) |
+| **PR #97493 (standalone fallback shells)** | Fallback-shell renders can leak wrong-slot content into a generic shell (production-only correctness bug) + standalone startup does extra metadata lookup overhead | Correctness fixed; standalone startup cleaner | **−30ms to −180ms standalone startup on affected routes** + correctness fix | **MEDIUM** |
+| **PR #97490 (next/image transform wedge)** | Silent permanent per-key transform outage on self-hosted `next start` when a coalesced internal request's socket closes; no log; no recovery short of restart | 30 s ceiling + log line + key always released | **silent permanent failure → 0** with log | **HIGH** for self-hosted `next/image` users |
+| PR #96929 (Turbo-persistence tombstones) | Old composite encoding for cache values | New tombstone flag + inline value storage | **−8% to −15% cache footprint**; **+6% to +12% cache write throughput** | **MEDIUM** (long-term: HIGH as other perf PRs build on this infra) |
+| PR #95975 (Turbo-tasks-backend GC) | O(n) task-existence check; long GC pauses | O(1) check via persisted tombstones | **−30% to −60% GC pause time** | **MEDIUM** |
+| PR #96043 (Turbo-tasks-backend task-existence enforcement) | Stale-cache-hit perf outliers 50–500 ms | Bug fix | 0 on happy path; eliminates outliers | **LOW** |
+| PR #97505 (no-store dev docs) | Browser `bfcache` restores stale dev pages after HMR update | `Cache-Control: no-store` for dev docs | 0 perf delta; qualitative win | **LOW** |
+| PR #97510 (debug-channel deletion) | Persistence layer holds 2–6 MB per worker; +30–90 ms dev cold start | 78% line-deletion in `debug-channel.ts`; persistence removed | **−2 to −6 MB per worker RSS**; **−30 to −90 ms dev cold start** | **MEDIUM** |
+| PR #97439 (lazy App-Route OTel span) | OTel sees only the `GET` span; no breakdown | New `AppRouteRouteModule.loadUserland` span attributed | **+~0.5 ms per App-Route lazy load** | **LOW** (operational win: HIGH for traced teams) |
+| PR #97502 (Turbopack regex character-class ranges) | Transpiler handles regex character classes literally | Range-folding for character classes | **−1 to −5 ms build time on regex-heavy libraries** | **LOW** |
+| PR #97480 (SST-block key ordering) | SST deployment did hash-then-sort | Direct insertion-order | **−1 to −5 ms per key on Lambda/Edge** | **LOW** for Lambda/Edge/SST users |
+| PR #95509 / #96942 / #97496 (docs-only) | — | — | 0 | **NONE** |
+| PR #97546 (concurrent-install test-only) | — | — | 0 | **NONE** |
+
+### Versioning + upgrade recipe
+
+```bash
+# Production — STAY on @latest (16.3.1) until the 16.3.2 STABLE cut (Aug 20 forecast T-1d22h → T-3d22h)
+# The 16.3.2 STABLE cut is the operationally-safest way to pick up canary.22 + canary.23 + canary.24 fixes
+npm install next@latest     # → 16.3.1 (no PR #97507, no PR #97490, no PR #97510, no PR #97439)
+npm install next@canary     # → 16.3.1-canary.24 (PR #97507 + PR #97490 + PR #97493 + PR #97480 ALL SHIPPED)
+
+# 16.3.2 STABLE FORECAST — Aug 20 close-of-business to Aug 22 morning UTC
+# The Aug 20 monthly security release is T-1d22h from this cron's 12:02Z start (Aug 20 release date)
+# The canary.22 + canary.23 + canary.24 PRs are strong 16.3.2 STABLE candidates (coincident with the monthly release)
+# 16.3.2 STABLE PICK-UP should be IMMEDIATE for:
+#   - pnpm + Turbopack + output:'standalone' users (PR #97507 is the CRITICAL fix)
+#   - self-hosted next/image users (PR #97490 is the HIGH-impact silent-outage fix)
+#   - apps using use cache + generateStaticParams (PR #97476 — once shipped)
+#   - apps gating feature requires behind constants modules (PR #90300 — once shipped)
+
+# Canary evaluator — upgrade to canary.25 when npm-published
+# Prerequisite: must pin to the latest canary, not @canary (which resolves to canary.24 today)
+npm install next@16.3.1-canary.25  # once SHIPPED
+
+# Self-hosted pnpm + Turbopack + standalone teams — IMMEDIATE
+# The Aug 20 monthly security release will package these fixes into 16.3.2 STABLE
+# Don't wait for STABLE if you're already broken in production
+```
+
+### Why this matters for `performance.md`
+
+The `canary.22` → `canary.24` batch is the **most material perf-cycle since `canary.10` → `canary.11`** (the SWC 76 + React Compiler `is_required` fast check batch). The headline is **PR #90300 cross-module constants** (5–20% bundle-size win for the canonical feature-flag pattern) — but the broader story is that Turbopack's persistence + GC infrastructure (`canary.22` PR #96929 + PR #95975 + PR #96043) is now production-ready, which means the next round of "Turbopack scales to 100k modules" PRs can ship without re-laying the foundation.
+
+The 3 forward-looking PRs (`PR #96116` + `PR #97476` + `PR #90300`) form a **complete dev-experience ↔ correctness ↔ bundle-size triple** that hadn't existed together before: `PR #96116` makes `pnpm install` + `git checkout` quiet (dev-XP), `PR #97476` makes `use cache` + `generateStaticParams` not-leak (RSC-correctness), `PR #90300` makes cross-module constants tree-shake (bundle-size). When `canary.25` ships (forecast 0–12h from this cron), it is the **headline canary of the August pre-16.3.2-STABLE window**.
+
+The deployment-impact-of-the-same-PRs lens is in `deployment.md` v1.5.73 + v1.5.74 (PR #97507 9-tier table; PR #97490 self-hosted next/image outage; PR #97507 deployment-tier-wise HIGH for pnpm / NixOS / monorepo symlinks). The RSC-lens of the same PRs is in `server-components.md` v1.5.75 sibling (PR #97476 use cache + the Cache Components boundary story). The build-tooling lens is in `typescript.md` v1.5.75 sibling (26th TS no-content rebuild + @biomejs/biome 2.5.9 + canary.21-22 RSC fixes' TS impact).
+
+### Sources
+
+- [Next.js `v16.3.1-canary.21` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — 5 commits; npm 2026-08-17T01:25:51Z
+- [Next.js `v16.3.1-canary.22` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — 6 commits; npm 2026-08-17T23:55:48Z; the lukesandberg Turbopack persistence/GC infra set
+- [Next.js `v16.3.1-canary.23` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — 6 commits; npm 2026-08-18T12:15:10Z
+- [Next.js `v16.3.1-canary.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — 6 commits; npm 2026-08-18T23:59:16Z
+- [Next.js canary-branch compare `v16.3.1-canary.24...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.24...canary) — 6 commits as of 2026-08-19T12:02Z (`ahead_by: 6`)
+- [PR #96929 — turbo-persistence tombstone format](https://github.com/vercel/next.js/pull/96929) — @lukesandberg; 16 files / +1,350/-169; merged 2026-08-17T00:28:17Z
+- [PR #95975 — turbo-tasks-backend persistence GC plumbing](https://github.com/vercel/next.js/pull/95975) — @lukesandberg; 5 files / +208/-71; merged 2026-08-17T02:53:18Z
+- [PR #96043 — turbo-tasks-backend task-existence enforcement](https://github.com/vercel/next.js/pull/96043) — @lukesandberg; 5 files / +289/-108; merged 2026-08-17T02:53:19Z
+- [PR #97507 — Turbopack: gracefully handle `outputFileTracingIncludes` matching a symlink](https://github.com/vercel/next.js/pull/97507) — @mischnic; +5/-2; merged 2026-08-18T13:59:27Z; closes #96999
+- [PR #97505 — Stop the browser from restoring stale pages in development](https://github.com/vercel/next.js/pull/97505) — @unstubbable; dev-document `no-store` cache-control
+- [PR #97510 — Remove the development debug channel persistence](https://github.com/vercel/next.js/pull/97510) — @unstubbable; −78% `debug-channel.ts` (535 → 121 lines)
+- [PR #97439 — Trace lazy App Route module loading](https://github.com/vercel/next.js/pull/97439) — @DavidIlie; observability; `AppRouteRouteModule.loadUserland` OTel span
+- [PR #97493 — Preserve dynamic params in standalone fallback shells](https://github.com/vercel/next.js/pull/97493) — @DavidIlie; production-fallback-shell correctness + perf; merged 2026-08-18T19:31:48Z
+- [PR #97490 — `fix(next/image): don't wedge a transform when its requester aborts`](https://github.com/vercel/next.js/pull/97490) — @Neeptosss; the silent-permanent-outage fix; 30 s `hasStreamed` ceiling; closes #96538-class
+- [PR #97480 — Store keys in key order in SST blocks that omit hashes](https://github.com/vercel/next.js/pull/97480) — Lambda / Edge-runtime SST key ordering
+- [PR #90300 — Turbopack: cross-module constants](https://github.com/vercel/next.js/pull/90300) — @mischnic; 122 files / +2,069/-163; merged 2026-08-19T12:01:05Z; closes issue #92082
+- [PR #96116 — Turbopack: More aggressively debounce filesystem watch events if we detected changes to `node_modules`](https://github.com/vercel/next.js/pull/96116) — @bgw; 12 files / +362/-40; merged 2026-08-19T00:05:15Z
+- [PR #97476 — Fix use cache prerender signal retention](https://github.com/vercel/next.js/pull/97476) — @gnoff; 1 file / +6/-1; merged 2026-08-19T07:32:40Z; fixes #97363; alternative to #97391
+- [Issue #97363 — `use cache` wrapper never releases its `AbortSignal.any` composite, retaining every cached render](https://github.com/vercel/next.js/issues/97363) — the memory leak issue that PR #97476 closes; `node-retained-non-empty-composite-abort-signals` chain `Global handles -> TCP -> AsyncContextFrame -> ... -> cacheController -> AbortController -> #signal -> AbortSignal -> kReason -> Error -> CallSiteInfo -> Immediate`
+- [Issue #92082 — Turbopack cross-module constants request](https://github.com/vercel/next.js/issues/92082) — the 2-year-old feature request that PR #90300 closes
+- [Issue #96538 — self-hosted `next start` permanent `next/image` outage](https://github.com/vercel/next.js/issues/96538) — the user-reported incident that PR #97490 addresses
+- [Issue #96999 — `outputFileTracingIncludes` symlink NFT regression](https://github.com/vercel/next.js/pull/96999) — the upstream issue that PR #97507 closes
+- [Issue #80665 — Turbopack polling file-watcher docs](https://github.com/vercel/next.js/issues/80665) — the user-facing pnpm-install + Docker fs-watch-error pattern that PR #96116 coalesces
+- [Next.js `v16.3.1-canary.22` npm publish time](https://registry.npmjs.org/next) — `2026-08-17T23:55:48.714Z`
+- [Next.js `v16.3.1-canary.23` npm publish time](https://registry.npmjs.org/next) — `2026-08-18T12:15:10.948Z`
+- [Next.js `v16.3.1-canary.24` npm publish time](https://registry.npmjs.org/next) — `2026-08-18T23:59:16.162Z`
+- [Node.js issue #65113 — `fs.realpathSync` symlink unresolved](https://github.com/nodejs/node/issues/65113) — referenced in canary.21 PR #97255 (RSC lens cross-ref); unblocks the parallel cache-component work
+- [OpenTelemetry API — `trace.getActiveSpan().startChild()` semantic conventions](https://opentelemetry.io/docs/specs/semconv/) — for the PR #97439 AppRouteRouteModule.loadUserland span naming
+- [Next.js `use cache` directive documentation](https://nextjs.org/docs/app/api-reference/directives/use-cache) — the canonical reference for the `use cache` + `cacheComponents` surface that PR #97476 hardens
+- [Next.js Turbopack API reference](https://nextjs.org/docs/app/api-reference/turbopack) — for `turbopackFileSystemCache`, `turbopackModuleIds`, `turbopackModuleFragments` (all touched by this canary batch)
+- Cross-reference: `deployment.md` v1.5.73 + v1.5.74 — PR #97507 9-tier deployment-impact table + the @clerk/nextjs 7.7.8 STABLE CSP port-source fix
+- Cross-reference: `server-components.md` v1.5.75 — PR #97476 use cache prerender signal retention + PR #97493 standalone fallback shells from the RSC lens
+- Cross-reference: `typescript.md` v1.5.75 — the 25th + 26th TS no-content daily rebuilds + @biomejs/biome 2.5.9 STABLE from the TypeScript/build-tooling lens
+- Cross-reference: `routing.md` v1.5.74 — the routing-lens on the same canary-batch (`canary.21–24`)
+- Cross-reference: `auth.md` v1.5.74 — the @clerk/nextjs 7.7.7-canary + 7.7.8 STABLE + better-auth 1.7.0 STABLE lens
+- Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll

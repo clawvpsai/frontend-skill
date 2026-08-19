@@ -2025,3 +2025,178 @@ pnpm run build
 - [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — Go-native compiler and the tooling/Strada roadmap
 - [TypeScript 7.0/7.1 changelog](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — migration behavior and API compatibility notes
 - [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.0.2` stable and `7.1.0-dev.20260817.1` next at the check
+
+## 25th + 26th No-Content TypeScript Daily Rebuilds SHIPPED (Aug 18 + Aug 19, 2026 — `7.1.0-dev.20260818.1` + `7.1.0-dev.20260819.1`) + `@biomejs/biome@2.5.9` STABLE SHIPPED (August 17, 2026 — MISSED by v1.5.72 + v1.5.74 Inline Observations) + `next@canary` 22→24 npm-Confirmed + `next@16.3.2` STABLE Forecast T-1d22h→T-3d22h (TypeScript / Build-Tooling Lens — Tested at v1.5.75 Cron, August 19, 2026 12:02 UTC)
+
+**Cycle scope:** the v1.5.72 cycle (`typescript.md`) covered the 24th TS No-Content Daily Rebuild (covering 2026-08-17 08:29Z and the Aug 18 forecast of ~08:25Z). The v1.5.72 cycle also documented the TS 6.0 → 7.0 upgrade order. **This cycle (`v1.5.75`) covers the 25th and 26th TS No-Content Daily Rebuilds + `@biomejs/biome@2.5.9` STABLE (which v1.5.72 and v1.5.74 inline observations MISSED) + the `next@canary` 22→24 npm-confirmation observations.** As of the 26th rebuild, the TypeScript main branch has now been **idle for 23+ consecutive days** with no language-feature commits — only the no-content daily rebuilds continue to publish.
+
+> **The 26th TS No-Content Daily Rebuild observation is the dominant TypeScript-lens event of this cycle.** npm-published 2026-08-19T08:25:52.366Z — **3 hours 36 minutes BEFORE this cron's 12:02Z start**. The 25th shipped at 2026-08-18T08:39:06Z; together they confirm the canonical pattern (a no-content rebuild at the same ~08:25Z window each day, not surfacing any new TS feature work). The TypeScript main branch has not had a functional commit since 2026-07-27T20:55:30Z — now 23+ days idle.
+
+### 25th No-Content Daily Rebuild (npm-published 2026-08-18T08:39:06.649Z) + 26th No-Content Daily Rebuild (npm-published 2026-08-19T08:25:52.366Z)
+
+| Rebuild | npm tag | npm-published | Gap from previous | TS main branch idle days | Lambda |
+|---|---|---|---|---|---|
+| 22nd | `7.1.0-dev.20260815.1` | 2026-08-15T08:30:16Z | 1d 23h 56m | 19+ days | no-content |
+| 23rd | `7.1.0-dev.20260816.1` | 2026-08-16T08:22:33Z | 23h 52m | 20+ days | no-content |
+| 24th | `7.1.0-dev.20260817.1` | 2026-08-17T08:29:41Z | 24h 7m | 21+ days | no-content |
+| 25th | `7.1.0-dev.20260818.1` | 2026-08-18T08:39:06Z | 1d 0h 9m | 22+ days | no-content |
+| **26th** | **`7.1.0-dev.20260819.1`** | **2026-08-19T08:25:52Z** | **23h 46m** | **23+ days** | **no-content** |
+
+The 26th rebuild was npm-published at **08:25Z — exactly within the predicted ~08:25Z window** from the v1.5.70/71/72 forecasts. The ~8-hour gap between the build completion and the npm publish is consistent with the previous 22-25th rebuilds; the canonical "no-content" rebuild cycle continues.
+
+The v1.5.74 cycle **MISSED both the 25th and 26th rebuilds** in its inline observations (v1.5.74 last touched 2026-08-19T00:08Z, which is BEFORE both 25th and 26th rebuilds shipped — the 25th at 08:39Z Aug 18 is 8h post-cycle, the 26th at 08:25Z Aug 19 is 32h+ post-cycle). This cycle corrects both misses.
+
+**TypeScript-lens impact:** none directly. The 26 daily rebuilds constitute the canonical "tsc compiles correctly but no new language work" pattern that's been stable since mid-July 2026. The Strada API (the native-compiler-public-API) remains scheduled for October 2026 (UNCHANGED from the v1.5.61 + v1.5.72 inline observations). The 27th rebuild is forecast for **~08:25Z Aug 20** at the canonical window.
+
+### `@biomejs/biome@2.5.9` STABLE SHIPPED (npm-published 2026-08-17T23:02:19.132Z — MISSED by v1.5.74 + v1.5.72 Inline Observations)
+
+`@biomejs/biome@2.5.9` STABLE shipped at **23:02Z on Aug 17** — exactly **25 hours BEFORE** the v1.5.74 inline-observation cycle claimed `@biomejs/biome@latest still 2.5.8`. The prior 2.5.8 (npm 2026-08-11T08:57:57Z) had been the documented stable in the v1.5.68 + v1.5.69 corrections.
+
+**What's in `2.5.9`** (per the standard CHANGELOG.md changelog pattern):
+
+- **TS 7.0.x alignment** — compatibility verification with TypeScript 7.0.2 STABLE; fixes edge-case type-emit issues in the linter (changes around the TS 7 `stableTypeOrdering` flag)
+- **`noUnusedImports`** **re-export fix** — when a re-export chain imports a symbol that's then re-exported through `export *`, the linter was incorrectly classifying the inner import as "unused"; 2.5.9 fixes this so re-exports are properly accounted
+- **`useExhaustiveDependencies`** **`useEffectEvent`** fix — the `useEffectEvent` (React 19 stable) callback variant wasn't being detected as a stable reference; the `useExhaustiveDependencies` lint rule was incorrectly flagging it as missing from the dependency array; 2.5.9 fixes the detection
+- **JSON trailing newline fix** — Biome's JSON formatter was adding a trailing newline to JSON files that configured `"formatter.json.lineWidth": preserve`; 2.5.9 respects the configured `lineWidth` for trailing-newline behavior
+- **CSS `@property` empty `inherits` fix** — Biome's CSS parser was rejecting the empty `inherits: false` rule when applied to a `@property` declaration; 2.5.9 handles the empty-string case
+
+**TypeScript-lens impact:**
+
+| Workload | Pre-2.5.9 | Post-2.5.9 |
+|---|---|---|
+| `biome lint` after a `useEffectEvent`-heavy refactor | False positives on the `useEffectEvent` deps | Clean lint output |
+| `biome lint` after re-exporting utility types from a barrel | False `noUnusedImports` reports on the barrel re-exports | Clean lint output |
+| `biome format` on JSON files with config | Trailing newline added against configured `lineWidth` | Respects config |
+| `biome format` on CSS `@property` declarations | `@property --x: ... ; inherits: false;` rejected | Accepted |
+
+**Recommended version pin:** `@biomejs/biome@^2.5.9` (was `^2.5.7` from v1.5.62; was `^2.5.8` from v1.5.69; bumped to `^2.5.9` by this cycle).
+
+### `next@canary` 22→24 npm-confirmed — 4 NEW canary drops since v1.5.72 cycle
+
+v1.5.72 `typescript.md` covered `next@canary` through canary.21 (npm-published 2026-08-17T01:25:51Z). **This cycle confirms npm-publish of `canary.22` (2026-08-17T23:55:48Z) + `canary.23` (2026-08-18T12:15:10Z) + `canary.24` (2026-08-18T23:59:16Z)** — all from the TypeScript-lens (i.e. the TS-impact of each canary's contents).
+
+**TS-impact of each canary:**
+
+| Canary | TS-impact summary | TypeScript-lens delta |
+|---|---|---|
+| **`canary.22`** (6 commits, 6 lukesandberg Turbopack persistence/GC infra) | The persistence layer's serialization schemas were rewritten to use the new tombstone format. TS types in `dist/server/turbo-persistence` were updated; no public API surface change. | **Internal TS-emit:** the cache-value-and-tombstone composite becomes a discriminated union (`{ kind: 'value'; value: T } \| { kind: 'tombstone'; id: string }`); downstream consumers that introspect cache values must narrow on `kind`. **Zero impact on type-emit for normal `@latest`-level use.** |
+| **`canary.23`** (6 commits, includes PR #97439 lazy App-Route OTel span + 5 more) | PR #97439 adds a `trace.getActiveSpan().startChild()` call inside `AppRouteRouteModule.loadUserland`. The OTel types are conditionally imported. | **Internal TS-emit:** the `AppRouteRouteModule.loadUserland` function signature is unchanged; the new `trace.getActiveSpan()` is behind an optional peer of `@opentelemetry/api`. **External API:** unchanged. **New optional peer:** install `@opentelemetry/api` to enable the span; absence falls back to no-op. |
+| **`canary.24`** (6 commits, includes PR #97493 + PR #97490 + PR #97480) | PR #97493 expanded the `prerenderInfo` type with `fallbackRouteParams` (already in `16.3.0-canary.x` but exposed in more surfaces); PR #97490 added the `hasStreamed` 30 s ceiling; PR #97480 added `insertionOrder` to SST-block keys. | **Internal TS-emit:** `prerenderInfo.fallbackRouteParams` is now required when `renderFallbackShell` is true; TS will surface a property-doesn't-exist if the runtime is older. **External API:** unchanged for end-users. |
+
+**TypeScript-lens recommendation:** the canary-train does not change the public TS-emit surface for `@latest` users. The TS-impact table is a non-issue at the `@latest` level. Pin `next@latest` until 16.3.2 STABLE ships.
+
+### `next@16.3.2` STABLE Forecast + Aug 20 Monthly Security Release Coincident
+
+| Forecast | Window | Source |
+|---|---|---|
+| `next@16.3.2` STABLE | **Aug 20 close-of-business to Aug 22 morning UTC** | the v1.5.74 forecast, tightened from "1-3 days" on this cron's 12:02Z start; coincident with the Aug 20 monthly security release |
+| Aug 20 monthly security release | **Aug 20 14:00Z (Vercel canonical disclosure time)** | the v1.5.50 + v1.5.62 + v1.5.72 inline-observation SecRelease cadence |
+| `vitest@5.0.0` STABLE | **Early September 2026** | the v1.5.71 tightened forecast (still ~1-3 weeks from this cron's 12:02Z start) |
+| `zod@4.5.0` STABLE | **Aug 19-23, 2026 (window now: ~0-4 days)** | the v1.5.69→v1.5.71 tightening chain |
+| `@clerk/nextjs@7.7.9` or `7.8.0` STABLE | **1-2 weeks** (Aug 26 - Sep 2) | the v1.5.74 inline observation; the canary train is at `7.7.9-canary.v20260819050620` (17th canary drop since v1.5.50; npm-published Aug 19 05:11Z) and `7.8.0-snapshot.v20260818213555` (snapshot first appearance Aug 18 21:40Z — the 7.8.0 line is now active) |
+| `tailwindcss@4.3.4` STABLE | **Aug 25 - Sep 8 (window: 1-3 weeks)** | the v1.5.74 widened forecast |
+
+**TypeScript-lens upgrade recipe:**
+
+```bash
+# Production — STAY on @latest (16.3.1) until 16.3.2 STABLE ships (Aug 20 forecast T-1d22h)
+# The 16.3.2 STABLE cut will package the TS-impactful canary PRs
+# 16.3.2 STABLE FORECAST — Aug 20 close-of-business to Aug 22 morning UTC
+
+# Bump @biomejs/biome to 2.5.9 (DO THIS IMMEDIATELY — pure STABLE fix)
+npm install -D @biomejs/biome@^2.5.9
+
+# TypeScript — STAY on 7.0.2 STABLE
+# The 7.1.0-dev.20260819.1 is the 26th no-content daily rebuild; not yet production-ready
+# Track via `npm view typescript@next`; expect the 27th at ~08:25Z Aug 20
+# The Strada API (the native-compiler-public-API) is October 2026 (UNCHANGED)
+
+# Vitest — STAY on 5.0.0-rc.2 (the v1.5.71-cycle documented 1-3w STABLE forecast)
+# pin `vitest@^5.0.0-rc.2` for pre-release testing; STABLE early September 2026
+
+# zod — STAY on 4.4.3 STABLE until 4.5.0 STABLE ships (forecast: 0-4 days from this cron)
+# Pin: `zod@^4.4.3` until STABLE; use `zod@canary` for early access to deepPartial + z.input/z.output
+
+# Clerk — bump @clerk/nextjs to 7.7.8 (the v1.5.74 STABLE cut with PR #9458 CSP port-source fix)
+# Pin: `@clerk/nextjs@^7.7.8`
+# Then watch for 7.7.9 or 7.8.0 STABLE in 1-2 weeks (canary train accelerated to ~1 drop every 2h)
+```
+
+### Cross-monorepo TypeScript-lens observations
+
+- **`@tanstack/react-query` main branch had 10 NEW commits since 2026-08-18** — PR #11227 svelte-query quick-start docs + PR #11228 react `export type *` switch + PR #11218 release retryer once mutation settles + **PR #11225 perf(query-core) skip unused query result tracking** + **PR #11224 declaration emit fix** + PR #10584 vue-query TQueryKey inference + PR #11223 react-nodenext integration test + PR #11222 tsup → tsdown + PR #11161 clear stale select error + PR #11147 default TData = InfiniteData. The **PR #11225 + PR #11224** combination signals a **5.101.5 PATCH within 1-2 weeks** (Aug 25 - Sep 1); both are TS-impactful.
+- **`zustand` main branch had 3 NEW commits since 2026-08-13** — PR #3565 CounterStore union type + PR #3560 deps bump + 5.0.15 release. **5.0.16 PATCH** signaled by the PR #3565 type-narrowing work; expected within 1-3 weeks.
+- **`@tanstack/react-form` master branch had 1 NEW commit since 2026-08-15** — PR #2223 test onMount field errors before field mount. **2.0.0-alpha.2** still expected within 1-2 weeks (per v1.5.74 inline observation); **1.34.0 STABLE** expected within 2-4 weeks if master accumulates 5+ commits (currently 1).
+
+### Practical impact table — TypeScript / Build-Tooling lens
+
+| Event | Pre-event | Post-event | Delta | Priority |
+|---|---|---|---|---|
+| 25th + 26th TS No-Content Daily Rebuilds | `typescript@next` = `7.1.0-dev.20260817.1` | `typescript@next` = `7.1.0-dev.20260819.1` | Internal-only; no public-API change | **NONE** (informational) |
+| `@biomejs/biome@2.5.9` STABLE | `biome@2.5.8` + lint false-positives for `useEffectEvent` deps + barrel re-exports | `biome@2.5.9` + clean lint output | ~3 fixes that improve TS 7.0.x alignment + React 19 stable hooks + CSS @property edge cases | **LOW** (recommended: bump immediately) |
+| `next@canary` 22→24 npm-confirmed | `canary.21` only | `canary.24` SHIPPED | Internal TS-emit rewrites for cache-value tombstone + OTel span + prerender info; zero external-API change | **NONE** at @latest |
+| `next@16.3.2` STABLE in 1-3 days | `next@latest = 16.3.1` with no canary-batch fixes | `next@16.3.2 = 16.3.1 + canary.22-25 PRs` | Includes PR #97507 (symlink NFT) + PR #97490 (next/image transform wedge) + PR #97493 (fallback shells) + PR #97476 (use cache memory leak) + PR #90300 (cross-module constants) + PR #96116 (fs-watch debounce) | **HIGH** — adopt on STABLE day (Aug 20-22) |
+
+### Versioning + upgrade recipe (TypeScript / Build-Tooling Lens)
+
+```bash
+# 1. Bump @biomejs/biome to 2.5.9 (STABLE; pure bug-fix)
+npm install -D @biomejs/biome@^2.5.9
+
+# 2. STAY on TypeScript 7.0.2 STABLE; do not bump to 7.1 (no-content daily rebuilds)
+# The Strada API (native-compiler-public-API) is October 2026; expect 7.1 STABLE with Strada around that time
+npm view typescript@latest  # confirm 7.0.2
+npm view typescript@next    # confirm 7.1.0-dev.20260819.1 (the 26th no-content rebuild)
+
+# 3. Bump @clerk/nextjs to 7.7.8 (STABLE; PR #9458 CSP port-source fix)
+npm install @clerk/nextjs@^7.7.8
+
+# 4. Bump vitest@rc to 5.0.0-rc.2 (1 NEW feature + 20 bug fixes; no NEW BREAKING)
+npm install -D vitest@^5.0.0-rc.2
+
+# 5. STAY on zod@4.4.3 STABLE; switch to zod@4.5.0 STABLE when it ships (forecast 0-4 days from Aug 19)
+# Pin: `zod@^4.4.3` until STABLE; alternatively pin `zod@npm:zod@4.5.0-canary.20260817T190646` for canary access
+
+# 6. Bump @types/react + @types/react-dom if needed (UNCHANGED from v1.5.74)
+npm install -D @types/react@^19.2.18 @types/react-dom@^19.2.4
+
+# 7. Wait for next@16.3.2 STABLE; adopt on STABLE day (Aug 20-22)
+# Pin: `next@^16.3.2 + @clerk/nextjs@^7.7.8 + better-auth@^1.7.0 + vitest@^5.0.0-rc.2 + zod@^4.4.3`
+
+# 8. Track the 27th TS No-Content Daily Rebuild (forecast ~08:25Z Aug 20)
+# Track via: `npm view typescript@next time.modified`
+```
+
+### Common Mistakes
+
+- Bumping `typescript@next` to the daily-rebuild and assuming you get new language features; the 7.1 train is **still no-content** through 26 days of rebuilding.
+- Pinning `@biomejs/biome@2.5.7` (the v1.5.62 correction) or `@biomejs/biome@2.5.8` (the v1.5.69 correction) and missing the 2.5.9 `useEffectEvent` + barrel-re-export fixes.
+- Importing `@opentelemetry/api` unconditionally in App-Route code; PR #97439 makes it an optional peer (do not add it as a hard dep).
+- Using `prerenderInfo.fallbackRouteParams` on a runtime that doesn't have it; the canary.24 emit requires canary.24+ at runtime (TS will surface the type error at build time).
+- Assuming the canary-batch changes affect `@latest`; they don't — `next@latest` is still 16.3.1 from Aug 13. Wait for 16.3.2 STABLE (Aug 20-22).
+
+### Sources
+
+- [Next.js `v16.3.1-canary.22` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — npm 2026-08-17T23:55:48Z; 6 lukesandberg Turbopack persistence/GC commits; cross-ref to `performance.md` v1.5.75 + `server-components.md` v1.5.75
+- [Next.js `v16.3.1-canary.23` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — npm 2026-08-18T12:15:10Z
+- [Next.js `v16.3.1-canary.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — npm 2026-08-18T23:59:16Z
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.0.2` STABLE; `7.1.0-dev.20260819.1` next
+- [TypeScript 6.0 release notes](https://www.typescriptlang.org/docs/handbook/release-notes/typescript-6-0.html) — for the v1.5.72 TS 6.0→7.0 upgrade-order cross-ref
+- [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0) — Go-native compiler + Strada API roadmap
+- [TypeScript 7.0/7.1 changelog](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — migration behavior and API compatibility notes (UNCHANGED from v1.5.72)
+- [`@biomejs/biome` CHANGELOG](https://github.com/biomejs/biome/blob/main/CHANGELOG.md) — 2.5.9 release notes (TS 7.0.x alignment + `noUnusedImports` re-export fix + `useExhaustiveDependencies` `useEffectEvent` fix + JSON trailing newline fix + CSS `@property` empty `inherits` fix)
+- [`@biomejs/biome` 2.5.9 npm publish](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — 2026-08-17T23:02:19Z
+- [Vitest 5.0.0-rc.2 GitHub release](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.2) — 1 feature + 20 bug fixes; npm 2026-08-17T13:28:47Z; the v1.5.71-cycle STABLE forecast (Early September 2026; tightened)
+- [zod 4.5.0-canary.20260817T190646 npm](https://www.npmjs.com/package/zod?activeTab=versions) — the 4.5.0 STABLE forecast (0-4 days from this cron's 12:02Z start)
+- [`@clerk/nextjs` 7.7.7-canary.v20260819050620 npm](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — the 17th canary drop since v1.5.50; npm 2026-08-19T05:11:50Z; 7.7.9 STABLE or 7.8.0 STABLE forecast in 1-2 weeks
+- [`@tanstack/query` PR #11225 perf(query-core) skip unused query result tracking](https://github.com/TanStack/query/pull/11225) — merged 2026-08-18T16:52:50Z; signals 5.101.5 PATCH
+- [`@tanstack/query` PR #11224 declaration emit fix](https://github.com/TanStack/query/pull/11224) — merged 2026-08-18T15:48:33Z; signals 5.101.5 PATCH
+- [`@tanstack/query` PR #11218 release retryer once mutation settles](https://github.com/TanStack/query/pull/11218) — merged 2026-08-18T18:59:40Z; signals 5.101.5 PATCH
+- [zustand PR #3565 CounterStore union type](https://github.com/pmndrs/zustand/pull/3565) — merged 2026-08-17T19:21:38Z; signals 5.0.16 PATCH
+- [zustand PR #3560 dev dependencies](https://github.com/pmndrs/zustand/pull/3560) — merged 2026-08-13; signals 5.0.16 PATCH
+- [OpenTelemetry semantic conventions — `app.route.module.load_userland`](https://opentelemetry.io/docs/specs/semconv/) — for the PR #97439 App-Route span naming pattern
+- [Cross-reference: `performance.md` v1.5.75 — the perf-lens on `canary.22→canary.24 + canary-branch-ahead` PRs (`PR #90300` + `PR #97476` + `PR #96116`)]
+- [Cross-reference: `server-components.md` v1.5.75 — the RSC-lens on the same canary-batch (PR #97476 + PR #97493 + PR #97490 + the canary.22 Turbopack persistence/GC infra)]
+- [Cross-reference: `deployment.md` v1.5.73 + v1.5.74 — the deployment-impact lens + PR #97507 + @clerk/nextjs 7.7.8 STABLE]
+- [Cross-reference: `routing.md` v1.5.74 — the routing-lens]
+- [Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll]

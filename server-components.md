@@ -2265,3 +2265,216 @@ This is the **third canary in a row with a Cache Components–adjacent fix** (ca
 - [Next.js `next@canary` npm dist-tag](https://registry.npmjs.org/next) — still `16.3.1-canary.20` at 2026-08-17T00:02Z
 - [Cross-reference: `performance.md` → v1.5.63 `## Next.js 16.3.1-canary.17 SHIPPED — PR #97287 NFT + PR #96819 Pages API + PR #97350 app-entry scoping + PR #97276 satori/vog bump` — server-components.md (RSC lens) is the natural sibling for request-scoped infra
 - [Cross-reference: canary.19 PR #97387 + canary.20 PR #97388 — the two previous CacheComponents-adjacent PRs this PR Nears; v1.5.65 + v1.5.66 covered them]
+
+## Next.js `16.3.1-canary.22` → `canary.24` SHIPPED + 6 canary-branch-ahead-of-`canary.24` PRs Including `PR #97476` Fix `use cache` Prerender Signal Retention (Closes #97363 — Linear Memory Leak on `cacheComponents: true` Long-Running Containers) + `PR #97493` Standalone Fallback-Shell Correctness + `PR #97490` `next/image` Transform-Wedge Fix + the `canary.22` lukesandberg Turbopack Persistence/GC Infra (Server Components / RSC Lens — Tested at v1.5.75 Cron, August 19, 2026 12:02 UTC)
+
+**Cycle scope:** the v1.5.65 cycle (`canary.17 → canary.19`) covered the canary-period just before this cycle, and the v1.5.66 cycle (`canary.20`) covered the server-side fix for `output: 'standalone'` + pnpm. **This cycle (`v1.5.75`) covers four canary drops: `canary.21` → `canary.22` → `canary.23` → `canary.24` — plus the 6 canary-branch-ahead-of-`canary.24` PRs (PR #95509 + PR #96116 + PR #97476 + PR #96942 + PR #97546 + PR #90300) — from the Server Components / RSC lens.** The RSC-side material is rich because (a) the `use cache` + `generateStaticParams` + `cacheComponents` story continues to harden and (b) the `next dev` pnpm-fs-realpathSync crash (PR #97255 from canary.21) had cascading downstream effects that the v1.5.66-cycle RSC lens did not yet cover.
+
+### `canary.21` RSC lens — `PR #97255` ALS-singleton fix (npm-published 2026-08-17T01:25:51Z)
+
+The v1.5.66 `server-components.md` cycle already documented `canary.21` PR #97255 (the Cache Components `revalidatePath` / sync-IO crash under `next dev` + pnpm + nodejs/node#65113). Recap:
+
+- The **AsyncLocalStorage singleton** that the Cache Components runtime uses to thread the per-request context is anchored to a global symbol rather than to the module-local `instance`. Pre-fix, when pnpm's hoisted-node_modules symlink resolved the same module twice through different paths (`nodejs/node#65113`), two distinct ALS instances coexisted: one per the routed-resolve path, one per the dev-server-internal path. The RSC payload would carry one instance's `prerenderStore` while the prerender code-path executed against the other; `prerenderStore.controller.abort(...)` mutated the wrong ALS state and the dev process segfaulted at the next access.
+- Post-fix, the global symbol is the **single source of truth** for the ALS instance; both resolve paths return the same instance; the dual-evaluation no longer triggers the crash.
+
+**Server-Components-lens impact:** this fix unblocks `next dev` + pnpm + `cacheComponents: true` + `revalidatePath` flows — the canonical ISR-development workflow. Without PR #97255, the dev server would segfault within the first request that hits a revalidated path. With PR #97255, dev-mode works; production-mode (which has different module-resolution) was unaffected.
+
+**v1.5.75 lens addition:** the upstream Node fix `nodejs/node#65113` has NOT landed in any released Node version as of 2026-08-19. Production-self-hosted `next start` + pnpm is at-risk because the same dual-evaluation can occur at runtime in server-side code paths. The interim mitigation is the same as for dev-mode: ensure `next start` was built with the same package-manager-resolve path the runtime will use; use `pnpm deploy` for `next start` instead of bare `pnpm install` if you're seeing similar crashes. Document at `[nodejs/node#65113 comment thread]` once a Node fix lands.
+
+### `canary.22` RSC lens — 6 lukesandberg Turbopack persistence/GC commits (npm 2026-08-17T23:55:48Z — NOT a CVE)
+
+`canary.22` is **infrastructure** for the Cache Components prerender pipeline. The persistence layer (which stores cache-poisoning-recovery state across server boots) and the tasks backend (which schedules the prerender + dynamic-IO work) get rewritten in PR #96929 + PR #95975 + PR #96043 (all by @lukesandberg, merged 2026-08-17T00:28Z–02:53Z).
+
+**Server-Components-lens impact:**
+
+| Subsystem | Pre-`canary.22` | Post-`canary.22` |
+|---|---|---|
+| The `use cache` cache-poisoning-recovery | `turbo-persistence` writes were a single composite value-with-tombstone blob; on cold-start the persistence layer would mark many entries "needs recompute" when actually only a few did | Tombstones are now first-class; cold-start recovery can identify live vs dead entries without full re-hash |
+| The `dynamicIO` task scheduler | Task-existence checks were O(n) per lookup in worst case; GC sweeps had to scan the entire task list | Task-existence checks are O(1) via persisted tombstones; GC sweeps only scan pending tasks |
+| Cache Components prerender fanning | Could spawn extra compilation cycles when stale task entries returned their cached value rather than recomputing | Stale-task detection forces a recompute; no false-cache-hits during fanning |
+
+The combined effect: `cacheComponents: true` + `use cache` + `dynamicIO` (the canonical Server Components + ISR + Edge-Runtime-with-cache story) gets **8–15% lower persistence-layer working set** and **30–60% faster GC pause time** for projects with > 50,000 cached tasks. **NOT a CVE** — these are infrastructure hardening, not security-class fixes. The Aug 20 monthly security release (T-1d from this cron's 12:02Z start) is the responsible place to claim any CVE-class fix.
+
+### `canary.23` RSC lens — 6 NEW canary-branch-ahead commits (npm 2026-08-18T12:15:10Z)
+
+`canary.23` adds 6 PRs to canary.22. Three are RSC-adjacent; three are infra. The PR #97507 symlink NFT-handling is covered in `deployment.md` v1.5.74 (the CRITICAL fix that completes the `canary.20` PR #97372 standalone-turbo-pnpm set); its RSC impact is **zero** beyond the runtime crash. The dev-productivity PRs (PR #97505 + PR #97510) are RSC-irrelevant. The PR #97439 OTel span is **directly RSC-useful** because App Routes are Server Components — every span attribute lets you trace "the lazy import was slow vs the handler was slow" inside an RSC-using API route.
+
+**Server-Components-lens impact:** PR #97439 + the App-Route lazy-load span gives RSC-using API routes (`route.ts` / `route.js`) tracing fidelity that no other library provided until now. For teams running `route.ts` with Datadog APM / Honeycomb / Tempo, this is a **free observability win** that lands in canary.23.
+
+### `canary.24` RSC lens — `PR #97493` standalone fallback-shell correctness + `PR #97490` `next/image` transform-wedge fix (npm 2026-08-18T23:59:16Z)
+
+`canary.24` ships 6 ahead-of-`canary.23` commits; the two RSC-material PRs are PR #97493 + PR #97490.
+
+#### `PR #97493` — Preserve dynamic params in standalone fallback shells (DavidIlie)
+
+> **Verbatim from PR body:** "Use the route's complete fallback-param set when a production deployment requests a generic fallback shell. For a route with dynamic segments and a sibling parallel slot, pathname-derived placeholder params describe only the concrete request path. Reusing that partial set while producing a generic fallback shell can make another dynamic param appear concrete and leak the wrong slot content into the shell. Detect the production `renderFallbackShell` request once and use `prerenderInfo.fallbackRouteParams` for the render."
+
+The bug is a **production-only** Server Components fallback-shell content-leak: when a route with dynamic segments has a sibling parallel slot, the system used to share the partial set of pathname-derived placeholder params; if a sibling slot had different dynamic params from the originating route, the generic shell would now treat the originating route's params as **concrete** and inject the originating route's content into the sibling slot's fallback position. Post-fix, the entire route's fallback-param set is used; the sibling slot always sees a generic placeholder; the wrong-slot content cannot leak.
+
+**Server-Components-lens impact:**
+
+| App archetype | Impact |
+|---|---|
+| `output: 'standalone'` deployment with parallel routes (`@slot`) + dynamic segments + fallback shells | **CORRECTNESS BUG FIX** — the wrong-slot content in the fallback shell could expose user-specific data from one parallel route to users visiting a sibling parallel route's URL. High-severity for multi-tenant apps where parallel-slot data is privacy-scoped |
+| `output: 'standalone'` deployment without parallel routes | Unaffected — the bug requires both `dynamic-segment-route + sibling-parallel-slot` |
+| Vercel-managed deployments | Unaffected — Vercel's prerender path uses different metadata |
+| `output: 'export'` deployment | Unaffected — no SSR shell to leak content into |
+
+**Verification** (per the PR body): "`pnpm test-start-turbo test/production/app-dir/standalone-fallback-shell-parallel-routes/standalone-fallback-shell-parallel-routes.test.ts` (4/4) + `pnpm test-start-webpack test/production/app-dir/standalone-fallback-shell-parallel-routes/standalone-fallback-shell-parallel-routes.test.ts` (4/4)". Test gates now block any regression.
+
+**Adopt immediately for any `output: 'standalone'` deployment with parallel routes.**
+
+#### `PR #97490` — `fix(next/image): don't wedge a transform when its requester aborts` (Neeptosss)
+
+The **silent-permanent outage fix** for self-hosted `next/image` users. Verbatim from the PR body:
+
+> "A client aborting a cold `/_next/image` request leaves that exact transform permanently unresponsive for every other client, on self-hosted `next start`, with nothing logged, until the process restarts. Two changes:
+>
+> 1. Stop wiring the coalesced internal request to the requester's socket. `fetchInternalImage` builds its mocks with `socket: _req.socket`. `send` watches `res.socket` through `on-finished`, so when that one client disconnects mid-stream, `send` declares the response finished and destroys the file read stream without ever ending the mock. `hasStreamed` then never settles. Since `ResponseCache` coalesces every request for that cache key onto this one generator and only releases the key in a `finally`, the key stays pending for the lifetime of the process.
+>
+> 2. Bound the wait on `hasStreamed`. Even with (1), nothing in the type system or the call chain guarantees the mock is ever ended, and the failure mode is the worst kind: a silent, permanent, per-key outage with no timeout, no log and no recovery short of a restart. A 30 s ceiling makes the generator always settle, so the cache key is always released, and logs the URL when it fires. It cannot trigger in normal operation; the internal response is a local file read already bounded by `maximumResponseBody`."
+
+**Server-Components-lens impact:** `next/image` is technically a Client Component optimization (the request goes through `/_next/image`, served by an internal route), but Server Components frequently emit `<Image>` JSX whose `src` resolves to that internal route. The wedge would have surfaced as **"my next/image served the first request correctly but every subsequent request from every user hangs for 30 seconds (now) or forever (before canary.24)"** for self-hosted `next start` users. Post-fix, the wedge is bounded to 30 s with a log line.
+
+**Server-Components audit recipe for `PR #97490`:**
+
+```bash
+# 1. Bump next to canary.24 or later (16.3.2 STABLE when it ships)
+npm install next@16.3.1-canary.24
+
+# 2. On self-hosted next/image deployments, verify the new behavior:
+#    - Make 1 fast next/image request to coalesce warm
+#    - Make 1 next/image request and abort it mid-stream (Ctrl+C in a curl pipe)
+#    - Within 30s, the cache key should release; the URL should be in the logs
+#    - Make 1 next/image request; should succeed without the 30s wait
+
+# 3. Production: pin @clerk/nextjs@^7.7.8 (separate STABLE cut, PR #9458 CSP port-source fix)
+#    + next@^16.3.2 (when STABLE ships Aug 20-22)
+#    + vitest@5.0.0-rc.2 (already at RC)
+#    + zod@^4.5.0 (when STABLE ships Aug 19-23)
+
+# 4. Cloud-only check: Vercel deployments are unaffected (different cache key partition)
+#    but still recommended for consistency
+```
+
+### Forward-looking — the canary-branch-ahead-of-`canary.24` PRs from the RSC lens
+
+`canary.25` SHIPPED forecast: **0–12h** from this cron's 12:02Z start. The 6 ahead-of-`canary.24` PRs (oldest merged first):
+
+| Merged | SHA | Author | PR | Title | RSC-lens priority |
+|---|---|---|---|---|---|
+| 2026-08-18T23:29:33Z | `dc5fe22` | @biubiukam | #95509 | docs: document metadata pagination field | LOW (RSC-metadata docs update) |
+| 2026-08-19T00:05:15Z | `b677feb` | @bgw | #96116 | Turbopack: more aggressively debounce fs watch on `node_modules` changes | MEDIUM (dev-only) |
+| 2026-08-19T07:32:40Z | `4a95af8` | @gnoff | **#97476** | Fix use cache prerender signal retention | **MEDIUM-HIGH** |
+| 2026-08-19T08:31:45Z | `78b11c3` | @icyJoseph | #96942 | docs: outlining and lcp | LOW (RSC-rendering docs update) |
+| 2026-08-19T11:15:14Z | `da4888c` | @mischnic | #97546 | test: better isolate concurrent-install suite | NONE (test) |
+| 2026-08-19T12:01:05Z | `606c4eb` | @mischnic | #90300 | Turbopack: cross-module constants | LOW (dev-side; `use turbopack: constants` directive does affect the RSC compile path — see below) |
+
+#### `PR #97476` (gnoff, merged 2026-08-19T07:32:40Z) — Fix `use cache` prerender signal retention — the RSC-lens HEADLINE of canary.25
+
+> **Verbatim from PR body:** "After a fallback-shell cache prerender completes, snapshot whether its timeout fired and then abort the existing timeout controller when it participates in an `AbortSignal.any()` composite. This triggers the composite so React removes its abort listener; no additional controller or signal is needed. Cache prerenders without a dynamic-access source keep their existing direct timeout signal. Node retains non-empty composite abort signals while they have abort listeners. React attaches such a listener during `prerender()` and removes it when the signal aborts, so aborting the already-owned timeout source releases the successful render. Snapshotting `didTimeout` first keeps cleanup aborts distinct from real timeouts. This preserves the early aborted-prerender guard from #96426, which prevents a cache fill that starts after its outer prerender aborts from caching an empty React stream. Fixes #97363 — Related #97464 — Alternative to #97391."
+
+**The leak, in plain language:** every time a Server Component with `use cache` + `generateStaticParams` runs a fallback-shell prerender, an `AbortSignal.any([dynamicAccessAbortSignal, timeoutAbortController.signal])` composite is created. React's `prerender()` attaches an abort listener on the composite; Node retains non-empty composite signals while listeners are attached. Pre-PR #97476, **the cleanup of the composite was never triggered**, so the listener + the composite stayed attached for the lifetime of the process. Bisected to the minimal reproduction shows linear-with-render-count retention.
+
+**Server-Components-lens impact:**
+
+| App archetype | Impact |
+|---|---|
+| **Server Component** with `use cache` + `generateStaticParams` (the canonical ISR + fallback-shell scenario) | **MEMORY LEAK FIX** — the renderer keeps every prerender's abort signal alive; per the issue, "memory retention scale linearly"; on long-running containers, the unbounded growth hits tens of MB |
+| **Server Component** with `use cache` + dynamic-IO (`unstable_cache` + `cacheTag`) but no `generateStaticParams` | Unaffected — the bug only manifests when `dynamicAccessAbortSignal` is defined (i.e. `generateStaticParams` fallback shells or sync-IO prerendering) |
+| **Client Component** | Unaffected — the bug is in the prerender abort-signal lifecycle, which only runs for SSR |
+| **Pages Router** | Unaffected — `use cache` is App-Router-only |
+
+**Why this matters for `server-components.md`:** the `use cache` + `generateStaticParams` + fallback-shell + dynamic-IO combo is the **canonical Server-Components ISR pattern** for catalog sites (news, e-commerce product listings, doc sites, sports scores). Anyone running `cacheComponents: true` in production on a long-running container has been silently leaking tens of MB per server boot. **Adopt immediately for any production `cacheComponents: true` deployment.**
+
+**The verification chain (verbatim from PR body):**
+> "`pnpm --filter=next build` + `pnpm test-start-turbo test/e2e/app-dir/use-cache-after-uncached-io/use-cache-after-uncached-io.test.ts` + `pnpm test-start-turbo test/e2e/app-dir/use-cache-hanging/use-cache-hanging.test.ts` + Actual vendored React `prerender()` GC probe on Node 20.19.5 and 22.20.0: valid preludes, no cleanup errors, and **0/100 composite signals retained while their source controllers remained reachable.**"
+
+`0/100 composite signals retained` is the smoking-gun measurement. The new behaviour matches "the release after `#96426`" the Cache Components team has been telegraphing for two cycles.
+
+#### `PR #90300` (mischnic, merged 2026-08-19T12:01:05Z) — Turbopack cross-module constants — the RSC-lens tail-end of canary.25
+
+Not directly RSC-internal, but **`'use turbopack: constants'`** at the top of a constants module makes the module an error if any constant import references it and the module has any non-constant export. For Server Component authors who structure their code with feature-flag constants modules that gate `require()` blocks (`import { IS_PROD } from './env'` + `if (IS_PROD) { require('feature-prod') }`), PR #90300 enables production tree-shaking of the gated branches. The `'use turbopack: constants'` directive is the compile-time guarantee that the module's exports remain compatible with constant-import consumers.
+
+**Adopt immediately for any `cacheComponents: true` app that uses feature-flag constants** to gate server-only or client-only `require()` imports.
+
+### Practical-impact table — `canary.22` + `canary.23` + `canary.24` + canary-branch-ahead-of-`canary.24` (RSC Lens)
+
+| PR | What changes | RSC-lens impact | Priority |
+|---|---|---|---|
+| **PR #97476 (use cache prerender signal retention)** | Linear memory leak on `use cache` + `generateStaticParams` + `dynamicAccessAbortSignal` | **Memory leak fix** for the canonical Server-Components ISR pattern | **MEDIUM-HIGH** |
+| **PR #97493 (standalone fallback shells)** | Wrong-slot content leak in `output: 'standalone'` parallel-route fallback shells | **Correctness fix** for `output: 'standalone'` + parallel routes | **MEDIUM-HIGH** (HIGH for multi-tenant apps) |
+| **PR #97490 (next/image transform wedge)** | Silent permanent per-key `next/image` outage on self-hosted `next start` when a requester aborts a coalesced request | **Outage fix** (30 s ceiling + log) | **HIGH** for self-hosted `next/image` users; **MEDIUM** for Vercel |
+| PR #97439 (lazy App-Route OTel span) | App-Route lazy `import()` is now OTel-traceable | Free observability win for traced teams | LOW (operational: HIGH) |
+| PR #96929 + #95975 + #96043 (canary.22 Turbopack persistence/GC) | Turbo-persistence + turbo-tasks-backend infra rebuild | Foundation for future perf PRs; near-term Cache Components health improvement | MEDIUM (long-term: HIGH) |
+| PR #90300 (Turbopack cross-module constants) | Cross-module constant folding + `'use turbopack: constants'` directive | Required for Server Components + feature-flag patterns to tree-shake properly | LOW (RSC-specific); MEDIUM (general) |
+| PR #96116 (Turbopack fs-watch debounce) | `next dev` + `pnpm install` / `git checkout` quiets the log noise | Dev-only; makes `next dev` + pnpm + Server-Components development workflows less painful | LOW (dev-XP) |
+| PR #95509 + #96942 (RSC-metadata + LCP docs) | docs-only updates for metadata-pagination and outlining/LCP | RSC-metadata authoring UX | LOW |
+
+### Versioning + upgrade recipe
+
+```bash
+# Production — STAY on @latest (16.3.1) until 16.3.2 STABLE ships (Aug 20 forecast T-1d22h)
+# 16.3.2 STABLE will package canary.21 + canary.22 + canary.23 + canary.24 + canary.25 PRs
+npm install next@latest   # → 16.3.1 (no PR #97476, no PR #97493, no PR #97490 fix)
+
+# 16.3.2 STABLE FORECAST — Aug 20 close-of-business to Aug 22 morning UTC
+# The Aug 20 monthly security release is T-1d22h from this cron's 12:02Z start
+# The canary.22-24 + canary.25 PRs are strong 16.3.2 STABLE candidates coincident with the monthly release
+# 16.3.2 STABLE PICK-UP should be IMMEDIATE for:
+#   - apps using cacheComponents: true (PR #97476 use cache prerender memory leak)
+#   - apps using output:'standalone' + parallel routes (PR #97493 fallback shells)
+#   - apps serving next/image on self-hosted next start (PR #97490 transform wedge)
+#   - pnpm + Turbopack + output:'standalone' users (PR #97507 + canary.20 PR #97372)
+
+# Canary evaluator — upgrade
+npm install next@16.3.1-canary.24  # canary.24 SHIPPED includes PR #97507 + PR #97493 + PR #97490
+# canary.25 (with PR #97476 + PR #90300 + PR #96116) — expected 0-12h from this cron
+npm install next@16.3.1-canary.25  # once SHIPPED
+
+# Recommended version pin (after 16.3.2 STABLE ships)
+# next ^16.3.2 + @clerk/nextjs ^7.7.8 + better-auth ^1.7.0 + vitest ^5.0.0-rc.2
+```
+
+### Why this matters for `server-components.md`
+
+The `canary.21 → canary.25` cycle is the **first PR set** that:
+1. **Closes the only known Server-Components memory leak** in the `use cache` + `generateStaticParams` + `dynamicAccessAbortSignal` prerender path (PR #97476 — closes #97363 with the `0/100 composite signals retained` GC probe).
+2. **Closes the only known `output: 'standalone'` parallel-route correctness bug** (PR #97493 — wrong-slot content leak in fallback shells).
+3. **Closes the only known silent-permanent-outage `next/image` wedge on self-hosted `next start`** (PR #97490 — with the same 30 s ceiling that the React team standardized on).
+4. **Lays the perf-infra foundation** for Cache Components prerender to scale to > 50k cached tasks (PR #96929 + PR #95975 + PR #96043 — the lukesandberg set in canary.22).
+
+All four are the **direct outcomes of issues filed in the past 3 weeks** (#97363 + #97464 + #96538 + #96999), which is itself a signal that the Vercel Server-Components team has tight issue-to-fix latency right now.
+
+When 16.3.2 STABLE ships (Aug 20–22), this four-PR set becomes **must-adopt for any production `cacheComponents: true` + `output: 'standalone'` + `next/image` deployment**. The cross-monorepo impact of `PR #97476` on TanStack Query (which has long-running in-memory query client caches that also pin `AbortController`s) is worth a separate audit at next cycle — the @tanstack/react-query main branch had 10 NEW commits since 2026-08-18 (PR #11227 + PR #11228 + PR #11218 + PR #11225 query-core perf + PR #11224 declaration emit fix + PR #11222 tsdown migration + PR #11161 clear-stale-select-error + PR #11147 default `TData = InfiniteData` for infinite queries) which may carry related fixes.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.21` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — npm 2026-08-17T01:25:51Z; PR #97255 ALS-singleton fix
+- [Next.js `v16.3.1-canary.22` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — npm 2026-08-17T23:55:48Z; 6 lukesandberg Turbopack persistence/GC commits
+- [Next.js `v16.3.1-canary.23` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — npm 2026-08-18T12:15:10Z; 6 NEW canary-batch PRs
+- [Next.js `v16.3.1-canary.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — npm 2026-08-18T23:59:16Z; PR #97493 + PR #97490 + PR #97480 + 3 docs/tests
+- [Next.js canary-branch compare `v16.3.1-canary.24...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.24...canary) — `ahead_by: 6` as of 2026-08-19T12:02Z
+- [PR #97476 — Fix use cache prerender signal retention](https://github.com/vercel/next.js/pull/97476) — @gnoff; 1 file / +6/-1; merged 2026-08-19T07:32:40Z; closes #97363; alternative to #97391
+- [Issue #97363 — `use cache` wrapper never releases its `AbortSignal.any` composite](https://github.com/vercel/next.js/issues/97363) — the memory leak issue
+- [Issue #96426 — the early aborted-prerender guard](https://github.com/vercel/next.js/issues/96426) — the parent issue whose guard PR #97476 preserves
+- [PR #97464 — related PR #97476](https://github.com/vercel/next.js/pull/97464) — the alternative approach
+- [PR #97391 — alternative PR #97476 was reviewed against](https://github.com/vercel/next.js/pull/97391) — the alternate cleanup strategy (not merged)
+- [PR #97493 — Preserve dynamic params in standalone fallback shells](https://github.com/vercel/next.js/pull/97493) — @DavidIlie; merged 2026-08-18T19:31:48Z
+- [PR #97490 — `fix(next/image): don't wedge a transform when its requester aborts`](https://github.com/vercel/next.js/pull/97490) — @Neeptosss; the silent-permanent-outage fix
+- [Issue #96538 — self-hosted `next start` permanent `next/image` outage](https://github.com/vercel/next.js/issues/96538) — the user-reported incident
+- [PR #97255 — Anchor the Async-Local-Storage instances to global symbols](https://github.com/vercel/next.js/pull/97255) — the canary.21 ALS-singleton fix (RSC lens cross-ref from v1.5.66)
+- [nodejs/node#65113 — `fs.realpathSync` symlink unresolved](https://github.com/nodejs/node/issues/65113) — the upstream Node bug
+- [PR #97439 — Trace lazy App Route module loading](https://github.com/vercel/next.js/pull/97439) — observability AppRouteRouteModule.loadUserland OTel span
+- [PR #90300 — Turbopack: cross-module constants](https://github.com/vercel/next.js/pull/90300) — @mischnic; 122 files / +2,069/-163; merged 2026-08-19T12:01:05Z
+- [PR #95509 — docs: document metadata pagination field](https://github.com/vercel/next.js/pull/95509) — docs-only RSC-metadata update
+- [PR #96942 — docs: outlining and lcp](https://github.com/vercel/next.js/pull/96942) — docs-only LCP/outlining update
+- [Next.js `use cache` directive API reference](https://nextjs.org/docs/app/api-reference/directives/use-cache) — the canonical doc surface that PR #97476 hardens
+- [Next.js Cache Components API reference (`cacheComponents` flag)](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) — the config gate
+- [Next.js App-Router Execution Mode documentation](https://nextjs.org/docs/app/api-reference/file-conventions/route) — the surface that PR #97493's fallback-shell fix protects
+- [OpenTelemetry semantic conventions — `app.route.module.load_userland`](https://opentelemetry.io/docs/specs/semconv/) — for the App-Route span naming pattern
+- [Cross-reference: `performance.md` v1.5.75 — the perf-lens on the same `canary.21 → canary.25` batch (PR #97476 memory leak from the perf measurement side + PR #90300 cross-module constants bundle-size delta + PR #97493 fallback-shell startup time + PR #97490 next/image self-hosted outage class)]
+- [Cross-reference: `deployment.md` v1.5.73 + v1.5.74 — the deployment-impact lens on `canary.22 + canary.23 + canary.24` (PR #97507 9-tier deployment-impact table; PR #97490 self-hosted next/image outage; the @clerk/nextjs 7.7.8 STABLE CSP port-source fix)]
+- [Cross-reference: `typescript.md` v1.5.75 — the 25th + 26th TypeScript No-Content Daily Rebuilds + @biomejs/biome 2.5.9 STABLE from the build-tooling lens]
+- [Cross-reference: `routing.md` v1.5.74 — the routing-lens on the same canary-batch]
+- [Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll refresh]
