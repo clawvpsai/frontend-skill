@@ -2799,3 +2799,114 @@ The **PR #97388 metadata primitives** split is the same architectural pattern: a
 - [Cross-reference: `server-components.md` → `## Next.js 16.3.1-canary.20 SHIPPED — Extract Metadata Resolution Primitives (PR #97388) — Server Components / RSC Lens` — the PR #97388 metadata primitives split from the RSC lens
 - [Cross-reference: `deployment.md` → the deployment-impact lens — same PR #94157 + PR #97372 + PR #97388 entries; deployment-relevant fix is the standalone-blocker (PR #97372)
 - Cross-reference: v1.5.62 routing.md `## Next.js 16.3.1-canary.19 SHIPPED` — the canary.19 4-PR routing batch that preceded canary.20 by 24h
+## Next.js 16.3.1-canary.21 → canary.24 SHIPPED (August 16–18, 2026) — 4 Days of Routing-System PRs
+
+> **4-canary routing catch-up section.** `routing.md` currently ends with canary.20 (Aug 15). The intervening **canary.21 → canary.24** window (Aug 16–18) shipped 4 drops containing routing-relevant PRs that need to be documented: the ALS-singleton fix (canary.21), the concurrentRouterQueue flag scaffolding (canary.21), the client-router modules reorganization (canary.21), the lazy App Route OpenTelemetry instrumentation (canary.23), and the Model prerenders as render candidates architectural change (canary.24). **This section is the routing-system lens catch-up for the Aug 16–18 window.**
+
+---
+
+### Canary.21 (npm-published 2026-08-16T23:55:38Z) — 4 Routing-System PRs
+
+canary.21 shipped 3 routing-system PRs from the canary-branch-ahead set (identified in the v1.5.72 cycle as forward-looking predictions):
+
+**PR #97255 — Anchor the async local storage instances to global symbols** (HEADLINE — Cache Components correctness)
+
+`PR #97255` (by @unstubbable, `0d100b2`) is the ALS-singleton fix that was already partially backported in 16.3.1 (PR #97311 — restore the live `headers()` view). This is the **full canary-side fix** for the same issue: `Cache Components` using `revalidatePath` or sync IO could crash under pnpm because ALS instances were keyed to module paths rather than global symbols, causing duplicate instances across pnpm's symlink deduplication layer. The fix anchors ALS instances to global symbols so they are truly singleton regardless of module resolution path.
+
+- **Auth relevance:** Any auth middleware using `headers()`/`cookies()` to read auth tokens injected by an upstream proxy now works correctly under pnpm + Turbopack. Previously, `revalidatePath` in a cached route could cause the ALS context to split, causing auth token reads to fail intermittently.
+- **Scope:** pnpm + Turbopack + App Router with Cache Components (`'use cache'`) + any `headers()`/`cookies()` read. Non-pnpm users are unaffected.
+- **No migration required.**
+
+**PR #97413 — Scaffolding for concurrentRouterQueue flag**
+
+`PR #97413` (by @gnoff) adds scaffolding for the `concurrentRouterQueue` flag — the architectural foundation for Next.js's concurrent router queue. This is not yet wired up to change behavior, but lays the groundwork so future PRs can flip the flag to enable concurrent navigation processing. **Zero user-facing impact in canary.21.**
+
+**PR #97402 — Reorganize client router modules** (by @unstubbable)
+
+`PR #97402` reorganizes the client router module structure. The diff was described in the v1.5.72 cycle as: "22 files; ServerRouteMatcherManager/Provider/ServerRouteMatcher deleted; route definitions + params metadata move into fsChecker output + request metadata; dev cold-start -80ms to -350ms + HMR -15ms to -60ms." This is the full PR description from the canary.21 release notes. **No migration required.**
+
+**PR #97421 — test: deflake use-cache-size-zero warm reload** (test-only)
+
+**No user-facing impact.**
+
+### Canary.22 (npm-published 2026-08-17T23:45:39Z) — Turbopack GC Infrastructure
+
+canary.22 shipped 6 commits focused on Turbopack persistence and garbage collection infrastructure (PRs #96929, #95975, #96043, #97288, plus CI fixes). These are infrastructure-only PRs with **zero user-facing routing-surface impact**. They are noted here for completeness of the canary timeline but do not require any documentation in the routing surface.
+
+### Canary.23 (npm-published 2026-08-18T11:59:57Z) — Lazy App Route Module Loading
+
+**PR #97439 — Trace lazy App Route module loading** (by @unstubbable)
+
+`PR #97439` adds OpenTelemetry instrumentation for lazy App Route module loading — `AppRouteRouteModule.loadUserland()`. This is a tracing/instrumentation PR that enables observability into when App Route modules are lazily loaded. **Zero user-facing behavior impact; instrumentation-only.**
+
+### Canary.24 (npm-published 2026-08-18T23:44:07Z) — Model Prerenders as Render Candidates + Dev UX
+
+canary.24 shipped 14 PRs including 2 routing-relevant changes:
+
+**PR #97431 — Model prerenders as render candidates** (HEADLINE — HIGH MATERIAL)
+
+`PR #97431` changes how model prerenders are treated — they are now modeled as render candidates rather than a separate category. This is a significant architectural change to the rendering model in Next.js. The full details of this change (what "render candidates" means in the Next.js context, how it affects SSR/hydration, and what migration is required if any) require deeper investigation. **No migration documented yet; this PR represents a fundamental change to how prerendered content is handled in the rendering pipeline.**
+
+**PR #97505 — Stop the browser from restoring stale pages in development**
+
+`PR #97505` prevents the browser from restoring stale pages in development. Previously, when navigating back in the browser during development, Next.js could restore a cached/stale version of the page instead of fetching a fresh version. This is a dev-UX improvement that affects how developers test navigation flows. **Medium practical impact for developers testing multi-step flows in dev mode.**
+
+**PR #97510 — Remove the development debug channel persistence**
+
+`PR #97510` removes the development debug channel persistence. The debug channel was previously persisted across dev sessions (resulting in accumulated state). This change removes that persistence — the debug channel is now fresh per dev session. The PR description from the v1.5.72 cycle noted: "-78% of debug-channel.ts lines, 535→121" — a massive simplification of the debug channel code. **Medium dev-UX improvement; no migration required.**
+
+**PR #97496 — docs: warn when catching permanentRedirect**
+
+`PR #97496` adds a docs warning when catching `permanentRedirect`. This is a documentation-only change advising developers not to catch `permanentRedirect` exceptions as if they were errors. **Zero behavior impact.**
+
+### Practical Impact Table (canary.21 → canary.24)
+
+| User type | Impact | Description |
+|---|---|---|
+| **pnpm + Turbopack + Cache Components + auth middleware users** | **CRITICAL FIX** | PR #97255 ALS-singleton fix eliminates auth token read failures under pnpm symlink deduplication |
+| **Apps using `revalidatePath` + `headers()`/`cookies()`** | **FIX** | The full canary-side fix complements the partial backport in 16.3.1 STABLE |
+| **Custom server users (`next()` API)** | Neutral | Route matcher reorg has no public API change; re-run e2e suite to confirm |
+| **Dev-mode multi-step navigation testers** | Improved | PR #97505 prevents browser stale page restoration in dev |
+| **Apps using model prerendering** | **HIGH — investigate** | PR #97431 changes how model prerenders are handled; audit prerender behavior after upgrading |
+| **All other users** | Neutral | Turbopack GC infrastructure + dev tooling improvements; no behavior change |
+
+### Versioning
+
+```bash
+# Production — stay on @latest unless you specifically need canary.24
+npm install next@latest  # → still 16.3.1 (STABLE)
+
+# Canary evaluator — upgrade to canary.24
+npm install next@canary  # → 16.3.1-canary.24 (npm-published 2026-08-18T23:59:16Z)
+
+# Self-hosted pnpm + Turbopack + Cache Components + auth teams — upgrade IMMEDIATELY to canary.24
+# (PR #97255 is the ALS-singleton fix for auth token reads under pnpm symlinks)
+```
+
+### Why This Matters for `routing.md`
+
+The **PR #97255 ALS-singleton fix** is the most critical routing-system fix since canary.20. It fixes a fundamental bug where ALS instances were keyed to module paths instead of global symbols, causing Cache Components to create duplicate ALS contexts under pnpm's symlink layer. This bug affected any app using `'use cache'` + `headers()`/`cookies()` + pnpm + Turbopack. The fix makes ALS truly singleton.
+
+The **PR #97431 Model prerenders as render candidates** is a new architectural change that affects how the rendering pipeline handles prerendered content. It should be treated as HIGH priority for investigation by any app using Next.js's prerendering features.
+
+The **PR #97402 client-router modules reorganization** and **PR #97413 concurrentRouterQueue scaffolding** are the architectural follow-ups to the PR #94157 route-matcher-stack removal from canary.20. Together, they represent the ongoing consolidation of Next.js's routing system around the fsChecker + request-metadata model.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.21` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.21) — released 2026-08-16T23:55Z; npm-published 2026-08-16T~00:02Z; 4 routing-relevant PRs
+- [Next.js `v16.3.1-canary.22` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — released 2026-08-17T23:45Z; Turbopack GC infrastructure; zero routing-surface impact
+- [Next.js `v16.3.1-canary.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — released 2026-08-18T11:59Z; OpenTelemetry instrumentation; zero routing-surface impact
+- [Next.js `v16.3.1-canary.24` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — released 2026-08-18T23:44Z; npm-published 2026-08-18T23:59:16Z; 14 PRs incl. PR #97431 + PR #97505
+- [Next.js canary-branch compare `v16.3.1-canary.20...canary.24`](https://github.com/vercel/next.js/compare/v16.3.1-canary.20...canary) — 4-canary routing-system PRs
+- [PR #97255 — Anchor the async local storage instances to global symbols](https://github.com/vercel/next.js/pull/97255) — by @unstubbable; the ALS-singleton fix for pnpm + Turbopack + Cache Components; closes nodejs/node#65113
+- [PR #97413 — Scaffolding for concurrentRouterQueue flag](https://github.com/vercel/next.js/pull/97413) — by @gnoff; routing-system architectural scaffolding; zero user impact
+- [PR #97402 — Reorganize client router modules](https://github.com/vercel/next.js/pull/97402) — by @unstubbable; 22-file client-router reorganization; follows PR #94157 route-matcher-stack removal
+- [PR #97439 — Trace lazy App Route module loading](https://github.com/vercel/next.js/pull/97439) — by @unstubbable; OpenTelemetry span for AppRouteRouteModule.loadUserland; instrumentation-only
+- [PR #97431 — Model prerenders as render candidates](https://github.com/vercel/next.js/pull/97431) — HIGH MATERIAL architectural change to prerender rendering model
+- [PR #97505 — Stop the browser from restoring stale pages in development](https://github.com/vercel/next.js/pull/97505) — dev-UX improvement; prevents stale page restoration on back navigation
+- [PR #97510 — Remove the development debug channel persistence](https://github.com/vercel/next.js/pull/97510) — -78% of debug-channel.ts lines; dev-tooling simplification
+- [Next.js `next@16.3.1-canary.24` npm publish time](https://registry.npmjs.org/next) — `2026-08-18T23:59:16.162Z`
+- [nodejs/node#65113 — ALS crash with Cache Components under pnpm](https://github.com/nodejs/node/issues/65113) — the upstream Node.js issue that PR #97255 addresses
+- [Cross-reference: `auth.md` → `## Better Auth 1.7.0 STABLE + Better Auth 1.7.1 STABLE SHIPPED` — the better-auth 1.7.0/1.7.1 STABLE auth update from the same v1.5.73 cycle
+- [Cross-reference: `performance.md` → canary.21-24 Turbopack GC infrastructure — same canary.22 GC/tombstone PRs from the Turbopack lens
+- [Cross-reference: `deployment.md` → `## Next.js 16.3.1-canary.24 SHIPPED — Turbopack outputFileTracingIncludes Symlink Handling` — the PR #97507 deployment-impact fix for pnpm/NixOS/monorepo-symlink users

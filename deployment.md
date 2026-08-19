@@ -3226,7 +3226,7 @@ node -v  # should show v20.9.0+
 - Cross-reference: `setup.md` — the same canary.17 → canary.19 SHIPPED events from the setup-recipe lens
 
 
-## Next.js — `next@16.3.1-canary.22` + `next@16.3.1-canary.23` SHIPPED (August 17–18, 2026) (Deployment Impact Lens) — Aug 20 Monthly Security Release T-1d22h Pre-Roll Refresh #6 + canary.22 = Turbopack Persistence/GC Infra (No CVE; Deployment-Neutral) + canary.23 = `outputFileTracingIncludes` Symlink Handling Fix (PR #97507, Symlink-Using Deployments: HIGH) + Dev `no-store` Cache-Control Switch (PR #97505) + Lazy App Route Span (PR #97439) + 25th TypeScript No-Content Rebuild + `@clerk/nextjs@7.7.8` STABLE (PR #9458 CSP `connect-src` Port-Source Fix)
+## Next.js — `next@16.3.1-canary.22` + `next@16.3.1-canary.23` SHIPPED (August 17–18, 2026) (Deployment Impact Lens) — Aug 20 Monthly Security Release T-1d22h Pre-Roll Refresh #6 + canary.22 = Turbopack Persistence/GC Infra (No CVE; Deployment-Neutral) + canary.24 = `outputFileTracingIncludes` Symlink Handling Fix (PR #97507, Symlink-Using Deployments: HIGH) + Dev Stale-Page Fix (PR #97505) + Debug-Channel Cleanup (PR #97510) + Lazy App Route Span (PR #97439) + `@clerk/nextjs@7.7.8` STABLE
 
 ### canary.22 SHIPPED — Turbopack persistence/GC infrastructure (deployment-neutral)
 
@@ -3242,9 +3242,9 @@ node -v  # should show v20.9.0+
 | Multi-worker Turbo-cache setups | **LOW**: stale-cache-poisoning risk reduced | **Recommended** upgrade |
 | Webpack-only deployments | None (Turbopack-specific) | None |
 
-### canary.23 SHIPPED — 6 NEW canary-branch-ahead PRs (the deployment-impact lens)
+### canary.24 SHIPPED — 6 PRs including PR #97507 Symlink NFT Trace Fix + PR #97490 next/image Abort Wedge Fix (the deployment-impact lens)
 
-**`next@16.3.1-canary.23` SHIPPED** (npm 2026-08-18T12:15:10.948Z). The 6 NEW canary-branch-ahead PRs at this cron's 18:03Z check (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.23...canary` returning `ahead_by: 6, behind_by: 0`) include **1 deployment-impacting PR — PR #97507 symlink NFT-trace handling — plus 2 dev-productivity PRs (PR #97505 + PR #97510) and 1 observability PR (PR #97439) and 2 trivial (PR #97496 docs + PR #97502 Turbopack regex ranges)**.
+**`next@16.3.1-canary.24` SHIPPED** (npm 2026-08-18T23:59:16.162Z). The 6 PRs from the canary-branch (verified via `GET /repos/vercel/next.js/compare/v16.3.1-canary.23...canary` returning `ahead_by: 6` at v1.5.72 cron's 18:03Z check) include **1 deployment-impacting PR — PR #97507 symlink NFT-trace handling — plus 2 dev-productivity PRs (PR #97505 + PR #97510) and 1 observability PR (PR #97439) and 2 trivial (PR #97496 docs + PR #97502 Turbopack regex ranges)**. **Note:** canary.23 (npm-published 2026-08-18T12:15:10.948Z) only contained test/docs PRs (#97439, #97460, #97486, #97477, #97488, #97367). The PRs listed here shipped in canary.24 (npm-published 2026-08-18T23:59:16.162Z).
 
 #### The HEADLINE for deployment: PR #97507 — `outputFileTracingIncludes` symlink handling
 
@@ -3388,7 +3388,7 @@ node -v  # should show v20.9.0+
 ### Sources
 
 - [Next.js `v16.3.1-canary.22` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.22) — npm-published 2026-08-17T23:55:48.714Z; 6-commit Turbopack persistence/GC infra set
-- [Next.js `v16.3.1-canary.23` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.23) — npm-published 2026-08-18T12:15:10.948Z
+- [Next.js `v16.3.1-canary.24` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — npm-published 2026-08-18T23:59:16.162Z
 - [Next.js canary-branch compare `v16.3.1-canary.23...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.23...canary) — 6 NEW canary-branch commits ahead at this cron
 - [PR #97507 — Turbopack: gracefully handle `outputFileTracingIncludes` matching a symlink](https://github.com/vercel/next.js/pull/97507) — mischnic, merged 2026-08-18T13:59:27Z; **the HEADLINE deployment-impact PR**; closes [issue #96999](https://github.com/vercel/next.js/issues/96999)
 - [Issue #96999 — `outputFileTracingIncludes` symlink handling](https://github.com/vercel/next.js/issues/96999) — the upstream bug report

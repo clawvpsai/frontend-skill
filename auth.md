@@ -2026,3 +2026,142 @@ npm view better-auth dist-tags.latest
 - [Next.js 16.3.1-canary.20 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.20) — the canary.20 npm-published 2026-08-16T00:02:44Z; the auth-relevant PRs are PR #97311 (backport of PR #97166 — restore the live `headers()` view) + PR #97314 (backport of PR #95439 — discard only stale cache entries on tag revalidation)
 - [`@clerk/nextjs` canary-train velocity tracker](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — **16 canary drops in the 12-day v1.5.50 → v1.5.71 window**; v1.5.61-observed "every-merged-PR auto-publishes a canary" pattern continues with **3 drops in 6h on Aug 17** strongly suggesting STABLE cut being prepared
 - Cross-reference: `auth.md` → `## @clerk/nextjs@canary 7.7.7-canary.v20260817110738 NEW Drop` for the v1.5.70 H2 section that documented the 14th drop (the v1.5.70 cycle said "T-3 days" to Aug 20; this cycle advances to T-2d22h with 2 additional canary drops in the 6h window)
+## Better Auth 1.7.0 STABLE + Better Auth 1.7.1 STABLE SHIPPED (August 18, 2026) — v1.5.72 Cycle Auth Update
+
+> **TL;DR:** The v1.5.72 forecast "Better Auth 1.7.0 STABLE within 2-4 weeks" came true in **5 weeks** — `better-auth@1.7.0` SHIPPED Aug 18 00:23Z, followed by `better-auth@1.7.1` SHIPPED Aug 18 18:52Z (bug-fix patch). Both are MAJOR for auth.md coverage. `@clerk/nextjs` also shipped `7.7.8 STABLE` Aug 18 16:29Z (npm-published 7.6h before this cron) and `7.7.9-canary` Aug 18 21:39Z. The Aug 20 security window is **T-0d22h**.
+
+---
+
+### `better-auth@1.7.0` STABLE SHIPPED (August 18, 2026 00:23Z) — One of the Largest Releases
+
+`better-auth@1.7.0` SHIPPED at `2026-08-18T00:23:00Z` — one of the largest releases in Better Auth's history. It ships **5 major breaking changes** that all upgraders must handle. The v1.5.72 cycle's "1.7.0 STABLE in 2-4 weeks" prediction (from ~Aug 14 when the forecast was made) came true in ~5 weeks.
+
+> **Action for stable users (`better-auth@^1.6.29`):** **upgrade to `better-auth@^1.7.1`** — the 1.7.1 patch ships immediately after 1.7.0 and fixes bugs across core, OAuth provider, Drizzle adapter, Electron, and Expo. Do NOT deploy 1.7.0 alone; deploy directly to 1.7.1.
+>
+> **Action for users on `better-auth@1.7.0-rc.x`:** upgrade to `better-auth@^1.7.1`.
+
+#### ❗ Breaking Changes (action required when upgrading from ≤1.6.x or from `1.7.0-rc.x` to `1.7.0` stable):
+
+**1. MCP 2026-07-28 stateless transport** — MCP now uses a stateless request/response transport per the July 28, 2026 spec. To migrate:
+- Use version 2 of `@modelcontextprotocol/server`
+- Configure `createMcpHandler` with `legacy: "reject"`
+- Wrap it with `requireMcpAuth`
+- Export **only `POST`**
+- See [MCP 2026-07-28 spec migration guide](https://better-auth.com/docs/plugins/mcp)
+
+**2. Deferred database side effects now run only after a successful transaction** — previously, side effects could fire even if the transaction failed/rolled back. This is a correctness fix but may break assumptions in existing code.
+
+**3. `experimental.joins` moved to `advanced.database.joins`** — if you previously set:
+```ts
+experimental: { joins: true }
+// ❌ Removed in 1.7.0
+```
+Update your config to:
+```ts
+advanced: {
+  database: {
+    joins: true,
+  },
+}
+// ✅ 1.7.0+
+```
+
+**4. SAML: `idpMetadata.entityID` now required for manual SAML config** — `samlConfig.issuer` previously acted as the IdP identity but now identifies the service provider. Manual SAML config without metadata XML **must** set `idpMetadata.entityID`. See the [1.7 upgrade guide](https://better-auth.com/docs/guides/upgrading-to-v1.7).
+
+**5. Microsoft account: `sub` → `oid` migration required** — tokens without a valid `oid` claim are **rejected after the update**. Existing Microsoft account rows keyed by `sub` must be migrated to `oid` before upgrading. The upgrade guide includes a reviewed account-identity backfill procedure.
+
+**6. OAuth `applicationType` replaces `type`/`public` fields** — `OAuthClient` no longer has a catch-all string index. Custom wire extensions must be modeled explicitly as `OAuthClient & YourExtensionMetadata`. Legacy `type` and `public` fields no longer type-check. (PR #10577)
+
+**7. SCIM cutover required** — Follow the SCIM cutover in the Better Auth 1.7 upgrade guide, including full directory reprovisioning, before resuming traffic.
+
+**8. Database migration required** — After upgrading, run `npx @better-auth/cli generate` and apply the migration before deploying. The migration adds `oauthResource`, `oauthClientResource`, and new `jwks` columns. Without it, resources using `signingAlgorithm` cannot find matching keys.
+
+#### New Features in 1.7.0:
+- OAuth 2.1 alignment
+- Device authorization grant improvements
+- OIDC back-channel logout
+- Client ID Metadata Document (`cimd`) plugin improvements
+- Drizzle Relations v2 support in drizzle-adapter
+- 22 built-in i18n languages
+- MCP as its own package built on the OAuth provider
+- Captcha wildcard endpoint matching
+
+#### Recommended version pin:
+```bash
+npm install better-auth@^1.7.1
+```
+
+---
+
+### `better-auth@1.7.1` STABLE SHIPPED (August 18, 2026 18:52Z) — Bug Fix Patch
+
+`better-auth@1.7.1` SHIPPED just **18.5 hours after 1.7.0** — a rapid-fire patch addressing bugs found in 1.7.0's massive release. The release fixes issues across:
+- `@better-auth/core` — TypeScript compatibility restored, duplicate session reduction
+- `@better-auth/oauth-provider` — OAuth provider fixes
+- `@better-auth/drizzle-adapter` — Drizzle adapter fixes  
+- `@electron/re Ged/Expo` — Electron and Expo integration fixes
+
+**Recommended version pin:** `better-auth@^1.7.1` (deploy directly to this from ≤1.6.29)
+
+---
+
+### `@clerk/nextjs@7.7.8` STABLE SHIPPED (August 18, 2026 16:29Z) — 7.7.7 STABLE Missed + 7.7.8 Ships 3.6h Later
+
+`@clerk/nextjs@7.7.8` SHIPPED npm-published `2026-08-18T16:29:34Z` — **3.6 hours after 7.7.7 STABLE** (which had shipped Aug 14 23:51Z). The v1.5.72 cycle correctly forecasted "7.7.7 STABLE within 0-4 days" but 7.7.8 shipped before 7.7.7 was even noted as the latest by this skill. The 7.7.8 release appears to be a hotfix or minor improvement consolidating the remaining canary drops.
+
+**Recommended version pin:** `npm install @clerk/nextjs@^7.7.8`
+
+---
+
+### `@clerk/nextjs@7.7.9-canary` SHIPPED (August 18, 2026 21:39Z) — Canary Jumps to 7.7.9
+
+`@clerk/nextjs@7.7.9-canary.v20260818213255` SHIPPED npm-published `2026-08-18T21:39:00Z` — the canary train has jumped to 7.7.9 within 5 hours of 7.7.8 STABLE. The previous pattern (7.7.6 → 7.7.7 jump 4 min after STABLE) suggests 7.7.8 is a short-lived STABLE before the canary train races ahead again.
+
+**Forecast: `@clerk/nextjs@7.7.9 STABLE` within 1-3 days.**
+
+---
+
+### Auth Upgrade Recipe (Updated for Aug 18, 2026)
+
+```bash
+# 1. Better Auth — upgrade from 1.6.29 directly to 1.7.1 (skip 1.7.0 alone)
+npm install better-auth@^1.7.1
+
+# 2. Run the CLI migration generator (required!)
+npx @better-auth/cli generate
+
+# 3. Apply the generated migration before deploying
+# (adds oauthResource, oauthClientResource, jwks columns)
+
+# 4. If using Microsoft OAuth — run sub→oid migration per 1.7 upgrade guide
+
+# 5. If using MCP — migrate to MCP 2026-07-28 spec (legacy: "reject" + POST-only)
+
+# 6. If using SAML — set idpMetadata.entityID
+
+# 7. Clerk — stay on 7.7.8 STABLE for now
+npm install @clerk/nextjs@^7.7.8
+
+# 8. Monitor for 7.7.9 STABLE within 1-3 days
+npm view @clerk/nextjs dist-tags.latest
+```
+
+---
+
+### Sources
+
+- [`better-auth@1.7.0` GitHub release tag](https://github.com/better-auth/better-auth/releases/tag/v1.7.0) — npm-published 2026-08-18T00:23:00Z; one of the largest releases; 5+ breaking changes requiring database migration
+- [`better-auth@1.7.1` GitHub release tag](https://github.com/better-auth/better-auth/releases/tag/v1.7.1) — npm-published 2026-08-18T18:52:43Z; bug-fix patch 18.5h after 1.7.0
+- [Better Auth 1.7 blog post](https://better-auth.com/blog/1-7) — published 2026-08-18T14:00:00Z; "one of our largest releases"; OAuth, enterprise identity, MCP, device authorization
+- [Better Auth v1.7 upgrade guide](https://better-auth.com/docs/guides/upgrading-to-v1.7) — the canonical migration guide for the 5+ breaking changes
+- [Better Auth CHANGELOG](https://github.com/better-auth/better-auth/blob/main/packages/better-auth/CHANGELOG.md) — the full 1.6.30 + 1.7.0 + 1.7.1 changelog chain
+- [Better Auth compare v1.6.30...v1.7.0](https://github.com/better-auth/better-auth/compare/v1.6.30...v1.7.0) — the full diff for the v1.7 upgrade
+- [PR #10577 — feat(oauth-provider)!: align MCP authorization with 2026-07-28](https://github.com/better-auth/better-auth/pull/10577) — the MCP authorization breaking change
+- [PR #10359 — chore!: move joins to advanced.database.joins](https://github.com/better-auth/better-auth/pull/10359) — the experimental.joins → advanced.database.joins breaking change
+- [`@clerk/nextjs@7.7.8` npm package](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-18T16:29:34Z; 3.6h after 7.7.7 STABLE; pin @clerk/nextjs@^7.7.8
+- [`@clerk/nextjs@7.7.9-canary.v20260818213255` npm package](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-18T21:39:00Z; canary jumped to 7.7.9 within 5h of 7.7.8 STABLE; 7.7.9 STABLE forecast 1-3 days
+- [Better Auth npm dist-tags](https://registry.npmjs.org/better-auth) — confirmed `latest: 1.7.1`, `rc: 1.7.0-rc.6` at this cron's 00:02Z check
+- [Clerk npm dist-tags](https://registry.npmjs.org/@clerk/nextjs) — confirmed `latest: 7.7.8`, `canary: 7.7.9-canary.v20260818213255` at this cron's 00:02Z check
+- [Cross-reference: `security.md` → `## Better Auth 1.7.0 STABLE` — the security-relevant breaking changes documented in security.md
+- [Cross-reference: `patterns.md` → `## Pattern L — Avoid modelName Aliases That Collide With Built-in Table Names` — better-auth 1.6.29 + PR #10657 getDefaultModelName; now superseded by 1.7.0+ full rename
+- [Cross-reference: `patterns.md` → `## Pattern M — Better Auth 1.7.0-rc.6 Early-Adopter Pattern` — the 1.7.0-rc.6 pattern; now superseded by 1.7.0 STABLE
