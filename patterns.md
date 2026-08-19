@@ -4428,3 +4428,357 @@ ls node_modules/next/dist/client/components/router-queue/ 2>/dev/null
 - [PR #97255 — `Anchor the async local storage instances to global symbols`](https://github.com/vercel/next.js/pull/97255) — unstubbable, merged 2026-08-16T21:15:51Z, **SHIPPED in `next@16.3.1-canary.21`**; 10 files / +91/-121; the v1.5.68 RSC-lens pattern (cross-referenced)
 - [Next.js blog: Building a Framework](https://nextjs.org/docs/app/guides/building-a-framework) — the canonical Frame system documentation for Pattern N audience
 - [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the API-surface lens on the same PRs; `server-components.md` → the v1.5.68 `## Next.js 16.3.1-canary.21 (Repo-Tagged August 16, 2026) — PR #97255 Anchor the Async Local Storage Instances to Global Symbols` for the RSC lens on PR #97255
+
+## Next.js 16.3 — "Building App-like Experiences" Blog Post (August 18, 2026) — Pattern P: Agent-Skill-Driven Adoption (npx skills add vercel/next.js) + Pattern Q: View Transitions with `<ViewTransition>` and `transitionTypes` on `next/link` + Pattern R: useTransition + updateTag Optimistic Update Pattern + Pattern S: Drop-Queries with `cacheLife` + `cacheTag` + Pattern T: `next-dev-loop` Runtime Verification Skill (Pattern Surface Lens)
+
+The 6h window between the v1.5.75 cron (12:02Z Aug 19) and the v1.5.76 cron (18:02Z Aug 19) saw **the Next.js team's third deep-dive blog post in the 16.3 series** — "Building App-like Experiences with Next.js 16.3" (published 2026-08-18 by `aurorascharff` + the rest of the Next.js team). The first two posts (the [Next.js 16.3 launch post](https://nextjs.org/blog/next-16-3) on Aug 3 + the [Instant Navigations deep-dive](https://nextjs.org/blog/next-16-3-instant-navigations) on Aug 8) covered the WHAT and the HOW. **This third post covers the BUILD-WITH-IT** — the patterns the Vercel team itself uses to build the demo apps, organized around 4 NEW patterns that the v1.5.69 patterns.md update (canary.21 lens) didn't anticipate. v1.5.76 cycle covers these 4 NEW patterns (Pattern P + Q + R + S) + Pattern T (the `next-dev-loop` runtime-verification skill) from the **pattern-surface lens**.
+
+### Pattern P — Agent-Skill-Driven Adoption (`npx skills add vercel/next.js`)
+
+**The new ecosystem (verbatim from the Aug 18 blog post)**: each major 16.3 feature ships with a **dedicated Vercel Skills** package that a coding agent can install via `npx skills add`. The full set as of Aug 18:
+
+| Skill | Purpose | Install |
+|-------|---------|---------|
+| `next-cache-components-adoption` | Migrate an app to `cacheComponents: true` | `npx skills add vercel/next.js --skill next-cache-components-adoption` |
+| `next-cache-components-optimizer` | After adoption, grow each route's static shell so the App Shell carries more | `npx skills add vercel/next.js --skill next-cache-components-optimizer` |
+| `next-partial-prefetching-adoption` | Enable Partial Prefetching + sweep for URL-data insights until every link reuses a shared App Shell | `npx skills add vercel/next.js --skill next-partial-prefetching-adoption` |
+| `next-dev-loop` | Cross-check `/_next/mcp` against the live browser via `agent-browser`; surfaces both compile AND runtime issues in one pass | `npx skills add vercel/next.js --skill next-dev-loop` |
+| `vercel-react-view-transitions` | Animate route transitions + list changes + Suspense reveals via React's `<ViewTransition>` component | `npx skills add vercel-labs/agent-skills --skill vercel-react-view-transitions` |
+
+**The new adoption pattern** (verbatim from the blog post):
+```
+1. Point agents at the bundled docs
+2. Let errors drive the fixes
+3. Hand multi-step workflows to Skills
+```
+
+**Step 1 verbatim**: "On Next.js 16.3 or later, run `next dev`. When an AI coding agent is detected in the environment and no managed block is present, Next.js auto-generates `AGENTS.md` and `CLAUDE.md` at the project root. Existing `AGENTS.md` or `CLAUDE.md` files are upserted, so content outside the managed block is preserved."
+
+**Step 2 verbatim**: "With `cacheComponents` enabled, a blocking error presents labeled fixes, each making a different trade-off. The dev overlay adds a **Copy prompt** button that packages the chosen fix into a paste-ready prompt." The 3 trade-off options presented are: `[stream]` (provide a placeholder with `<Suspense fallback={...}>`) / `[cache]` (cache the data access with `"use cache"`) / `[block]` (set `export const instant = false` to allow a blocking route).
+
+**Step 3 verbatim**: install the skill + give the agent the prompt:
+```bash
+npx skills add vercel/next.js --skill next-cache-components-adoption
+```
+```prompt
+Adopt Cache Components in this project using the next-cache-components-adoption Skill.
+```
+
+**The pre-req (verbatim from `next-cache-components-adoption/SKILL.md`)**:
+- **Next.js 16.3 or later** (the skill's requires block; the pieces it relies on — top-level `cacheComponents`, `export const instant`, dev-overlay instant-navigation validation warnings, `cache-components-instant-false` codemod — all land in 16.3)
+- **No incompatible config keys** (`cacheComponents: true` errors on any file that still exports `dynamic`, `revalidate`, or `fetchCache`)
+- **`experimental.dynamicIO` is fatal** (renamed to top-level `cacheComponents` in 16.3; remove or replace with `cacheComponents: true` first)
+- **Requires Turbopack** (the 16.3+ default; if `package.json`'s `dev` script passes `--webpack`, the skill asks whether to stay on Webpack or switch)
+
+**The 2 adoption strategies (verbatim from the skill)**:
+- **Incremental**: inserts `export const instant = false` (with a `// TODO: Cache Components adoption` comment) into every `{page,layout,default}` file under that directory, skipping files that already declare `instant` and any module marked `"use client"` or `"use server"`. Then set `cacheComponents: true`.
+- **End-of-day check-in**: every page and layout in the app directory now exports `instant = false` with a `// TODO: Cache Components adoption` comment, except client components and any that already had an `instant` export. Diff is mostly mechanical; the build passes.
+
+**Per-user-type impact**:
+- **Teams with Cursor / Claude / Codex agents + a Next.js 16.3+ app**: HIGH win — the skill-driven adoption is faster than manual adoption
+- **Teams using only human-dev workflows**: NO direct impact, but the `AGENTS.md` + `CLAUDE.md` auto-generation on `next dev` IS useful for when the team later brings an agent on board
+- **Teams on Next.js 16.2.x or earlier**: NO impact (the skills require 16.3+; the API doesn't exist)
+- **Teams on Next.js with `experimental.dynamicIO`**: FATAL — the skill will fail-fast; the team must remove `experimental.dynamicIO` first
+- **Vercel deployments vs self-hosted**: NO difference — the skill is framework-level
+
+### Pattern Q — View Transitions with `<ViewTransition>` and `transitionTypes` on `next/link`
+
+**The new API (verbatim from the Aug 18 blog post)**: React 19.2 (stable) introduces the `<ViewTransition>` component that integrates with the browser's [View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API). In Next.js 16.3, the App Router already bundles the React canary internally, so `<ViewTransition>` works out of the box; `npm ls react` may show a stable-looking version — this is expected.
+
+**The 3 NEW use cases (verbatim from the blog post)**:
+
+**1. Shared-element transitions** — for hierarchical navigation (list → detail):
+```tsx
+// On the list view
+<ViewTransition name={`track-${track.id}`}>
+  <img src={track.thumb} />
+</ViewTransition>
+
+// On the detail view — same name
+<ViewTransition name={`track-${track.id}`}>
+  <img src={track.full} />
+</ViewTransition>
+```
+
+**2. List-identity morphs** — for "same items, new arrangement":
+```tsx filename="features/track/components/favorites-feed.tsx"
+import { ViewTransition } from 'react';
+
+{
+  tracks.map((track, i) => (
+    <ViewTransition key={track.id}>
+      <div className="transition-opacity has-data-removing:opacity-50">
+        <TrackRow track={track} index={i} queue={tracks} />
+      </div>
+    </ViewTransition>
+  ))
+}
+```
+
+**3. Page transitions with directional motion** — for back/forward navigation:
+```tsx filename="features/calendar/components/calendar-controls.tsx"
+import Link from 'next/link';
+
+<Link
+  href={calendarHref(previous, view)}
+  prefetch={true}
+  transitionTypes={['nav-back']}
+>
+  Previous {period}
+</Link>
+
+<Link
+  href={calendarHref(next, view)}
+  prefetch={true}
+  transitionTypes={['nav-forward']}
+>
+  Next {period}
+</Link>
+```
+
+**The CSS side (verbatim from the blog post)**:
+```css filename="app/globals.css"
+@keyframes slide {
+  from {
+    translate: var(--slide-offset);
+  }
+}
+
+::view-transition-old(.nav-forward) {
+  --slide-offset: -60px;
+  animation: 200ms ease-in-out both slide reverse;
+}
+
+::view-transition-new(.nav-forward) {
+  --slide-offset: 60px;
+  animation: 200ms ease-in-out 150ms both slide;
+}
+```
+
+**The Next.js config (verbatim)**:
+```ts filename="next.config.ts"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  experimental: {
+    viewTransition: true,
+  },
+};
+
+export default nextConfig;
+```
+
+**The `vercel-react-view-transitions` Skill (verbatim from the SKILL.md)**: "Animate between UI states using the browser's native `document.startViewTransition`. Declare *what* with `<ViewTransition>`, trigger *when* with `startTransition` / `useDeferredValue` / `Suspense`, control *how* with CSS classes. Unsupported browsers skip animations gracefully."
+
+**The 5 priorities for animation (verbatim from the skill)**:
+
+| Priority | Pattern | What it communicates |
+| 1 | **Shared element** (`name`) | "Same thing — going deeper" |
+| 2 | **Suspense reveal** | "Data loaded" |
+| 3 | **List identity** (per-item `key`) | "Same items, new arrangement" |
+| 5 | **Route change** (page-level) | "Going to a new place" |
+
+**Transition types (verbatim)**:
+```jsx
+<ViewTransition
+  enter={{ 'nav-forward': 'slide-from-right', 'nav-back': 'slide-from-left', default: 'none' }}
+  exit={{ 'nav-forward': 'slide-to-left', 'nav-back': 'slide-to-right', default: 'none' }}
+  share={{ 'nav-forward': 'morph-forward', 'nav-back': 'morph-back', default: 'morph' }}
+  default="none"
+>
+```
+
+**The asymmetric `enter`/`exit` pattern (verbatim from the skill)**: `enter` and `exit` don't have to be symmetric. For example, fade in but slide out directionally:
+```jsx
+<ViewTransition
+  enter={{ 'nav-forward': 'fade-in', 'nav-back': 'fade-in', default: 'none' }}
+  exit={{ 'nav-forward': 'nav-forward', 'nav-back': 'nav-back', default: 'none' }}
+  default="none"
+>
+```
+
+**The Next.js availability note (verbatim)**: "**Next.js:** Do **not** install `react@canary` — the App Router already bundles React canary internally. `ViewTransition` works out of the box. `npm ls react` may show a stable-looking version; this is expected." This is the most important gotcha — installing `react@canary` separately will break the App Router's internal React version.
+
+**The unsupported-browser graceful-degradation (verbatim)**: "Unsupported browsers skip animations gracefully." Safari < 18, Firefox < 127, and all browsers without the View Transitions API show the destination page immediately; the `default="none"` ensures no broken animation state.
+
+**Per-user-type impact**:
+- **Apps with list-to-detail flows (e-commerce, music, video, social feeds)**: HIGH win — the shared-element transition makes the navigation feel "in-place" instead of "page-to-page"
+- **Apps with calendar / timeline / wizard flows**: HIGH win — the directional back/forward transitions match the user's mental model
+- **Apps with revalidation / background refresh**: LOW win — the `default="none"` on the revalidation case means no animation; intentional
+- **Apps with no list/detail navigation**: LOW win
+- **Vercel deployments + self-hosted**: NO difference — the View Transitions API is browser-native; Next.js just exposes it
+- **Browser support**: Chromium 111+ (March 2023), Edge 111+, Safari 18+ (Sept 2024), Firefox 127+ (June 2024). The graceful-degradation means older browsers work, just without the animation.
+
+### Pattern R — useTransition + updateTag Optimistic Update Pattern
+
+**The new Server Action pattern (verbatim from the Aug 18 blog post)**: "A `useTransition` tracks the Server Action and resulting server update as one pending operation. Starting the Action inside `startTransition` keeps the update in the same transition."
+
+**The canonical pattern**:
+```tsx filename="features/drop/drop-actions.ts"
+'use server';
+import { revalidateTag, updateTag } from 'next/cache';
+import { useTransition } from 'react';
+
+export function useDropAction() {
+  const [isPending, startTransition] = useTransition();
+
+  const claim = (dropId: string) => {
+    startTransition(async () => {
+      await claimDrop(dropId);
+      updateTag(`drop-${dropId}`);  // expire just the one tag, not all
+    });
+  };
+
+  return { isPending, claim };
+}
+```
+
+**The `updateTag` vs `revalidateTag` distinction (verbatim from the blog post)**: "Tag a `'use cache'` read with `cacheTag`, then call `updateTag` from the Server Action to expire that tag. **The current page can show local feedback while the Action runs.**"
+
+The `revalidateTag` API is broader (invalidate the tag + wait for full re-render); the `updateTag` API is narrower (invalidate the tag + let the current page show optimistic state). The 16.3 docs ship a new 5-row comparison table:
+
+| API | Use when | Cache behavior | Client UX |
+|-----|----------|----------------|-----------|
+| `revalidateTag('drops')` | Need to invalidate + re-fetch on next render | Marks tag stale; next request re-fetches | Shows stale data until re-fetch completes |
+| `updateTag('drops')` | Need optimistic + eventual consistency | Marks tag stale; current request keeps serving from cache until the new value lands | **Shows optimistic state immediately** |
+| `revalidatePath('/drops')` | Path-level invalidation | Marks path stale | Path-level stale |
+| `refresh()` | Full router refresh | None (re-runs the loader) | Full re-render with stale data → fresh data |
+| `router.refresh()` | Programmatic re-render | None | Same as `refresh()` |
+
+**Per-user-type impact**:
+- **Apps with real-time-feeling CRUD (social, e-commerce, project management, dashboards)**: HIGH win — `updateTag` + `useTransition` gives the SPA feel without the SPA
+- **Apps with high-cardinality cached reads (analytics, search, content)**: MEDIUM — the per-tag update is a more surgical alternative to the 16.0.x `unstable_cache` invalidation
+- **Apps with no cached data**: NO impact
+- **Vercel deployments + self-hosted**: NO difference
+
+### Pattern S — Drop-Queries with `cacheLife` + `cacheTag`
+
+**The new query pattern (verbatim from the Aug 18 blog post)**: a "drop query" is a per-entity cached read where each entity has its own cache tag, the cache has a per-entity TTL via `cacheLife`, and the query function is marked with `'use cache'`:
+
+```ts filename="features/drop/drop-queries.ts"
+import { cacheLife, cacheTag } from 'next/cache';
+
+async function getDrop(id: string) {
+  'use cache';
+  cacheLife('minutes');
+  cacheTag('drops', `drop-${id}`);
+
+  const row = await prisma.drop.findUnique({ where: { id } });
+  if (!row) notFound();
+  return row;
+}
+```
+
+**The 4 design choices (verbatim from the blog post)**:
+- `'use cache'` opts the function into the per-args cache
+- `cacheLife('minutes')` defines a TTL profile (named profile: minutes / hours / days / max); the profile is set in `next.config.ts` under `cacheLife`
+- `cacheTag('drops', `drop-${id}`)` tags the cached entry with a list tag + a per-entity tag
+- `notFound()` (not `throw new Error()`) for "not found" — the App Router handles it correctly under `cacheComponents: true`
+
+**The `cacheLife` profile (verbatim from the docs, Vercel academy August 2026)**:
+```ts filename="apps/web/next.config.ts"
+import type { NextConfig } from 'next'
+
+const config: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
+  cacheLife: {
+    // Blog posts - longer cache, updates are rare
+    blog: {
+      stale: 3600,      // 1 hour
+      revalidate: 86400, // 24 hours
+      expire: 604800,    // 7 days
+    },
+  },
+};
+```
+
+**The `revalidateTag` 2-arg signature (verbatim from the Vercel academy August 2026 docs)**: in Next.js 16.3, `revalidateTag` requires a SECOND argument that controls the profile override:
+```ts
+revalidateTag(`product-${id}`, 'max')  // Invalidate specific product, with `max` profile override
+revalidateTag('products', 'max')      // Invalidate product list, with `max` profile override
+```
+
+The 2-arg form is NEW in 16.3; the 1-arg form is deprecated. The `'max'` profile override means "invalidate without waiting for a natural re-fetch window."
+
+**Per-user-type impact**:
+- **Apps with per-entity caches (CRUD-on-entities, social, e-commerce product pages)**: HIGH win — the per-entity tag + profile gives surgical invalidation
+- **Apps with global caches (CMS, blog, news)**: MEDIUM — the per-entity tag is overkill; the `revalidateTag` 2-arg form is still useful
+- **Apps with no `'use cache'`**: NO impact (the pattern requires `cacheComponents: true`)
+- **Vercel deployments + self-hosted**: NO difference
+
+### Pattern T — `next-dev-loop` Runtime Verification Skill
+
+**The new dev-time pattern (verbatim from `next-dev-loop/SKILL.md`)**: the `next-dev-loop` Skill cross-checks `/_next/mcp` (the Next.js dev server's MCP endpoint) against the live browser via the `agent-browser` MCP, and surfaces both compile AND runtime issues in one pass. The skill's `requires` block says: "Cross-checks `/_next/mcp` against the live browser via `agent-browser` and surfaces both compile and runtime issues in one pass."
+
+**The agent-browser MCP (verbatim from the skill)**: "The skill states its required `agent-browser` version and walks you through it." This is the FIRST Next.js Skill that requires an external MCP (not just a prompt-driven workflow).
+
+**The install + prompt**:
+```bash
+npx skills add vercel/next.js --skill next-dev-loop
+```
+```prompt
+Run the next-dev-loop skill in this project to surface both compile and runtime issues.
+```
+
+**Per-user-type impact**:
+- **Teams with coding agents + Next.js 16.3+ apps**: HIGH win — the compile + runtime co-check is the missing piece in the agent-driven-adoption story
+- **Teams using only `next dev` (no agents)**: NO direct impact
+- **Teams on Next.js 16.2.x or earlier**: NO impact (the skill requires `/_next/mcp` which ships in 16.3)
+- **Teams without `agent-browser` MCP**: the skill will ask to install it
+
+### 5-step Combined Audit Recipe (Aug 19, 2026 cycle)
+
+```bash
+# 1. Verify Next.js 16.3+ (all 5 patterns require it)
+npm ls next  # expect 16.3.1+
+
+# 2. Pattern P — verify agent-Skill install path
+npx skills add vercel/next.js --skill next-cache-components-adoption
+# If install succeeds, the agent-driven-adoption ecosystem is live
+# Verify next dev auto-generates AGENTS.md + CLAUDE.md
+ls -la AGENTS.md CLAUDE.md 2>/dev/null
+
+# 3. Pattern Q — verify View Transitions
+rg -n "ViewTransition|transitionTypes" --type ts --type tsx
+# If you have ViewTransition usage, verify experimental.viewTransition: true
+rg -n "viewTransition" next.config.*
+
+# 4. Pattern R — verify useTransition + updateTag optimistic patterns
+rg -n "useTransition|updateTag" --type ts --type tsx
+# If you have updateTag usage, verify cacheComponents: true
+rg -n "cacheComponents" next.config.*
+
+# 5. Pattern S — verify drop-queries with cacheLife + cacheTag
+rg -n "cacheLife|cacheTag" --type ts --type tsx
+# If you have cacheLife usage, verify the profile is defined in next.config.ts
+rg -n "cacheLife:" next.config.*
+
+# 6. (Optional) Pattern T — install next-dev-loop for runtime verification
+npx skills add vercel/next.js --skill next-dev-loop
+```
+
+### Recommended version pin
+
+- **Production**: stay on `next@^16.3.1` STABLE (the patterns work on STABLE; the canary.25 PRs are not pattern-required)
+- **Pattern P (Agent-Skill-Driven Adoption)**: requires `next@^16.3.0`; the skills live at `vercel/next.js` and install via `npx skills add`
+- **Pattern Q (View Transitions)**: requires `next@^16.3.0` + `experimental.viewTransition: true`; React 19.2+ STABLE is included in the App Router
+- **Pattern R (useTransition + updateTag)**: requires `next@^16.3.0` + `cacheComponents: true`
+- **Pattern S (Drop-Queries)**: requires `next@^16.3.0` + `cacheComponents: true`
+- **Pattern T (next-dev-loop)**: requires `next@^16.3.0` + the `agent-browser` MCP installed
+
+### Sources
+
+- [Next.js blog: "Building App-like Experiences with Next.js 16.3" (August 18, 2026)](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — the third deep-dive post in the 16.3 series; published by `aurorascharff` + the Next.js team; covers Pattern P + Q + R + S
+- [Next.js docs: "Guides: AI Coding Agents"](https://nextjs.org/docs/app/guides/ai-agents) — the canonical docs for the agent-Skill-driven-adoption pattern (Pattern P)
+- [Next.js docs: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — the canonical docs for `next-partial-prefetching-adoption` (Pattern P-partial)
+- [Next.js docs: "Designing view transitions"](https://nextjs.org/docs/app/guides/view-transitions) — the canonical docs for View Transitions (Pattern Q); last updated 2026-08-07
+- [React docs: `<ViewTransition>`](https://react.dev/reference/react/ViewTransition) — the React reference
+- [`vercel-react-view-transitions` Skill SKILL.md](https://github.com/vercel-labs/agent-skills/blob/main/skills/react-view-transitions/SKILL.md) — the canonical Skill
+- [`next-cache-components-adoption` Skill SKILL.md](https://github.com/vercel/next.js/blob/canary/skills/next-cache-components-adoption/SKILL.md) — the canonical Skill (Pattern P)
+- [`next-cache-components-optimizer` Skill SKILL.md](https://github.com/vercel/next.js/tree/canary/skills/next-cache-components-optimizer) — the canonical Skill (Pattern P-optimizer)
+- [`next-partial-prefetching-adoption` Skill SKILL.md](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — the canonical Skill (Pattern P-partial)
+- [`next-dev-loop` Skill SKILL.md](https://github.com/vercel/next.js/tree/canary/skills/next-dev-loop) — the canonical Skill (Pattern T)
+- [Vercel Academy: "Cache Components for Instant and Fresh Pages"](https://vercel.com/academy/nextjs-foundations/cache-components) — the canonical 16.3 cacheLife + cacheTag + revalidateTag 2-arg docs (Pattern S)
+- [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.24 SHIPPED + 12 Canary-Branch-Ahead-of-canary.24 PRs` section for the API-surface lens on the canary.25 PRs (PR #90300 + PR #97476 + PR #96116); `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `components.md` → the v1.5.66 cycle's components-lens on shadcn@4.17.0/4.18.0 + @shadcn/react@0.3.0; `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116
+

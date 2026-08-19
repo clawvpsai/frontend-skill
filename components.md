@@ -3625,3 +3625,414 @@ rm -rf /tmp/shadcn-eacces-test
 - Cross-reference: `## shadcn 4.16.0 — addRegistryItems Accepts Config + Load Registries from package.json (July 27, 2026)` — the prior cycle that introduced the `package.json` registries pattern.
 - Cross-reference: `## shadcn 4.17.0 SHIPPED (August 11, 2026) — SOCKS4/SOCKS5 Proxy Support via ALL_PROXY=socks5://... + @shadcn/helpers@0.2.0 Human-in-the-Loop AI SDK Mocking` — the prior shadcn release that added SOCKS proxy support.
 - Cross-reference: `## @shadcn/react@0.3.0 SHIPPED (August 5, 2026) — Questionnaire Primitive for Multi-Step Questions` — the companion `@shadcn/react` release.
+
+## Next.js 16.3 — "Building App-like Experiences" Blog Post (August 18, 2026) — React `<ViewTransition>` Component Integration + `<ViewTransition>` Recipe Set + `transitionTypes` on `next/link` + `<ViewTransition name>` for Shared-Element Transitions + the `vercel-react-view-transitions` Skill (Components Lens)
+
+The 6h window between the v1.5.75 cron (12:02Z Aug 19) and the v1.5.76 cron (18:02Z Aug 19) saw **the Next.js team's third deep-dive blog post in the 16.3 series** — "Building App-like Experiences with Next.js 16.3" (published 2026-08-18) — which is **components-relevant** because the post centers on **React 19.2's new `<ViewTransition>` component** (released stable October 2025, now natively available in Next.js 16.3's App Router), plus **the `transitionTypes` prop on `next/link`** (NEW in 16.3 + canary.24+). These are the first NEW React components + the first NEW `next/link` prop since `<Activity>` and `useEffectEvent` shipped in React 19.2. The last components.md update was v1.5.66 at 2026-08-16T12:09Z (covering shadcn@4.17.0/4.18.0 + @shadcn/react@0.3.0 Questionnaire) — that was 3d 5h ago. v1.5.76 cycle covers the Aug 18 post + the `<ViewTransition>` integration from the **components lens** (component API surface, JSX patterns, CSS hooks, browser-support matrix, and the related shadcn/ui integration considerations).
+
+### The New Component — React's `<ViewTransition>` (stable in React 19.2, October 2025; native in Next.js 16.3)
+
+**The component (verbatim from the React docs + the Aug 18 blog post)**: "React's `<ViewTransition>` component integrates with the browser's [View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API) to handle this declaratively. You name the elements that should persist, and the browser animates between their old and new positions."
+
+**The import (verbatim)**:
+```tsx
+import { ViewTransition } from 'react';
+```
+
+**The 5 props on `<ViewTransition>` (verbatim from the `vercel-react-view-transitions` SKILL.md)**:
+
+| Prop | Type | Purpose |
+|------|------|---------|
+| `name` | `string` | The shared-element name. Two `<ViewTransition name="hero-image">` elements on different pages animate the position+opacity of the matching element across navigation. |
+| `enter` | `string \| { [type: string]: string }` | The CSS class applied to the entering element. If a string, applied always. If an object, the key is the transition type (from `transitionTypes` on `next/link` or `useRouter()`), the value is the class. |
+| `exit` | `string \| { [type: string]: string }` | The CSS class applied to the exiting element. |
+| `share` | `string \| { [type: string]: string }` | The CSS class applied to BOTH the old and new elements when a shared element is animating. |
+| `default` | `string` | The CSS class applied when none of the typed entries match. Use `default="none"` to suppress animations for revalidation / background refresh. |
+| `children` | `ReactNode` | The element to animate. |
+| `key` | `string \| number` | **Required for list-identity morphs.** When the `key` matches across renders, React treats the elements as the "same" and animates the position. |
+
+**The 4 canonical use cases (verbatim from the Aug 18 blog post + the `vercel-react-view-transitions` Skill)**:
+
+#### Use Case 1 — Shared-Element Transition (list → detail)
+
+The shared-element pattern. Two components with the SAME `name` on different pages animate as one continuous element:
+
+```tsx filename="features/track/components/track-list-item.tsx"
+import { ViewTransition } from 'react';
+import Link from 'next/link';
+
+export function TrackListItem({ track }: { track: Track }) {
+  return (
+    <Link href={`/tracks/${track.id}`}>
+      <ViewTransition name={`track-${track.id}`}>
+        <img src={track.thumb} alt={track.title} />
+      </ViewTransition>
+      <div>{track.title}</div>
+    </Link>
+  );
+}
+```
+
+```tsx filename="app/tracks/[id]/page.tsx"
+import { ViewTransition } from 'react';
+
+export default async function TrackPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const track = await getTrack(id);
+  return (
+    <div>
+      <ViewTransition name={`track-${id}`}>
+        <img src={track.full} alt={track.title} />
+      </ViewTransition>
+      <h1>{track.title}</h1>
+    </div>
+  );
+}
+```
+
+The browser handles the position+opacity interpolation between the `<img>` on the list page and the `<img>` on the detail page automatically. No JavaScript animation library required.
+
+#### Use Case 2 — List-Identity Morph (drag-to-reorder, filter, sort)
+
+The list-identity pattern. The `key` prop tells React "this is the same element" even when its position changes:
+
+```tsx filename="features/track/components/favorites-feed.tsx"
+import { ViewTransition } from 'react';
+
+export function FavoritesFeed({ tracks }: { tracks: Track[] }) {
+  return (
+    <div className="flex flex-col gap-2">
+      {tracks.map((track, i) => (
+        <ViewTransition key={track.id}>
+          <div className="transition-opacity has-data-removing:opacity-50">
+            <TrackRow track={track} index={i} queue={tracks} />
+          </div>
+        </ViewTransition>
+      ))}
+    </div>
+  );
+}
+```
+
+When a user drags a track to reorder, React's reconciler sees the same `key` and animates the position. When a user filters the list, removed elements fade out (via the `has-data-removing:opacity-50` Tailwind class) and new elements fade in.
+
+**The `has-data-removing` Tailwind variant (verbatim from the blog post)**: this is a NEW Tailwind variant shipped in `tailwindcss@4.3.3` (Jul 16) that targets elements with the `data-removing` attribute (set by React's `<ViewTransition>` exit machinery). The pattern lets you add a fade-out without writing CSS.
+
+#### Use Case 3 — Page Transitions with Directional Motion (back/forward navigation)
+
+The directional pattern. The `transitionTypes` prop on `next/link` tags the navigation with a type string; the `<ViewTransition>` on the destination reads the type and picks the right animation:
+
+```tsx filename="features/calendar/components/calendar-controls.tsx"
+import Link from 'next/link';
+
+export function CalendarControls({ previous, next, view }: CalendarControlsProps) {
+  return (
+    <>
+      <Link
+        href={calendarHref(previous, view)}
+        prefetch={true}
+        transitionTypes={['nav-back']}
+      >
+        Previous {period}
+      </Link>
+      <Link
+        href={calendarHref(next, view)}
+        prefetch={true}
+        transitionTypes={['nav-forward']}
+      >
+        Next {period}
+      </Link>
+    </>
+  );
+}
+```
+
+```tsx filename="components/ui/directional-slide.tsx"
+import { ViewTransition } from 'react';
+import type { ReactNode } from 'react';
+
+const directionalSlide = {
+  'nav-back': 'nav-back',
+  'nav-forward': 'nav-forward',
+  default: 'none',
+};
+
+export function DirectionalSlide({
+  children,
+  name,
+}: {
+  children: ReactNode;
+  name: string;
+}) {
+  return (
+    <ViewTransition
+      name={name}
+      enter={directionalSlide}
+      exit={directionalSlide}
+      share={directionalSlide}
+    >
+      {children}
+    </ViewTransition>
+  );
+}
+```
+
+**The CSS (verbatim from the Aug 18 blog post)**:
+```css filename="app/globals.css"
+@keyframes slide {
+  from {
+    translate: var(--slide-offset);
+  }
+}
+
+::view-transition-old(.nav-forward) {
+  --slide-offset: -60px;
+  animation: 200ms ease-in-out both slide reverse;
+}
+
+::view-transition-new(.nav-forward) {
+  --slide-offset: 60px;
+  animation: 200ms ease-in-out 150ms both slide;
+}
+
+::view-transition-old(.nav-back) {
+  --slide-offset: 60px;
+  animation: 200ms ease-in-out both slide reverse;
+}
+
+::view-transition-new(.nav-back) {
+  --slide-offset: -60px;
+  animation: 200ms ease-in-out 150ms both slide;
+}
+```
+
+**The `useRouter()` form (verbatim from the docs)**: programmatic navigation also supports `transitionTypes`:
+```tsx filename="features/calendar/calendar-page.tsx"
+'use client';
+import { useRouter } from 'next/navigation';
+
+export function CalendarBackButton() {
+  const router = useRouter();
+  return (
+    <button
+      onClick={() => {
+        router.push(calendarHref(previous, view), { transitionTypes: ['nav-back'] });
+      }}
+    >
+      Previous {period}
+    </button>
+  );
+}
+```
+
+#### Use Case 4 — Suspense Reveal Animation
+
+The Suspense pattern. The `<ViewTransition>` wraps a streaming UI fragment and animates the reveal:
+
+```tsx filename="features/track/components/track-streaming.tsx"
+import { ViewTransition, Suspense } from 'react';
+import { TrackRow } from './track-row';
+
+async function TracksList({ ids }: { ids: string[] }) {
+  const tracks = await fetchTracks(ids);
+  return (
+    <ViewTransition default="fade-in">
+      {tracks.map((track) => <TrackRow key={track.id} track={track} />)}
+    </ViewTransition>
+  );
+}
+
+export function TracksPage({ ids }: { ids: string[] }) {
+  return (
+    <Suspense fallback={<div>Loading tracks…</div>}>
+      <TracksList ids={ids} />
+    </Suspense>
+  );
+}
+```
+
+The CSS:
+```css
+::view-transition-new(.fade-in) {
+  animation: 300ms ease-out both fade-in;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
+
+The `<ViewTransition>` reveals when the Suspense boundary resolves; the `default="fade-in"` class drives the animation.
+
+### The 5 Priorities for When to Animate (verbatim from the `vercel-react-view-transitions` Skill)
+
+| Priority | Pattern | What it communicates |
+| 1 | **Shared element** (`name`) | "Same thing — going deeper" |
+| 2 | **Suspense reveal** | "Data loaded" |
+| 3 | **List identity** (per-item `key`) | "Same items, new arrangement" |
+| 5 | **Route change** (page-level) | "Going to a new place" |
+
+**Priority 4 is intentionally missing** — the skill's design philosophy is that "mutations" (form submissions, CRUD) should NOT animate, because the animation would conflict with the optimistic-update pattern (Pattern R in patterns.md). The skill recommends `default="none"` on mutation-context `<ViewTransition>` elements.
+
+### The Next.js Config (verbatim)
+
+```ts filename="next.config.ts"
+import type { NextConfig } from 'next';
+
+const nextConfig: NextConfig = {
+  experimental: {
+    viewTransition: true,
+  },
+};
+
+export default nextConfig;
+```
+
+**Without `experimental.viewTransition: true`**: the `transitionTypes` prop on `next/link` and `useRouter()` is silently ignored, AND `<ViewTransition>` is rendered as a passthrough `<div>`. The component still works (the React `<ViewTransition>` component is independent of Next.js), but the link-level type-to-element mapping doesn't fire.
+
+### The React Version Gotcha (verbatim from the skill)
+
+**"Next.js:** Do **not** install `react@canary` — the App Router already bundles React canary internally. `ViewTransition` works out of the box. `npm ls react` may show a stable-looking version; this is expected."
+
+This is the most important gotcha. If you `npm install react@canary react-dom@canary` on a Next.js 16.3+ app to "make sure you have the latest React," you can break the App Router's internal React version. The App Router's React has canary patches that aren't on npm yet. Stick with the React that Next.js ships.
+
+**For non-Next.js React apps** (Vite, CRA, Remix): "Install `react@canary react-dom@canary` (`ViewTransition` is not in stable React)." The canary is the only source for the `<ViewTransition>` component outside Next.js.
+
+### The Browser-Support Matrix (verbatim from MDN + the skill)
+
+| Browser | Support | Notes |
+|---------|---------|-------|
+| Chrome / Edge 111+ | **YES** | Shipped March 2023 |
+| Safari 18+ | **YES** | Shipped September 2024 |
+| Firefox 127+ | **YES** | Shipped June 2024 |
+| Safari < 18 | NO | Graceful degradation: the destination page shows immediately, no animation |
+| Firefox < 127 | NO | Same graceful degradation |
+| Chrome < 111 | NO | Same graceful degradation |
+
+**The graceful-degradation (verbatim)**: "Unsupported browsers skip animations gracefully." The `<ViewTransition>` component renders its children as a passthrough if the browser doesn't support the View Transitions API; the `default="none"` ensures no broken animation state.
+
+### The 5 Common Mistakes (verbatim from the `vercel-react-view-transitions` Skill + the Aug 18 blog post)
+
+#### Mistake 1 — Animating revalidation / background refresh
+
+**❌ Wrong**: `<ViewTransition>` on a list that auto-refreshes in the background
+```tsx
+<ViewTransition default="fade-in">
+  {tracks.map((track) => <TrackRow key={track.id} track={track} />)}
+</ViewTransition>
+```
+
+**✅ Right**: `default="none"` for revalidation
+```tsx
+<ViewTransition default="none">
+  {tracks.map((track) => <TrackRow key={track.id} track={track} />)}
+</ViewTransition>
+```
+
+The `default="none"` ensures revalidation does NOT trigger a fade-in animation. Only intentional transitions (navigation, Suspense reveal) animate.
+
+#### Mistake 2 — Installing `react@canary` on a Next.js app
+
+**❌ Wrong**: `npm install react@canary react-dom@canary` on a Next.js 16.3+ app
+
+**✅ Right**: let Next.js bundle the canary internally. The App Router's React has patches that aren't on npm yet; the canary install will break the App Router.
+
+#### Mistake 3 — Forgetting the `key` on list-identity morphs
+
+**❌ Wrong**: `<ViewTransition>` without `key` on a list
+```tsx
+{tracks.map((track) => <ViewTransition><TrackRow track={track} /></ViewTransition>)}
+```
+
+**✅ Right**: `<ViewTransition key={track.id}>` to tell React "this is the same element across renders"
+```tsx
+{tracks.map((track) => <ViewTransition key={track.id}><TrackRow track={track} /></ViewTransition>)}
+```
+
+Without the `key`, React treats each element as new and animates the appearance (not the position).
+
+#### Mistake 4 — Animating without `experimental.viewTransition: true`
+
+**❌ Wrong**: `transitionTypes={['nav-back']}` on a `<Link>` without the config
+```ts
+// next.config.ts
+const nextConfig: NextConfig = { /* no experimental.viewTransition */ };
+```
+
+**✅ Right**:
+```ts
+const nextConfig: NextConfig = {
+  experimental: { viewTransition: true },
+};
+```
+
+Without the flag, the `transitionTypes` prop is silently ignored.
+
+#### Mistake 5 — Using `<ViewTransition>` for a form-submission feedback
+
+**❌ Wrong**: animating the form-submit success state
+```tsx
+<ViewTransition default="fade-in">
+  {submitted && <SuccessMessage />}
+</ViewTransition>
+```
+
+**✅ Right**: use `useTransition` + `updateTag` for the optimistic-update pattern (Pattern R in patterns.md), not `<ViewTransition>`. Animations are for spatial continuity; mutations should feel instantaneous.
+
+### The shadcn/ui Integration (NEW in Aug 18)
+
+The shadcn ecosystem (shadcn@4.18.0, @shadcn/react@0.3.0) does NOT yet ship a `<ViewTransition>` wrapper. The Aug 18 blog post doesn't mention a shadcn wrapper. The 16.3 components.sh command will be the path to add a `<ViewTransition>` wrapper once shadcn ships one; for now, the patterns above are the canonical reference.
+
+**Watch for**: a future shadcn release (likely 4.19.0 or 4.20.0) will add a `<ViewTransition>` wrapper component, likely as `@shadcn/react/transition` or similar. The skill-driven ecosystem (Pattern P in patterns.md) means the adoption will be `npx shadcn@latest add @shadcn/react/transition` once it ships.
+
+### The 5-step Audit Recipe (Aug 19, 2026 cycle)
+
+```bash
+# 1. Verify Next.js 16.3+
+npm ls next  # expect 16.3.1+
+
+# 2. Verify React version (should NOT be canary on a Next.js app)
+npm ls react react-dom  # expect a stable-looking version (Next.js bundles the canary internally)
+
+# 3. Verify experimental.viewTransition is enabled
+rg -n "viewTransition" next.config.*
+# Expect: experimental: { viewTransition: true }
+
+# 4. Audit existing ViewTransition usage
+rg -n "ViewTransition" --type ts --type tsx
+# For each usage, verify:
+#   - has `key` (list-identity case)
+#   - has `name` (shared-element case) OR `default` (one-off case)
+#   - is NOT on a revalidation-context element without default="none"
+
+# 5. Audit transitionTypes usage on next/link + useRouter
+rg -n "transitionTypes" --type ts --type tsx
+# For each usage, verify the corresponding <ViewTransition> has matching type-keys in enter/exit/share
+```
+
+### Per-User-Type Practical Impact
+
+| User Type | Impact | Why |
+|-----------|--------|-----|
+| **List-to-detail apps (e-commerce, music, video, social feeds)** | **HIGH** | The shared-element transition makes the navigation feel in-place |
+| **Calendar / timeline / wizard apps** | **HIGH** | The directional back/forward transitions match the user's mental model |
+| **Apps with auto-revalidating lists** | **MEDIUM** | The `default="none"` discipline is the lesson; not the animation |
+| **Apps with form-heavy UX (CRUD dashboards, project management)** | **MEDIUM** | The Suspense-reveal pattern + the `useTransition` + `updateTag` Pattern R combine for the SPA feel without the SPA |
+| **Apps without list/detail navigation** | **LOW** | The patterns are valuable but not transformative |
+| **Vercel deployments vs self-hosted** | **NO difference** | The View Transitions API is browser-native; Next.js just exposes it |
+| **Browser support (Safari < 18, Firefox < 127)** | **Graceful** | The destination page shows immediately; no broken state |
+| **Next.js apps on 16.2.x or earlier** | **NO** | `<ViewTransition>` requires React 19.2+ which ships in 16.3+ |
+
+### Sources
+
+- [Next.js blog: "Building App-like Experiences with Next.js 16.3" (August 18, 2026)](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — the third deep-dive post; published by `aurorascharff` + the Next.js team; covers the `<ViewTransition>` integration + the `transitionTypes` + the demo apps (drops, calendar, favorites feed)
+- [Next.js docs: "Designing view transitions"](https://nextjs.org/docs/app/guides/view-transitions) — the canonical docs; last updated 2026-08-07
+- [React docs: `<ViewTransition>`](https://react.dev/reference/react/ViewTransition) — the React reference
+- [`vercel-react-view-transitions` Skill SKILL.md](https://github.com/vercel-labs/agent-skills/blob/main/skills/react-view-transitions/SKILL.md) — the canonical Skill; the `enter`/`exit`/`share`/`default` recipe
+- [MDN: View Transitions API](https://developer.mozilla.org/en-US/docs/Web/API/View_Transition_API) — the browser-native reference
+- [Tailwind v4.3.3 `has-data-removing` variant](https://tailwindcss.com/docs/hover-focus-and-other-states#data-attribute-variants) — the canonical docs for the `has-data-removing:opacity-50` pattern
+- [Next.js blog: Next.js 16.3 launch post (August 3, 2026)](https://nextjs.org/blog/next-16-3) — the launch post
+- [Next.js blog: Instant Navigations (August 8, 2026)](https://nextjs.org/blog/next-16-3-instant-navigations) — the second deep-dive post
+- [Cross-references](cross-refs): `patterns.md` → the v1.5.76 cycle's Pattern P + Q + R + S + T section for the pattern-surface lens; `api.md` → the v1.5.76 cycle's 12 canary-branch-ahead-of-canary.24 PRs section for the API-surface lens on the canary.25 PRs; `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116
+

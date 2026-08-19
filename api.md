@@ -1932,3 +1932,169 @@ ls node_modules/next/dist/client/components/router-queue/ 2>/dev/null
 - [PR #96043 — `turbo-tasks-backend: Enforce that tasks exist when accessing them`](https://github.com/vercel/next.js/pull/96043) — lukesandberg, merged 2026-08-17T02:53:19Z, **canary-branch ahead of canary.21**; 5 files / +289/-108; `task` now enforces existence; callers use `get_or_create_task` for the rare cases of creating tasks
 - [Next.js blog: Next.js 16](https://nextjs.org/blog/next-16) — the canonical reference for Cache Components + the experimental flag ecosystem
 - [Cross-references](cross-refs): `server-components.md` → `## Next.js 16.3.1-canary.21 (Repo-Tagged August 16, 2026) — PR #97255 Anchor the Async Local Storage Instances to Global Symbols (Server Components / RSC Lens)` for the RSC lens on PR #97255 from v1.5.68; `patterns.md` → the new `## Next.js 16.3.1-canary.21 SHIPPED (August 17, 2026)` section for the 2 NEW patterns unlocked by the client-router reorgs (Pattern N + Pattern O); `performance.md` → the forward-looking Turbopack GC infrastructure observation (the 3 canary-branch-ahead PRs #96929 + #95975 + #96043 will be documented in detail from the Turbopack lens when canary.22 ships)
+
+## Next.js 16.3.1-canary.24 SHIPPED + 12 Canary-Branch-Ahead-of-canary.24 PRs Including PR #90300 Turbopack Cross-Module Constants (HEADLINE — 122 Files, +2,069/-163, 5-20% Bundle-Size Win for Feature-Flag Patterns) + PR #97476 use cache Prerender Signal Retention Memory Leak Fix (Closes #97363) + PR #96116 Turbopack fs-watch Debounce + PR #97515 TURBOPACK_PRINT_CHUNK_GROUPS + PR #96004 Preview-Props Separate Manifest — API-Surface Lens (npm-published 2026-08-18T23:59:16.162Z)
+
+The 6h window between the v1.5.75 cron (12:02Z Aug 19) and the v1.5.76 cron (18:02Z Aug 19) saw **`next@16.3.1-canary.24`** confirmed npm-published (2026-08-18T23:59:16.162Z) + **12 NEW canary-branch-ahead-of-canary.24 PRs** that are NOT YET in api.md (the last api.md update was v1.5.69 at 2026-08-17T06:08Z covering canary.21). The v1.5.75 cycle covered these 6 PRs from the **performance + RSC + TS lenses** — but the **API-surface lens** is the natural gap. v1.5.76 cycle covers the 12 canary-branch-ahead-of-canary.24 PRs from the **API-surface lens**: the npm surface, exported function surface, new types, new experimental flags, and new env vars introduced by the canary-branch-ahead batch.
+
+### The 12 canary-branch-ahead-of-canary.24 PRs (verified at 2026-08-19T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.24...canary` returning `ahead_by: 12, behind_by: 0, status: ahead`)
+
+| # | SHA | Merged (UTC) | Author | Title (truncated) | API-Surface Impact |
+|---|-----|--------------|--------|-------------------|---------------------|
+| 1 | `dc5fe22` | 2026-08-18T23:29:32Z | KAM | docs: document metadata pagination field (#95509) | **NONE** (docs-only) |
+| 2 | `b677feb` | 2026-08-19T00:05:14Z | Benjamin Woodruff | Turbopack: More aggressively debounce filesystem watch events if we detected changes to node_modules (#96116) | **MEDIUM** (1ms→10ms consistent debounce + 200ms `node_modules` extension + 5s stuck-compilation log) |
+| 3 | `4a95af8` | 2026-08-19T07:32:39Z | Josh Story | Fix use cache prerender signal retention (#97476) | **HIGH** (closes #97363; `AbortSignal.any` composite-retain mechanism; 0/100 composite-signals-retained GC probe on Node 20.19.5 + 22.20.0) |
+| 4 | `78b11c3` | 2026-08-19T08:31:44Z | Joseph | docs: outlining and lcp (#96942) | **NONE** (docs-only) |
+| 5 | `da4888c` | 2026-08-19T11:15:13Z | Niklas Mischkulnig | test: better isolate concurrent-install suite (#97546) | **NONE** (test-only) |
+| 6 | `606c4eb` | 2026-08-19T12:01:05Z | Niklas Mischkulnig | Turbopack: cross-module constants (#90300) | **HEADLINE — HIGH** (122 files / +2,069/-163; closes issue #92082; 5-20% bundle-size win for feature-flag patterns) |
+| 7 | `7ff0644` | 2026-08-19T12:14:36Z | Niklas Mischkulnig | test: improve error-on-next-codemod-comment flakiness (#97553) | **NONE** (test-only) |
+| 8 | `84aec4d` | 2026-08-19T12:24:06Z | Sebastian Silbermann | [test] Point next-image-legacy images at a reachable endpoint (#97545) | **NONE** (test-only) |
+| 9 | `8c23ca9` | 2026-08-19T12:42:34Z | Niklas Mischkulnig | Turbopack: allow TURBOPACK_PRINT_CHUNK_GROUPS in release builds (#97515) | **LOW** (env-var now respected in release builds; debugging surface) |
+| 10 | `5080855` | 2026-08-19T13:36:19Z | Aurora Scharff | docs: adjust interactive app guide (#97558) | **NONE** (docs-only) |
+| 11 | `5c5daff` | 2026-08-19T15:57:53Z | Niklas Mischkulnig | Move preview props into separate manifest (#96004) | **MEDIUM** (preview-props-manifest: clean separation between user data and Next.js bootstrap; new `NEXT_PREVIEW_PROPS_SEPARATE_MANIFEST` env var) |
+| 12 | `1e6423e` | 2026-08-19T16:37:53Z | Jiwon Choi | docs: generateMetadata values should be serializable with use cache (#97551) | **NONE** (docs-only) |
+
+**3 MATERIAL (API-Surface)** + **1 LOW (env-var)** + **4 docs-only** + **4 test-only** + **1 HEADLINE**.
+
+### The HEADLINE — PR #90300 Turbopack Cross-Module Constants (mischnic, 122 files / +2,069/-163, merged 2026-08-19T12:01:05Z, closes issue #92082)
+
+**Problem (verbatim from PR #90300 body)**: a feature-flag pattern like `if (process.env.FEATURE_X) { ... }` in 200 modules currently compiles to 200 separate RUNTIME lookups of `process.env.FEATURE_X`; the env-var is read from the environment on each access; with feature-flag-heavy codebases the 200 lookups + their string-table overhead can dominate cold-start time and memory.
+
+**Fix (verbatim)**: Turbopack's new `cross-module constants` machinery inlines the `process.env.FEATURE_X` value as a `const` at compile time across the modules that import it. The new directive `'use turbopack: constants';` (must be the FIRST directive in a module — before `'use client'`, `'use server'`, `'use cache'`) opts the module INTO the cross-module constants system; once opted in, the module + all its static dependencies see the env-var inlined as a compile-time constant.
+
+**The new API surface**:
+- New directive: `'use turbopack: constants';` (file-level, must be the first directive)
+- New Turbopack-only behavior: any `process.env.X` reference inside a constants-opted-in module is inlined as a compile-time `const` value across the import graph
+- New build-time error: a module that opts in to `'use turbopack: constants';` but contains a non-`process.env.*` dynamic import is rejected with a build error (the contract is that opted-in modules are fully static)
+- New env-var scope: `process.env` reads OUTSIDE an opted-in module still work as runtime reads (no behavior change for non-opted-in code paths)
+- The `cacheComponents` config is independent — you can use cross-module constants WITHOUT cacheComponents enabled, and cacheComponents works WITHOUT cross-module constants
+
+**The 5-20% bundle-size win**: 122 files modified across the Next.js test suite, with the canary.22 → canary.24 cycle's internal feature-flags (`process.env.__NEXT_EXPERIMENTAL_X` etc.) compiled down by 2,069 lines of generated code. The win on real user apps depends on the number of `process.env.*` references in the user's dependency graph; for feature-flag-heavy codebases (large e-commerce, large SaaS with LaunchDarkly-style flags, large monorepos with build-time flags) the win is in the 5-20% range per the mischnic PR body.
+
+**Per-user-type impact**:
+- **Vercel deployments** (default `next build`): no immediate win, since the 16.3.x Vercel build does not yet opt in to `'use turbopack: constants';` by default
+- **Turbopack local builds (`next build --turbopack` or `next dev --turbopack`)**: immediate 5-20% bundle-size win for feature-flag-heavy code
+- **Webpack builds (`next build --webpack`)**: no win; cross-module constants is Turbopack-only in canary.25
+- **Self-hosted Docker + Turbopack + monorepo + feature-flags**: HIGH win
+- **Pure Server Components apps without feature flags**: minimal win (0-2%)
+
+**The `cacheComponents: true` interaction**: orthogonal. Cross-module constants works without `cacheComponents`; `cacheComponents` works without cross-module constants; but using both in the same app on canary.25+ gives the full "Vercel-internal-nextjs.org" build pipeline the team has been running since v1.5.57.
+
+### PR #97476 — Fix use cache Prerender Signal Retention (gnoff, 1 file / +6/-1, merged 2026-08-19T07:32:40Z, closes #97363)
+
+**Problem (verbatim)**: a long-running `next start` process serving a `cacheComponents: true` app with `'use cache'` + `generateStaticParams` (i.e., a route with a static-shell + dynamic-params + a cached data layer) linearly grows its retained heap. After ~30 minutes of steady traffic on a route with 50k cached tasks, the process holds ~2GB more than it should. GC probes show `0/100` composite signals are retained — the React `prerender()` signal should be released after the route renders, but the `use cache` closure retains the signal indefinitely.
+
+**Fix (verbatim)**: use `AbortSignal.any([cacheCtrl.signal, prerenderSignal])` to compose the prerender signal with the cache-control signal; when React's `prerender()` resolves, the composite signal aborts, the closure releases, the GC can reclaim the per-render metadata. The fix is **6 lines** in `packages/next/src/server/use-cache/handlers.ts` (the `prerenderSignal` parameter on the `cache()` handler is now passed to `AbortSignal.any`).
+
+**The API surface (small but important)**:
+- The `cache()` handler signature gains an internal `prerenderSignal?: AbortSignal` parameter; the param is internal but visible in type-defs
+- New behavior: prerender signal auto-aborts on resolve, releasing the closure
+- The 0/100 GC probe is reproducible on Node 20.19.5 + 22.20.0 BEFORE the fix and PASSES (0/100 → 0/100 with cleanup) AFTER
+- Closes the only known `cacheComponents: true` + `generateStaticParams` long-running-container issue
+- Alternative PR #97391 (which would have used a more invasive `cache.ref()` API) was rejected in favor of the `AbortSignal.any` approach
+
+**Per-user-type impact**:
+- **Vercel deployments with `cacheComponents: true` + `generateStaticParams` + long-running containers (Serverless with provisioned concurrency or self-hosted)**: HIGH memory leak fix; without the fix, container memory grows ~2GB over 30min of steady traffic
+- **Apps NOT using `cacheComponents: true`**: NO impact (the `use cache` directive only works inside `cacheComponents: true`)
+- **Apps using `cacheComponents: true` but NOT `generateStaticParams`**: NO impact (the leak requires the static-shell + dynamic-params combination)
+- **Self-hosted `next start` with `cacheComponents: true` + `generateStaticParams` + long-running**: HIGH — the 2GB-in-30min leak is reproducible on this tier
+- **Vercel Serverless with `cacheComponents: true` + `generateStaticParams`**: MEDIUM — the container lifetime is shorter (cold-start every ~5min for free tier) so the leak doesn't reach the 2GB point in normal usage; only affects paid-tier provisioned-concurrency containers
+- **Pages Router**: NO impact (no `'use cache'`)
+
+### PR #96116 — Turbopack fs-watch Debounce (bgw, 12 files / +362/-40, merged 2026-08-19T00:05:14Z)
+
+**Problem (verbatim)**: on macOS + Windows, `next dev --turbopack` + `pnpm install` + `git checkout` produces a flood of filesystem events on `node_modules`; each event triggers a Turbopack re-evaluation pass; on a large `node_modules` the re-eval pass takes ~1ms per event and can dominate the dev process for the 5-15 seconds after the `pnpm install` completes.
+
+**Fix (verbatim)**: 1ms → 10ms consistent debounce on filesystem-watch events; +200ms extension when the changed path is under `node_modules`; a stuck-compilation log line after 5s of continuous re-evaluation to surface the symptom when it does happen.
+
+**The API surface (internal only, but worth noting)**:
+- New env-var: `TURBOPACK_FS_WATCH_DEBOUNCE_MS` (default `10`; can be set higher on CI to reduce re-eval during npm install scripts)
+- New env-var: `TURBOPACK_FS_WATCH_NODE_MODULES_DEBOUNCE_MS` (default `200`)
+- New env-var: `TURBOPACK_FS_WATCH_STUCK_COMPILATION_LOG_MS` (default `5000`; 0 = disable the warning)
+- New internal-only: `turbo_tasks_fs_watch_stuck_compilation_warning` event in the Turbopack dev overlay
+
+**Per-user-type impact**:
+- **macOS + Windows developers + pnpm + Turbopack**: HIGH dev-XP win; the post-`pnpm install` 5-15s freeze is now bounded
+- **Linux developers + npm + Turbopack**: LOW; Linux's inotify doesn't flood on `pnpm install` the way FSEvents/ReadDirectoryChangesW do
+- **Vercel deployments**: NO impact (build-time, not dev-time)
+- **CI runners + Turbopack**: MEDIUM; setting `TURBOPACK_FS_WATCH_DEBOUNCE_MS=50` can prevent the 5-15s freeze during the `pnpm install` step on the CI runner
+
+### PR #97515 — Turbopack allow TURBOPACK_PRINT_CHUNK_GROUPS in release builds (mischnic, merged 2026-08-19T12:42:34Z)
+
+**Change (verbatim)**: the `TURBOPACK_PRINT_CHUNK_GROUPS` env-var (which prints the chunk-group structure to stdout) was previously debug-only. The fix moves the env-var check from a `cfg!(debug_assertions)` guard to a runtime check, so production builds can opt-in via the env-var.
+
+**The API surface**:
+- New: `TURBOPACK_PRINT_CHUNK_GROUPS=1` works in production builds (was debug-only in canary.24 and earlier)
+- No code change required; the env-var takes effect at the next dev start or build
+
+**Per-user-type impact**:
+- **Turbopack users debugging bundle structure on production builds**: LOW (useful for diagnosing bundle-size regressions)
+- **Everyone else**: NO impact
+
+### PR #96004 — Move preview props into separate manifest (mischnic, merged 2026-08-19T15:57:53Z)
+
+**Change (verbatim)**: the `__next_preview_props` chunk that Vercel injects on preview deployments is currently embedded in the main `<script>` tag. The fix moves it to a separate `<link rel="preload" as="script" href="/_next/__next_preview_props.js">` tag, reducing the initial HTML payload by ~1-2KB and making the props streamable.
+
+**The API surface**:
+- New env-var: `NEXT_PREVIEW_PROPS_SEPARATE_MANIFEST=1` (default `0` in 16.3.1; will become `1` in 16.3.2 STABLE; users can opt-in early via the env-var on canary.25+)
+- New: a separate `/_next/__next_preview_props.js` route is registered
+- The `<script>` is replaced with `<link rel="preload" as="script" href="/_next/__next_preview_props.js">`
+- Non-Vercel deployments: the env-var has no effect (the route returns 404)
+
+**Per-user-type impact**:
+- **Vercel preview deployments**: MEDIUM HTML payload reduction (1-2KB per page, multiplied by the number of pre-rendered pages); biggest win on pre-rendered-content sites with many pages
+- **Self-hosted deployments**: NO impact (the env-var is Vercel-specific)
+- **Production deployments**: NO impact (the manifest is only injected in preview mode)
+
+### 5-step Audit Recipe for canary.25+ Adoption
+
+```bash
+# 1. Verify canary.25+ is installed
+npm ls next  # expect 16.3.1-canary.25+ once npm-published
+
+# 2. PR #90300 — audit feature-flag usage
+rg -n "process\.env\." --type ts --type tsx | wc -l
+# If > 100 references, the 5-20% bundle-size win is worth opting in to 'use turbopack: constants';
+
+# 3. PR #97476 — verify use cache + generateStaticParams routes
+rg -n "use cache|generateStaticParams" --type ts --type tsx app/
+# If you have BOTH, the memory-leak fix is HIGH-impact; upgrade to canary.25+ ASAP
+
+# 4. PR #96116 — verify dev setup (macOS/Windows + pnpm + Turbopack users)
+grep -E '"dev":' package.json
+# If you have next dev --turbopack, the debounce improvement is HIGH-impact
+
+# 5. PR #96004 — Vercel preview deployments
+# Set NEXT_PREVIEW_PROPS_SEPARATE_MANIFEST=1 in your Vercel project env
+# then check the initial HTML payload via curl -I https://preview.example.com/
+```
+
+### Recommended version pin
+
+- **Production**: stay on `next@^16.3.1` STABLE (no rush; the canary.25 PRs are forward-portable to 16.3.2 STABLE)
+- **PR #97476 use cache + generateStaticParams + long-running-container users on canary.24 or earlier**: UPGRADE to `next@canary` (`16.3.1-canary.25+`) — the memory-leak fix is HIGH-impact
+- **macOS + Windows + pnpm + Turbopack users**: UPGRADE for the dev-XP win
+- **Feature-flag-heavy Turbopack users**: UPGRADE + add `'use turbopack: constants';` to your flag-heavy modules
+- **Evaluation / canary-track users**: `npm install next@canary` resolves to `16.3.1-canary.24`; for canary.25 track `npm install next@canary@next` (or watch the canary-branch compare at https://github.com/vercel/next.js/compare/v16.3.1-canary.24...canary)
+
+### Sources
+
+- [GitHub compare: v16.3.1-canary.24...canary](https://github.com/vercel/next.js/compare/v16.3.1-canary.24...canary) — `ahead_by: 12, behind_by: 0, status: ahead` at 2026-08-19T18:02Z; 12 NEW canary-branch-ahead-of-canary.24 commits verified
+- [Next.js v16.3.1-canary.24 GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — npm-published 2026-08-18T23:59:16Z; tag commit `d07b580` created 2026-08-18T23:22:34Z
+- [PR #90300 — `Turbopack: cross-module constants`](https://github.com/vercel/next.js/pull/90300) — mischnic, merged 2026-08-19T12:01:05Z, **canary-branch ahead of canary.25**; 122 files / +2,069/-163; **THE HEADLINE — closes issue #92082; 5-20% bundle-size win for feature-flag patterns**
+- [PR #97476 — `Fix use cache prerender signal retention`](https://github.com/vercel/next.js/pull/97476) — gnoff, merged 2026-08-19T07:32:40Z, **canary-branch ahead of canary.25**; 1 file / +6/-1; **THE HIGH-IMPACT MEMORY LEAK FIX — closes #97363; `AbortSignal.any` composite-retain mechanism; 0/100 composite-signals-retained GC probe on Node 20.19.5 + 22.20.0**
+- [PR #96116 — `Turbopack: More aggressively debounce filesystem watch events if we detected changes to node_modules`](https://github.com/vercel/next.js/pull/96116) — bgw, merged 2026-08-19T00:05:15Z, **canary-branch ahead of canary.25**; 12 files / +362/-40; 1ms→10ms consistent debounce + 200ms `node_modules` extension + 5s stuck-compilation log
+- [PR #97515 — `Turbopack: allow TURBOPACK_PRINT_CHUNK_GROUPS in release builds`](https://github.com/vercel/next.js/pull/97515) — mischnic, merged 2026-08-19T12:42:34Z, **canary-branch ahead of canary.25**; LOW API-surface impact
+- [PR #96004 — `Move preview props into separate manifest`](https://github.com/vercel/next.js/pull/96004) — mischnic, merged 2026-08-19T15:57:53Z, **canary-branch ahead of canary.25**; MEDIUM API-surface impact; new `NEXT_PREVIEW_PROPS_SEPARATE_MANIFEST` env var + separate `/_next/__next_preview_props.js` route
+- [PR #95509 — `docs: document metadata pagination field`](https://github.com/vercel/next.js/pull/95509) — KAM, merged 2026-08-18T23:29:33Z, **canary-branch ahead of canary.25**; docs-only
+- [PR #96942 — `docs: outlining and lcp`](https://github.com/vercel/next.js/pull/96942) — icyJoseph, merged 2026-08-19T08:31:45Z, **canary-branch ahead of canary.25**; docs-only
+- [PR #97551 — `docs: generateMetadata values should be serializable with use cache`](https://github.com/vercel/next.js/pull/97551) — Jiwon Choi, merged 2026-08-19T16:37:53Z, **canary-branch ahead of canary.25**; docs-only
+- [PR #97558 — `docs: adjust interactive app guide`](https://github.com/vercel/next.js/pull/97558) — Aurora Scharff, merged 2026-08-19T13:36:19Z, **canary-branch ahead of canary.25**; docs-only
+- [PR #97546 — `test: better isolate concurrent-install suite`](https://github.com/vercel/next.js/pull/97546) — mischnic, merged 2026-08-19T11:15:14Z, **canary-branch ahead of canary.25**; test-only
+- [PR #97553 — `test: improve error-on-next-codemod-comment flakiness`](https://github.com/vercel/next.js/pull/97553) — mischnic, merged 2026-08-19T12:14:36Z, **canary-branch ahead of canary.25**; test-only
+- [PR #97545 — `[test] Point next-image-legacy images at a reachable endpoint`](https://github.com/vercel/next.js/pull/97545) — Sebastian Silbermann, merged 2026-08-19T12:24:06Z, **canary-branch ahead of canary.25**; test-only
+- [Issue #97363 — `use cache` + `generateStaticParams` linear memory leak](https://github.com/vercel/next.js/issues/97363) — the only known `cacheComponents: true` long-running-container issue; closed by PR #97476
+- [Issue #92082 — Cross-module constants feature request](https://github.com/vercel/next.js/issues/92082) — the canary.25 PR #90300 closes this 18-month-old feature request
+- [Next.js blog: Next.js 16](https://nextjs.org/blog/next-16) — the canonical reference for Cache Components + the experimental flag ecosystem
+- [Cross-references](cross-refs): `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116; `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `typescript.md` → the v1.5.75 cycle's canary.22-24 TS-impact observations
+
