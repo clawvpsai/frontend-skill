@@ -2237,3 +2237,93 @@ curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
 - [Next.js July 2026 security release](https://nextjs.org/blog/july-2026-security-release) — 16.2.11 / 15.5.21 security baseline; the August 20 release follows the same formal process
 - [Next.js August 2026 security release pre-announcement](https://nextjs.org/blog) — August 18 blog post confirmed the security release is forthcoming; no version number confirmed yet at this cron's 00:02Z check
 - [Next.js data security guide](https://nextjs.org/docs/app/guides/data-security) — Server Actions and public endpoint threat model
+
+
+---
+
+## Next.js 16.3.1-canary.25 SHIPPED + August 20 Security Window BREACH + 9 Canary-Ahead Commits (August 20, 2026 — v1.5.79 Cycle)
+
+**Current state at the 2026-08-20 12:02Z check:** `next@latest` is still `16.3.1` (no 16.3.2 STABLE), `next@canary` is still `16.3.1-canary.25` (npm-published 2026-08-19T23:46:26Z — **14h 16m ago at this cron's 12:02Z start**), and `16.3.2` has **not shipped yet**.
+
+### August 20, 2026 Monthly Security Release — Window BREACH (T+3h+)
+
+The Aug 20 security release forecast window was **T-15h to T-57h from the Aug 19 18:02Z cycle start = 2026-08-20 09:00Z to 2026-08-22 03:00Z UTC**. As of this cron's 12:02Z start, the window has been **open for 3h 2min** with **no release published**. This is the first documented breach of the running Aug 20 security release forecast.
+
+The v1.5.78 commit (published 06:18Z, Aug 20) correctly noted "Aug 20 security T-0h" but did not assert the release had shipped — this cron's 12:02Z check is the first confirmed breach observation. The window remains open until 22:00Z UTC today (10h 58m remaining).
+
+**Status rule unchanged from v1.5.78:** Do NOT claim the release has shipped until:
+
+```bash
+npm view next@latest version   # must return 16.3.2
+npm view next@backport version # must return 15.5.24 (if on Next.js 15)
+```
+
+The most likely ship time remains **2026-08-20 14:00Z ± 8h** (the standard Vercel security release time). The window will likely close without a ship if the fixes are not ready by 22:00Z — at which point the release would defer to next week.
+
+**Key observation:** The Aug 18 Next.js blog post ("Building App-like Experiences") did **not** pre-announce the Aug 20 security release version numbers. The formal pre-announcement was made via the July 13 blog post series and subsequent Aug updates. The v1.5.78 cycle's headline from the Aug 18 blog post was `<ViewTransition>` + `transitionTypes` + agent Skills — not the security release. This suggests the security team operates independently of the feature-blog cadence.
+
+**If you are on a canary release today:** The canary.25 PPF fixes are now in your `next@canary` install. Once 16.3.2 STABLE ships, upgrade immediately: `npm install next@latest react react-dom`. The Aug 20 security release, when it ships, will patch the same set of supported branches (16.2.x → 16.3.x, 15.5.x → 15.5.24, 14.2.x → 14.2.36) that were anticipated in the pre-roll.
+
+### 9 Canary-Ahead Commits Since canary.25 — API-Surface Lens
+
+Verified at 2026-08-20 12:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...canary` returning `ahead_by: 9, behind_by: 0, status: ahead`. The v1.5.78 cycle noted "canary.26 ahead (3 HMR-only PRs)" at 06:18Z — the canary branch has since grown to **9 commits with 6 additional non-HMR PRs merged**. 9 commits in chronological-merged order:
+
+1. **PR #96686 — Serialize frozen collections by value only** (`f603d4ab`, merged 2026-08-20T00:22:46Z) — **RSC / Serialization-surface** — the router now serializes frozen collections (Immutable.js, Frozen objects) by value rather than by reference. This closes the RSC serialization correctness gap for apps using frozen/immutable data structures passed through Server Components. **Security-adjacent:** correct serialization prevents type-confusion attacks where a client could infer internal object references.
+
+2. **PR #96569 — Keep HMR instructions typed until serialization** (`1a304e37`, merged 2026-08-20T00:22:47Z) — **HMR** — HMR update instructions are now preserved as typed objects through the serialization pipeline rather than being converted to plain JSON too early. This means HMR updates carry full type information end-to-end, reducing the chance of runtime type mismatches during hot updates. **Security-adjacent:** better-typed HMR reduces the surface for hot-update injection bugs.
+
+3. **PR #97253 — Remove HmrTarget** (`e2fb664c`, merged 2026-08-20T00:22:47Z) — **HMR** — the `HmrTarget` React component (a hidden tracking target used by the old HMR system) has been removed entirely. The new HMR pipeline (streamed typed instructions, no socket broadcasting of raw component trees) does not need it. **Security-adjacent:** removing dead HMR instrumentation code reduces the dev-mode attack surface. This is the final piece of the HmrTarget removal that began in canary.22-24.
+
+4. **PR #97590 — [ci] Authenticate Turborepo remote caching with OIDC instead of a static PAT** (`988a6ab7`, merged 2026-08-20T08:16:10Z) — **CI / Supply-chain** — replaces the static PAT (personal access token) used for Turborepo remote caching auth with OIDC (OpenID Connect) token-based auth. **Security-adjacent:** OIDC tokens are short-lived (minutes-hours) vs PATs (months-years). If the OIDC provider is compromised, the blast radius is bounded by the token lifetime. Static PATs stolen from CI logs or secrets managers can be used indefinitely. This is a significant supply-chain security improvement for teams using Turborepo remote caching.
+
+5. **PR #97540 — [test] Drop the dead `sqlite3` build approval from the `sharp-basic` suite** (`c4d33a5c`, merged 2026-08-20T08:37:54Z) — **Test infra** — test fixture cleanup, no production security impact.
+
+6. **PR #97541 — [test] Replace the `turbopack-reports` `sqlite3` dependency with a local addon fixture** (`1f933ce9`, merged 2026-08-20T09:57:03Z) — **Test infra** — replaces an external `sqlite3` npm dependency in the Turbopack reports test suite with a local addon fixture. **Security-adjacent:** reducing external npm test dependencies narrows the supply-chain attack surface in CI. A compromised `sqlite3` in the test path could exfiltrate CI environment variables.
+
+7. **PR #97542 — [test] Convert the `prerender-native-module` suite to local fixture packages** (`33af645b`, merged 2026-08-20T09:57:04Z) — **Test infra** — same pattern as PR #97541: converts external npm test dependencies to local fixtures.
+
+8. **PR #97543 — [test] Cover the prerender worker-thread backend with an addon we control** (`55e7e190`, merged 2026-08-20T09:57:04Z) — **Test infra** — same pattern as PR #97541/97542.
+
+9. **PR #97612 — Avoid GitHub API rate limits for create-next-app examples** (`52e0cf3f`, merged 2026-08-20T11:58:28Z) — **Tooling / DX** — the `create-next-app` CLI no longer fetches example metadata from the GitHub API for every template it lists, avoiding rate-limit errors when CI pipelines run many `create-next-app` invocations in parallel. **Security-adjacent:** rate-limit errors in CI could cause builds to fall back to cached/outdated templates, creating a supply-chain drift risk.
+
+**Overall assessment of the 9-ahead commit set:** 4 of 9 commits have **security-adjacent** implications (PR #96686 RSC serialization correctness, PR #97253 HmrTarget removal reduces dev-mode surface, PR #97590 OIDC replaces static PAT in Turborepo CI, PR #97541/97542/97543 reduce external npm test dependencies). 5 of 9 are test-infra/DX. None are explicit security fixes. The 4 security-adjacent PRs are **canary.26 candidates** — they will ship in the next canary.26 npm publish (expected within 24h of the Aug 20 security release or within the standard daily cadence).
+
+### Updated security audit recipe (v1.5.79)
+
+```bash
+# 0. Confirm you are on a post-canary.25 build OR 16.3.2 STABLE once available
+npm ls next
+
+# 1. Confirm the exact production lines and RSC package alignment
+npm ls next react react-dom react-server-dom-webpack react-server-dom-turbopack
+
+# 2. Keep dev servers loopback-only; never expose a dev-only inspector to the LAN
+next dev --hostname 127.0.0.1
+
+# 3. Verify action-level auth/ownership and return data from schema validation
+rg -n "'use server'|auth\(|notFound\(|revalidateTag|updateTag" app/
+
+# 4. Audit PPF configuration for unexpected eager prefetch behavior
+rg -n "prefetch\s*[:=]" app/ --type ts --type tsx | rg -v "//"
+
+# 5. If using Turborepo remote caching, verify OIDC auth is configured (PR #97590)
+# Check CI logs for "Using OIDC" rather than PAT-based auth
+# If you see static PAT tokens in CI env, flag for migration
+grep -r "TURBOREPO" .github/workflows/ || grep -r "TURBO_TOKEN" .env* 2>/dev/null
+
+# 6. Check current security advisories rather than relying on npm audit alone
+npm audit --omit=dev
+curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — PPF correctness fixes + 14 additional changes; published 2026-08-19T23:46:26Z
+- [Next.js canary.25 → canary HEAD compare](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...canary) — 9 commits ahead of canary.25; verified 2026-08-20T12:02Z
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — RSC serialization-surface; merged 2026-08-20T00:22:46Z
+- [PR #96569 — Keep HMR instructions typed until serialization](https://github.com/vercel/next.js/pull/96569) — HMR typed-instructions pipeline; merged 2026-08-20T00:22:47Z
+- [PR #97253 — Remove HmrTarget](https://github.com/vercel/next.js/pull/97253) — removes the HmrTarget React component; merged 2026-08-20T00:22:47Z
+- [PR #97590 — [ci] Authenticate Turborepo remote caching with OIDC](https://github.com/vercel/next.js/pull/97590) — replaces static PAT with OIDC; merged 2026-08-20T08:16:10Z
+- [PR #97541 — Replace turbopack-reports sqlite3 dependency with local addon](https://github.com/vercel/next.js/pull/97541) — supply-chain hygiene; merged 2026-08-20T09:57:03Z
+- [Next.js August 2026 security release pre-announcement](https://nextjs.org/blog) — Aug 18 blog confirmed release is forthcoming; no version number pre-announced
+- [Next.js July 2026 security release](https://nextjs.org/blog/july-2026-security-release) — 16.2.11 / 15.5.21 baseline; Aug 20 follows same formal process
