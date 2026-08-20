@@ -2910,3 +2910,98 @@ The **PR #97402 client-router modules reorganization** and **PR #97413 concurren
 - [Cross-reference: `auth.md` → `## Better Auth 1.7.0 STABLE + Better Auth 1.7.1 STABLE SHIPPED` — the better-auth 1.7.0/1.7.1 STABLE auth update from the same v1.5.73 cycle
 - [Cross-reference: `performance.md` → canary.21-24 Turbopack GC infrastructure — same canary.22 GC/tombstone PRs from the Turbopack lens
 - [Cross-reference: `deployment.md` → `## Next.js 16.3.1-canary.24 SHIPPED — Turbopack outputFileTracingIncludes Symlink Handling` — the PR #97507 deployment-impact fix for pnpm/NixOS/monorepo-symlink users
+
+## Next.js `16.3.1-canary.25` SHIPPED + Aug 20 Security Release T-0h + 3 Canary-Ahead PRs for canary.26 — Routing-System Lens (August 20, 2026 — Routine 6h Cycle)
+
+**`next@16.3.1-canary.25` SHIPPED** (npm-published 2026-08-19T23:56:34.003Z; GitHub release 2026-08-19T23:46:26Z; **17 commits** — the most material canary batch since canary.10). The 3 routing-relevant PRs in the canary.25 batch: **PR #96004** (preview props → separate manifest; MEDIUM routing-surface for Vercel preview deployments) + **PR #97524** (PPF remove `unstable_eager` — Cache Components routing behavior) + **PR #97503** (PPF fix complete shell classification — Cache Components routing behavior). Also shipped: **PR #90300** (Turbopack cross-module constants; HIGH for feature-flag-heavy Turbopack users; routing-surface via the `TURBOPACK_CONSTANTS` manifest change) + **PR #97476** (use cache memory leak fix; MEDIUM-HIGH for `cacheComponents: true` long-running containers) + **PR #96116** (fs-watch debounce; dev-only) + 4 docs-only + 4 test-only.
+
+**Aug 20 monthly security release T-0h** (this cron's 06:03Z UTC = the day of; `next@latest` is `16.3.1`; `next@16.3.2` expected today coincident with the security release). The routing-surface of the Aug 20 release: if CVEs touch middleware routing, Route Handler auth, or the App Router's `headers()`/`cookies()` chain, the 16.3.2 STABLE upgrade will be **mandatory** for affected apps. The Aug 18 blog post showed no routing-surface CVEs were pre-announced.
+
+**3 canary-ahead PRs for canary.26** (verified at this cron's 06:03Z check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...canary` returning `ahead_by: 3, behind_by: 0`): **PR #96686** — Serialize frozen collections by value only (wbinns; HMR infrastructure) + **PR #96569** — Keep HMR instructions typed until serialization (wbinns; HMR type safety) + **PR #97253** — Remove HmrTarget (wbinns; HMR infrastructure cleanup). **All three are HMR-only — zero routing surface impact.** canary.26 is expected within 12–24h.
+
+### Canary.25 Routing-System PRs — Per-PR Analysis
+
+| PR | Author | Routing Surface | Severity | Notes |
+|----|--------|---------------|----------|-------|
+| **PR #96004** | mischnic | **MEDIUM** | Preview routes | Preview props → separate manifest; affects `/_next/__next_preview_props.js`; 1–2KB HTML reduction on Vercel previews |
+| **PR #97524** | lubieowoce | **LOW** | Cache Components routing | PPF remove `unstable_eager`; affects `cacheComponents: true` users with eager cache behavior |
+| **PR #97503** | gaojude | **LOW** | Cache Components routing | PPF fix complete shell classification; affects `cacheComponents: true` users |
+| PR #97515 | mischnic | NONE | Dev-only env-var | TURBOPACK_PRINT_CHUNK_GROUPS respected in release builds |
+| PR #97566 | aurorascharff | NONE | Docs-only | Docs fix |
+| PR #97558 | aurorascharff | NONE | Docs-only | Interactive app guide |
+| PR #97551 | Jiwonchoi | NONE | Docs-only | generateMetadata with use cache |
+| PR #96942 | icyJoseph | NONE | Docs-only | Outlining and LCP |
+| PR #95509 | biubiukam | NONE | Docs-only | Metadata pagination |
+| PR #97553 | mischnic | NONE | Test-only | Error-on-next-codemod-comment flakiness |
+| PR #97545 | Sebastian Silbermann | NONE | Test-only | next-image-legacy test |
+| PR #97546 | mischnic | NONE | Test-only | Concurrent-install suite |
+
+### Canary.26 Routing-System PRs — Ahead But HMR-Only
+
+| PR | Author | Routing Surface | Expected Impact |
+|----|--------|---------------|-----------------|
+| **PR #96686** | wbinns | **NONE** | HMR infrastructure; serialize frozen collections by value only |
+| **PR #96569** | wbinns | **NONE** | HMR type safety; keep instructions typed until serialization |
+| **PR #97253** | wbinns | **NONE** | HMR cleanup; remove HmrTarget prototype |
+
+**Routing verdict for canary.26**: Zero routing surface changes. No migration required. No routing behavior changes. The canary.26 PRs are HMR-focused and do not affect the App Router, Pages Router, middleware, Route Handlers, or any public routing API.
+
+### Aug 20 Security Release — Routing-Surface Impact
+
+The routing-surface impact of the Aug 20 security release is **unknown** until the blog post publishes. Monitor `nextjs.org/blog` for the security release post today. If the CVEs affect:
+
+- **Middleware routing chain** (`next/server` `NextRequest`, `NextResponse`): upgrade to `next@16.3.2` immediately
+- **`headers()`/`cookies()` in Route Handlers**: upgrade immediately
+- **`redirect()`/`permanentRedirect()` in routing code**: upgrade immediately
+- **No CVE in routing chain**: no routing migration required; `next@16.3.2` upgrade is routine
+
+```bash
+# Watch for the Aug 20 security release
+# After release, check:
+npm view next@latest version
+# Expected: 16.3.2 (if released today)
+
+# Verify routing-surface is unaffected
+# If no CVE in middleware, headers(), cookies(), redirect() — no routing migration needed
+# If CVE in any of those — follow the security release migration guide
+
+# If you run a canary evaluator:
+npm install next@canary  # → should be canary.26+ after PRs merge today
+```
+
+### Version Audit Recipe
+
+```bash
+# Confirm current next canary version
+npm view next@canary version
+# Expected: 16.3.1-canary.25 (verify this cron's 06:03Z check)
+
+# Watch for canary.26 (expected within 12–24h of this cron)
+# PR #96686 + #96569 + #97253 are HMR-only; no routing surface
+
+# Aug 20 security release — monitor
+npm view next@latest version
+# Expected: still 16.3.1 until release; upgrade to 16.3.2 when published today
+
+# If on 16.3.1: watch for the security blog post on nextjs.org/blog
+# Routing-surface CVEs (if any) will be listed in the security release post
+
+# If you use Vercel preview deployments:
+# PR #96004 in canary.25 reduces preview payload by 1–2KB
+# Safe to upgrade; no routing behavior change
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — npm-published 2026-08-19T23:56:34.003Z; 17 commits
+- [GitHub compare `v16.3.1-canary.25...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...canary) — `ahead_by: 3, behind_by: 0` at this cron's 06:03Z check
+- [PR #96004 — Move preview props into separate manifest](https://github.com/vercel/next.js/pull/96004) — mischnic; **SHIPPED in canary.25**; MEDIUM for Vercel preview deployments
+- [PR #97524 — [PPF] Remove `unstable_eager`](https://github.com/vercel/next.js/pull/97524) — lubieowoce; **SHIPPED in canary.25**
+- [PR #97503 — [PPF] Do not mark complete shell requests as partial](https://github.com/vercel/next.js/pull/97503) — gaojude; **SHIPPED in canary.25**
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — canary.26 candidate; HMR-only
+- [PR #96569 — Keep HMR instructions typed until serialization](https://github.com/vercel/next.js/pull/96569) — canary.26 candidate; HMR-only
+- [PR #97253 — Remove HmrTarget](https://github.com/vercel/next.js/pull/97253) — canary.26 candidate; HMR-only
+- [Aug 20, 2026 — Next.js Blog](https://nextjs.org/blog) — Aug 20 monthly security release window (watch for today)
+- [Cross-reference: `deployment.md` — the Aug 20 security release deployment-impact lens for the full upgrade checklist
+- [Cross-reference: `server-components.md` — PR #97476 from the RSC lens (use cache memory leak fix)
+- [Cross-reference: `performance.md` — PR #90300 from the perf lens (Turbopack cross-module constants)
