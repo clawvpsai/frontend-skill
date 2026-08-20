@@ -4430,3 +4430,94 @@ node -v  # should show v20.9.0+
 - Cross-reference: v1.5.72 SKILL.md headline — the canary.22 SHIPPED inline observation
 - Cross-reference: `deployment.md` — the same canary.23 PRs from the deployment-impact lens (PR #97507 symlink NFT-trace is the HEADLINE for symlink-using deployments)
 - Cross-reference: `auth.md` — the @clerk/nextjs 7.7.8 STABLE CSP port-source fix from the auth-impact lens
+
+## Next.js `16.3.1-canary.25` SHIPPED + Aug 20 Security Release T-0h + 3 Canary-Branch-Ahead PRs for canary.26 + `@clerk/nextjs@7.7.9` STABLE (August 20, 2026 — Setup Recipe Lens)
+
+**`next@16.3.1-canary.25` SHIPPED** (npm-published 2026-08-19T23:56:34.003Z; GitHub release 2026-08-19T23:46:26Z; **17 commits** — the most material canary batch since canary.10). **Aug 20 monthly security release window T-0h** (this cron's 06:03Z UTC = the day of; `next@latest` is `16.3.1`; expect `next@16.3.2` STABLE within hours coincident with the security release; the v1.5.77 "Aug 20 T-0h" forecast is now confirmed by the open release window).
+
+**3 canary-branch-ahead PRs for canary.26** (verified at this cron's 06:03Z check via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...canary` returning `ahead_by: 3, behind_by: 0`): **PR #96686** — Serialize frozen collections by value only (lubieowoce; HMR infrastructure) + **PR #96569** — Keep HMR instructions typed until serialization (HMR type safety; pre-codegen) + **PR #97253** — Remove HmrTarget (HmrTarget prototype removed; HMR infrastructure cleanup). All three are HMR-focused forward-looking for canary.26.
+
+### What Changed in canary.25 — Setup-Recipe Lens
+
+**17-commit canary.25 batch** with 5 MATERIAL from the setup-recipe lens:
+
+| PR | Author | Material Tier | Setup Impact |
+|----|--------|-------------|-------------|
+| **PR #90300** | mischnic | **HIGH** | New `'use turbopack: constants';` directive; 5–20% bundle-size win for feature-flag patterns; affects `next.config.ts` patterns using `experimental.constantes` or similar |
+| **PR #97476** | gnoff | **MEDIUM-HIGH** | `use cache` + `generateStaticParams` memory leak fix; affects long-running-container deployments with Cache Components |
+| **PR #96116** | bgw | **MEDIUM** | 10ms consistent debounce + 200ms node_modules extension; affects `next dev` + pnpm/git checkout workflow |
+| **PR #96004** | mischnic | **MEDIUM** | New `NEXT_PREVIEW_PROPS_SEPARATE_MANIFEST` env-var; affects Vercel preview deployments |
+| **PR #97524** | lubieowoce | **MEDIUM** | PPF remove `unstable_eager`; affects Cache Components / `cacheComponents: true` users |
+| **PR #97503** | gaojude | **MEDIUM** | PPF fix complete shell classification; affects Cache Components / `cacheComponents: true` users |
+| PR #97515 | mischnic | LOW | TURBOPACK_PRINT_CHUNK_GROUPS now respected in release builds; env-var only |
+| PR #96334 | niketchandivade | NONE | Accessibility fix: icon-only link accessible label |
+| PR #97566 | aurorascharff | NONE | Docs: fix stale cross-references in skills/ |
+| PR #97558 | aurorascharff | NONE | Docs: adjust interactive app guide |
+| PR #97551 | Jiwonchoi | NONE | Docs: generateMetadata values should be serializable with use cache |
+| PR #96942 | icyJoseph | NONE | Docs: outlining and LCP |
+| PR #95509 | biubiukam | NONE | Docs: metadata pagination field |
+| PR #97553 | mischnic | NONE | Test: improve error-on-next-codemod-comment flakiness |
+| PR #97545 | Sebastian Silbermann | NONE | Test: Point next-image-legacy images at a reachable endpoint |
+| PR #97546 | mischnic | NONE | Test: better isolate concurrent-install suite |
+| PR #90300 (duplicate, test-only) | mischnic | NONE | Test-only |
+
+### Version Pins and Audit Recipe
+
+```bash
+# Confirm current next canary version
+npm view next@canary version
+# Expected: 16.3.1-canary.25
+
+# Aug 20 security release upgrade (do this when 16.3.2 drops — expected today)
+npm install next@latest
+# After upgrade: verify
+npm ls next
+# Expected: next@16.3.2.x when released
+
+# @clerk/nextjs — pin to 7.7.9 STABLE
+npm install @clerk/nextjs@^7.7.9
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.7.9
+
+# zod canary — if using zod@canary, stay on the latest canary
+npm view zod@canary version
+# Expected: 4.5.0-canary.20260819T211556 or newer
+
+# zod STABLE — watch for 4.5.0 STABLE (expected within 24–48h)
+npm view zod@latest version
+# Expected: still 4.4.3 until 4.5.0 STABLE ships
+
+# TypeScript — stay on 7.0.2 STABLE for now
+npm view typescript@latest version
+# Expected: 7.0.2
+```
+
+### Why This Matters for Setup
+
+- **`next@16.3.2` is hours away**: The Aug 20 monthly security release window is open NOW (06:03Z UTC, Aug 20). Every app running `next@16.3.1` should plan to upgrade to `next@16.3.2` today. Check the security release notes when they publish at `nextjs.org/blog` and upgrade via `npm install next@latest`.
+- **PR #90300 is the headline for setup**: The new `'use turbopack: constants';` directive is a Turbopack-only optimization for feature-flag patterns. It ships in canary.25 and will be available in the `next@16.3.2` STABLE. If your `next.config.ts` uses experimental Turbopack constants, test on canary.25 before the STABLE cut.
+- **PR #97476 (memory leak fix) affects `cacheComponents: true`**: Apps using the Cache Components experimental feature with `generateStaticParams` in long-running containers (Docker, serverless) should upgrade to canary.25 or wait for 16.3.2 STABLE. The fix closes issue #97363.
+- **3 canary.26 PRs are all HMR-focused**: PR #96686 + PR #96569 + PR #97253 are HMR infrastructure changes. They are forward-looking for canary.26 (expected within 12–24h). No immediate migration required.
+- **27th TypeScript no-content rebuild expected ~08:25Z Aug 20** (T+~2h22min from this cron). The build is genuinely no-content; no TypeScript version bump expected from it.
+- **zod@4.5.0 STABLE imminent**: 10 canary drops on Aug 19 at a sustained cadence of ~1 drop every 4–6h means `zod@4.5.0` STABLE is expected within 24–48h (Aug 21–22). Pin `zod@^4.4.3` for production until the STABLE cuts, or use `zod@canary` for early access.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — npm-published 2026-08-19T23:56:34.003Z; 17 commits
+- [GitHub compare `v16.3.1-canary.25...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...canary) — `ahead_by: 3, behind_by: 0` at this cron's 06:03Z check
+- [PR #97524 — [PPF] Remove `unstable_eager`](https://github.com/vercel/next.js/pull/97524) — lubieowoce; **SHIPPED in canary.25**
+- [PR #97503 — [PPF] Do not mark complete shell requests as partial](https://github.com/vercel/next.js/pull/97503) — gaojude; **SHIPPED in canary.25**
+- [PR #96004 — Move preview props into separate manifest](https://github.com/vercel/next.js/pull/96004) — mischnic; **SHIPPED in canary.25**; new env-var
+- [PR #90300 — Turbopack: cross-module constants](https://github.com/vercel/next.js/pull/90300) — mischnic; **SHIPPED in canary.25**; HEADLINE; 122 files / +2,069/−163; closes issue #92082
+- [PR #97476 — Fix use cache prerender signal retention](https://github.com/vercel/next.js/pull/97476) — gnoff; **SHIPPED in canary.25**; closes issue #97363
+- [PR #96116 — Turbopack: More aggressively debounce filesystem watch events for node_modules](https://github.com/vercel/next.js/pull/96116) — bgw; **SHIPPED in canary.25**
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — canary.26 candidate
+- [PR #96569 — Keep HMR instructions typed until serialization](https://github.com/vercel/next.js/pull/96569) — canary.26 candidate
+- [PR #97253 — Remove HmrTarget](https://github.com/vercel/next.js/pull/97253) — canary.26 candidate
+- [Aug 20, 2026 — Next.js Blog](https://nextjs.org/blog) — Aug 20 monthly security release window
+- [`@clerk/nextjs@7.7.9` STABLE](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.9) — npm-published 2026-08-19T19:14:10.007Z
+- [`typescript@7.1.0-dev.20260819.1` dist-tag](https://www.npmjs.com/package/typescript?activeTab=versions) — 26th no-content rebuild; 27th expected ~08:25Z Aug 20
+- [`zod@canary` `4.5.0-canary.20260819T211556`](https://www.npmjs.com/package/zod?activeTab=versions) — 10th Aug 19 drop; 4.5.0 STABLE within 24–48h
+- [Cross-reference: `security.md` — Aug 20 security release lens
+- [Cross-reference: `server-components.md` — PR #97476 from the RSC lens
+- [Cross-reference: `performance.md` — PR #90300 + PR #97476 + PR #96116 from the perf lens

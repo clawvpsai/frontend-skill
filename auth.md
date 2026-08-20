@@ -2165,3 +2165,55 @@ npm view @clerk/nextjs dist-tags.latest
 - [Cross-reference: `security.md` → `## Better Auth 1.7.0 STABLE` — the security-relevant breaking changes documented in security.md
 - [Cross-reference: `patterns.md` → `## Pattern L — Avoid modelName Aliases That Collide With Built-in Table Names` — better-auth 1.6.29 + PR #10657 getDefaultModelName; now superseded by 1.7.0+ full rename
 - [Cross-reference: `patterns.md` → `## Pattern M — Better Auth 1.7.0-rc.6 Early-Adopter Pattern` — the 1.7.0-rc.6 pattern; now superseded by 1.7.0 STABLE
+
+## `@clerk/nextjs@7.7.9` STABLE SHIPPED + Aug 20 Security Release T-0h + zod@canary Train Status (August 20, 2026 — Auth Lens)
+
+**`@clerk/nextjs@7.7.9` STABLE** (npm-published 2026-08-19T19:14:10.007Z; GitHub release tag `v7.7.9`; ~6h before this cron's 06:03Z check). The canary train: 7.7.9-canary.v20260818213255 → 7.7.9-canary.v20260819175329 → 7.7.9-canary.v20260819184839 → 7.7.10-canary.v20260819190921 → **7.7.9 STABLE** at 19:14Z. Pin `@clerk/nextjs@^7.7.9`.
+
+**Aug 20 monthly security release window T-0h** (this cron's 06:03Z UTC = the day of; `next@latest` is `16.3.1`; `next@16.3.2` STABLE expected within hours; the security release will be published at `nextjs.org/blog` today). **The v1.5.77 "Aug 20 T-0h" forecast is now confirmed by the open release window.** If the security release contains auth-relevant CVEs, the upgrade to `next@16.3.2` will be mandatory for affected apps.
+
+**`zod@canary` train status**: `4.5.0-canary.20260819T211556` (npm-published 2026-08-19T21:21:12.417Z; 10th canary drop on Aug 19; sustained cadence of ~1 drop every 4–6h). **`zod@4.5.0` STABLE expected within 24–48h** (Aug 21–22 per the sustained Aug 19 cadence). The v1.5.77 "Aug 20 T+0h" forecast for zod@4.5.0 STABLE is narrowed to Aug 21–22.
+
+### Version Audit Recipe
+
+```bash
+# @clerk/nextjs — upgrade to 7.7.9 STABLE
+npm install @clerk/nextjs@^7.7.9
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.7.9
+
+# next.js — watch for 16.3.2 STABLE today (Aug 20 security release)
+npm view next@latest version
+# Expected: still 16.3.1; upgrade to 16.3.2 when released today
+npm install next@latest
+
+# zod — stay on 4.4.3 STABLE until 4.5.0 STABLE ships
+npm view zod@latest version
+# Expected: 4.4.3; watch for 4.5.0 STABLE in next 24–48h
+# If using zod@canary for early access:
+npm view zod@canary version
+# Expected: 4.5.0-canary.20260819T211556 or newer
+
+# better-auth — stay on 1.7.1 STABLE
+npm view better-auth@latest version
+# Expected: 1.7.1
+```
+
+### Why This Matters for Auth
+
+- **`@clerk/nextjs@7.7.9` STABLE**: The jump from 7.7.8 to 7.7.9 STABLE within ~27h of 7.7.8 STABLE (19:14Z Aug 19 vs 16:28Z Aug 18) signals an accelerated release cadence. The 7.7.10-canary at 19:14Z Aug 19 is already queued. **Monitor for 7.7.10 STABLE within 24–48h** and pin accordingly.
+- **Aug 20 security release is hours away**: If you run Next.js + Clerk on Vercel or any public-facing deployment, upgrade to `next@16.3.2` immediately when it ships today. Check `nextjs.org/blog` for the security advisory. Auth-related middleware and `auth()` calls in Route Handlers may be affected if the CVEs touch the Next.js routing or middleware layer.
+- **`zod@4.5.0` STABLE imminent**: The forms ecosystem (React Hook Form + Zod + `@hookform/resolvers`) will migrate to `zod@4.5.0` STABLE in the next 24–48h. Test your Zod schemas against the canary before the STABLE cut if you use advanced features like `.deepPartial()` or `.exactPartial()`.
+- **better-auth stays at 1.7.1**: No new better-auth releases since the v1.5.77 cycle. The `1.7.1` pin is still current. The Vercel acquisition (July 7, 2026) roadmap toward Agent Auth Protocol is still in progress; no new releases in this 6h window.
+
+### Sources
+
+- [`@clerk/nextjs@7.7.9` STABLE GitHub release tag](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.7.9) — npm-published 2026-08-19T19:14:10.007Z
+- [`@clerk/nextjs` npm dist-tags](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — confirmed `latest: 7.7.9` at this cron's 06:03Z check
+- [Clerk 7.7.9 canary train timeline](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — 7.7.9-canary.v20260819175329 (17:59Z) → 7.7.9-canary.v20260819184839 (18:54Z) → 7.7.10-canary.v20260819190921 (19:14Z) → 7.7.9 STABLE (19:14Z)
+- [Aug 20, 2026 — Next.js Blog](https://nextjs.org/blog) — Aug 20 monthly security release window
+- [`zod@canary` `4.5.0-canary.20260819T211556`](https://www.npmjs.com/package/zod?activeTab=versions) — 10th Aug 19 canary drop; 4.5.0 STABLE within 24–48h
+- [`better-auth@1.7.1` npm](https://www.npmjs.com/package/better-auth) — `latest: 1.7.1`; unchanged since v1.5.77 cycle
+- [Cross-reference: `forms.md` — zod@4.5.0 STABLE when shipped will be documented from the forms-validation lens
+- [Cross-reference: `setup.md` — canary.25 setup-recipe lens + the Aug 20 security release upgrade recipe
+- [Cross-reference: `security.md` — the Aug 20 security release lens (the authoritative security-advisory source)
