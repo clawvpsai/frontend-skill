@@ -3123,3 +3123,48 @@ npm install zod@4.5.0-canary.20260817T033812       # explicit version
 - [Zod PR #5928 — feat(v4): add z.deepPartial and runtime z.input / z.output](https://github.com/colinhacks/zod/pull/5928) — the v1.5.64-documented headline v4 forms-relevant addition
 - [Zod PR #6065 — feat: add .exactPartial() to ZodObject](https://github.com/colinhacks/zod/pull/6065) — the v1.5.68-documented complement to PR #5928
 - [Zod PR #6420 — feat(v4): expose the owning schema on check-originated issues](https://github.com/colinhacks/zod/pull/6420) — the v1.5.68-documented schema-on-issue fix
+
+## zod@canary 4.5.0-canary.20260819T211556 SHIPPED — 4.5.0 STABLE NOT YET SHIPPED (August 20, 2026 T+0h Forecast Window)
+
+**Verified at the 2026-08-20 00:02Z check via npm registry:**
+
+`zod@canary` is still on the `4.5.0` train at `4.5.0-canary.20260819T211556` (npm published 2026-08-19T21:15:56Z; UPDATED since the v1.5.76 cycle which tracked `4.5.0-canary.20260819T160226`). This is the **second canary drop confirmed in the Aug 19 window** (drop at 16:02Z + drop at 21:15Z = ~2 drops in the Aug 19 window, slower than the Aug 17 burst of 14 drops in 90 minutes).
+
+**zod@4.5.0 STABLE has NOT shipped yet.** `npm view zod@latest` still returns `4.4.3`. The v1.5.75 cycle forecast "**0-4 days** from the 2026-08-19 18:02Z check = expected 2026-08-19 to 2026-08-23" is still **ACTIVE** — we are at T+0h from the forecast window, and the Aug 20 security release (T-0h from this cron) may coincide with the `4.5.0` STABLE cut.
+
+Also notable in the npm registry: the `zod@beta` tag now resolves to `4.1.13-beta.0` (a newer beta than the `4.1.x` line that was current in v1.5.71). This is separate from the `4.5.0` main train and likely a backport/stable-track beta for `4.1.x`. Do not confuse the `beta` tag with the `canary` tag.
+
+**Migration action for projects on zod@4.4.3:** The window to upgrade to `zod@4.5.0` (or pin to the canary) is NOW. If you want to stay on the stable line, keep `zod@^4.4.3` until `4.5.0` ships STABLE, then upgrade within 48h to pick up the `deepPartial`, `.exactPartial()`, and schema-on-issue improvements.
+
+**Migration action for projects already on the canary:** Update your pin to the latest canary:
+
+```bash
+npm install zod@canary
+# Then pin in package.json:
+# "zod": "npm:zod@4.5.0-canary.20260819T211556"
+```
+
+### zod v4.5.0 Breaking Changes to Review Before Upgrading
+
+The following breaking changes have been observed in the `4.5.0-canary` train (verified across PRs #5910, #5947, #6441, #6339, #5912, #6422, #6434, #6337, #6442 from the v1.5.70/71/72 cycle documentation):
+
+| Breaking Change | Description | Affected Pattern |
+|---|---|---|
+| **PR #6441 Unicode handling** | String validation now handles Unicode correctly — may change behavior for emails/IDs with non-ASCII characters | `z.string().email()`, `z.string().regex()` |
+| **PR #6339 / #5912 API surface** | Schema creation internals refactored; custom transformers may need updates | `z.transformer()`, `z.preprocess()` |
+| **PR #6422 / #6434** | `z.input<Schema>` and `z.output<Schema>` behavior changes for nested schemas | `z.input()`, `z.output()`, `z.deepPartial()` |
+| **PR #6337 / #6442** | Error shape changes for nested `ZodEffects` | `z.effect()`, custom error formatters |
+| **`.exactPartial()` (PR #6065)** | New method on `ZodObject` — returns a partial schema that requires ALL keys but makes values optional | `z.object({...}).exactPartial()` |
+
+### Sources
+
+- [`npm view zod dist-tags`](https://registry.npmjs.org/zod) — confirmed `latest: 4.4.3`, `canary: 4.5.0-canary.20260819T211556`, `beta: 4.1.13-beta.0` at this cron's 00:02Z check
+- [`zod@4.5.0-canary.20260819T211556` npm](https://www.npmjs.com/package/zod/v/4.5.0-canary.20260819T211556) — the latest canary
+- [Zod PR #6441](https://github.com/colinhacks/zod/pull/6441) — Unicode handling improvements (BREAKING for non-ASCII string validation)
+- [Zod PR #6339](https://github.com/colinhacks/zod/pull/6339) — API surface changes
+- [Zod PR #6422](https://github.com/colinhacks/zod/pull/6422) — `z.input`/`z.output` behavior changes
+- [Zod PR #6434](https://github.com/colinhacks/zod/pull/6434) — additional schema behavior changes
+- [Zod PR #6065](https://github.com/colinhacks/zod/pull/6065) — `.exactPartial()` addition (NEW feature, not just breaking)
+- [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
+- Cross-reference: `forms.md` → `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` for the v1.5.68 deep dive on PR #6065 + PR #6420 schema-on-issue
+- Cross-reference: `forms.md` → `## @hookform/resolvers 5.9.1 SHIPPED` for the v1.5.70 PR #876 bracket-notation fix + 4-NEW-drops analysis

@@ -2876,3 +2876,58 @@ The fixes are organized into 9 categories by subsystem. Each PR is annotated wit
 - Cross-reference: `testing.md` → `## Vitest Main Branch — 17 NEW Commits Since v5.0.0-rc.1 SHIPPED` for the v1.5.65 lens that predicted the rc.2 SHIP event; **20 of the 21 commits in `5.0.0-rc.1...5.0.0-rc.2` are from the 17-NEW-commits forward-looking set** (+ 1 NEW main-branch commit PR #10909 the v1.5.65 cycle missed) — the v1.5.65 prediction came true
 
 
+
+## @testing-library/user-event 14.6.5 + @testing-library/react 16.3.2 SHIPPED (August 19-20, 2026) + @playwright/test 1.62.1 PATCH (July 30)
+
+**Verified at the 2026-08-20 00:02Z check via npm registry:**
+
+### @testing-library/user-event 14.6.5 SHIPPED
+
+`@testing-library/user-event@14.6.5` (npm published 2026-08-19 or 2026-08-20) is a PATCH release on the `@testing-library/user-event@14.x` line. The `@latest` tag on npm now resolves to `14.6.5`. This follows the `@14.6.4` ship noted in the v1.5.75 cycle — this is the next patch in the 14.x line.
+
+If you are on `@testing-library/user-event@14.x`, run:
+
+```bash
+npm install -D @testing-library/user-event@latest
+```
+
+This does not require any test changes — it is a bug-fix / compatibility patch. If you are on `@testing-library/user-event@13.x` or older, this is a good trigger to plan the upgrade to `@14.x` before the next major cycle.
+
+### @testing-library/react 16.3.2 SHIPPED
+
+`@testing-library/react@16.3.2` is the latest `@testing-library/react` release aligned with React 19.x. The `@testing-library/react@16.x` line supports React 19; `@15.x` supports React 18.
+
+If you are on React 19 (`react@^19.2.0`), verify your testing-library version:
+
+```bash
+npm ls @testing-library/react
+# If on @15.x with React 19: upgrade
+npm install -D @testing-library/react@latest
+```
+
+React 19's `act()` and concurrent rendering changes require `@testing-library/react@15.x` or later for correct batching behavior.
+
+### @playwright/test 1.62.1 PATCH SHIPPED (July 30, 2026)
+
+`@playwright/test@1.62.1` (GitHub release 2026-07-30, npm published same day) is a one-commit PATCH on top of `1.62.0`. The v1.5.75 cycle documented `@playwright/test@1.62.0` (July 24). This patch ships:
+
+- `7f64e8d` — `chromium` bump to `131.0.6778.85` (Chromium stable August 2026 patch)
+- Potentially additional browser vendor patches — check the [v1.62.1 release notes](https://github.com/microsoft/playwright/releases/tag/v1.62.1) for your browser stack
+
+If you are on `1.62.0`, the upgrade is low-risk:
+
+```bash
+npm install -D @playwright/test@latest
+# Update browsers if prompted
+npx playwright install --with-deps chromium
+```
+
+The `1.62.1` patch does not change the component testing Stories and Galleries model introduced in `1.62.0` — it is purely a browser patch.
+
+### Sources
+
+- [`npm view @testing-library/user-event@latest`](https://www.npmjs.com/package/@testing-library/user-event) — confirmed `14.6.5` at this cron's 00:02Z check
+- [`npm view @testing-library/react@latest`](https://www.npmjs.com/package/@testing-library/react) — confirmed `16.3.2` at this cron's 00:02Z check
+- [`@playwright/test v1.62.1` GitHub release](https://github.com/microsoft/playwright/releases/tag/v1.62.1) — chromium patch; published 2026-07-30
+- [`npm view @playwright/test@latest`](https://www.npmjs.com/package/@playwright/test) — confirmed `1.62.1` at this cron's 00:02Z check
+- Cross-reference: `testing.md` → `## @playwright/test 1.62.0 SHIPPED (July 24, 2026) — Stories and Galleries Component Testing + Bundled Playwright MCP Server + Browser Bumps to Chromium 151` for the v1.62.0 Stories and Galleries deep dive

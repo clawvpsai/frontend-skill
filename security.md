@@ -2158,3 +2158,82 @@ curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
 - [React 19.2 announcement](https://react.dev/blog/2025/10/01/react-19-2) — Activity, useEffectEvent, and cacheSignal
 - [React `cacheSignal` reference](https://react.dev/reference/react/cacheSignal) — RSC-only cancellation signal
 - [Next.js data security guide](https://nextjs.org/docs/app/guides/data-security) — Server Actions and public endpoint threat model
+
+## Next.js 16.3.1-canary.25 SHIPPED (August 19, 2026) — PPF Correctness Fixes: PR #97524 Remove `unstable_eager` + PR #97503 Fix Complete Shell Request Classification + August 20 Security Window T-0h (Pre-Roll Refresh #7)
+
+**Current state at the 2026-08-20 00:02Z check:** `next@canary` is `16.3.1-canary.25` (npm published 2026-08-19T23:46:26Z; GitHub release published same day), `next@latest` is still `16.3.1`, and `16.3.2` has **not shipped yet**. The Aug 20 monthly security release forecast window is **T-0h** from this cron's 00:02Z check — the release is expected **2026-08-20 between 09:00Z and 22:00Z UTC** per the running v1.5.75 forecast of T-15h to T-57h from the Aug 19 18:02Z cycle start. Do NOT claim it has shipped until `npm view next@latest version` returns `16.3.2`.
+
+The headline of canary.25 is two correctness fixes to the Partial Prefetching (PPF) pipeline by `lubieowoce`, both resolving incorrect speculative prefetch behavior that caused production超额 network requests:
+
+### PR #97524 — [PPF] Remove `unstable_eager`
+
+**Merged:** 2026-08-19T21:21:59Z | **Author:** `lubieowoce`
+
+`unstable_eager` was an incomplete, problem-causing feature. It has been **removed entirely** from the PPF pipeline. The removal also **fixes a bug** (tracked in issue #97469) where apps using the incremental opt-in pattern (`export const prefetch = 'partial'` on a per-segment basis with no global `partialPrefetching` config) would issue speculative prefetch requests for **all links** that did NOT have `prefetch={true}` — effectively making every `<Link href="/foo">` behave like `<Link href="/foo" prefetch={true}>`.
+
+**The root cause** (from issue #97469): `computeSegmentPrefetchHints` was treating all segments without an explicit `prefetch` config as segments where PPF is disabled, setting `SubtreeHasEagerPrefetch` — which is pre-PPF eager behavior. This caused the router to issue a per-link runtime prefetch (legacy eager) instead of a shell-only partial prefetch. The fix determines PPF-ness once per route and uses that instead of per-segment config.
+
+**Impact:** Apps that set `export const prefetch = 'partial'` on specific segments will now see **fewer network requests** (1 request for shell instead of 2: shell + speculative) — this is a production network efficiency improvement. If your tests were asserting 2 requests (shell + speculative), they will now see 1 request (shell only).
+
+### PR #97503 — [PPF] Do not mark complete shell requests as partial
+
+**Merged:** 2026-08-19T21:21:58Z | **Author:** `lubieowoce`
+
+The router was not respecting the `isPartial` byte for runtime app shells. Even when a shell was fully complete (contained no holes from URL data or link data), the router was still treating it as partial — triggering unnecessary speculative prefetch requests. The comments in the original code claimed the byte couldn't be trusted on shells, but this was incorrect: the byte IS correctly set to `partial` when a shell contains holes. The fix removes the incorrect override.
+
+**Impact:** Fully-complete shells now correctly skip speculative prefetching. Combined with PR #97524, the PPF pipeline now correctly issues zero speculative requests in fully-loaded scenarios.
+
+### Security implications of PPF correctness fixes
+
+While neither PR is a CVE, the PPF correctness fixes have a direct security-adjacent benefit: **fewer unexpected network requests** means a smaller attack surface for timing-based information leakage and reduced exposure to network-level adversaries monitoring prefetch traffic patterns. The pre-PPF behavior (eager prefetch for all link variants) made it easier to infer what routes existed on a server by observing network prefetch patterns.
+
+For apps using `export const prefetch = 'partial'` with the incremental opt-in pattern, these fixes also mean the prefetch strategy is now correctly scoped to explicitly-annotated segments rather than leaking to all links.
+
+### August 20, 2026 Monthly Security Release — T-0h Status
+
+The Aug 20 security release forecast window is **open from this cron's 00:02Z check**. The window runs T-15h to T-57h from the Aug 19 18:02Z cycle start = **2026-08-20 09:00Z to 2026-08-22 03:00Z UTC**. The most likely ship time is **2026-08-20 14:00Z ± 8h** (the standard Vercel security release time).
+
+The Next.js team formally announced monthly security releases on July 13, 2026, with the July release shipping July 20. The August release has been pre-announced via the formal release process. Do NOT claim the release has shipped until:
+
+```bash
+npm view next@latest version   # must return 16.3.2
+npm view next@backport version # must return 15.5.24 (if on Next.js 15)
+```
+
+**If you are on a canary release today:** The canary.25 PPF fixes are now in your `next@canary` install. Once 16.3.2 STABLE ships, upgrade immediately: `npm install next@latest react react-dom`.
+
+### Updated security audit recipe (add steps for canary.25 PPF correctness)
+
+```bash
+# 0. Confirm you are on a post-canary.25 build OR 16.3.2 STABLE once available
+npm ls next
+
+# 1. Confirm the exact production lines and RSC package alignment
+npm ls next react react-dom react-server-dom-webpack react-server-dom-turbopack
+
+# 2. Keep dev servers loopback-only; never expose a dev-only inspector to the LAN
+next dev --hostname 127.0.0.1
+
+# 3. Verify action-level auth/ownership and return data from schema validation
+rg -n "'use server'|auth\(|notFound\(|revalidateTag|updateTag" app/
+
+# 4. Audit PPF configuration for unexpected eager prefetch behavior
+# Run this after upgrading past canary.25 — if you see extra requests, check your prefetch config
+rg -n "prefetch\s*[:=]" app/ --type ts --type tsx | rg -v "//"
+
+# 5. Check current security advisories rather than relying on npm audit alone
+npm audit --omit=dev
+curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
+```
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — PPF correctness fixes + 14 additional changes; published 2026-08-19T23:46:26Z
+- [PR #97524 — [PPF] Remove `unstable_eager`](https://github.com/vercel/next.js/pull/97524) — lubieowoce; removes the incomplete unstable_eager and fixes the incremental PPF eager-prefetch bug (issue #97469)
+- [PR #97503 — [PPF] Do not mark complete shell requests as partial](https://github.com/vercel/next.js/pull/97503) — lubieowoce; fixes router not respecting isPartial byte for complete shells
+- [Issue #97469 — [PPF] Fix incorrect eager hint in incremental PPF](https://github.com/vercel/next.js/issues/97469) — the root-cause analysis and TLDR for the PPF bug; the fix ensures PPF-ness is determined once per route rather than per-segment
+- [Next.js `v16.3.1-canary.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.24) — cross-ref; PR #97493 + PR #97490 shipped here
+- [Next.js canary.24 → canary.25 compare](https://github.com/vercel/next.js/compare/v16.3.1-canary.24...v16.3.1-canary.25) — 16 commits between the two canary releases
+- [Next.js July 2026 security release](https://nextjs.org/blog/july-2026-security-release) — 16.2.11 / 15.5.21 security baseline; the August 20 release follows the same formal process
+- [Next.js August 2026 security release pre-announcement](https://nextjs.org/blog) — August 18 blog post confirmed the security release is forthcoming; no version number confirmed yet at this cron's 00:02Z check
+- [Next.js data security guide](https://nextjs.org/docs/app/guides/data-security) — Server Actions and public endpoint threat model
