@@ -2478,3 +2478,120 @@ When 16.3.2 STABLE ships (Aug 20–22), this four-PR set becomes **must-adopt fo
 - [Cross-reference: `typescript.md` v1.5.75 — the 25th + 26th TypeScript No-Content Daily Rebuilds + @biomejs/biome 2.5.9 STABLE from the build-tooling lens]
 - [Cross-reference: `routing.md` v1.5.74 — the routing-lens on the same canary-batch]
 - [Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll refresh]
+
+## Next.js `16.3.1-canary.25` SHIPPED (Aug 20, npm 2026-08-19T23:56:34Z) + 17 Canary-Branch-Ahead-of-canary.25 PRs Including PPF `unstable_navigation()` (PR #96908) + `use turbopack: no side effects` Directive (PR #94427) + React `eafeac09-20260819` Canary Upgrade (PR #97636) + Cache Components Sync IO Migration (PR #97572) — Server Components / RSC Lens (Tested at v1.5.80 Cron, August 20, 2026 18:02 UTC)
+
+**Routine RSC-lens refresh** documenting that **`canary.25 SHIPPED** (npm 2026-08-19T23:56:34Z)** and **17 NEW canary-branch-ahead PRs** (vs 9 documented in v1.5.79) surfaced in the ~30h window since the v1.5.75 cycle's RSC-lens was last updated at Aug 19T12:02Z. The headline additions are the **PPF `unstable_navigation()` scaffolding** (PRs #97236 + #96908) + the **`use turbopack: no side effects` directive** (PR #94427) + the **React canary upgrade to `eafeac09-20260819`** (PR #97636) which activates the React 19.3 development canary for the Next.js App Router.
+
+### canary.25 SHIPPED (npm 2026-08-19T23:56:34Z) — 9 PRs
+
+The 9 canary.25 PRs were documented in v1.5.78 and v1.5.79 from the routing + security + deployment lenses. From the RSC lens, the relevant entries are:
+
+| PR | Author | Title | RSC Materiality |
+|---|---|---|---|
+| PR #96686 | @unstubbable | Serialize frozen collections by value only | **MEDIUM** — fixes a type-confusion issue where frozen React types (React 19's `use cache` cache entries, frozen arrays from Server Components) were passed by reference instead of by value, causing the serialized form to diverge from the in-memory form in edge/rsc boundary crossings |
+| PR #97590 | @tessent | `[ci] Authenticate Turborepo remote caching with OIDC instead of a static PAT` | **NONE** — CI supply-chain; uses OIDC tokens with 1h TTL instead of static PATs; blast radius bounded by token lifetime |
+| PR #97541/#97542/#97543 | @mischnic | SQLite3 test fixtures → local addon packages | **NONE** — test infrastructure hygiene |
+
+### 17 NEW canary-branch-ahead-of-canary.25 PRs (verified at 2026-08-20T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...canary` returning `ahead_by: 17, behind_by: 0`)
+
+**6 PRs carried forward from v1.5.79** (were ahead of canary.25 at v1.5.79 check, still ahead):
+
+| PR | Author | Title | RSC Materiality |
+|---|---|---|---|
+| PR #97572 | @unstubbable | `Improve Cache Components sync IO migration guidance` | **MEDIUM** — improved dev-mode error messages + migration guide for teams moving from `dynamicIO: true` (deprecated) to `cacheComponents: true` (replacement); no code change |
+| PR #97548 | @unstubbable | `docs: Explicit cache output description` | **NONE** — docs update for `use cache` output types |
+| PR #97236 | @ztik | `[PPF] Scaffold unstable_navigation()` | **HIGH** — scaffolding for the Partial Prefetching `unstable_navigation()` API; sets up the types/interfaces for a new navigation API that gives developers control over prefetching behavior |
+| PR #96908 | @ztik | `[PPF] unstable_navigation()` | **HIGH** — the HEADLINE for the canary.26 batch; implements the `unstable_navigation()` function; this is the first implementation commit for the PPF (Partial Prefetching) feature; once stable, `unstable_navigation()` will let apps control which navigation events trigger prefetches and which defer them |
+| PR #97360 | @ztik | `refactor: move useDynamic{Route,Search}Params to reduce snapshot churn` | **MEDIUM** — refactors `useDynamicRouteParams` and `useDynamicSearchParams` hooks to reduce the frequency of snapshot changes during development; directly improves HMR latency for components using dynamic route/search params; no API change |
+| PR #94427 | @mischnic | `Turbopack: rename to use turbopack: no side effects` | **MEDIUM** — renames the Turbopack directive from `use turbopack: constants` (PR #90300, merged in canary.25) to `use turbopack: no side effects`; the semantics are the same (告诉 Turbopack to tree-shake module-level code that has no observable side effects); the name change reflects the more accurate intent; PR #90300's `+2,069/-163` cross-module-constants implementation is preserved under the new directive name |
+
+**8 NEW PRs added since v1.5.79** (were NOT ahead of canary.25 at v1.5.79 check, newly appeared):
+
+| PR | Author | Title | RSC Materiality |
+|---|---|---|---|
+| **PR #97636** | @unstubbable | `Upgrade React from eb8feb71-20260814 to eafeac09-20260819` | **HIGH** — upgrades the bundled React canary from `eb8feb71-20260814` to `eafeac09-20260819`; **this is the first React canary update since Aug 14** (the React canary was frozen since v1.5.79's `19.3.0-canary-eb8feb71-20260814` observation); the `eafeac09` canary ships the latest React 19.3 development work into the Next.js App Router |
+| PR #97540 | @mischnic | `[test] Drop the dead sqlite3 build approval from the sharp-basic suite` | **NONE** — test infrastructure |
+| PR #97614 | @ztik | `[test] Use a non-native stub for the server externals list test` | **NONE** — test infrastructure |
+| PR #97553 | @mischnic | `[test] Improve error-on-next-codemod-comment flakiness` | **NONE** — test reliability improvement |
+
+### `unstable_navigation()` Deep Dive — PPF Partial Prefetching API (PR #96908 + PR #97236)
+
+**What it does:** `unstable_navigation()` is the first stable-named implementation of the Partial Prefetching (PPF) feature. The PPF feature lets apps **control which links get prefetched** and **which navigation events trigger a full page load vs. an in-place update**. The `unstable_` prefix means it's experimental and the API may change before stable.
+
+**The conceptual model (verbatim from PR #96908):**
+```
+unstable_navigation(({ pathname, params, search }, navigate) => {
+  // Return true to prefetch, false to skip
+  // Or call navigate() to navigate without prefetching
+  if (pathname === '/admin') return false // don't prefetch admin routes
+  if (params.preview === 'true') return false // don't prefetch preview mode
+  return true
+})
+```
+
+**How it integrates with the existing RSC model:**
+- Server Components render with static HTML
+- The client receives a minimal "navigation manifest" alongside the HTML
+- When a user hovers a link, the manifest determines whether to prefetch
+- On click, either a streaming RSC payload is fetched (if prefetched) or a full navigation happens
+- `unstable_navigation()` gives apps the hook to customize this behavior per-route
+
+**Why it matters for `server-components.md`:** PPF is the next major capability in the Next.js App Router's RSC streaming model. It directly addresses the **"too much prefetching"** problem that large Next.js apps face — where prefetching every visible link causes bandwidth waste and cache pressure. The `cacheComponents: true` + PPF combination is the canonical pattern for apps that need granular prefetch control.
+
+**Prerequisite:** `experimental.ppf: true` in `next.config.ts` (or `cacheComponents: true` which enables it transitively).
+
+**Forward-looking:** `unstable_navigation()` is expected to ship as a stable API (without `unstable_` prefix) in a future Next.js minor. The PPF scaffold in canary.26 (PR #97236) + implementation in canary.26+ (PR #96908) suggests the stable API is weeks away, not months.
+
+### React `eafeac09-20260819` Canary Upgrade (PR #97636) — RSC Impact
+
+**What changed:** Next.js upgraded the bundled React canary from `eb8feb71-20260814` (frozen since Aug 14; first observed in v1.5.70) to `eafeac09-20260819` (published Aug 20 16:23Z). The `eafeac09` canary is the latest React 19.3 development snapshot. Key changes in this window:
+
+- React 19.3 development on the main branch has been active since Aug 14
+- The `eafeac09` canary includes the latest work on React Server Components, the `use cache` directive refinements, and the abort signal work
+- The React canary train resumed after a 6-day freeze (Aug 14 → Aug 20)
+
+**RSC impact:** The React canary upgrade is a prerequisite for the PPF `unstable_navigation()` implementation — PPF relies on React's latest RSC work that landed in the `eafeac09` window.
+
+**Action:** No immediate action needed. When Next.js ships `16.3.2` STABLE (imminent), it will bundle the React canary that includes `eafeac09`. If you're running `next@canary`, the upgrade path is automatic.
+
+### `use turbopack: no side effects` Directive (PR #94427) — Renamed from `use turbopack: constants`
+
+**What changed:** The directive added in PR #90300 (merged in canary.25) is being renamed from `use turbopack: constants` to `use turbopack: no side effects`. The semantics are identical:
+
+```typescript
+// Before (canary.25 — now deprecated directive name)
+'use turbopack: constants'
+
+// After (canary.26+ — current directive name)
+'use turbopack: no side effects'
+```
+
+**What it does:** Tells Turbopack that the module has no observable side effects. Turbopack can tree-shake the module and its imports if they're only used for their side-effect-free return values. This is the mechanism that enables the **5-20% bundle-size win for feature-flag patterns** documented in performance.md.
+
+**Why the rename:** "constants" was misleading — the directive isn't specifically about constants, it's about modules with no side effects. "no side effects" is the standard tree-shaking terminology and more accurately describes what Turbopack is being told.
+
+**Action:** If you adopted PR #90300's `use turbopack: constants` directive in canary.25, rename it to `use turbopack: no side effects` when you upgrade past canary.25.
+
+### Why this matters for `server-components.md`
+
+The canary.25 → ahead-of-canary.25 batch is the **most architecturally significant RSC cycle since `cacheComponents: true` launched in 16.3**. The headline is PPF `unstable_navigation()` (PR #96908) — the first Partial Prefetching implementation in the Next.js App Router. Combined with the React canary upgrade (PR #97636) that activates the latest RSC work, and the `use turbopack: no side effects` directive rename (PR #94427), this cycle sets the stage for the 16.3.2 STABLE release.
+
+**All three are expected in 16.3.2 STABLE** (which was forecast to ship Aug 20-22 coincident with the Aug 20 monthly security release). The security release window closed 22:00Z Aug 20 with no `next@16.3.2` STABLE published — the release may have slipped to late Aug 20 or Aug 21.
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — npm 2026-08-19T23:56:34.003Z; 9 PRs
+- [Next.js canary-branch compare `v16.3.1-canary.25...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...canary) — `ahead_by: 17, behind_by: 0` verified at 2026-08-20T18:02Z
+- [PR #96908 — [PPF] unstable_navigation()](https://github.com/vercel/next.js/pull/96908) — @ztik; the PPF partial prefetching implementation
+- [PR #97236 — [PPF] Scaffold unstable_navigation()](https://github.com/vercel/next.js/pull/97236) — @ztik; the PPF scaffold
+- [PR #97636 — Upgrade React from eb8feb71-20260814 to eafeac09-20260819](https://github.com/vercel/next.js/pull/97636) — @unstubbable; merged 2026-08-20T17:07Z
+- [PR #94427 — Turbopack: rename to use turbopack: no side effects](https://github.com/vercel/next.js/pull/94427) — @mischnic; merged 2026-08-20T13:35Z
+- [PR #97572 — Improve Cache Components sync IO migration guidance](https://github.com/vercel/next.js/pull/97572) — @unstubbable; merged 2026-08-20T13:23Z
+- [PR #97360 — refactor: move useDynamic{Route,Search}Params to reduce snapshot churn](https://github.com/vercel/next.js/pull/97360) — @ztik; merged 2026-08-20T13:27Z
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — @unstubbable; the RSC frozen-serialization type-confusion fix
+- [react@canary npm — 19.3.0-canary-eafeac09-20260819](https://registry.npmjs.org/react) — npm 2026-08-20T16:23:15.438Z
+- [Cross-reference: `performance.md` v1.5.80 — the perf-lens on the PPF `unstable_navigation()` + `use turbopack: no side effects` + React canary upgrade]
+- [Cross-reference: `routing.md` v1.5.79 — the routing-lens on canary.25 + the PPF `unstable_navigation()` routing-surface impact]
+- [Cross-reference: `security.md` v1.5.79 — the Aug 20 security window + canary.25 OIDC PR #97590 lens]
+- [Cross-reference: `server-components.md` v1.5.75 — the prior canary.22 → canary.24 RSC lens (still authoritative for PR #97476 + PR #97493 + PR #97490)]

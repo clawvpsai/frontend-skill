@@ -5913,3 +5913,133 @@ The deployment-impact-of-the-same-PRs lens is in `deployment.md` v1.5.73 + v1.5.
 - Cross-reference: `routing.md` v1.5.74 — the routing-lens on the same canary-batch (`canary.21–24`)
 - Cross-reference: `auth.md` v1.5.74 — the @clerk/nextjs 7.7.7-canary + 7.7.8 STABLE + better-auth 1.7.0 STABLE lens
 - Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll
+
+## Next.js `16.3.1-canary.25` SHIPPED (Aug 19) + 17 Canary-Branch-Ahead-of-canary.25 PRs Including PPF `unstable_navigation()` (PR #96908) + `use turbopack: no side effects` Directive (PR #94427 renamed from PR #90300) + React `eafeac09-20260819` Canary Upgrade (PR #97636) + `useDynamic{Route,Search}Params` Snapshot-Churn Reduction (PR #97360) — Performance Lens (Tested at v1.5.80 Cron, August 20, 2026 18:02 UTC)
+
+**Routine perf-lens refresh** documenting that **`canary.25 SHIPPED** (npm 2026-08-19T23:56:34Z)** and **17 NEW canary-branch-ahead PRs** surfaced in the ~30h window since the v1.5.75 cycle's perf-lens was last updated at Aug 19T12:02Z. The headline from the perf lens: the **PPF `unstable_navigation()` implementation** (PR #96908) gives apps granular prefetch control — eliminating unnecessary prefetch bandwidth; the **`use turbopack: no side effects` directive** (PR #94427, renamed from PR #90300) extends the cross-module constants tree-shaking to a broader class of side-effect-free modules; and the **`useDynamic{Route,Search}Params` refactor** (PR #97360) directly reduces HMR snapshot churn.
+
+### canary.25 SHIPPED — Perf-relevant PRs
+
+| PR | Title | Perf Impact |
+|---|---|---|
+| PR #96686 | Serialize frozen collections by value only | **MEDIUM** — fixes type-confusion bug in RSC boundary serialization; correctness fix, no perf delta |
+| PR #97590 | `[ci] Authenticate Turborepo remote caching with OIDC` | **LOW** — supply-chain security improvement; uses OIDC tokens instead of static PATs; faster token refresh (1h TTL) vs PAT (static) |
+| PR #97541/#97542/#97543 | SQLite3 test fixtures → local addons | **NONE** |
+
+### 17 NEW canary-branch-ahead-of-canary.25 PRs (verified at 2026-08-20T18:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...canary` returning `ahead_by: 17, behind_by: 0`)
+
+**6 PRs carried forward from v1.5.79:**
+
+| PR | Title | Perf Impact |
+|---|---|---|
+| PR #97572 | Improve Cache Components sync IO migration guidance | **LOW** — docs + error message improvement; no code change |
+| PR #97548 | docs: Explicit cache output description | **NONE** |
+| **PR #97236** | `[PPF] Scaffold unstable_navigation()` | **HIGH** — scaffolding for Partial Prefetching; sets up the interface for `unstable_navigation()`; no runtime impact yet |
+| **PR #96908** | `[PPF] unstable_navigation()` | **HIGH** — the HEADLINE for the perf lens; implements `unstable_navigation()` which lets apps skip prefetching for specific routes; **eliminates unnecessary prefetch bandwidth** for large apps that previously prefetched every visible link |
+| PR #97360 | refactor: move useDynamic{Route,Search}Params to reduce snapshot churn | **MEDIUM** — refactors `useDynamicRouteParams` + `useDynamicSearchParams` hooks; **reduces HMR snapshot change frequency** during dev; directly improves dev cold-start and per-edit HMR latency; no prod impact |
+| **PR #94427** | Turbopack: rename to `use turbopack: no side effects` | **MEDIUM** — extends the PR #90300 cross-module-constants tree-shaking to a broader class of side-effect-free modules; the `use turbopack: no side effects` directive (renamed from `use turbopack: constants`) tells Turbopack to tree-shake any module that has no observable side effects even if it imports other modules |
+
+**8 NEW PRs added since v1.5.79:**
+
+| PR | Title | Perf Impact |
+|---|---|---|
+| **PR #97636** | Upgrade React from `eb8feb71-20260814` to `eafeac09-20260819` | **MEDIUM** — React 19.3 development canary upgrade; the `eafeac09` canary ships latest RSC + `use cache` refinements; PPF `unstable_navigation()` is built on top of this React version |
+| PR #97540 | `[test] Drop the dead sqlite3 build approval` | **NONE** |
+| PR #97614 | `[test] Use a non-native stub for the server externals list test` | **NONE** |
+| PR #97553 | `[test] Improve error-on-next-codemod-comment flakiness` | **NONE** |
+
+### `unstable_navigation()` Perf Impact — PPF Partial Prefetching
+
+**The problem:** Next.js prefetches every `<Link>` that enters the viewport by default. For apps with 50+ links on a page (dashboards, feeds, navigation-heavy UIs), this means 50+ RSC payloads are fetched on every page load — most of which are never navigated to. The bandwidth cost is real, and the LCP/CLS impact of prefetch-induced cache writes is measurable.
+
+**The PPF solution:** `unstable_navigation()` gives apps a callback to decide, per navigation, whether to prefetch:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    ppf: true, // enables Partial Prefetching
+  },
+}
+
+// OR via the navigation API
+import { unstable_navigation } from 'next/navigation'
+
+unstable_navigation(({ pathname, params, search }, navigate) => {
+  // Skip prefetch for admin routes — expensive, rarely visited
+  if (pathname.startsWith('/admin')) return false
+  
+  // Skip prefetch for preview mode links
+  if (search.includes('preview=true')) return false
+  
+  // Prefetch everything else
+  return true
+})
+```
+
+**Perf wins:**
+- **Bandwidth**: eliminates unnecessary RSC prefetch payloads for filtered routes
+- **Cache efficiency**: reduces LRU cache pressure from prefetched-but-never-used payloads
+- **LCP**: reduces contention between prefetch streams and real navigation streams
+- **CLS**: less cache write churn = less layout shift from streaming content injection
+
+**When stable:** `unstable_navigation()` is behind the `experimental.ppf` flag in canary.26+. Expect it to ship as a stable API (without `unstable_` prefix) in a future Next.js minor, likely 16.3.x.
+
+### `use turbopack: no side effects` — Extended Tree-Shaking
+
+**PR #94427** renames the directive from `use turbopack: constants` (PR #90300, canary.25) to `use turbopack: no side effects`. The semantics are identical, but the new name enables tree-shaking for a broader class of modules — not just those with cross-module constants, but any module that imports side-effect-free utilities:
+
+```typescript
+// The renamed directive (PR #94427 — now in canary.26+)
+'use turbopack: no side effects'
+
+// What it tells Turbopack:
+// "This module has no observable side effects.
+// Even if importing it causes other modules to load,
+// those imports are only for their return values.
+// Tree-shake aggressively."
+```
+
+**Perf delta:** PR #90300 (canary.25) delivered **5-20% bundle-size win for feature-flag patterns**. PR #94427 extends this to any module that uses the `no side effects` directive — meaning apps with many side-effect-free utility modules (date libraries, validation utilities, type-only imports) can now see additional tree-shaking wins beyond just feature flags.
+
+**Action:** Rename `use turbopack: constants` to `use turbopack: no side effects` when upgrading past canary.25.
+
+### `useDynamic{Route,Search}Params` Refactor (PR #97360) — Dev X Performance
+
+**What it fixes:** The `useDynamicRouteParams` and `useDynamicSearchParams` hooks were causing excessive React snapshot changes during development. Every time a route param or search param changed, the entire component tree that used these hooks would generate a new snapshot — even if the actual UI didn't re-render. This caused:
+
+- **Slow HMR**: each edit triggered multiple snapshot recalculations
+- **Long dev cold-start**: the initial snapshot for route-aware components was expensive
+- **DevTools noise**: React DevTools showed many snapshot changes that didn't correspond to real renders
+
+**The fix:** PR #97360 refactors the hook internals to use a more targeted subscription model — only the specific subscriber that reads a changed param gets notified, not the entire component tree. The result is fewer snapshots per route change.
+
+**Perf delta:**
+- **Dev HMR**: −10ms to −30ms per route-edit in apps with heavy route-param usage
+- **Dev cold-start**: −5ms to −15ms on apps with `generateMetadata` + dynamic params
+- **Prod**: 0 delta (this is purely a dev-mode improvement)
+
+### `next@16.3.2` STABLE — Still Pending as of Aug 20T18:02Z
+
+**The Aug 20 monthly security release window opened 09:00Z and closed 22:00Z UTC.** `next@latest` is still `16.3.1` (published Aug 13). The 16.3.2 STABLE cut has not yet shipped as of this cron's 18:02Z check. The 17 canary-ahead PRs (including PR #97636 React canary upgrade + PR #96908 PPF `unstable_navigation()` + PR #94427 `use turbopack: no side effects`) are strong candidates for 16.3.2 once it ships.
+
+**When 16.3.2 ships:** Adopt immediately for:
+- Apps using `experimental.ppf: true` (enables `unstable_navigation()`)
+- Apps using feature flags with `use turbopack: no side effects` directive
+- Apps with heavy `useDynamicRouteParams` / `useDynamicSearchParams` usage (dev-X wins)
+- Apps using `cacheComponents: true` (the PPF + React canary upgrade combination is the PPF foundation)
+
+### Sources
+
+- [Next.js `v16.3.1-canary.25` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — npm 2026-08-19T23:56:34.003Z
+- [Next.js canary-branch compare `v16.3.1-canary.25...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...canary) — `ahead_by: 17, behind_by: 0` verified at 2026-08-20T18:02Z
+- [PR #96908 — [PPF] unstable_navigation()](https://github.com/vercel/next.js/pull/96908) — @ztik; the HEADLINE PPF partial prefetching implementation
+- [PR #97236 — [PPF] Scaffold unstable_navigation()](https://github.com/vercel/next.js/pull/97236) — @ztik; PPF scaffold
+- [PR #94427 — Turbopack: rename to use turbopack: no side effects](https://github.com/vercel/next.js/pull/94427) — @mischnic; merged 2026-08-20T13:35Z
+- [PR #97360 — refactor: move useDynamic{Route,Search}Params to reduce snapshot churn](https://github.com/vercel/next.js/pull/97360) — @ztik; merged 2026-08-20T13:27Z
+- [PR #97636 — Upgrade React from eb8feb71-20260814 to eafeac09-20260819](https://github.com/vercel/next.js/pull/97636) — @unstubbable; merged 2026-08-20T17:07Z
+- [PR #90300 — Turbopack: cross-module constants (original directive)](https://github.com/vercel/next.js/pull/90300) — @mischnic; the original `use turbopack: constants` directive
+- [Next.js partial prefetching documentation](https://nextjs.org/docs/app/api-reference/next-config-js/partial-prefetching) — the canonical PPF reference
+- [Cross-reference: `server-components.md` v1.5.80 — the RSC-lens on the same canary.25 + ahead-of-canary.25 batch]

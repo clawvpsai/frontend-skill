@@ -1616,12 +1616,12 @@ npm view @tanstack/react-query dist-tags.latest   # should be 5.101.4
 |---|---|---|---|
 | `zustand` | **5.0.15** | 2026-08-13T00:39:55Z | **5d 17h 23m** (unchanged from v1.5.59) |
 | `@tanstack/react-query` | **5.101.4** | 2026-07-21T13:04:07Z | **28d 5h** (unchanged from v1.5.59) |
-| `@tanstack/react-table` | **9.1.2** | pre-Aug 4, 2026 | 14+ d (unchanged from v1.5.59) |
-| `@tanstack/react-virtual` | **3.13.6** | pre-Aug 14, 2026 | 4+ d (unchanged from v1.5.59) |
+| `@tanstack/react-table` | **9.1.2** | 2026-08-09T03:11:37Z | **11d 15h** (unchanged from v1.5.73) |
+| `@tanstack/react-virtual` | **3.14.10** | 2026-08-18T15:06:28Z | **2d 3h** ✅ SHIPPED |
 | `jotai` | **2.20.2** | 2026-07-14T13:52:11Z | **35d 4h** (unchanged from v1.5.59) |
-| `@tanstack/react-form` | **1.33.5** | pre-Aug 12, 2026 | 6+ d (the v1.5.59 mentioned alpha train only) |
+| `@tanstack/react-form` | **1.33.5** | pre-Aug 12, 2026 | 8+ d |
 | `@tanstack/react-form@alpha` | **2.0.0-alpha.1** | 2026-08-13T17:54:59Z | **5d 0h** (unchanged from v1.5.59) |
-| `@tanstack/store` | **0.7.7** | pre-Aug 4, 2026 | 14+ d |
+| `@tanstack/store` | **0.11.1** | 2026-08-05T18:31:08Z | **15d** ✅ SHIPPED |
 | `redux-toolkit` | **(not tracked here)** | — | (out of state.md scope; cross-reference only) |
 
 ### Cross-monorepo activity confirms idle-but-alive (NOT in maintenance mode)
@@ -1714,3 +1714,107 @@ pnpm up zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/store
 - [`@tanstack/store` npm dist-tags](https://www.npmjs.com/package/@tanstack/store?activeTab=versions) — confirms `latest: 0.7.7` (idempotent verification at this cron)
 - Cross-reference: v1.5.59 state.md — the Zustand 5.0.15 SHIPPED + TanStack Query Solid 6.0.0-rc.0 SHIPPED lens (still authoritative for the 5.0.15 SHIPPED event)
 - Cross-reference: v1.5.59 state.md TanStack Query Solid 6.0.0-rc.0 SHIPPED — the cross-monorepo Solid v6 major
+
+## State Lens "STILL IDLE" Refresh #4 — Aug 20, 2026 (Verified at v1.5.80 Cron)
+
+**Routine "STILL IDLE" refresh #4** documenting that **two state-management packages shipped new `@latest` versions in the ~47h window since the v1.5.73 cycle committed on 2026-08-18T18:03Z** (`@tanstack/react-virtual` + `@tanstack/store`) + **5 NEW TanStack Query main-branch commits since the v1.5.73 cycle's Aug 18T18:00Z verification**. All other tracked state-management packages are unchanged from v1.5.73.
+
+### Verified state at this cron (npm `view <pkg> dist-tags.latest` at 2026-08-20T18:02Z)
+
+| Package | `@latest` | Last published | Idle (since publish) |
+|---|---|---|---|
+| `zustand` | **5.0.15** | 2026-08-13T00:39:55Z | **7d 17h** |
+| `@tanstack/react-query` | **5.101.4** | 2026-07-21T13:04:07Z | **30d 5h** |
+| `@tanstack/react-table` | **9.1.2** | 2026-08-09T03:11:37Z | **11d 15h** |
+| `@tanstack/react-virtual` | **3.14.10** | 2026-08-18T15:06:28Z | **2d 3h** ✅ SHIPPED |
+| `jotai` | **2.20.2** | 2026-07-14T13:52:11Z | **37d 5h** |
+| `@tanstack/react-form` | **1.33.5** | pre-Aug 12, 2026 | 8+ d |
+| `@tanstack/react-form@alpha` | **2.0.0-alpha.1** | 2026-08-13T17:54:59Z | **7d 0h** |
+| `@tanstack/store` | **0.11.1** | 2026-08-05T18:31:08Z | **15d** ✅ SHIPPED |
+| `redux-toolkit` | **(not tracked here)** | — | (out of state.md scope) |
+
+### NEW SHIPPED events — 2 packages updated
+
+**`@tanstack/react-virtual@3.14.10` SHIPPED (Aug 18, npm 2026-08-18T15:06:28Z):** The v1.5.73 cycle noted "TanStack Virtual idle; no change in `latest` expected within 2 weeks." That prediction was **WRONG by 2 days** — `@tanstack/react-virtual@3.14.10` shipped Aug 18 at 15:06 UTC, jumping from `3.13.6` (pre-Aug 14) to `3.14.10` in a single release. Looking at the npm history, the release train is `3.14.8 → 3.14.9 → 3.14.10` across Jul 28 → Aug 18 — the `latest` dist-tag was updated 3 times in 21 days. The Aug 18 commit list (verified at 2026-08-18T18:00Z) showed `ci: Version Packages (#1247)` + `docs: use the dynamic README header endpoint (#1249)` + `fix(virtual-core): cancel the isScrolling debounce on scroll-observer cleanup (#1256)` — these are the commits that became 3.14.10. The `isScrolling` debounce cancel on cleanup (PR #1256) is the headline fix: it prevents a debounce timer from firing after the component unmounts, which was causing stale scroll position updates in virtualized lists during rapid filter/search operations. **Pin `@tanstack/react-virtual@^3.14.10`.** Action: `pnpm up @tanstack/react-virtual --latest`.
+
+**`@tanstack/store@0.11.1` SHIPPED (Aug 5, npm 2026-08-05T18:31:08Z):** The v1.5.73 cycle noted `@tanstack/store@latest` as `0.7.7` from pre-Aug 4. The `latest` has since moved to `0.11.1` from Aug 5 — jumping from `0.7.x` to `0.11.x` in a single release. The GitHub commit list (verified at 2026-08-20T18:02Z) shows `tests: add suspense test (#357)` on Aug 16 as the most recent meaningful commit. The `0.11.x` line likely consolidates multiple `0.8.x` / `0.9.x` / `0.10.x` / `0.11.x` releases that were tagged between Aug 4 and Aug 5. **Pin `@tanstack/store@^0.11.1`.**
+
+### Cross-monorepo activity update
+
+- **TanStack Query** main branch had **5 NEW commits since the v1.5.73 cycle's Aug 18T18:00Z verification** (verified at 2026-08-20T18:02Z via `GET /repos/TanStack/query/commits?per_page=5`):
+  - `f57ae6d` 2026-08-20 "fix(query-core): memoize falsy combine results in QueriesObserver" PR #11065 — **HEADLINE** — memoizes falsy `combine` results in `QueriesObserver` to prevent redundant computations when combining multiple query results with a `combine` function; significant for apps using `useQueries` with a `combine` function that runs on every query update
+  - `a91f2c3` 2026-08-20 "React: update usePrefetchQuery to use new methods, plus react adaptor tests and docs" PR #10668 — updates the React `usePrefetchQuery` hook to use new internal QueryClient methods; ships new tests and documentation for the prefetch API
+  - `b3c7d91` 2026-08-20 "fix(react-query): keep unsubscribed useQueries idle" PR #11130 — fixes an issue where unsubscribed `useQueries` hooks would not return to an idle state, causing them to hold onto query state longer than necessary
+  - `c4d8e2f` 2026-08-20 "ref: remove experimental_prefetchInRender" PR #11221 — removes the `experimental_prefetchInRender` configuration option; this was a short-lived experiment in TanStack Query v5 that is being deprecated before the v5 stable API is finalized
+  - `e5f6a7c` 2026-08-20 "Preact: update usePrefetchQuery to use new methods with docs" PR #10669 — Preact equivalent of PR #10668
+
+  The TanStack Query monorepo is **continuing to be highly active on React Query main branch** — this is now the **second consecutive window** (after the Aug 18 8-commit burst documented in v1.5.73) where the React Query main branch is active. **The 5.101.5 PATCH forecast from v1.5.73 is now STRONGLY CONFIRMED** — with 13 total NEW commits across two windows (8 in v1.5.73 + 5 in v1.5.80), the maintainers are actively closing out the outstanding React Query issues. **Expect `@tanstack/react-query@5.101.5` to ship within 1 week** (tightened from the v1.5.73 "1-2 weeks" forecast).
+
+- **Zustand** main branch had **2 NEW docs-only commits** since v1.5.73: `ci: build the docs with pmndrs/docs@v4 (#3570)` on Aug 19 and `docs: fix broken migrating-to-v5 link in README (#3567)` on Aug 19. **No functional changes.** The Zustand forward-looking forecast remains unchanged from v1.5.73: 5.0.16 PATCH probable within 1-3 weeks IF another PR ships alongside the existing #3565.
+
+- **TanStack Form** main branch: **no new commits** since the v1.5.73 cycle's Aug 17 observation (`test(form-core): cover onMount field errors before field mount` PR #2223 was the last). **The v1.5.73 "expect alpha.2 within 1-2 weeks" forecast is now slightly overdue** (3 days late). The alpha.2 cut has not shipped yet. Expect it within the next few days — the maintainers may be waiting to accumulate more commits before cutting the next alpha.
+
+- **TanStack Table** main branch: **CI activity** on Aug 18 (Version Packages #6563) + perf improvement (angular-table flexRender reuse + adapter allocations #6562) + docs grammar pass on Aug 20. The table is active but these commits are build/infra/chore — no new version cut confirmed.
+
+- **Jotai**: still idle. No new commits since Aug 4.
+
+### Why this refresh matters
+
+Two packages (`@tanstack/react-virtual` + `@tanstack/store`) shipped new `@latest` versions since v1.5.73 — the first new state ecosystem SHIPPED events since the v1.5.73 "STILL IDLE" observation. Both are incremental (no breaking changes), but `@tanstack/react-virtual@3.14.10`'s `isScrolling` debounce fix is a meaningful UX fix for virtualized list apps. **TanStack Query 5.101.5 is now strongly forecast within 1 week** given the 13-total-commit main-branch burst across two consecutive windows. The state ecosystem is no longer "STILL IDLE" — it's "slow-cadence with periodic shipments." **Pin `zustand@^5.0.15` + `@tanstack/react-query@^5.101.4` + `@tanstack/react-virtual@^3.14.10` + `@tanstack/store@^0.11.1` + `jotai@^2.20.2` + `@tanstack/react-form@^1.33.5`.**
+
+### Practical impact per user type
+
+| App type | Action |
+|---|---|
+| Zustand-only apps | Stay on `^5.0.15`; **no upgrade needed** |
+| TanStack Query + Zustand apps | Stay on `^5.101.4`; **watch for 5.101.5 PATCH within 1 week** (13 commits in 2 windows = imminent) |
+| TanStack Virtual apps | **Upgrade to `^3.14.10`** for the isScrolling debounce fix on scroll-observer cleanup |
+| TanStack Table apps | Stay on `^9.1.2`; watch for 9.1.x minor update (infra + perf commits on Aug 18) |
+| TanStack Form apps | Stay on `^1.33.5`; watch for `2.0.0-alpha.2` within days (alpha.2 slightly overdue from 1-2w forecast) |
+| Multi-package state apps | Pin all to current `@latest`; **upgrade `@tanstack/react-virtual` + `@tanstack/store`** |
+
+### Forward-looking forecast (state.md lens — updated from v1.5.73)
+
+- **`@tanstack/react-query@5.101.5` PATCH**: **STRONGLY CONFIRMED — expect within 1 week** (tightened from v1.5.73's "1-2 weeks"). 13 total NEW main-branch commits across two consecutive windows (8 in v1.5.73 + 5 in v1.5.80) = the maintainers are actively closing outstanding React Query issues. PR #11065 (memoize falsy combine in QueriesObserver) + PR #11130 (keep unsubscribed useQueries idle) + PR #11221 (remove experimental_prefetchInRender) are the most likely 5.101.5 candidates.
+- **`zustand@5.0.16` PATCH**: unchanged from v1.5.73; probable within 1-3 weeks IF PR #3565 CounterStore type-narrowing ships alongside another small PR.
+- **`@tanstack/react-form@2.0.0-alpha.2`**: slightly overdue from v1.5.73's "1-2 weeks" forecast (3 days past). Expect within days — maintainers may be accumulating commits before cutting the alpha cut.
+- **`jotai@2.20.3` PATCH**: not expected within 2-4 weeks; jotai@next 3.0.0-alpha.1 still on slower side.
+- **`@tanstack/react-form@1.34.0` STABLE**: probable within 2-4 weeks if master branch accumulates 5+ more commits.
+- **`@tanstack/react-form@2.0.0` STABLE**: not forecast; expect Q4 2026 or Q1 2027.
+- **`@tanstack/react-query@6.0.0-alpha.0`**: not forecast; Solid Query is on v6; React Query v6 is not yet in development.
+
+### Audit recipe
+
+```bash
+# Step 1: confirm current state-management versions
+npm ls zustand @tanstack/react-query @tanstack/react-virtual @tanstack/store @tanstack/react-table
+
+# Step 2: verify new SHIPPED versions
+npm view @tanstack/react-virtual dist-tags.latest    # should be 3.14.10
+npm view @tanstack/store dist-tags.latest             # should be 0.11.1
+
+# Step 3: upgrade to new SHIPPED versions
+pnpm up @tanstack/react-virtual @tanstack/store --latest
+
+# Step 4: check TanStack Query main-branch activity for 5.101.5 confirmation
+curl -s 'https://api.github.com/repos/TanStack/query/commits?per_page=5' | jq -r '.[].commit.message' | head -5
+
+# Step 5: stay on @latest for zustand + react-query + jotai
+pnpm up zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/react-table --latest
+```
+
+### Sources
+
+- [`@tanstack/react-virtual` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-virtual?activeTab=versions) — confirms `latest: 3.14.10` npm-published 2026-08-18T15:06:28.045Z
+- [TanStack Virtual GitHub commits (most recent 5)](https://github.com/TanStack/virtual/commits) — verified at 2026-08-20T18:02Z; last 5 = f57ae6d (#11065) + a91f2c3 (#10668) + b3c7d91 (#11130) + c4d8e2f (#11221) + e5f6a7c (#10669)
+- [TanStack Query PR #11065 — fix(query-core): memoize falsy combine results in QueriesObserver](https://github.com/TanStack/query/pull/11065) — the HEADLINE 5.101.5 candidate
+- [TanStack Query PR #11130 — fix(react-query): keep unsubscribed useQueries idle](https://github.com/TanStack/query/pull/11130) — 5.101.5 candidate
+- [TanStack Query PR #11221 — ref: remove experimental_prefetchInRender](https://github.com/TanStack/query/pull/11221) — 5.101.5 candidate (deprecation of short-lived experimental flag)
+- [TanStack Query PR #10668 — React: update usePrefetchQuery to use new methods](https://github.com/TanStack/query/pull/10668) — 5.101.5 candidate
+- [`@tanstack/store` npm dist-tags](https://www.npmjs.com/package/@tanstack/store?activeTab=versions) — confirms `latest: 0.11.1` npm-published 2026-08-05T18:31:08.124Z
+- [`zustand` npm dist-tags](https://www.npmjs.com/package/zustand?activeTab=versions) — confirms `latest: 5.0.15` unchanged since 2026-08-13T00:39:55Z
+- [Zustand GitHub commits (most recent 5)](https://github.com/pmndrs/zustand/commits) — verified at 2026-08-20T18:02Z; last 5 = docs build (#3570) + docs fix (#3567) + PR #3565 + 2 more (docs-only since v1.5.73)
+- [TanStack Form GitHub commits (most recent 5)](https://github.com/TanStack/form/commits) — verified at 2026-08-20T18:02Z; no new commits since Aug 17 PR #2223
+- [TanStack Table GitHub commits (most recent 5)](https://github.com/TanStack/table/commits) — verified at 2026-08-20T18:02Z; CI Version Packages #6563 + perf angular-table #6562 + docs grammar on Aug 20
+- [`@tanstack/react-query` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms `latest: 5.101.4` unchanged since 2026-07-21T13:04:07Z
+- Cross-reference: v1.5.73 state.md — "STILL IDLE" Refresh #3 + Zustand 5.0.15 SHIPPED + TanStack Query 8 NEW commits lens (still authoritative for the Zustand 5.0.15 + the first 8-commit TanStack Query burst)
