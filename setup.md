@@ -4521,3 +4521,133 @@ npm view typescript@latest version
 - [Cross-reference: `security.md` — Aug 20 security release lens
 - [Cross-reference: `server-components.md` — PR #97476 from the RSC lens
 - [Cross-reference: `performance.md` — PR #90300 + PR #97476 + PR #96116 from the perf lens
+
+## Next.js `16.3.1-canary.26` SHIPPED + Aug 26 Critical CVE Pre-Announce (August 20–21, 2026 — Setup Recipe Lens)
+
+**`next@16.3.1-canary.26` SHIPPED** (npm-published 2026-08-20T23:58:58.715Z; GitHub release tag `v16.3.1-canary.26`; **18 commits — the densest canary-batch in 60+ days**). The v1.5.80 forecast "canary.26 within 6-12h after v1.5.80" landed exactly on schedule.
+
+**Aug 26 critical CVE pre-announce PUBLISHED** ([nextjs.org/blog/upcoming-nextjs-security-release-august-2026](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), August 20, 2026 by Josh Story + Karim Rahal + Sebastian Silbermann). The release will address **one critical severity vulnerability**; patched versions **`16.3.2`** and **`15.5.24`** will ship on **August 26, 2026**. The full advisory (impact, affected versions, upgrade instructions) publishes alongside the release. **This is now a P0 calendar event for every Next.js app** — every team should have an upgrade window booked for Aug 26.
+
+### The 9 Material canary.26 PRs (Setup Recipe Lens)
+
+| PR | Author | Material Tier | Setup Impact |
+|----|--------|-------------|-------------|
+| **PR #96908** | aurorascharff + lubieowoce | **HIGH** | [PPF] `unstable_navigation()` — the FIRST Partial Prefetching API implementation; granular prefetch control to eliminate unnecessary RSC prefetch bandwidth |
+| **PR #97636** | gnoff | **HIGH** | Upgrade React from `eb8feb71-20260814` → `eafeac09-20260819` — the App Router now bundles React 19.3.0-canary |
+| **PR #94427** | bgw | **HIGH** | Turbopack: rename `use turbopack: constants` → `use turbopack: no side effects` (extended tree-shaking directive) |
+| **PR #96686** | lubieowoce | **MEDIUM-HIGH** | Serialize frozen collections by value only (RSC cross-freeze-boundary Map/Set/Date identity-mismatch fix) |
+| **PR #97360** | zimmermanc | MEDIUM | Refactor: move `useDynamic{Route,Search}Params` to reduce snapshot churn (dev HMR perf) |
+| **PR #97572** | gnoff | MEDIUM | Improve Cache Components sync IO migration guidance |
+| **PR #97590** | vercel-buildkite | MEDIUM | [ci] Turborepo remote caching OIDC replaces static PAT (supply-chain posture) |
+| **PR #97548** | gaJorderson | LOW | docs: Explicit cache output description |
+| **PR #97645** | lubieowoce | LOW | docs: deploymentId build ID override + Pages Router skew in 16.2 |
+
+### `unstable_navigation()` — Partial Prefetching API (PR #96908 + PR #97236)
+
+The first Partial Prefetching (PPF) implementation in Next.js. The API enables granular prefetch control to **eliminate unnecessary RSC prefetch bandwidth** by letting apps decide *exactly* which routes to prefetch (vs. relying on Next's link-based default heuristic). This is the programmatic form of the prefetch strategy described in the Aug 18 "Building App-like Experiences" blog post.
+
+```ts
+// next/link — programmatic prefetch (scaffold pattern from PR #97236)
+import { unstable_navigation } from 'next/link';
+
+useEffect(() => {
+  unstable_navigation('/dashboard', { prefetch: 'minimal' });
+}, []);
+```
+
+**Setup-recipe migration**: apps with high-bandwidth concerns (mobile-first, low-connectivity regions) can move from `<Link prefetch={true}>` to `<Link prefetch="minimal">` + programmatic `unstable_navigation()` for non-critical pages. The `next-partial-prefetching-adoption` Skill (referenced in the Aug 18 blog post) is the canonical migration tool.
+
+### Turbopack `use turbopack: no side effects` Rename (PR #94427)
+
+Replaces the previous `use turbopack: constants` directive with an **extended tree-shaking directive** covering a broader class of side-effect-free modules. The `use turbopack: constants` directive remains supported for backward compatibility but is deprecated.
+
+```ts
+// Before (canary.20 → canary.25)
+'use turbopack: constants';
+export const FEATURE_FLAGS = { ... };
+
+// After (canary.26+) — preferred for new code
+'use turbopack: no side effects';
+export const FEATURE_FLAGS = { ... };
+```
+
+The `use turbopack: no side effects` directive subsumes the old one — modules marked with the new directive are guaranteed to be correctly tree-shaken on Turbopack, with the same bundle-size wins (5–20% for feature-flag patterns from PR #90300).
+
+### Aug 26 CVE Pre-Announce — Action Items
+
+```bash
+# Pre-flight (today): list your affected versions
+npm ls next | grep 'next@'
+# Expected: next@16.3.1 or next@15.5.x (both affected)
+
+# Aug 26 — when 16.3.2 STABLE publishes
+npm install next@latest
+# After upgrade: verify
+npm ls next
+# Expected: next@16.3.2.x
+
+# If on Next.js 15.5.x LTS branch
+npm install next@15.5.24
+
+# Calendar reminder: Aug 26, 2026 = P0 upgrade day
+# Watch https://nextjs.org/blog on Aug 26 for full advisory + affected version matrix
+```
+
+### Version Pins and Audit Recipe
+
+```bash
+# Confirm current next canary version
+npm view next@canary version
+# Expected: 16.3.1-canary.26
+
+# Aug 26 — when 16.3.2 STABLE publishes (pre-announced today)
+npm install next@latest
+# Expected: 16.3.2.x when released on Aug 26
+npm install next@15.5.24  # if on Next.js 15.5.x LTS
+
+# @clerk/nextjs — pin to 7.8.0 STABLE
+npm install @clerk/nextjs@^7.8.0
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.0
+
+# TypeScript — stay on 7.0.2 STABLE for now
+npm view typescript@latest version
+# Expected: 7.0.2
+
+# Vite — upgrade to 8.2.2 PATCH
+npm install vite@^8.2.2
+
+# zod STABLE — watch for 4.5.0 STABLE (expected within 24–48h)
+npm view zod@latest version
+# Expected: still 4.4.3 until 4.5.0 STABLE ships
+```
+
+### Why This Matters for Setup
+
+- **canary.26 is the densest canary in 60+ days**: 18 PRs total, 9 material from the setup-recipe lens. The PPF `unstable_navigation()` API (PR #96908) is the first Partial Prefetching primitive — apps on the App Router should test it for high-bandwidth scenarios using the `next-partial-prefetching-adoption` Skill.
+- **Aug 26 is a P0 calendar event**: Every Next.js app running 16.x or 15.x must upgrade on Aug 26. Patched versions 16.3.2 + 15.5.24 will be the only secure versions. Plan the upgrade window now; the full advisory publishes alongside the release.
+- **React 19.2 → 19.3 canary (PR #97636)**: The App Router now bundles React `eafeac09-20260819`. Apps that pin `react@canary` separately must upgrade to match — version drift between the bundled and pinned versions causes subtle RSC payload deserialization errors.
+- **Turbopack `use turbopack: no side effects` (PR #94427)**: Replaces `use turbopack: constants` with an extended tree-shaking directive. New code should use the new directive; existing code with the old directive continues to work but is deprecated.
+- **Turborepo OIDC (PR #97590)**: Internal CI plumbing; no app-user impact, but the supply-chain posture is now OIDC-bounded (token lifetime replaces static PAT).
+
+### Sources
+
+- [`next@16.3.1-canary.26` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.26) — npm-published 2026-08-20T23:58:58.715Z; 18 PRs; densest canary in 60+ days
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — Aug 20, 2026 by Josh Story + Karim Rahal + Sebastian Silbermann; one critical CVE; ships Aug 26 as 16.3.2 + 15.5.24
+- [PR #96908 — [PPF] unstable_navigation()](https://github.com/vercel/next.js/pull/96908) — first Partial Prefetching implementation
+- [PR #97236 — [PPF] Scaffold unstable_navigation()](https://github.com/vercel/next.js/pull/97236) — programmatic prefetch scaffold
+- [PR #97636 — Upgrade React eb8feb71 → eafeac09-20260819](https://github.com/vercel/next.js/pull/97636) — App Router bundles 19.3.0-canary
+- [PR #94427 — Turbopack: rename to use turbopack: no side effects](https://github.com/vercel/next.js/pull/94427) — extended tree-shaking directive
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — RSC cross-freeze-boundary identity fix
+- [PR #97360 — Refactor: move useDynamic{Route,Search}Params to reduce snapshot churn](https://github.com/vercel/next.js/pull/97360) — dev HMR perf
+- [PR #97572 — Improve Cache Components sync IO migration guidance](https://github.com/vercel/next.js/pull/97572) — Cache Components docs
+- [PR #97590 — [ci] Turborepo remote caching OIDC](https://github.com/vercel/next.js/pull/97590) — supply-chain posture
+- [PR #97548 — docs: Explicit cache output description](https://github.com/vercel/next.js/pull/97548)
+- [PR #97645 — docs: deploymentId build ID override](https://github.com/vercel/next.js/pull/97645)
+- [Next.js Guides: Instant navigation](https://nextjs.org/docs/app/guides/instant-navigation) — Skills + agent-browser MCP integration; cross-reference for PPF
+- [Next.js Blog — Building App-like Experiences with Next.js 16.3](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — PPF context
+- [Next.js Version 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — lastUpdated 2026-08-18; canonical breaking-change reference for 16.x migrations
+- [Cross-reference: `security.md` — the Aug 26 CVE advisory when published
+- [Cross-reference: `auth.md` — Clerk 7.8.0 STABLE + Aug 26 CVE auth impact
+- [Cross-reference: `routing.md` — PR #96686 RSC frozen-serialization from the routing lens
+- [Cross-reference: `performance.md` — PR #97360 useDynamic{Route,Search}Params from the perf lens

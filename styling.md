@@ -2375,3 +2375,80 @@ rg "theme inline|--color-" src/**/*.css 2>/dev/null | head -5
 - [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)
 - [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)
 - [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)
+
+## Styling Idle Check — Tailwind Insider Train STILL Cold (168h+ / 7+ Days) + shadcn Ecosystem STILL Idle (Aug 13+) (August 21, 2026 — Styling Lens)
+
+**`tailwindcss@insiders` STILL on `0.0.0-insiders.90f8ff4`** (npm-published 2026-08-14T19:54:08Z; now **~168 hours / 7+ days idle** at this cron's 18:02Z Aug 21 check). The insider train that accelerated 4 drops in 19h on Aug 13–14 has now been **completely cold for a full week** — the longest insider-train freeze since the v1.5.0 tracking began.
+
+**`tailwindcss@latest` STILL `4.3.3`** (npm-published 2026-07-16T12:03:35Z; now **36+ days since last @latest**). The 4.3.4 STABLE forecast remains **2–4 weeks** = expected Sep 3–20, 2026 (UNCHANGED).
+
+**shadcn ecosystem STILL IDLE since 4.18.0 / @shadcn/react 0.3.0 / @shadcn/helpers 0.2.0** (Aug 13 / Aug 5 / Aug 11 respectively; **no new releases in this 6h window**). The Aug 18 blog post's `<ViewTransition>` integration is **still NOT in the shadcn ecosystem**. `shadcn@4.19.0` or `@shadcn/react@0.4.0` with a `<ViewTransition>` wrapper is now forecast **2–3 weeks** based on the Aug 13 idle start + the cold insider pattern.
+
+### Extended Cold Pattern
+
+| Date | Insider Version | Drops Since | Cadence | Status |
+|------|---------------|-------|---------|--------|
+| Aug 13 00:28Z | 021b7fe | 1 drop | — | warming |
+| Aug 13 19:00Z | 90f8ff4 | 1 drop | 4 drops in 19h (~1/5h) | **accelerating** |
+| Aug 14 19:54Z | 90f8ff4 | LAST DROP | 0 drops in 40h+ | cooling |
+| Aug 16 12:03Z | 90f8ff4 | 0 drops | 0 drops in 64h+ | cold |
+| Aug 20 06:03Z | 90f8ff4 | 0 drops | 0 drops in 144h+ (6 days) | frozen |
+| **Aug 21 18:02Z** | **90f8ff4** | **0 drops** | **0 drops in 168h+ (7 days)** | **frozen / 1-week idle** |
+
+### What This Means for Styling Setup
+
+- **All v1.5.77 recommendations still apply**: Stay on `tailwindcss@latest` (4.3.3) for production. Do NOT promote `@insiders` (frozen for 1 week). Wait for 4.3.4 STABLE on `@latest` (forecast 2–4 weeks = Sep 3–20).
+- **No NEW styling material this cycle**: The 36h window since v1.5.77 (Aug 20 06:03Z) brought no new Tailwind insiders drops, no new Tailwind STABLE, no new shadcn releases. **The longest no-new-material stretch for styling since v1.5.0** (June 19).
+- **The Tailwind v4.3.x line is mature**: 4.3.0 shipped May 8, 2026 (per endoflife.date); 4.3.3 is the latest. The cadence suggests 4.3.4 will be a smaller patch release focused on the oxide WASM fallback (PR #20383, Aug 4) + the canonicalization fix (PR #20417) + the `supports-[selector]` space-out fix (PR #20420).
+- **Aug 18 `<ViewTransition>` integration still requires native `experimental.viewTransition: true`**: No shadcn wrapper has shipped in the 3 days since the blog post. Use the native pattern documented in `components.md` and `patterns.md`.
+
+### Styling Audit Recipe (Unchanged from v1.5.77)
+
+```bash
+# Check current Tailwind status
+npm view tailwindcss@latest version
+# Expected: 4.3.3 (unchanged since Jul 16; 36+ days)
+
+npm view tailwindcss@insiders version
+# Expected: 0.0.0-insiders.90f8ff4 (frozen since Aug 14; do NOT use in production)
+
+# Check shadcn ecosystem
+npm view shadcn@latest version
+# Expected: 4.18.0 (idle since Aug 13; 8+ days)
+
+npm view @shadcn/react@latest version
+# Expected: 0.3.0 (idle since Aug 5; 16+ days; no ViewTransition wrapper yet)
+
+npm view @shadcn/helpers@latest version
+# Expected: 0.2.0 (idle since Aug 11; 10+ days)
+
+# Verify tailwind.config is using @import "tailwindcss" (v4 style)
+rg "@tailwind" tailwind.config.* 2>/dev/null
+# Should find: @import "tailwindcss" NOT @tailwind base/components/utilities
+
+# Check @theme usage (v4 semantic tokens)
+rg "@theme" src/**/*.css 2>/dev/null | head -5
+
+# If using shadcn — verify @theme inline usage
+rg "theme inline|--color-" src/**/*.css 2>/dev/null | head -5
+```
+
+### Common Mistakes (Styling — v1.5.84 Update)
+
+- Promoting `tailwindcss@insiders` to production during a 1-week cold streak: you get the same Aug 14 version with no new fixes and no stability guarantee.
+- Assuming `shadcn@4.19.0` ships a `<ViewTransition>` wrapper: it has not shipped yet (as of Aug 21); the Aug 18 blog post's pattern requires native `experimental.viewTransition: true`.
+- Using `@tailwind base/components/utilities` in a v4 project: v4 requires `@import "tailwindcss"`. The old directives cause a silent CSS failure.
+- Using `@theme` with literal values where a CSS variable reference is correct: `@theme` tokens should reference CSS variables (e.g., `@theme { --color-primary: var(--color-brand); }`) not hardcoded hex values.
+
+### Sources
+
+- [`tailwindcss@latest` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `4.3.3` unchanged since 2026-07-16T12:03:35Z; 36+ days
+- [`tailwindcss@insiders` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `0.0.0-insiders.90f8ff4` unchanged since 2026-08-14T19:54:08Z; **0 new drops in 168h+ (7 days)**
+- [Tailwind v4.3 announcement](https://tailwindcss.com/blog/tailwindcss-v4-3) — scrollbar utilities, stacked/compound variants
+- [Tailwind CSS Releases](https://github.com/tailwindlabs/tailwindcss/releases) — `v4.3.3` is the latest @latest; no 4.3.4 release as of Aug 21
+- [Tailwind CSS EOL / Version Support](https://endoflife.date/tailwind-css) — `v4.3` released 2026-05-08; latest `4.3.3` shipped 2026-07-16
+- [shadcn/ui releases](https://github.com/shadcn-ui/ui/releases) — still `4.18.0` / `@shadcn/react@0.3.0` / `@shadcn/helpers@0.2.0`; no ViewTransition wrapper
+- [Aug 18 blog post — "Building App-like Experiences with Next.js 16.3"](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — `<ViewTransition>` integration; no shadcn wrapper yet
+- [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)
+- [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)
+- [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)

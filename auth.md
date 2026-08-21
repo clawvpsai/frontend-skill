@@ -2217,3 +2217,93 @@ npm view better-auth@latest version
 - [Cross-reference: `forms.md` — zod@4.5.0 STABLE when shipped will be documented from the forms-validation lens
 - [Cross-reference: `setup.md` — canary.25 setup-recipe lens + the Aug 20 security release upgrade recipe
 - [Cross-reference: `security.md` — the Aug 20 security release lens (the authoritative security-advisory source)
+
+## `@clerk/nextjs@7.8.0` STABLE SHIPPED + Aug 26 Critical CVE Pre-Announce + `vite@8.2.2` PATCH (August 20–21, 2026 — Auth Lens)
+
+**`@clerk/nextjs@7.8.0` STABLE SHIPPED** (npm-published 2026-08-20T22:17:48.925Z; GitHub release tag `v7.8.0`). Clean minor cut with **no breaking changes** — pure feature additions + dependency bumps. Pin `@clerk/nextjs@^7.8.0`.
+
+**`@clerk/nextjs@canary` advanced to `7.8.1-canary.v20260820221209`** (npm-published 2026-08-20T22:18:34.606Z — **67 seconds after the 7.8.0 STABLE cut**; the 21st canary drop since v1.5.50). The canary train advanced from the 7.7.10 line to the **7.8.x line**.
+
+**Aug 26 critical CVE pre-announce PUBLISHED** ([nextjs.org/blog/upcoming-nextjs-security-release-august-2026](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), August 20, 2026 by Josh Story + Karim Rahal + Sebastian Silbermann). One critical severity vulnerability; patched versions **`16.3.2`** + **`15.5.24`** ship **August 26, 2026**. **Auth-relevance HIGH** if the CVE touches middleware or routing — `clerkMiddleware()` and `auth()` calls are the canonical Next.js + Clerk auth surface and would need immediate upgrade verification.
+
+**`vite@8.2.2` PATCH SHIPPED** (npm-published 2026-08-20T04:14:39.107Z; pure PATCH; no API surface changes; MISSED by v1.5.80). Pin `vite@^8.2.2`.
+
+### `@clerk/nextjs` 7.8.0 — What's New
+
+The 7.8.0 minor bump is a **clean cut with no migration steps required**. Internal changes:
+- `@clerk/shared` bump to latest
+- `@clerk/backend` bump to latest
+- `@clerk/react` bump to latest
+- Internal optimizations for Next.js 16.3 App Router SSR streaming
+- Improved CSP header generation (auto-includes `connect-src` for Clerk API endpoints on non-443 ports — backport of the PR #9458 fix from 7.7.8 STABLE)
+- Improved Clerk dev tools integration with Next.js 16.3 DevTools (`<NavigationInspector>`)
+
+For apps on `clerkMiddleware()` (the recommended pattern from `@clerk/nextjs` 7+), **no code changes are required**. Apps still on deprecated `authMiddleware()` should plan a Core 2 migration separately (see Clerk Core 2 + Core 3 upgrade guides). The Clerk Core 3 upgrade guide notes "most projects can be upgraded in under 30 minutes using the upgrade CLI."
+
+### Aug 26 CVE — Auth-Affected Surfaces
+
+If the upcoming CVE touches middleware or routing (HIGH probability given the auth-critical surface), the following will need upgrade verification on Aug 26:
+
+```bash
+# Pre-flight: check your auth middleware setup
+rg "clerkMiddleware|authMiddleware" src/middleware.ts
+# Expected: clerkMiddleware() (recommended)
+# If authMiddleware(): plan a Core 2/3 migration independently
+
+# Aug 26 — when 16.3.2 STABLE publishes
+npm install next@latest @clerk/nextjs@^7.8.0
+npm ls next @clerk/nextjs
+# Expected: next@16.3.2.x + @clerk/nextjs@7.8.0+
+
+# Verify the dev server boots cleanly on the upgraded versions
+npm run dev
+# Should boot without CSP or middleware errors in the console
+```
+
+### Version Audit Recipe
+
+```bash
+# @clerk/nextjs — upgrade to 7.8.0 STABLE
+npm install @clerk/nextjs@^7.8.0
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.0
+
+# next.js — watch for 16.3.2 STABLE on Aug 26 (pre-announced today)
+npm view next@latest version
+# Expected: still 16.3.1 until Aug 26
+npm install next@latest
+
+# zod — stay on 4.4.3 STABLE until 4.5.0 STABLE ships
+npm view zod@latest version
+# Expected: 4.4.3; watch for 4.5.0 STABLE in next 24–48h
+
+# better-auth — stay on 1.7.1 STABLE
+npm view better-auth@latest version
+# Expected: 1.7.1
+
+# vite — upgrade to 8.2.2 PATCH (build-tooling only)
+npm install vite@^8.2.2
+```
+
+### Why This Matters for Auth
+
+- **`@clerk/nextjs@7.8.0` is a drop-in upgrade**: No breaking changes, no codemod needed. Just bump and verify the dev console shows no CSP errors. The canary train accelerated to the 7.8.x line within 67 seconds of the STABLE cut — a strong signal that 7.8.x is the active development line for the next quarter.
+- **Aug 26 CVE pre-announce is a P0 calendar event**: Every auth-bearing Next.js app needs to be on 16.3.2 (or 15.5.24 for the 15.5.x LTS branch) by EOD Aug 26. The auth middleware surface is the canonical attack surface for any CVE that touches routing, so **auth apps have the highest urgency** to upgrade.
+- **Canary train advanced to 7.8.1 line**: `@clerk/nextjs@canary@7.8.1-canary.v20260820221209` is the new tip. Expect 7.8.1 STABLE within 2–4 weeks on the accelerated cadence observed since v1.5.74.
+- **`vite@8.2.2` PATCH is build-only**: No API changes; safe drop-in for Vite-based tests/builds (Vitest, Playwright via Vite, etc.).
+- **Better Auth Vercel acquisition still in progress**: No new releases this cycle; the Agent Auth Protocol roadmap is still pending. The 1.7.1 pin remains authoritative.
+
+### Sources
+
+- [`@clerk/nextjs@7.8.0` STABLE GitHub release](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.8.0) — npm-published 2026-08-20T22:17:48.925Z; clean minor cut
+- [`@clerk/nextjs@canary` 7.8.1-canary.v20260820221209](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — 21st canary drop; 67s after 7.8.0 STABLE cut; canary train advanced to 7.8.x line
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — Aug 26 P0 calendar event; 16.3.2 + 15.5.24
+- [Clerk Core 3 Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3) — most projects can upgrade in <30 min using the upgrade CLI
+- [Clerk Core 2 / Next.js Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-2/nextjs) — for apps still on deprecated `authMiddleware()` (pre-Core 2)
+- [`@clerk/nextjs` CHANGELOG (main branch)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — historical breaking-change audit reference
+- [`vite@8.2.2` PATCH npm](https://www.npmjs.com/package/vite?activeTab=versions) — npm-published 2026-08-20T04:14:39.107Z; pure PATCH; no API surface changes
+- [`zod@canary` `4.5.0-canary.20260820T155656`](https://www.npmjs.com/package/zod?activeTab=versions) — Aug 20 canary train tip; 4.5.0 STABLE imminent
+- [Next.js Guides: Instant navigation](https://nextjs.org/docs/app/guides/instant-navigation) — Skills + agent-browser MCP integration; auth-context cross-reference for PPF
+- [Cross-reference: `setup.md` — canary.26 setup-recipe lens + Aug 26 CVE upgrade recipe
+- [Cross-reference: `security.md` — Aug 26 CVE pre-announce + advisory when published
+- [Cross-reference: `deployment.md` — the `vite@8.2.2` build-tooling PATCH
