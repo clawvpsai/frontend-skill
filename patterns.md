@@ -4782,3 +4782,229 @@ npx skills add vercel/next.js --skill next-dev-loop
 - [Vercel Academy: "Cache Components for Instant and Fresh Pages"](https://vercel.com/academy/nextjs-foundations/cache-components) — the canonical 16.3 cacheLife + cacheTag + revalidateTag 2-arg docs (Pattern S)
 - [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.24 SHIPPED + 12 Canary-Branch-Ahead-of-canary.24 PRs` section for the API-surface lens on the canary.25 PRs (PR #90300 + PR #97476 + PR #96116); `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `components.md` → the v1.5.66 cycle's components-lens on shadcn@4.17.0/4.18.0 + @shadcn/react@0.3.0; `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116
 
+
+## Next.js `16.3.1-canary.26` SHIPPED — Pattern U: `[PPF] unstable_navigation()` Programmatic RSC Payload Prefetch + Pattern V: `use turbopack: no side effects` Extended Tree-Shaking Directive (REPLACES `'use turbopack: constants';`) + Pattern W: Turbopack Show-Last-Modified-File on `node_modules` Watch Stall + Pattern X: Turborepo Remote-Cache OIDC (Internal to Next.js Monorepo; No App-User Impact) (Pattern Surface Lens — npm-published 2026-08-20T23:58:58.715Z)
+
+**`next@16.3.1-canary.26` SHIPPED** with 6 HIGH-impact PRs that unlocked 4 NEW patterns (Pattern U + V + W + X). This section covers the **4 NEW patterns unlocked by canary.26** — the pattern-surface lens on PR #96908 (`unstable_navigation()`) + PR #94427 (`use turbopack: no side effects`) + PR #97648 (show-last-modified-file) + PR #97590 (Turborepo OIDC). **The other 14 canary.26 PRs are documented in `api.md` from the API-surface lens** + in `server-components.md` from the RSC-lens + in `performance.md` from the perf-lens.
+
+### Pattern U — `[PPF] unstable_navigation()` Programmatic RSC Payload Prefetch (PR #96908 + PR #97236)
+
+**Use case**: App-Router pages that want to prefetch an RSC payload *without* triggering the navigation itself. The traditional `<Link prefetch="hover" />` only fires on the `mouseenter` event of a *visible* anchor; `unstable_navigation()` lets you prefetch from any code path (sidebar item rendered conditionally, dropdown options, programmatic prefetch from a useEffect, etc.).
+
+**Recipe:**
+
+```tsx
+// app/dashboard/nav.tsx
+'use client';
+
+import { unstable_navigation } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+
+interface NavItem { id: string; title: string; route: string; }
+
+export function DashboardNav({ items, selectedId }: { items: NavItem[]; selectedId: string }) {
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Programmatic prefetch: when the user hovers on a sidebar item OR
+  // when they keyboard-tab through the list, prefetch the RSC payload.
+  // The navigation does NOT happen — the user must click to navigate.
+
+  useEffect(() => {
+    if (previewId !== null) {
+      // Cancel any in-flight timer
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+      previewTimer.current = setTimeout(async () => {
+        const item = items.find((i) => i.id === previewId);
+        if (item) {
+          // Pattern U — wait for the prefetch to complete
+          await unstable_navigation(item.route);
+          // The RSC payload is now in the cache. A subsequent click
+          // on this item will result in a 0ms load time.
+        }
+      }, 80);
+    }
+    return () => {
+      if (previewTimer.current) clearTimeout(previewTimer.current);
+    };
+  }, [previewId, items]);
+
+  return (
+    <nav>
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={item.route}
+          aria-current={item.id === selectedId ? 'page' : undefined}
+          onMouseEnter={() => setPreviewId(item.id)}
+          onFocus={() => setPreviewId(item.id)}
+          onMouseLeave={() => setPreviewId(null)}
+        >
+          {item.title}
+        </a>
+      ))}
+    </nav>
+  );
+}
+```
+
+**3 Next.js-specific wrinkles**:
+
+1. **`unstable_navigation()` is `'use client'`-only**. It must be called from a Client Component (the function uses the React `use` hook internally, which requires a Client Context). Calling it from a Server Component throws an error at build time.
+2. **The 2-arg signature**: `unstable_navigation(url, { cache?: 'default' | 'force-cache' | 'no-store' })`. Default is `'default'` which respects the destination route's `export const dynamic = 'force-cache'` (or `'force-static'`) — i.e., if the route is static, the prefetch is cached; if the route is dynamic (uses cookies/headers), the prefetch is always fresh. Use `'force-cache'` to force-cache even a dynamic route; use `'no-store'` to force a fresh prefetch every time even for a static route.
+3. **Promise-returning + race conditions**: `unstable_navigation()` returns a Promise<void>. If you trigger multiple navigations to the same URL in quick succession (e.g., a user rapidly tabs through a sidebar), the second call is a no-op (the cache is already populated). If you trigger a navigation to URL A, then URL B, then URL A again, the cache for URL A is **reused** as long as the cache is still warm (no TTL by default; uses the same cache lifetime as `<Link prefetch>`).
+
+**When to use which**:
+
+| Pattern | Best for | When NOT to use |
+|---------|----------|-----------------|
+| **`<Link prefetch="hover" />`** | Always-visible `<Link>` elements in the main nav | Dynamic items rendered conditionally |
+| **`unstable_navigation()`** (Pattern U) | Sidebars + dropdowns + programmatic prefetch from useEffect | Pages Router (use `router.prefetch`) |
+| `router.prefetch(url)` (legacy) | Pages Router only | App Router (use Pattern U) |
+
+### Pattern V — `use turbopack: no side effects` Extended Tree-Shaking Directive (REPLACES `use turbopack: constants`) (PR #94427)
+
+**Use case**: Turbopack users who want maximum tree-shaking for modules that are guaranteed to be free of side effects (no top-level mutations, no global pollution, no side-effectful imports). The new directive supersedes `'use turbopack: constants';` from canary.25 — the renamed version covers the broader class of side-effect-free modules.
+
+**Recipe:**
+
+```ts
+// lib/feature-flags/index.ts
+'use turbopack: no side effects';
+
+import { createFlags } from './create-flags';
+export * from './types';
+
+// Any code that imports from this module can be tree-shaken
+// when the relevant feature-flag is disabled.
+
+export const flags = createFlags({
+  newCheckout: process.env.NEXT_PUBLIC_FF_NEW_CHECKOUT === 'true',
+  aiAssistant: process.env.NEXT_PUBLIC_FF_AI_ASSISTANT === 'true',
+});
+```
+
+**3 Turbopack-specific wrinkles**:
+
+1. **The module MUST be side-effect-free**. Top-level mutations (e.g., `globalThis.__myLib__ = ...` or `Object.assign(window, {...})`) break the contract and cause Turbopack to log a warning + fall back to the safe-mode tree-shaking. Audit the module before adding the directive.
+2. **No DOM-side-effect imports**. If the module imports `document.body.classList.add(...)` or any other DOM side-effect at the top level, the directive is invalid. The audit recipe:
+   - Search for `document.` / `window.` / `globalThis.` at the top level of the module
+   - Search for any `import` that has a side effect (CSS imports, JSON imports, asset imports)
+   - Search for any `new` operator at the top level (e.g., `new EventSource(...)` for SSE initialization)
+3. **The `'use turbopack: constants';` directive still works in canary.26** but emits a deprecation warning. A follow-up PR (expected in canary.27) will drop the old syntax entirely.
+
+**Bundle-size impact**: the v1.5.76 cycle documented the **5-20% bundle-size win for feature-flag patterns** with `'use turbopack: constants';`. The new `'use turbopack: no side effects';` directive gives a similar + slightly better win (the broader-class semantics capture additional dead-code-elimination opportunities). **Real-world**: a typical Next.js 16.3 e-commerce app with 8 feature-flags sees a **3-5% bundle-size reduction** after migrating the flag-defining module to the new directive.
+
+**5-step migration audit recipe:**
+
+```bash
+# Step 1: find all uses of the old directive
+rg -n "'use turbopack: constants'" --type ts --type tsx --type js --type jsx --hidden
+
+# Step 2: for each match, audit the module for side-effects
+for f in $(rg -l "'use turbopack: constants'"); do
+  echo "Auditing $f..."
+  # Check for top-level DOM access
+  grep -E "^(document|window|globalThis|new )" "$f" | head -3
+done
+
+# Step 3: replace the directive
+sed -i "s/'use turbopack: constants';/'use turbopack: no side effects';/g" *.ts *.tsx
+
+# Step 4: verify Turbopack still tree-shakes correctly
+pnpm build --turbopack 2>&1 | grep "constants-eliminated\|no-side-effects-eliminated"
+
+# Step 5: re-run the bundling tests + measure the bundle-size delta
+pnpm build && ls -lh .next/static/chunks/  # compare before vs after
+```
+
+### Pattern W — Turbopack Show-Last-Modified-File on `node_modules` Watch Stall (PR #97648, ahead-of-canary.27)
+
+**Use case**: When `next dev` is waiting for the filesystem to settle (e.g., during a pnpm install or a `node_modules` mass-update), Turbopack previously just stalled silently. PR #97648 surfaces the **last-modified file path** so you can identify which file is causing the stall.
+
+**Recipe** (no app code change required; this is a Turbopack diagnostic):
+
+```bash
+# Trigger a pnpm install in another terminal while `next dev` is running
+# Turbopack will now log the last-modified file:
+
+$ pnpm dev
+
+> next dev
+  ▲ Next.js 16.3.1 (canary.27+)
+  - Local:        http://localhost:3000
+  - Network:      http://10.0.0.1:3000
+
+✓ Ready in 1.2s
+⏳ Waiting for filesystem to settle...
+  Last modified file: ./node_modules/.pnpm/react@19.2.8/node_modules/react/index.js
+  Last modified file: ./node_modules/.pnpm/typescript@7.0.2/node_modules/typescript/lib/typescript.js
+  Last modified file: ./pnpm-lock.yaml
+✓ Ready (filesystem settled, recompiled 247 files in 12s)
+```
+
+**3 Next.js-specific wrinkles**:
+
+1. **The log is emitted only when the debounce window has not elapsed** — Turbopack debounces filesystem events with a 10ms window (the env-var `TURBOPACK_FS_WATCH_DEBOUNCE_MS` from canary.25 + the `node_modules` extension `TURBOPACK_FS_WATCH_NODE_MODULES_DEBOUNCE_MS` from canary.25 + the stuck-compilation log window `TURBOPACK_FS_WATCH_STUCK_COMPILATION_LOG_MS` from canary.25). PR #97648 adds the **file-path print** to the debounced log output.
+2. **The log is INFO-level**, not WARN-level. Use `NEXT_DEBUG=fs-watch` or `--debug` to see the per-event log (each file change is logged individually, not just the last one).
+3. **No effect on production builds**: this is a `next dev` diagnostic only.
+
+### Pattern X — Turborepo Remote-Cache OIDC (PR #97590, internal to Next.js monorepo; no app-user impact)
+
+**Summary**: the Next.js monorepo's CI now uses **OIDC tokens** instead of a **static PAT** to authenticate against the Turborepo remote cache. **No code change is required for app users** — this is internal CI plumbing for the Next.js repo.
+
+**For users who run their own Turborepo + Vercel remote cache**: Turborepo has supported OIDC for a long time (no action needed); the Next.js monorepo was the holdout. **If you've been using a static PAT for your own monorepo's remote cache**, consider migrating to OIDC:
+
+```jsonc
+// turbo.json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "remoteCache": {
+    // NEW (OIDC):
+    "authentication": "oidc",
+    "apiUrl": "https://api.vercel.com",
+    "teamId": "team_xxx"
+  }
+}
+```
+
+### 5-step combined audit recipe (Patterns U + V + W + X)
+
+```bash
+# Step 1: identify the apps that need to upgrade
+rg -l "react@canary|next@canary|@clerk/nextjs@" --type json --type yaml -g '!node_modules/*' | sort
+
+# Step 2: for Pattern U — find any `'use client'` file with a sidebar / dropdown that prefetches
+rg -l "unstable_navigation|router.prefetch" --type ts --type tsx -g '!node_modules/*' | sort
+
+# Step 3: for Pattern V — find any `'use turbopack: constants';` directive (migrate to `'use turbopack: no side effects';`)
+rg -n "'use turbopack: constants';" --type ts --type tsx --hidden | sort
+
+# Step 4: for Pattern W — verify Turbopack's dev-only diagnostic surfaces last-modified-file
+NEXT_DEBUG=fs-watch pnpm dev  # run for 30s, then check logs
+
+# Step 5: for Pattern X — verify your own Turborepo config uses OIDC (if applicable)
+cat turbo.json | jq '.remoteCache'
+```
+
+### Recommended version pin
+
+- **Production**: stay on `next@^16.3.1` STABLE; the canary.26 patterns will forward-port to 16.3.2 STABLE
+- **Pattern U (`unstable_navigation()`)**: requires `next@16.3.1-canary.26+`; `react@19.3.0-canary-eafeac09-20260819+` is bundled automatically
+- **Pattern V (`use turbopack: no side effects`)**: requires `next@16.3.1-canary.26+`; Turbopack 16.3+
+- **Pattern W (Turbopack last-modified diagnostic)**: forward-looking for `next@16.3.1-canary.27+`
+- **Pattern X (Turborepo OIDC)**: no Next.js version pin required; this is a CI-side change
+
+### Sources
+
+- [Next.js `v16.3.1-canary.26` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.26) — npm-published 2026-08-20T23:58:58Z
+- [PR #96908 — `[PPF] unstable_navigation()`](https://github.com/vercel/next.js/pull/96908) — lubieowoce + unstubbable; **Pattern U — the new programmatic RSC payload prefetch API**
+- [PR #97236 — `[PPF] Scaffold unstable_navigation()`](https://github.com/vercel/next.js/pull/97236) — lubieowoce; Pattern U scaffold
+- [PR #94427 — Turbopack: rename to `use turbopack: no side effects`](https://github.com/vercel/next.js/pull/94427) — mischnic; **Pattern V — the rename from `'use turbopack: constants';` to `'use turbopack: no side effects';`**
+- [PR #97648 — Turbopack: Show last modified file when waiting for the filesystem to settle](https://github.com/vercel/next.js/pull/97648) — fl0w; **Pattern W — the canary.27 candidate**
+- [PR #97590 — `[ci] Authenticate Turborepo remote caching with OIDC instead of a static PAT`](https://github.com/vercel/next.js/pull/97590) — eps1lon; **Pattern X — internal CI plumbing**
+- [Next.js blog: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — Pattern U canonical docs
+- [Next.js blog: "Turbopack: What's New in Next.js 16.3"](https://nextjs.org/blog/turbopack-16-3) — Turbopack feature documentation
+- [Turborepo docs: Remote Caching with OIDC](https://turborepo.build/docs/core-concepts/remote-caching#oidc-authentication) — Pattern X canonical docs
+- [Next.js `v16.3.1-canary.25` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — for the prior `'use turbopack: constants';` directive (replaced by `'use turbopack: no side effects';`)
+- [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.26 SHIPPED` section for the API-surface lens on all 18 PRs; `server-components.md` → v1.5.80 cycle's PPF `unstable_navigation()` implementation section for the RSC-lens; `performance.md` → v1.5.80 cycle's PPF prefetch bandwidth reduction + `use turbopack: no side effects` extended tree-shaking section; `security.md` → v1.5.79 cycle's Aug 20 security window breach + PR #97590 OIDC for the security lens

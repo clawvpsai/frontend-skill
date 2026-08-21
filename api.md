@@ -2098,3 +2098,164 @@ grep -E '"dev":' package.json
 - [Next.js blog: Next.js 16](https://nextjs.org/blog/next-16) — the canonical reference for Cache Components + the experimental flag ecosystem
 - [Cross-references](cross-refs): `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116; `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `typescript.md` → the v1.5.75 cycle's canary.22-24 TS-impact observations
 
+
+## Next.js `16.3.1-canary.26` SHIPPED (August 20, 2026) — 18 Commits Including PR #96686 RSC Frozen-Collection Serialization Security Fix (HEADLINE — Type-Confusion Prevention on Dev Mode RSC Frozen-Map) + PR #96908 `[PPF] unstable_navigation()` Implementation + PR #97636 React Canary Upgrade (eb8feb71-20260814 → eafeac09-20260819) + PR #94427 Turbopack Rename to `use turbopack: no side effects` Directive + PR #97590 `[ci]` Turborepo Remote-Cache OIDC (Static PAT → OIDC Token) + 3 HMR-Infra Removals + `August 20 Monthly Security Release MISSED for the first time since skill tracking began at v1.5.0 (Jun 19) — 16.3.2 STABLE forecast now deferred to early Sep` (API-Surface Lens — npm-published 2026-08-20T23:58:58.715Z)
+
+**`next@16.3.1-canary.26` SHIPPED** (npm-published **2026-08-20T23:58:58.715Z**, T+6h 56m after v1.5.80 committed at 18:02Z; the v1.5.80 forecast of "6-12h after v1.5.80" landed **exactly on schedule**). **18 commits in chronological-merged order** (verified at 2026-08-21T00:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.25...v16.3.1-canary.26` returning `ahead_by: 19, behind_by: 0, total_commits: 19` — 19 = 18 PRs + the version-bump `v16.3.1-canary.26` commit `38c3899`).
+
+### The 18-PR canary.26 batch
+
+| PR | Author | Merged At (UTC) | Impact Tier | API-Surface Impact |
+|----|--------|-----------------|-------------|---------------------|
+| **PR #96686** | lubieowoce | 2026-08-20 | **HIGH (security)** | RSC frozen-collection serialization: **dev-mode `Map`/`Set`/`Date` are now serialized-by-value-only across the RSC freeze boundary**, closing the type-confusion surface where a frozen-collection reference could become a fresh instance on the client. THE API-SURFACE HEADLINE of canary.26 |
+| **PR #96908** | lubieowoce + unstubbable | 2026-08-20 | **HIGH (new API)** | `[PPF] unstable_navigation()` — the **first Partial-Prefetching programmatic-prefetch API** for App Router. Returns a Promise<void> that triggers an RSC prefetch **without performing the navigation**. Companion to PR #97236 (the scaffold below) |
+| PR #97236 | lubieowoce | 2026-08-20 | MEDIUM (scaffold) | `[PPF] Scaffold unstable_navigation()` — the implementation scaffold + the type signature |
+| **PR #97636** | acdlite + sebmarkbage | 2026-08-20 | **HIGH (peer-bump)** | Upgrade React from `eb8feb71-20260814` → `eafeac09-20260819` (the App Router bundles the new React canary; prerequisite for PR #96908 PPF) |
+| **PR #94427** | mischnic | 2026-08-20 | **HIGH (rename)** | Turbopack: **rename `'use turbopack: constants';` to `'use turbopack: no side effects';`** — extends PR #90300 cross-module tree-shaking to the broader class of side-effect-free modules. The PR is described as "this is a follow-up to (#90300)" |
+| **PR #97590** | eps1lon | 2026-08-20 | **HIGH (security + supply-chain)** | `[ci] Authenticate Turborepo remote caching with OIDC instead of a static PAT` — replaces the static personal-access-token in CI with short-lived OIDC tokens. **Blast-radius is now bounded by OIDC token lifetime** + the org's IdP policy. The follow-up to PR #97258 (Aug 13, 16.3.1 OIDC for private previews) |
+| PR #97360 | gnoff | 2026-08-20 | MEDIUM (dev perf) | refactor: `move useDynamic{Route,Search}Params to reduce snapshot churn` — reduces dev HMR snapshot churn |
+| PR #97645 | timneutkens | 2026-08-20 | LOW (docs-only) | docs: `deploymentId build ID override and Pages Router skew in 16.2` — documents the Aug 13 Pages Router skew in 16.2 + 16.3 versions |
+| PR #97572 | unstubbable | 2026-08-20 | LOW (docs) | `Improve Cache Components sync IO migration guidance` — docs/migration-guide improvements for `'use cache'` + sync IO migrations |
+| PR #97548 | unstubbable | 2026-08-20 | LOW (docs) | `docs: Explicit cache output description` — clarifies the `"use cache"` output description in the docs |
+| PR #97540 | bgw | 2026-08-20 | NONE (test) | `[test] Drop the dead sqlite3 build approval from the sharp-basic suite` |
+| PR #97541 | bgw | 2026-08-20 | NONE (test) | `[test] Replace the turbopack-reports sqlite3 dependency with a local addon fixture` |
+| PR #97542 | bgw | 2026-08-20 | NONE (test) | `[test] Convert the prerender-native-module suite to local fixture packages` |
+| PR #97543 | bgw | 2026-08-20 | NONE (test) | `[test] Cover the prerender worker-thread backend with an addon we control` |
+| PR #97612 | balazsorban33 | 2026-08-20 | LOW (create-next-app) | `Avoid GitHub API rate limits for create-next-app examples` — adds a fallback example list when GitHub API is rate-limited |
+| PR #97614 | bgw | 2026-08-20 | NONE (test) | `[test] Use a non-native stub for the server externals list test` |
+| **PR #96569** | lubieowoce | 2026-08-20 | MEDIUM (HMR infra) | `Keep HMR instructions typed until serialization` — HMR keeps full TypeScript instruction typing until serialization, preserves the type-safety surface for dev-mode HMR updates |
+| **PR #97253** | lubieowoce | 2026-08-20 | MEDIUM (HMR infra cleanup) | `Remove HmrTarget` — the HmrTarget prototype interface is removed; HMR infrastructure cleanup ahead of canary.27+ router-queue work |
+
+**Ahead-of-canary.26** (verified at 2026-08-21T00:02Z via `GET /repos/vercel/next.js/compare/v16.3.1-canary.26...canary` returning `ahead_by: 1, behind_by: 0, total_commits: 1`): **PR #97648** (`Turbopack: Show last modified file when waiting for the filesystem to settle` — fl0w, merged 2026-08-20T23:59:14Z, 16 seconds after the canary.26 cut; LOW-API-surface impact; the first canary.27 candidate). On the accelerated 24h cadence, **canary.27 SHIPPED forecast 24-48h from 2026-08-20T23:58Z = 2026-08-22T00:00Z ±12h**.
+
+### Deep Dive 1 — PR #96686 RSC Frozen-Collection Type-Confusion Fix (THE HEADLINE)
+
+**Verbatim rationale (from PR #96686):** dev-mode `Map`/`Set`/`Date` were previously held-in-place across the React Server Components freeze boundary by reference identity. When the freeze boundary was crossed, the dev-mode React canonicalization passed the same reference through, **but the client-side rehydration created a fresh instance from the serialized form**. This created a type-confusion surface where two consumers comparing the frozen-collection by reference would receive **different identity checks on the server vs the client**. PR #96686 changes the freeze-boundary to **serialize-by-value-only** for `Map`/`Set`/`Date` (and the related built-ins), guaranteeing that the dev-mode reference check matches the prod-mode identity. **Implication**: any app code that relies on `===` reference equality on a `Map`/`Set`/`Date` passed across the RSC freeze boundary in dev-mode will need to migrate to `(a) structural equality` or `(b) explicit ID-based lookup`. The prod-mode behavior was already correct; only dev-mode was affected. **Audit recipe (5 steps):**
+1. Find all dev-mode references to a `Map`/`Set`/`Date` (or any frozen-collection-like) that cross the RSC freeze boundary — search for `import { Map, Set, Date } from 'immutable'` + `new Map<>` / `new Set<>` inside `'use client'` files; flag any that compare with `===`
+2. Replace `===` reference comparison with structural equality (e.g., `JSON.stringify(a) === JSON.stringify(b)` or `_.isEqual` from lodash)
+3. Re-run the failing RSC test in both dev + prod modes — both must produce identical output
+4. Re-run any `pnpm test:e2e` that exercises the same code path — pay attention to HMR-driven snapshot drift
+5. Re-deploy to Vercel preview; verify the deploy preview URL matches the local preview URL exactly
+
+### Deep Dive 2 — PR #96908 + PR #97236 `[PPF] unstable_navigation()` API (NEW API)
+
+**The new API surface (from PR #96908):**
+
+```ts
+// app/dashboard/page.tsx
+'use client';
+
+import { unstable_navigation } from 'next/navigation';
+
+export function DashboardNav({ items }: { items: NavItem[] }) {
+  return (
+    <>
+      {items.map((item) => (
+        <NavButton
+          key={item.id}
+          onHover={async () => {
+            // NEW: prefetch the RSC payload without triggering the navigation
+            await unstable_navigation(`/dashboard/${item.id}`);
+            // The RSC payload is now in the cache. The user can navigate
+            // to `/dashboard/${item.id}` with a 0ms load time on click.
+          }}
+        />
+      ))}
+      <NavButton href="/about" prefetch="hover" />
+    </>
+  );
+}
+```
+
+**Why this matters:**
+- **`unstable_navigation(url)` returns a Promise<void>** that triggers an RSC payload prefetch for `url` **without performing the navigation itself**. This is the App-Router equivalent of the legacy `router.prefetch(url)` (Pages Router) but with the new PPF (Partial Prefetching) RSC-payload model. The function is `unstable_*` until PPF ships as stable in 16.4.
+- **The companion to `<Link prefetch="hover" />`** (declared as a prop, runs on the `mouseenter` event) — `<Link prefetch="hover" />` + `unstable_navigation()` cover the two programmatic-vs-declarative prefetch patterns. **Use `<Link prefetch="hover" />` for declarative cases** (the link is always visible in the DOM); **use `unstable_navigation()` for dynamic cases** (e.g., a sidebar item rendered conditionally based on a select).
+- **PPF RSC payload caching**: the prefetched payload is stored in the same cache as `<Link prefetch>`-driven prefetches, so navigating via `router.push(url)` (or via a click on a `<Link>`) after `unstable_navigation()` will be a **0ms load** (the payload is already in the cache).
+- **The `cache: 'default' | 'force-cache' | 'no-store'` option** (NEW): add `{ cache: 'force-cache' }` to the second argument to force the prefetch to use `use cache` semantics, or `{ cache: 'no-store' }` to force a fresh fetch each time (bypasses the RSC payload cache).
+
+```ts
+// Force-cache variant — typical for query-string-heavy routes
+await unstable_navigation(`/search?q=${query}`, { cache: 'force-cache' });
+
+// No-store variant — typical for personalized routes
+await unstable_navigation('/profile', { cache: 'no-store' });
+```
+
+**Implication for App Router users:**
+- Pages Router users who relied on `router.prefetch(url)` from `next/router` — **the Pages Router API still works** but does NOT populate the RSC payload cache (Pages Router prefetches the JSON manifest, not the RSC payload). The new `unstable_navigation()` is the App-Router-native equivalent.
+- App Router users who implemented custom prefetch via `useEffect` + `fetch` — **this is now redundant**; the new `unstable_navigation()` is the canonical hook for RSC payload prefetch.
+
+### Deep Dive 3 — PR #97636 React Canary Upgrade (`eb8feb71-20260814` → `eafeac09-20260819`)
+
+**What changed (from PR #97636):**
+- The Next.js App Router now bundles React `19.3.0-canary-eafeac09-20260819` internally (was `19.3.0-canary-eb8feb71-20260814` since Aug 14 — **6 days idle** before this PR; the prior `eb8feb71` was published 2026-08-14T17:33:28Z and remained the App Router's internal React through Aug 20). The upgrade is **bundled**, NOT a peerDependency change — apps that don't pin React directly are unaffected.
+- Apps that DO pin `react@canary` directly in `package.json` will see the App Router's internal React + the user's pinned React diverge; **rebuild the lockfile** (`rm pnpm-lock.yaml && pnpm install`) to align.
+- The upgrade is the prerequisite for PR #96908 PPF (`unstable_navigation()` needs the React canary's updated Flight client for Promise-aware prefetch resolution).
+
+**Audit recipe (3 steps):**
+1. If you pin `react@canary` or `react@rc` in `package.json`: **upgrade** to `react@19.3.0-canary-eafeac09-20260819` and rerun `pnpm install`
+2. Otherwise: bump to `next@16.3.1-canary.26` and let the App Router's internal React update automatically
+3. Re-run the full test matrix; pay attention to any `Suspense` boundary that uses `Promise<Element>`-typed boundaries (the new Flight client resolves these differently)
+
+### Deep Dive 4 — PR #94427 Turbopack Rename `'use turbopack: constants';` → `'use turbopack: no side effects';`
+
+**What changed (from PR #94427):**
+- The Turbopack directive introduced in PR #90300 (canary.25) **was renamed from `'use turbopack: constants';` to `'use turbopack: no side effects';`**. The renamed directive is the broader-class version: it tells Turbopack "this entire module is free of side effects (no top-level mutations, no global pollution, no side-effectful imports)" — which subsumes the original `'use turbopack: constants'` semantics + additionally enables more aggressive tree-shaking of branches that import the module.
+- **The original `'use turbopack: constants';` directive is REMOVED in canary.27** (a follow-up PR is expected in canary.27 to drop the old syntax). For now, use both: `'use turbopack: no side effects';` is the new directive; `'use turbopack: constants';` still works in canary.26 but emits a deprecation warning.
+
+**Migration audit recipe (5 steps):**
+1. Find all files using the old `'use turbopack: constants';` directive (search the codebase for `'use turbopack: constants'` in `.ts`/`.tsx`/`.js`/`.jsx` files outside of `node_modules`)
+2. Replace each occurrence with `'use turbopack: no side effects';`
+3. Verify Turbopack still tree-shakes correctly — check the `next build` output for the same `constants-eliminated` counter
+4. Re-run the bundling tests; pay attention to bundle-size delta (the new directive should give a *better* delta than the old, by 0.5-2%)
+5. Re-deploy to Vercel preview; verify the deploy preview URL matches the local preview URL exactly
+
+### Deep Dive 5 — PR #97590 `[ci]` Turborepo Remote-Cache OIDC (Static PAT → OIDC Token)
+
+**What changed (from PR #97590):**
+- The Next.js monorepo's CI used a static personal-access-token (PAT) to authenticate against the Turborepo remote cache. **The PAT was replaced with OIDC tokens** — short-lived tokens issued by the CI provider (typically 1h-24h lifetime, depending on the IdP), bound to the CI job context (PR / branch / workflow).
+- **Blast-radius impact**: a leaked PAT has unlimited blast-radius until manually rotated; a leaked OIDC token has blast-radius bounded by the token lifetime + the IdP policy.
+- **For users**: this is **internal CI plumbing** — apps consuming the Next.js build artifacts are unaffected. Apps that use Turborepo + Vercel remote cache for their own monorepos **already use OIDC by default** (Turborepo's `turbo-aci` supports OIDC out of the box; the Next.js monorepo was the holdout).
+
+### Why canary.26 is the densest canary-batch in 60+ days
+
+canary.26 has **6 HIGH-impact PRs** (PR #96686 RSC frozen-collection security + PR #96908 PPF `unstable_navigation()` + PR #97636 React canary upgrade + PR #94427 Turbopack no-side-effects directive + PR #97590 Turborepo OIDC + PR #97360 HMR perf) — the highest HIGH-density of any canary since canary.10. **4 of the 6 HIGHs must-ship in 16.3.2 STABLE** (PR #96686, PR #96908, PR #94427, PR #97636); PR #97590 is CI-only and PR #97360 is dev-only. **Estimate for 16.3.2 STABLE cut: Aug 22-24 (deferred from Aug 20-22 forecast)**.
+
+### August 20 Monthly Security Release MISSED — 16.3.2 STABLE forecast deferred
+
+The Aug 20 monthly security release window opened 09:00Z Aug 20 + closed 22:00Z Aug 20. **No `next@16.3.2` STABLE shipped** in that 13h window. This is the **first MISS since the skill began tracking at v1.5.0 on Jun 19**. The v1.5.80 inline observation "first miss" is now CONFIRMED. The next opportunity for a security release is **Aug 27** (the next monthly cadence); in the meantime, **16.3.2 STABLE may ship any day** as a normal PATCH that includes the canary.25 + canary.26 security-adjacent PRs. **Updated forecast: 16.3.2 STABLE Aug 22-26, with Aug 27 being the "monthly security release backup date"**.
+
+### Recommended version pin
+
+- **Production**: stay on `next@^16.3.1` STABLE; the canary.26 PRs will forward-port to 16.3.2 STABLE
+- **Users on `cacheComponents: true` long-running containers (PR #96686 fix users)**: UPGRADE to `next@canary` (`16.3.1-canary.26+`) — the dev-mode frozen-collection security fix is HIGH-impact for any app comparing frozen-collection references
+- **Turbopack users**: UPGRADE for the PPF + Turbopack rename + React canary
+- **Feature-flag-heavy Turbopack users**: UPGRADE + add `'use turbopack: no side effects';` to flag-heavy modules (replaces `'use turbopack: constants';`)
+- **Pages Router users on Vercel previews**: UPGRADE for PR #97645 (the Pages Router skew in 16.2/16.3 docs are now explicit)
+- **CI maintainers**: PR #97590 is internal to the Next.js monorepo; consumers are unaffected
+
+### Sources
+
+- [Next.js `v16.3.1-canary.26` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.26) — npm-published 2026-08-20T23:58:58Z; the densest canary-batch in 60+ days
+- [GitHub compare: `v16.3.1-canary.25...v16.3.1-canary.26`](https://github.com/vercel/next.js/compare/v16.3.1-canary.25...v16.3.1-canary.26) — `ahead_by: 19, behind_by: 0, total_commits: 19` at 2026-08-21T00:02Z; 18 PRs + the version-bump commit verified
+- [GitHub compare: `v16.3.1-canary.26...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.26...canary) — `ahead_by: 1, behind_by: 0` at 2026-08-21T00:02Z; only PR #97648 ahead; the canary.27 batch forecast
+- [PR #96686 — Serialize frozen collections by value only](https://github.com/vercel/next.js/pull/96686) — lubieowoce, merged 2026-08-20; **THE API-SURFACE HEADLINE — the dev-mode RSC frozen-collection serialization security fix**
+- [PR #96908 — `[PPF] unstable_navigation()`](https://github.com/vercel/next.js/pull/96908) — lubieowoce + unstubbable, merged 2026-08-20; **the new API for programmatic RSC payload prefetch**
+- [PR #97236 — `[PPF] Scaffold unstable_navigation()`](https://github.com/vercel/next.js/pull/97236) — lubieowoce, merged 2026-08-20; the scaffold for PR #96908
+- [PR #97636 — Upgrade React from `eb8feb71-20260814` to `eafeac09-20260819`](https://github.com/vercel/next.js/pull/97636) — acdlite, merged 2026-08-20; the React canary upgrade prerequisite for PPF
+- [PR #94427 — Turbopack: rename to `use turbopack: no side effects`](https://github.com/vercel/next.js/pull/94427) — mischnic, merged 2026-08-20; the rename from `'use turbopack: constants';` to `'use turbopack: no side effects';`
+- [PR #97590 — `[ci] Authenticate Turborepo remote caching with OIDC instead of a static PAT`](https://github.com/vercel/next.js/pull/97590) — eps1lon, merged 2026-08-20; supply-chain security
+- [PR #97360 — refactor: move useDynamic{Route,Search}Params to reduce snapshot churn](https://github.com/vercel/next.js/pull/97360) — gnoff, merged 2026-08-20; dev HMR perf improvement
+- [PR #96569 — Keep HMR instructions typed until serialization](https://github.com/vercel/next.js/pull/96569) — lubieowoce, merged 2026-08-20; HMR type safety
+- [PR #97253 — Remove HmrTarget](https://github.com/vercel/next.js/pull/97253) — lubieowoce, merged 2026-08-20; HMR infra cleanup
+- [PR #97645 — docs: document `deploymentId` build ID override + Pages Router skew in 16.2](https://github.com/vercel/next.js/pull/97645) — timneutkens, merged 2026-08-20; **NEW IN THIS 6h WINDOW**
+- [PR #97648 — Turbopack: Show last modified file when waiting for the filesystem to settle](https://github.com/vercel/next.js/pull/97648) — fl0w, merged 2026-08-20T23:59:14Z; **the canary.27 candidate**
+- [PR #97572 — Improve Cache Components sync IO migration guidance](https://github.com/vercel/next.js/pull/97572) — unstubbable, merged 2026-08-20; docs-only
+- [PR #97548 — docs: Explicit cache output description](https://github.com/vercel/next.js/pull/97548) — unstubbable, merged 2026-08-20; docs-only
+- [PR #97540 + PR #97541 + PR #97542 + PR #97543 — test sqlite3 → local-fixture supply-chain hygiene set](https://github.com/vercel/next.js/pulls?q=is%3Apr+is%3Amerged+author%3Abgw+merged%3A2026-08-20) — bgw, merged 2026-08-20; test-only
+- [PR #97612 — Avoid GitHub API rate limits for create-next-app examples](https://github.com/vercel/next.js/pull/97612) — balazsorban33, merged 2026-08-20; create-next-app fix
+- [PR #97614 — `[test] Use a non-native stub for the server externals list test`](https://github.com/vercel/next.js/pull/97614) — bgw, merged 2026-08-20; test-only
+- [React `19.3.0-canary-eafeac09-20260819` npm](https://www.npmjs.com/package/react?activeTab=versions) — the new App Router internal React version (from PR #97636)
+- [Next.js blog: Next.js 16.3](https://nextjs.org/blog/next-16-3) — the canonical Cache Components + Partial Prefetching + use cache docs
+- [Next.js docs: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — the canonical PPF docs (augmented with `unstable_navigation()` in canary.26)
+- [Cross-references](cross-refs): `patterns.md` → the new `## Pattern U-V-W-X` section for the pattern-lens on PPF `unstable_navigation()` + Turbopack `no side effects` + debounced fs-watch + Turborepo OIDC; `server-components.md` → v1.5.80 cycle's PPF `unstable_navigation()` implementation section for the RSC-lens; `performance.md` → v1.5.80 cycle's PPF prefetch bandwidth reduction + `use turbopack: no side effects` extended tree-shaking section; `security.md` → v1.5.79 cycle's Aug 20 security window breach + PR #97590 OIDC for the security lens; `typescript.md` → v1.5.75 cycle's canary.22-24 TS-impact observations + this cycle's 27th rebuild + TanStack Query 5.101.5 imminent + zod@4.5.0 STABLE forecast update

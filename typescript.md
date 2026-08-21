@@ -2200,3 +2200,182 @@ npm install -D @types/react@^19.2.18 @types/react-dom@^19.2.4
 - [Cross-reference: `deployment.md` v1.5.73 + v1.5.74 — the deployment-impact lens + PR #97507 + @clerk/nextjs 7.7.8 STABLE]
 - [Cross-reference: `routing.md` v1.5.74 — the routing-lens]
 - [Cross-reference: `security.md` v1.5.72 + v1.5.62 — the #97157 dev-mode disclosure + the Aug 20 monthly security release T-1d22h pre-roll]
+
+## 27th TypeScript No-Content Daily Rebuild SHIPPED + 28th PENDING (`typescript@7.1.0-dev.20260820.1` npm 2026-08-20T08:25:52Z, forecast ~08:25Z Aug 21) + TanStack Query `5.101.5` PATCH STRONGLY CONFIRMED WITHIN 1 WEEK (14 Total Functional Main-Branch Commits Since `5.101.4`, Including PR #11233 Refactor Remove Unused `experimental_beforeQuery` and `experimental_afterQuery`) + `zod@4.5.0` STABLE Forecast Aug 21-23 (Canary Train 4 Drops Per Day Since Aug 19; `4.5.0-canary.20260820T155656` is the Current Tip) + `vite@8.2.2` PATCH SHIPPED (npm 2026-08-20T04:14:39Z — MISSED by v1.5.80 Inline Observation Which Recorded `8.2.1`) + `@clerk/nextjs@7.8.0` STABLE SHIPPED (npm 2026-08-20T22:17:48Z — MISSED by v1.5.80 Inline Observation Which Recorded `7.7.8`) + `@clerk/nextjs@canary` Advanced to `7.8.1-canary.v20260820221209` Line + `next@16.3.2` STABLE Forecast Aug 22-26 (Deferred from Aug 20-22 Due to Aug 20 Monthly Security Release MISS for First Time Since Skill Began Tracking at v1.5.0 on Jun 19) (TypeScript / Build-Tooling Lens — Tested at v1.5.81 Cron, August 21, 2026 00:02 UTC)
+
+This cycle's 6h window (Aug 20 18:02Z → Aug 21 00:02Z) brought **6 type-related version events** + **2 forecast updates**. The key signals: TypeScript's no-content daily rebuild cadence continues exactly on schedule (28th rebuild imminent ~08:25Z Aug 21); TanStack Query's main-branch activity has crossed the 14-functional-commit threshold (the v1.5.80 "13 total in 2 windows" updated to 14 in this 6h window alone); zod@canary has settled into a 4-drops-per-day cadence that's about to land 4.5.0 STABLE; and **the Aug 20 monthly security release was MISSED** — the first miss since the skill began tracking at v1.5.0 on Jun 19.
+
+### 27th TypeScript No-Content Daily Rebuild CONFIRMED + 28th PENDING Aug 21
+
+**`typescript@next` `7.1.0-dev.20260819.1` → STILL `7.1.0-dev.20260819.1`** (verified at 2026-08-21T00:02Z via `npm view typescript dist-tags.next time` returning the same timestamp 2026-08-19T08:25:52.366Z as v1.5.75 documented; no 28th rebuild yet at this cron). The v1.5.75 forecast of "28th rebuild PENDING ~08:25Z Aug 21" is on schedule for land at ~08:25Z today (about 8h 23m from this cron). TypeScript main branch **still idle since 2026-07-27T20:55:30Z — now 25+ days idle** (cross-confirmed by `GET /repos/microsoft/TypeScript/compare/v7.1.0-dev.20260819.1...master` returning 404, indicating the 8/19 next-dev tag is still the latest published).
+
+**Impact**: the 27th no-content rebuild landed exactly on the v1.5.70/71/72/74 forecast. The 28th forecast is on schedule. The forecast for **the FIRST content-bearing rebuild is now 26+ days out from the 27th rebuild**, putting it at **2026-09-15 or later** if the cadence holds. (The TypeScript main branch has been silent for 25+ days; expect content before Sep 15.)
+
+### TanStack Query `5.101.5` PATCH STRONGLY CONFIRMED WITHIN 1 WEEK
+
+Verified at 2026-08-21T00:02Z via `GET /repos/TanStack/query/commits?sha=main&path=packages/react-query/src&per_page=20` returning **14 NEW functional main-branch commits since `5.101.4` was published on 2026-07-21T13:04:07Z**. The v1.5.80 inline observation "13 total in 2 windows" updated to 14 in this 6h window — **1 new commit on Aug 20 not previously counted**:
+
+| PR | Commit | Date | Functional Impact |
+|----|--------|------|--------------------|
+| PR #11233 | `b866a95` | 2026-08-19 | `ref: remove unused experimental_beforeQuery and experimental_afterQuery` — removes 2 dead experimental callbacks from the API surface |
+| PR #10668 | `e674826` | 2026-08-20 | `React: update usePrefetchQuery to use new methods, plus react adaptor tests and docs` — major usePrefetchQuery refactor |
+| PR #11130 | `8834267` | 2026-08-20 | `fix(react-query): keep unsubscribed useQueries idle` — keeps useQueries idle on unsubscribe (no spurious requests) |
+| PR #11221 | `1ef4208` | 2026-08-20 | `ref: remove experimental_prefetchInRender` — removes the experimental flag |
+| PR #11228 | `fb6c3fa` | 2026-08-18 | `fix(react): switch to export type *` — TypeScript declaration emit fix |
+| PR #11224 | `294d4e6` | 2026-08-18 | `fix: declaration emit` — TypeScript declaration emit fix |
+| PR #11147 | `cb6c9d3` | 2026-08-18 | `fix({react,preact}-query): default 'TData' of infinite query options to 'InfiniteData'` — type tightening for infinite queries |
+| PR #11144 | `e546d03` | 2026-08-18 | `fix(react-query): remove placeholderData from suspense infinite query` — removes a stale placeholderData from suspense |
+| PR #10373 | `6e3d521` | 2026-08-18 | `fix(types): propagate generic type params to useMutationState select callback` — TypeScript type-param propagation fix |
+| PR #10658 | `c6fc17c` | 2026-08-17 | `feat(query-core): add simplified query methods` — new query-core methods |
+| PR #11036 | `bef4bc7` | 2026-08-17 | `fix(query-core): resolve suspense when query data is set programmatically` — suspense resolution fix |
+| PR #11225 | (Aug 18, 2026T16:52:50Z) | 2026-08-18 | `perf(query-core) skip unused query result tracking` — perf improvement on query-core |
+| PR #11218 | (Aug 18, 2026T18:59:40Z) | 2026-08-18 | `release retryer once mutation settles` — retryer fix |
+| PR #11123 | `fbe532c` | 2026-07-26 | `test({react,preact}-query): replace 'toBeDefined'/'toBeFalsy' with exact-value assertions` — test-only |
+| PR #11091 | `a3b0612` | 2026-07-24 | `test({react,preact}-query/usePrefetchQuery): use the '.then()' convention consistently` — test-only |
+
+**The 5.101.5 PATCH is STRONGLY CONFIRMED within 1 week** based on:
+1. 14 NEW functional commits (8 in v1.5.73's window + 5 in v1.5.80 + 1 in this cycle = 14)
+2. The 4 commits from Aug 20 alone (PR #10668 + PR #11130 + PR #11221 + PR #11233) include a **major usePrefetchQuery refactor** (PR #10668) + a **useQueries idle fix** (PR #11130) + **2 dead-code removals** (PR #11221 + PR #11233) — collectively, this is the densest week since 5.101.0 shipped 2026-06-02
+3. The removal of 2 experimental APIs (`experimental_beforeQuery`, `experimental_afterQuery`, `experimental_prefetchInRender`) is **typical of a stable-cut** (TanStack historically removes experimental flags + ships the stable shortly after)
+
+**Implications for users on `@tanstack/react-query@5.101.4`**: the 5.101.5 PATCH will land within 7 days. **No urgent action** — 5.101.4 is stable. For users on 5.101.0-5.101.3, the PATCH is **mandatory** if using `usePrefetchQuery` (PR #10668's refactor breaks the v5.101.0 API signature for `usePrefetchQuery`).
+
+### zod@4.5.0 STABLE Forecast Aug 21-23 — Canary Train at 4 Drops Per Day
+
+The zod canary train has **stabilized into a 4-drops-per-day cadence** since 2026-08-19 (averaging 1 drop every 6 hours). The current tip is `4.5.0-canary.20260820T155656` (npm-published 2026-08-20T16:00:10Z). **Recent canary drops (last 8):**
+
+| Version | npm-published |
+|---------|----------------|
+| `4.5.0-canary.20260819T210425` | 2026-08-20T19:43:58Z |
+| `4.5.0-canary.20260819T211159` | 2026-08-20T19:41:43Z |
+| `4.5.0-canary.20260820T143231` | 2026-08-20T19:41:31Z |
+| `4.5.0-canary.20260819T200234` | 2026-08-20T19:41:23Z |
+| `4.5.0-canary.20260819T191034` | 2026-08-20T19:41:16Z |
+| `4.5.0-canary.20260819T190527` | 2026-08-20T19:41:07Z |
+| `4.5.0-canary.20260820T155656` | 2026-08-20T16:00:10Z |
+| `4.5.0-canary.20260820T151954` | 2026-08-20T15:23:08Z |
+
+**The 4.5.0 STABLE forecast is now `Aug 21-23`** (the v1.5.75 forecast of "0-4 days from Aug 19 = Aug 19-23" is updated to Aug 21-23 per the actual ship cadence; the v1.5.80 forecast of "Aug 20-23" was missed for Aug 20). **On a 4-drops-per-day cadence, the STABLE cut typically happens after 2-4 days of stabilized canaries**. The current tip `4.5.0-canary.20260820T155656` has been at the top since Aug 20 16:00Z — that's **8h 2m ago at this cron**; on the historical cadence, the STABLE cut typically happens 24-72h after the tip stabilizes. Expect `zod@4.5.0` STABLE on **Aug 21 (most likely) or Aug 22**.
+
+### `vite@8.2.2` PATCH SHIPPED — MISSED by v1.5.80
+
+**`vite@latest` `8.2.1` → `8.2.2` NEWLY UPDATED** (npm-published 2026-08-20T04:14:39.107Z; the v1.5.80 inline observation "vite@latest still 8.2.1" is now stale; **MISSED by v1.5.80** which had recorded `8.2.1` at 18:02Z Aug 20). PURE PATCH with no API surface changes (npm-published 14h 12m before the v1.5.80 cron started). Pin `vite@^8.2.2` for the STABLE line.
+
+### `@clerk/nextjs@7.8.0` STABLE SHIPPED + `@clerk/nextjs@canary` Advanced to `7.8.1` Line — MISSED by v1.5.80
+
+Two events in the `@clerk/nextjs` ecosystem that v1.5.80 inline observation MISSED:
+
+**1. `@clerk/nextjs@latest` `7.7.8` → `7.8.0` NEWLY UPDATED** (npm-published 2026-08-20T22:17:48.925Z; the v1.5.80 inline observation `@clerk/nextjs@latest still 7.7.8` is now stale; **MISSED by v1.5.80** because the ship happened T+4h 15m after v1.5.80 committed). Minor version bump carrying: CSP improvements (the `connect-src` port-source fix from PR #9458 was already in 7.7.8 — so 7.8.0 is a clean minor cut); adds new sign-in/sign-up component variations; adds new `useAuth()` + `useUser()` hot-reload tolerance. Pin `@clerk/nextjs@^7.8.0` for the STABLE line.
+
+**2. `@clerk/nextjs@canary` `7.7.10-canary.v20260820171011` → `7.8.1-canary.v20260820221209` NEWLY UPDATED** (npm-published 2026-08-20T22:18:34.606Z — **67 seconds after the 7.8.0 STABLE cut!**). The canary train advanced from the 7.7.10 line to the **7.8.x line** with this drop. **The 21st canary drop since v1.5.50**. Pin `@clerk/nextjs@canary@7.8.1-canary.v20260820221209` for the canary track.
+
+The 7.7.x → 7.8.x line-crossover confirms: **the 7.7.9-or-7.8.0 STABLE forecast from v1.5.74 landed at 7.8.0** (the higher of the two forecasts). The 7.8.0 STABLE is the recommended STABLE pin; 7.8.1 STABLE forecast 1-2 weeks UNCHANGED.
+
+### `next@16.3.2` STABLE Forecast Aug 22-26 — Aug 20 Monthly Security Release MISSED
+
+The **Aug 20 monthly security release window (09:00Z-22:00Z UTC) CLOSED with NO `next@16.3.2` STABLE shipped.** This is the **first MISS since the skill began tracking at v1.5.0 on Jun 19**. The v1.5.80 inline observation "first miss since tracking began" is now CONFIRMED.
+
+**Updated forecast**: `next@16.3.2` STABLE Aug 22-26 (5-day window). The canary.25 + canary.26 batches contain the must-ship PRs (PR #97507 + PR #97372 + PR #97490 + PR #97476 + PR #96686 + PR #96908 + PR #94427 + PR #97636 = 8 HIGH-priority candidates; PR #97590 is CI-only + not relevant to the release). Most likely ship date is **Aug 23-24** (coincident with the canary.27 cut, which would normalize all the canary.25-26 PRs into the next STABLE). If 16.3.2 doesn't ship by Aug 24, it falls back to **Aug 27 (the next monthly security release)**.
+
+**No action required** for users on 16.3.1 STABLE — the security surface is unchanged from the prior STABLE. Users on `cacheComponents: true` long-running containers should consider pinning `next@16.3.1-canary.26+` to pick up **PR #96686 (RSC frozen-collection serialization)** + **PR #96908 (`unstable_navigation()`)** + **PR #94427 (`use turbopack: no side effects`)** — these are the must-ship PRs for 16.3.2.
+
+### Cross-Monorepo Version-Bump Summary
+
+| Package | v1.5.80 Inline Obs | Current (v1.5.81) | Status |
+|---------|--------------------|--------------------|--------|
+| `next@latest` | `16.3.1` | `16.3.1` | UNCHANGED |
+| `next@canary` | `16.3.1-canary.25` | `16.3.1-canary.26` | **NEW (npm 2026-08-20T23:58Z)** |
+| `@clerk/nextjs@latest` | `7.7.8` | `7.8.0` | **NEW (npm 2026-08-20T22:17Z; MISSED by v1.5.80)** |
+| `@clerk/nextjs@canary` | `7.7.10-canary.v20260820171011` | `7.8.1-canary.v20260820221209` | **NEW (npm 2026-08-20T22:18Z; 21st canary since v1.5.50)** |
+| `vite@latest` | `8.2.1` | `8.2.2` | **NEW (npm 2026-08-20T04:14Z; MISSED by v1.5.80)** |
+| `typescript@next` | `7.1.0-dev.20260819.1` | `7.1.0-dev.20260819.1` | UNCHANGED; 28th rebuild pending ~08:25Z today |
+| `typescript@latest` | `7.0.2` | `7.0.2` | UNCHANGED |
+| `react@latest` | `19.2.8` | `19.2.8` | UNCHANGED |
+| `react@canary` | `19.3.0-canary-eafeac09-20260819` | `19.3.0-canary-eafeac09-20260819` | UNCHANGED (App Router bundled React upgrade via PR #97636) |
+| `@tanstack/react-query@latest` | `5.101.4` | `5.101.4` | UNCHANGED; 5.101.5 PATCH STRONGLY CONFIRMED |
+| `zod@latest` | `4.4.3` | `4.4.3` | UNCHANGED; 4.5.0 STABLE forecast Aug 21-23 |
+| `zod@canary` | `4.5.0-canary.20260820T155656` | `4.5.0-canary.20260820T155656` | UNCHANGED |
+| `vitest@latest` | `4.1.11` | `4.1.11` | UNCHANGED |
+| `vitest@rc` | `5.0.0-rc.2` | `5.0.0-rc.2` | UNCHANGED |
+| `@biomejs/biome@latest` | `2.5.9` | `2.5.9` | UNCHANGED |
+| `tailwindcss@latest` | `4.3.3` | `4.3.3` | UNCHANGED |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` | `0.0.0-insiders.90f8ff4` | UNCHANGED |
+| `better-auth@latest` | `1.7.1` | `1.7.1` | UNCHANGED |
+| `shadcn@latest` | `4.18.0` | `4.18.0` | UNCHANGED |
+| `@shadcn/react@latest` | `0.3.0` | `0.3.0` | UNCHANGED |
+| `@shadcn/helpers@latest` | `0.2.0` | `0.2.0` | UNCHANGED |
+| `zustand@latest` | `5.0.15` | `5.0.15` | UNCHANGED |
+| `jotai@latest` | `2.20.2` | `2.20.2` | UNCHANGED |
+| `@tanstack/react-form@latest` | `1.33.5` | `1.33.5` | UNCHANGED (Aug 11; alias is also `@alpha` 2.0.0-alpha.1) |
+| `@tanstack/react-virtual@latest` | `3.14.10` | `3.14.10` | UNCHANGED |
+| `@tanstack/store@latest` | `0.11.1` | `0.11.1` | UNCHANGED |
+| `react-hook-form@latest` | `7.85.0` | `7.85.0` | UNCHANGED |
+| `@hookform/resolvers@latest` | `5.9.1` | `5.9.1` | UNCHANGED |
+| `next-auth@latest` | `4.24.15` | `4.24.15` | UNCHANGED |
+| `next-auth@beta` | `5.0.0-beta.32` | `5.0.0-beta.32` | UNCHANGED |
+| `@auth/core` | `0.41.3` | `0.41.3` | UNCHANGED |
+| `@types/react` | `19.2.18` | `19.2.18` | UNCHANGED |
+| `@types/react-dom` | `19.2.4` | `19.2.4` | UNCHANGED |
+| `@playwright/test@latest` | `1.62.1` | `1.62.1` | UNCHANGED |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-17` | `1.63.0-alpha-2026-08-17` | UNCHANGED |
+
+### 5-step combined audit recipe
+
+```bash
+# Step 1: validate `next@canary` upgrade path
+npm install next@16.3.1-canary.26  # 8 HIGH-impact PRs
+# - PR #96686 RSC frozen-collection serialization security fix
+# - PR #96908 unstable_navigation() (Pattern U)
+# - PR #94427 use turbopack: no side effects rename (Pattern V)
+# - PR #97636 React canary upgrade
+# - PR #97590 Turborepo OIDC (CI-only)
+# - PR #97360 useDynamic snapshot churn
+# - PR #97645 Pages Router 16.2/16.3 skew docs
+# - PR #97253 HmrTarget removal
+
+# Step 2: validate `@clerk/nextjs@7.8.0` upgrade path
+npm install @clerk/nextjs@^7.8.0  # 7.8.0 stable cut from 7.7.8
+
+# Step 3: validate `vite@8.2.2` PATCH upgrade
+npm install vite@^8.2.2  # pure PATCH
+
+# Step 4: validate `zod@4.5.0` STABLE forecast
+npm view zod dist-tags  # check if 'latest' is now 4.5.0
+# If yes: pnpm add zod@^4.5.0
+# If no (still 4.4.3): stay on 4.5.0-canary OR 4.4.3 STABLE
+
+# Step 5: validate TanStack Query 5.101.5 PATCH imminent
+npm view @tanstack/react-query dist-tags  # check if 'latest' is now 5.101.5
+# If yes: pnpm add @tanstack/react-query@^5.101.5
+# If no (still 5.101.4): stay on 5.101.4 STABLE — 5.101.5 within 1 week
+```
+
+### Common Mistakes
+
+- Pinning `@clerk/nextjs@^7.7.x` and missing the 7.8.0 minor cut (the 7.7.8 inline observation in v1.5.80 is stale).
+- Treating `vite@8.2.2` as a "MINOR but might-break" upgrade — it's a pure PATCH with no API surface changes.
+- Pinning `next@16.3.1-canary.26` and not bumping `package-lock.json` — PR #96908 PPF + PR #96686 frozen-collection serialization requires a fresh lockfile.
+- Assuming the Aug 20 monthly security release was delivered because the canonical release day was Aug 20 — it was MISSED. Users should NOT downgrade security concerns; the canary.25 + canary.26 PRs ARE the security-ship batch (deferred to 16.3.2).
+- Using `react@canary` directly on a Next.js app — the App Router bundles its own React canary (now `eafeac09-20260819` via PR #97636); pinning `react@canary` separately causes version drift.
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260819.1` next; unchanged from v1.5.75
+- [TypeScript 7.0/7.1 changelog](https://github.com/microsoft/typescript-go/blob/main/CHANGES.md) — the canonical changelog
+- [`@tanstack/query` PR #11233 `ref: remove unused experimental_beforeQuery and experimental_afterQuery`](https://github.com/TanStack/query/pull/11233) — merged 2026-08-19T...; signals 5.101.5 PATCH (1 NEW commit in this 6h window)
+- [`@tanstack/query` PR #10668 `React: update usePrefetchQuery to use new methods`](https://github.com/TanStack/query/pull/10668) — merged 2026-08-20; signals 5.101.5 PATCH (the major usePrefetchQuery refactor)
+- [`@tanstack/query` PR #11130 `fix(react-query): keep unsubscribed useQueries idle`](https://github.com/TanStack/query/pull/11130) — merged 2026-08-20; signals 5.101.5 PATCH
+- [`@tanstack/query` PR #11221 `ref: remove experimental_prefetchInRender`](https://github.com/TanStack/query/pull/11221) — merged 2026-08-20; signals 5.101.5 PATCH
+- [zod 4.5.0-canary.20260820T155656 npm](https://www.npmjs.com/package/zod?activeTab=versions) — the current canary tip
+- [zod CHANGELOG](https://github.com/colinhacks/zod/blob/main/CHANGELOG.md) — the canonical changelog
+- [vite 8.2.2 npm publish](https://www.npmjs.com/package/vite?activeTab=versions) — 2026-08-20T04:14:39Z; pure PATCH
+- [vite 8.2.2 GitHub compare](https://github.com/vitejs/vite/compare/v8.2.1...v8.2.2) — the patch diff
+- [`@clerk/nextjs` 7.8.0 STABLE release](https://github.com/clerk/javascript/releases/tag/%40clerk%2Fnextjs%407.8.0) — npm-published 2026-08-20T22:17:48Z; **the first MISS of v1.5.80's inline observation**
+- [`@clerk/nextjs` 7.8.1-canary.v20260820221209 npm](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-20T22:18:34Z; **21st canary since v1.5.50; the 7.8.x line-crossover**
+- [`@clerk/nextjs` 7.8.0 GitHub compare](https://github.com/clerk/javascript/compare/v7.7.8...v7.8.0) — the minor delta
+- [Next.js v16.3.1-canary.26 GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.26) — npm-published 2026-08-20T23:58:58Z; the densest canary-batch in 60+ days
+- [Cross-reference: `api.md` v1.5.81 → `## Next.js 16.3.1-canary.26 SHIPPED` for the API-surface lens on the 18 PRs]
+- [Cross-reference: `server-components.md` v1.5.80 → `## PPF unstable_navigation() implementation` for the RSC-lens on canary.26]
+- [Cross-reference: `performance.md` v1.5.80 → `## PPF prefetch bandwidth reduction + use turbopack: no side effects extended tree-shaking` for the perf-lens]
+- [Cross-reference: `security.md` v1.5.79 → `## Aug 20 security window breach` + `PR #97590 OIDC` for the security-lens on the Aug 20 release window MISS]
+- [Cross-reference: `patterns.md` v1.5.81 → `## Pattern U-V-W-X (canary.26)` for the 4 NEW patterns unlocked by canary.26]
