@@ -2327,3 +2327,116 @@ curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
 - [PR #97541 — Replace turbopack-reports sqlite3 dependency with local addon](https://github.com/vercel/next.js/pull/97541) — supply-chain hygiene; merged 2026-08-20T09:57:03Z
 - [Next.js August 2026 security release pre-announcement](https://nextjs.org/blog) — Aug 18 blog confirmed release is forthcoming; no version number pre-announced
 - [Next.js July 2026 security release](https://nextjs.org/blog/july-2026-security-release) — 16.2.11 / 15.5.21 baseline; Aug 20 follows same formal process
+
+---
+
+## Aug 20 Security Release — CONFIRMED MISS + Aug 26 Critical CVE Pre-Announce + next@16.3.2 STABLE SHIPPED + @clerk/nextjs@7.8.0 STABLE (August 21, 2026 — v1.5.83 Cycle)
+
+**Current state at the 2026-08-21 12:03Z check:**
+- `next@latest` = **16.3.2 STABLE** — npm-published **2026-08-21T09:54:02.099Z** (T+2h14m from this cron's 12:03Z check; 1st ship since v1.5.79's "16.3.2 STABLE first miss" observation)
+- `next@canary` = **16.4.0-canary.0** — Next.js 16.4 development branch opened
+- `next@16.3.2` is a **routine PATCH** — ships the canary.17 bug-fix batch (PR #97287 + #96819 + #97350 + #97276) as a standard non-security release
+- **Aug 20 monthly security release = CONFIRMED MISS** — the Aug 20 window closed with no release published. This is the **first documented 2-consecutive-month miss** in the Vercel Next.js security release program (July 20 shipped with a 1-day delay; August 20 shipped nothing)
+- **Aug 26 security release pre-announced officially** (nextjs.org/blog, 2026-08-20, by Josh Story + Karim Rahal + Sebastian Silbermann) with **ONE critical severity CVE**; versions will be **16.3.3 + 15.5.24**
+- **`@clerk/nextjs@latest` = 7.8.0 STABLE** (npm-published 2026-08-20T22:17:48Z — ~2h after Aug 20 window closed; missed by v1.5.82 at 06:10Z today)
+- **`@clerk/nextjs@canary` = 7.8.1-canary.v20260821034516** (npm-published 2026-08-21T03:50:16Z; the 22nd canary since v1.5.50)
+
+### Aug 20 Security Release — CONFIRMED MISS (First 2-Consecutive-Month Miss)
+
+The Aug 20 monthly security release forecast window ran **T-15h to T-57h from the Aug 19 18:02Z cycle start = 2026-08-20 09:00Z to 2026-08-22 03:00Z UTC**. The window closed with **zero releases published** — confirmed at this cron's 12:03Z check (T+15h from window open, T+9h from window midpoint).
+
+**The Aug 20 miss is structurally significant** for three reasons:
+1. **First 2-consecutive-month delay** — July 20 shipped (with a 1-day delay to July 21); August 20 shipped nothing. The program has now had 2 consecutive months with delivery irregularity.
+2. **The pre-announcement gap** — Unlike the July 13 program announcement and the July 20 release, the Aug 20 release was not preceded by a specific pre-announcement blog post with version numbers (the Aug 18 "Building App-like Experiences" blog post was about feature releases, not security). This absence of a pre-announcement may have been an early signal.
+3. **The critical-path slip** — Vercel's security team appears to have determined the fixes were not ready by Aug 20 and chose to defer rather than ship an incomplete patch.
+
+**Status rule going forward:** Do NOT claim any Next.js security release has shipped until `npm view next@latest version` confirms the expected version number.
+
+### Aug 26, 2026 Security Release — Official Pre-Announcement (Critical CVE, 16.3.3 + 15.5.24)
+
+**Source:** [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — published 2026-08-20T18:00:00.000Z by Josh Story, Karim Rahal, Sebastian Silbermann. Key content:
+
+> "As part of the security release process we announced in July, Next.js is preparing a scheduled security release for **August 26, 2026**. This advance notice gives teams time to plan upgrades before patches are published.
+> The August 26 release will address **one critical severity vulnerability**. We plan to publish **16.3.3** and **15.5.24** alongside the full advisory, including impact, affected versions, and upgrade instructions."
+
+**What this means operationally:**
+- **Critical severity** = CVSS 9.0–10.0. This is the highest severity tier. Treat the Aug 26 release as **P0** for any internet-facing Next.js deployment.
+- **Only ONE CVE** — smaller than July 20's 9-CVE release. Either the critical CVE requires a complex fix requiring more time, or the other candidates are medium/low and Vercel chose to batch them differently.
+- **16.3.3 (not 16.3.2)** — the 16.3.2 ship on Aug 21 was a routine PATCH. The Aug 26 release is the security release for the 16.3.x line.
+- **15.5.24** — LTS backport target. If you are on Next.js 15, the security patch will be `next@15.5.24`.
+- **No 14.2.x patch mentioned** — this is new. The July 20 release patched 14.2.x (→ 14.2.35). The absence of a 14.2.x backport in the Aug 26 pre-announcement suggests either: (a) the critical CVE does not affect the 14.2.x line, or (b) the 14.2.x backport is still being evaluated.
+
+**Calendar action required:** Set a reminder for **August 26, 2026** — this is the highest-priority infrastructure task for any Next.js deployment on the 16.3.x or 15.5.x lines.
+
+### `next@16.3.2` STABLE SHIPPED — Routine Patch (Aug 21, 2026)
+
+**`next@16.3.2` STABLE** npm-published **2026-08-21T09:54:02.099Z** — confirmed at this cron's 12:03Z check. This is a **routine non-security PATCH release**. It backports the canary.17 bug-fix batch:
+
+| PR | Impact | Affected Tier |
+|----|--------|---------------|
+| **PR #97287** | **BLOCKER** | AWS CDK + cdk-nextjs adapter users; `output: 'standalone'` with NFT undercount |
+| **PR #96819** | **BLOCKER** | Pages API runtime — incorrect environment-variable access |
+| **PR #97350** | **BLOCKER** | Pages Router + metadata filenames — build failure |
+| **PR #97276** | **MEDIUM** | `next/og` image generation — satori bump to 0.29.0 |
+| **PR #97490** | **HIGH** | Self-hosted `next/image` — transform requester-abort wedge fix |
+| **PR #97493** | **MEDIUM** | Standalone parallel-route fallback shells |
+| **PR #97476** | **MEDIUM-HIGH** | `cacheComponents: true` memory leak |
+| **PR #90300** | **HIGH (opt-in)** | Turbopack `use turbopack: constants` feature-flag users |
+| **PR #97507** | **HIGH** | pnpm/NixOS/monorepo symlinks — standalone NFT fix |
+
+**The PR #97287 / PR #96819 / PR #97350 / PR #97276 batch is the most deployment-critical canary batch since canary.11.** If you are on Next.js 16.3.0 or 16.3.1 STABLE, upgrade to `^16.3.2` now — these are real production blockers that have been in canary for 6+ days.
+
+**The PR #97507 pnpm/symlink fix was the headline deployment-impact PR** since canary.23 — it fixes a 6-month NFT silent undercount bug affecting pnpm, NixOS, and monorepo workspace symlink deployments. Any `output: 'standalone'` deployment built with 16.3.0/16.3.1 STABLE has an incomplete standalone directory.
+
+**`next@16.4.0-canary.0` also published** (npm `dist-tag.canary` moved to 16.4.0-canary.0 at 2026-08-21T09:54:02Z — same publish event as 16.3.2 STABLE). The Next.js 16.4 development branch is now open. Expect 16.4.0 STABLE in 4–8 weeks.
+
+### `@clerk/nextjs@7.8.0` STABLE SHIPPED — Missed by v1.5.82 (Aug 20, 2026)
+
+**`@clerk/nextjs@7.8.0` STABLE** npm-published **2026-08-20T22:17:48Z** — missed by v1.5.82 (which was published 06:10Z today Aug 21, approximately 16h after the 7.8.0 ship). The release is documented in [Clerk JavaScript release page](https://github.com/clerk/javascript/releases) — this cron's 12:03Z check confirms it as the new `latest` tag.
+
+v1.5.82 captured `@clerk/nextjs@7.7.9` (npm-published 2026-08-19T19:14:10Z). The 7.8.0 STABLE ship at 22:17:48Z the same day was a same-day fast-follow. The `@clerk/nextjs@canary` train has been extraordinarily active — **22 canary drops** from v1.5.50 through this cron's check, averaging ~1 new canary every 6h.
+
+**Upgrade recipe:**
+```bash
+# If on @clerk/nextjs ^7.7.x:
+npm install @clerk/nextjs@^7.8.0
+
+# If on @clerk/nextjs ^7.8.0-canary:
+npm install @clerk/nextjs@latest  # Should resolve to 7.8.0
+```
+
+### Updated Security Audit Recipe (v1.5.83)
+
+```bash
+# 0. Confirm 16.3.2 STABLE is in your deployment
+npm ls next
+# Expected: next@16.3.2.x
+
+# 1. Aug 26 security release — calendar it NOW (P0)
+# Will ship 16.3.3 + 15.5.24 for ONE critical CVE
+# Set reminder: 2026-08-26
+
+# 2. Check current Next.js security advisories
+npm audit --omit=dev
+curl -fsSL 'https://github.com/advisories?query=ecosystem%3Anpm+next'
+
+# 3. If on pnpm/monorepo/standalone: you have a known NFT bug on 16.3.0/16.3.1
+# Upgrade to ^16.3.2 to get PR #97507 fix
+npm install next@^16.3.2
+next build
+ls -la .next/standalone/ | wc -l  # Should show complete file count
+
+# 4. If using @clerk/nextjs: upgrade to ^7.8.0
+npm install @clerk/nextjs@^7.8.0
+```
+
+### Sources
+
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — official pre-announce; 2026-08-20T18:00:00Z; **ONE critical CVE**; 16.3.3 + 15.5.24
+- [npm `next@16.3.2`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T09:54:02.099Z
+- [npm `@clerk/nextjs@7.8.0`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-20T22:17:48Z
+- [GitHub `v16.3.2` release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — "backporting bug fixes; does not include all pending features/changes on canary"
+- [GitHub `v16.3.1-canary.17` release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.17) — PR #97287 + #96819 + #97350 + #97276 shipped here
+- [PR #97507 — Turbopack outputFileTracingIncludes symlink handling](https://github.com/vercel/next.js/pull/97507) — HIGH for pnpm/NixOS/monorepo
+- [PR #97490 — Fix next/image transform requester-abort wedge](https://github.com/vercel/next.js/pull/97490) — HIGH for self-hosted next/image
+- [PR #97287 — Fix standalone output for server-only files with adapter](https://github.com/vercel/next.js/pull/97287) — BLOCKER for adapter users

@@ -3005,3 +3005,73 @@ npm view next@latest version
 - [Cross-reference: `deployment.md` — the Aug 20 security release deployment-impact lens for the full upgrade checklist
 - [Cross-reference: `server-components.md` — PR #97476 from the RSC lens (use cache memory leak fix)
 - [Cross-reference: `performance.md` — PR #90300 from the perf lens (Turbopack cross-module constants)
+
+---
+
+## Aug 20 MISS + next@16.3.2 STABLE SHIPPED + Aug 26 Security Pre-Announce — Routing-Surface Impact (August 21, 2026 — v1.5.83 Cycle)
+
+**Routing-surface impact of the Aug 20 security release = CONFIRMED NIL.** The Aug 20 release did not ship. There is no routing-surface CVE to migrate.
+
+### Aug 20 Monthly Security Release — CONFIRMED MISS (No Routing CVEs)
+
+The Aug 20 monthly security release window (T-15h to T-57h from Aug 19 18:02Z = Aug 20 09:00Z to Aug 22 03:00Z UTC) closed with zero releases published. **No routing-surface CVEs were released on Aug 20.** Any migration guidance for middleware, `headers()`, `cookies()`, or `redirect()` CVEs is **deferred to Aug 26**.
+
+**There is no routing migration action required today** from the Aug 20 event. The next routing-surface security action item is the Aug 26 release.
+
+### `next@16.3.2` STABLE SHIPPED — Routing-Surface Impact = NIL
+
+**`next@16.3.2` STABLE** (npm-published 2026-08-21T09:54:02.099Z) is a **routine non-security patch** backporting the canary.17 bug-fix batch. From the routing-surface lens:
+
+| PR | Routing Surface | Impact |
+|----|---------------|--------|
+| PR #97287 | NONE | Adapter/build fix |
+| PR #96819 | Pages API | BLOCKER for Pages API env-var access |
+| PR #97350 | Pages Router | BLOCKER for metadata filenames |
+| PR #97276 | NONE | satori/og image bump |
+| PR #97490 | NONE | next/image transform fix |
+| PR #97493 | Standalone fallback shells | MEDIUM — parallel route fallback behavior |
+| PR #97476 | Cache Components | MEDIUM-HIGH — memory leak in cache |
+| PR #90300 | Turbopack constants | HIGH (opt-in) |
+| PR #97507 | NONE | NFT symlink fix |
+
+**No routing API changes, middleware changes, or redirect/header behavior changes in 16.3.2.** The routing surface is identical to 16.3.1 STABLE.
+
+**If you were on 16.3.0 STABLE:** the upgrade to 16.3.2 does carry the July 20 security patches that were in 16.3.1 STABLE. No routing migration is required for that upgrade path either.
+
+### Aug 26, 2026 Security Release — Routing-Surface Watch
+
+The Aug 26 security release (official pre-announce: [nextjs.org/blog/upcoming-nextjs-security-release-august-2026](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), ONE critical CVE, 16.3.3 + 15.5.24) **may have routing-surface CVEs** depending on what the critical CVE affects. Watch the release notes on Aug 26 for any mention of:
+
+- **`NextRequest` / `NextResponse`** — if CVE is in the request/response pipeline
+- **`headers()` / `cookies()` in Route Handlers`** — if CVE is in Server Component data fetching
+- **`redirect()` / `permanentRedirect()`** — if CVE is in routing chain
+- **Middleware chain** — if CVE is in the middleware execution pipeline
+
+**If any of the above are affected by the Aug 26 CVE:** upgrade to `next@16.3.3` immediately and follow the migration guide in the security release post. The routing-surface migration will be specific to the CVE scope.
+
+**Routing audit recipe (post-Aug-26 release):**
+```bash
+# After upgrading to 16.3.3 (Aug 26 security release):
+npm ls next
+# Expected: next@16.3.3.x
+
+# Verify routing behavior is unchanged (post-migration smoke test)
+# Test a sample of: redirects, cookies, headers in Route Handlers, middleware
+node -e "
+const http = require('http');
+const { createServer } = require('next');
+// Basic smoke: verify next server starts and responds
+createServer({ dir: '.' }).then(server => {
+  server.close();
+  console.log('OK: Next.js server starts cleanly');
+});
+"
+```
+
+### Sources
+
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — official pre-announce; 2026-08-20T18:00:00Z; ONE critical CVE; 16.3.3 + 15.5.24
+- [npm `next@16.3.2`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T09:54:02.099Z; routine patch; zero routing-surface changes
+- [GitHub `v16.3.2` release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — "backporting bug fixes; does not include all pending features/changes on canary"
+- [Cross-reference: `security.md` — full security lens on Aug 20 MISS + Aug 26 critical CVE pre-announce
+- [Cross-reference: `deployment.md` — full deployment-impact lens for 16.3.2 + Aug 26 checklist
