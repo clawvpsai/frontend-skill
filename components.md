@@ -4036,3 +4036,107 @@ rg -n "transitionTypes" --type ts --type tsx
 - [Next.js blog: Instant Navigations (August 8, 2026)](https://nextjs.org/blog/next-16-3-instant-navigations) — the second deep-dive post
 - [Cross-references](cross-refs): `patterns.md` → the v1.5.76 cycle's Pattern P + Q + R + S + T section for the pattern-surface lens; `api.md` → the v1.5.76 cycle's 12 canary-branch-ahead-of-canary.24 PRs section for the API-surface lens on the canary.25 PRs; `server-components.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the RSC-lens on PR #97476 + PR #97493 + PR #97490; `performance.md` → the v1.5.75 cycle's canary.24 + canary-branch-ahead-of-canary.24 section for the perf-measurement lens on PR #90300 + PR #97476 + PR #96116
 
+
+## shadcn `migrate base-color` SHIPPED (August 20, 2026) — PR #11248
+
+`shadcn@4.18.0` shipped a new `migrate base-color` CLI command (GitHub PR #11248, merged 2026-08-20T08:34:02Z). This is the base-color analog of the existing `migrate icons` command — it switches a project's base color and rewrites its theme CSS variables non-destructively.
+
+### The command
+
+```bash
+# Migrate from the current base color in components.json.
+npx shadcn@latest migrate base-color --to zinc
+
+# Or pass both explicitly.
+npx shadcn@latest migrate base-color --from zinc --to neutral --yes
+```
+
+Supported base colors: `neutral`, `zinc`, `stone`, `mauve`, `olive`, `mist`, `taupe`.
+
+### What it does
+
+It rewrites the theme variables in the CSS file configured by `tailwind.css` and updates `baseColor` in `components.json`. Only tokens that still hold the source base color's value are replaced — anything you customized is left untouched and reported at the end:
+
+```
+✔ Migration complete.
+Updated baseColor in components.json to neutral.
+
+Skipped 1 token. These were left untouched:
+  - --primary: does not match the source base color
+```
+
+### Design decisions
+
+- **Non-destructive by default.** Only tokens that still match the source base color are replaced; anything you customized is left untouched.
+- **`--from` defaults to the current `baseColor`**, so `--to` alone is the common path.
+- Reuses the shared `-f, --from` / `-t, --to` flags from `migrate icons`.
+- Singular `base-color` to match the `tailwind.baseColor` field.
+
+### Practical impact
+
+| User Type | Impact |
+|-----------|--------|
+| Projects wanting to switch from `zinc` to `neutral` theme | **HIGH** — one command replaces the old base color across all CSS variables |
+| Projects with heavily customized theme tokens | **MEDIUM** — customized tokens are skipped; the migration is conservative |
+| New projects | **NONE** — choose base color at `init` time |
+
+### Sources
+
+- [shadcn-ui/ui#11248 — `feat(shadcn): add migrate base-color` (merged 2026-08-20T08:34:02Z)](https://github.com/shadcn-ui/ui/pull/11248) — the full PR with design rationale, examples, and implementation notes
+- [shadcn-ui/ui#11436 — `fix(styles): unify questionnaire and field choice-card styles` (Aug 18, 2026)](https://github.com/shadcn-ui/ui/pull/11436) — Questionnaire component styling refinement merged in the same Aug 13–20 window
+- [shadcn/ui August 2026 Changelog — Questionnaire](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire) — official announcement (dated 2026-08-21)
+- [shadcn/ui August 2026 Changelog — Human in the Loop](https://ui.shadcn.com/docs/changelog) — `@shadcn/helpers` AI SDK mocking + Questionnaire component announcement
+- [shadcn/ui Changelog index](https://ui.shadcn.com/docs/changelog) — consolidated official changelog
+- Cross-reference: `styling.md` → the `shadcn@4.18.0` changelog update for base color migration patterns; `patterns.md` → the Questionnaire component for multi-step form flows
+
+---
+
+## shadcn/ui Ecosystem — August 2026 Registry Additions + Ecosystem Update
+
+The official shadcn/ui changelog (ui.shadcn.com/docs/changelog) was updated with the August 2026 entries covering Questionnaire + Human in the Loop + the July 2026 Toast + React Aria support. The ecosystem has also seen several registry additions on the master branch:
+
+### shadcn/ui registry directory additions (August 13–20, 2026)
+
+The following third-party component registries were added to the official shadcn/ui registry directory during this window:
+
+| Registry | PR | Date |
+|----------|-----|------|
+| `@motion-lexicon` | #11485 | Aug 20 |
+| `@ilinxa` | #11493 | Aug 20 |
+| `@persianlabsui` | #11496 | Aug 20 |
+| `@brut-ui` | #11513 | Aug 20 |
+| `@washiveil` | #11473 | Aug 20 |
+| `@blode` | #11543 | Aug 20 |
+| `@better-auth-ui` | #11314 | Aug 20 |
+| `@vernostudio` | #11398 | Aug 20 |
+| `@velobits` | #11492 | Aug 17 |
+| `@flagcn` | #11516 | Aug 17 |
+| `@remotionui` | #10998 | Aug 17 |
+
+These registry additions do not require any action — they are community third-party registries discoverable through the shadcn CLI. The registry directory enables `npx shadcn@latest add` to install components from community registries alongside the official shadcn/ui components.
+
+### `@shadcn/react@0.3.0` + `shadcn@4.18.0` — ecosystem confirmation
+
+`@shadcn/react@0.3.0` (Questionnaire primitive) and `shadcn@4.18.0` (SOCKS proxy + Human in the Loop AI SDK mocking) were already documented in the v1.5.76 cycle. The August 2026 official changelog entries at ui.shadcn.com consolidate these under the "August 2026" header and add the `https://ui.shadcn.com/docs/changelog/2026-08-questionnaire` dedicated page (dated 2026-08-21). The canonical source for all shadcn/ui changelog entries is now `https://ui.shadcn.com/docs/changelog`.
+
+### Recommended actions
+
+For projects using shadcn/ui:
+
+```bash
+# Check current shadcn version
+npx shadcn@latest --version
+
+# Update to latest
+npx shadcn@latest upgrade
+
+# Verify migrate base-color is available
+npx shadcn@latest migrate --help
+```
+
+### Sources
+
+- [shadcn/ui August 2026 Changelog — Human in the Loop + Questionnaire](https://ui.shadcn.com/docs/changelog)
+- [shadcn/ui August 2026 — Questionnaire dedicated page](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire)
+- [shadcn/ui master commits August 13–20, 2026](https://github.com/shadcn-ui/ui/commits?since=2026-08-13)
+- [shadcn/ui registry additions #11485, #11493, #11496, #11513, #11473, #11543, #11314, #11398](https://github.com/shadcn-ui/ui/pulls?q=is%3Apr+merged%3A2026-08-13..2026-08-21+registry)

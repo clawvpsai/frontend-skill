@@ -3168,3 +3168,256 @@ The following breaking changes have been observed in the `4.5.0-canary` train (v
 - [Zod releases page](https://github.com/colinhacks/zod/releases) — full version history
 - Cross-reference: `forms.md` → `## zod@canary 4.5.0-canary.20260816T230800 SHIPPED` for the v1.5.68 deep dive on PR #6065 + PR #6420 schema-on-issue
 - Cross-reference: `forms.md` → `## @hookform/resolvers 5.9.1 SHIPPED` for the v1.5.70 PR #876 bracket-notation fix + 4-NEW-drops analysis
+
+## zod `PR #5913` SHIPPED (August 20, 2026) — `z.toZod<T>()` Helper
+
+**`zod@canary` PR #5913 — `Add z.toZod helper` — merged 2026-08-20T15:15:26Z** (verified via GitHub API). This is the most significant forms-relevant Zod addition since `z.deepPartial`. It adds `z.toZod<T>()` as a no-op compile-time helper that checks a hand-written schema against an existing TypeScript type.
+
+### The API
+
+```ts
+// The helper is curried because TypeScript has no partial type-argument inference:
+const schema = z.toZod<MyType>(mySchema);
+
+// Now TypeScript enforces exact type equality between the schema and MyType
+// (not assignability — this is the key difference from `satisfies z.ZodType<T>`)
+```
+
+### Why `satisfies` is insufficient today
+
+```ts
+// PROBLEM: satisfies accepts extra keys, omitted optional keys, and bare `z.any()`:
+const schema = { foo: z.string() } satisfies z.ZodType<{ foo: string; bar?: number }>;
+// ^^^ No error — `bar` is optional in the type but missing in the schema.
+
+// Same issue: `satisfies` uses assignability, not exact equality.
+```
+
+### What `z.toZod<T>` provides
+
+```ts
+// EXACT equality check — the following all produce TS errors:
+const s1 = z.toZod<{ a: string }>(z.any());                        // TS error: z.any() is not exact
+const s2 = z.toZod<{ a: string; b?: number }>(z.object({ a: z.string() })); // TS error: missing optional key
+const s3 = z.toZod<{ a: string }>(z.object({ a: z.string(), b: z.number() })); // TS error: extra key
+
+// This is correct:
+const s4 = z.toZod<{ a: string; b?: number }>(
+  z.object({ a: z.string() }).optional()  // schema accepts exactly { a: string } OR undefined
+);
+```
+
+### Design decisions
+
+- **Exact type equality only** — no loose bidirectional-assignability mode. A loose mode would silently break the guarantees for `z.any()` and `readonly`.
+- **Curried** because TypeScript has no partial type-argument inference — supplying `T` explicitly stops `S` inferring from the argument.
+- Exported from `Zod`, `Zod Mini`, and `Zod Core`.
+- Documented under "Matching an existing type" in `basics.mdx`.
+
+### Impact for forms-validation
+
+This is the canonical solution for the common pattern of bridging hand-written Zod schemas with existing TypeScript types in form libraries:
+
+```ts
+// Before (no compile-time enforcement):
+const FormSchema = z.object({ email: z.string().email() });
+type FormData = z.infer<typeof FormSchema>; // must manually keep in sync
+
+// After (exact type enforcement):
+const schema = z.object({ email: z.string().email() });
+type FormData = z.toZod<{ email: string }>(schema).Input;
+// OR:
+const validated = z.toZod<ExpectedType>(myFormSchema);
+```
+
+Closes issues #372, #2084, #2807, #5418. Does NOT close #1917 (which asks for generating a schema from a type — a compile-time checker cannot do this).
+
+### Migration action
+
+For projects using `satisfies z.ZodType<T>` as a workaround:
+
+```bash
+# The workaround pattern to replace:
+const schema = mySchema satisfies z.ZodType<ExpectedType>;
+
+// Replace with:
+import { z } from 'zod';
+const schema = z.toZod<ExpectedType>(mySchema);
+```
+
+The new pattern catches extra keys, missing optional keys, and `z.any()` misuse at compile time — `satisfies` did not.
+
+### Sources
+
+- [Zod PR #5913 — `Add z.toZod helper` (merged 2026-08-20T15:15:26Z)](https://github.com/colinhacks/zod/pull/5913) — the full PR with design rationale, examples, test cases, and the rationale for not adding a loose mode
+- [Zod `basics.mdx` — "Matching an existing type"](https://zod.dev/v4/basics?id=matching-an-existing-type) — the canonical documentation (updated with the new helper)
+- [Zod v4 docs](https://zod.dev/v4) — main Zod 4 documentation with the new `z.toZod` entry
+
+---
+
+## zod `PR #6440` + `PR #6443` + `PR #6445` SHIPPED (August 20, 2026) — Bug Fixes + Performance
+
+Three zod master branch PRs shipped on the same day (2026-08-20, 14:27Z–14:42Z) — all on the `4.5.0-canary` train heading toward `zod@4.5.0` STABLE.
+
+### `PR #6440` — `fix(v4): stop catch resurrecting issues an optional already resolved`
+
+**Merged 2026-08-20T14:42:04Z.** `.catch()` could turn a previously-succeeded parse into a failure:
+
+```ts
+const s = z.undefined().optional();
+s.safeParse(undefined);              // { success: true }
+s.catch(null).safeParse(undefined);  // { success: false } ← was buggy
+
+// Also affected: .default(), doubled .optional(),
+// .catch() with callback, and chains nested in objects/arrays — all fixed
+```
+
+The bug: `handleOptionalResult` signalled failure by returning a replacement payload with an empty issues array. `$ZodCatch` kept the payload it passed down (still carrying the failure the optional had already resolved) and saw nothing to catch.
+
+The fix: `$ZodCatch` now resolves in place using a fresh `issues` array rather than truncating the one passed down.
+
+### `PR #6443` — `fix(v4): keep a memoized node's cached issues private to the cache`
+
+**Merged 2026-08-20T14:27:54Z.** The memoizer cached live issue objects and handed the same ones to every visitor of a shared node — so a second visitor would prefix onto the first one's path:
+
+```ts
+const Node: any = z.object({
+  name: z.string(),
+  get left() { return z.optional(Node); },
+  get right() { return z.optional(Node); },
+});
+
+const shared: any = { name: 123 };
+Node.safeParse({ name: "root", left: shared, right: shared });
+
+// before: [["right","left","name"], ["right","left","name"]]  ← wrong
+// after:  [["left","name"], ["right","name"]]                  ← correct
+```
+
+The fix: `cloneIssues` now runs both on store and on hand-out, so the cache owns pristine issues and every visitor gets its own. Bundle cost: **0 bytes on `zod/mini`**, **+33 gzipped on classic**.
+
+### `PR #6445` — `perf(v4): prefix issue paths in place in the object JIT failure path`
+
+**Merged 2026-08-20T14:34:12Z.** The object JIT was the odd one out — it copied every issue before prefixing, while interpreted paths always prefixed in place. Now it emits a loop that writes in place. Measured against #6443 with paired A/B harness (2 runs):
+
+| Case | Improvement |
+|------|-------------|
+| union-parse | **−12.3% to −12.8%** |
+| suite total | **−0.9% to −1.5%** |
+
+Bundle: **0 bytes on all three `zod/mini` fixtures** (never bundle the object JIT), **+8 gzipped on classic `zod-object`**.
+
+> ⚠️ Prefixing in place is only safe on top of PR #6443 (the memoizer fix). Without #6443, a DAG-shaped input reaching one invalid node twice would corrupt paths. Upgrade both or neither.
+
+### Migration action
+
+```bash
+# These are internal Zod fixes — no API changes required.
+# Update to the latest canary to pick up all three:
+npm install zod@canary
+# Or pin to the specific canary:
+# "zod": "npm:zod@4.5.0-canary.20260820T155656"
+```
+
+### Sources
+
+- [Zod PR #6440 — fix(v4): stop catch resurrecting issues an optional already resolved (merged 2026-08-20T14:42:04Z)](https://github.com/colinhacks/zod/pull/6440)
+- [Zod PR #6443 — fix(v4): keep a memoized node's cached issues private to the cache (merged 2026-08-20T14:27:54Z)](https://github.com/colinhacks/zod/pull/6443)
+- [Zod PR #6445 — perf(v4): prefix issue paths in place in the object JIT failure path (merged 2026-08-20T14:34:12Z)](https://github.com/colinhacks/zod/pull/6445)
+- [Zod commit `555e5f46fe` — Add z.toZod helper #5913 (2026-08-20T15:15:26Z)](https://github.com/colinhacks/zod/commit/555e5f46fe)
+- [Zod commit `e516c3baf2` — ci: publish to jsr after cutting the release, not before #6453 (2026-08-20T15:52:06Z)](https://github.com/colinhacks/zod/commit/e516c3baf2) — the JSR publish workflow update
+
+---
+
+## RHF PR #13668 + PR #13667 SHIPPED (August 20–21, 2026) — `useWatch` + `setValues` Bug Fixes
+
+Two React Hook Form master branch bug fixes shipped in the same window as the zod updates.
+
+### `PR #13668` — `fix: useWatch returns stale value on name change when new value is null` (SHIPPED Aug 21 00:24Z)
+
+**Merged 2026-08-21T00:24:02Z.** `useWatch`'s synchronous name/control-change fast path used `null` as a sentinel meaning "no immediate value computed yet." When a watched field's actual value is legitimately `null`, this collided with the sentinel — so the hook returned the previous field's stale value for one render.
+
+```tsx
+// BEFORE (buggy): watching field 'a', then re-render watching field 'c' (value is null)
+// — returned stale 'x' for one render
+// AFTER (fixed): returns null immediately on the same render
+```
+
+The fix: replaced the `null` sentinel with an explicit `shouldReturnImmediate` boolean flag. Added a regression test that verifies `useWatch` returns `null` on the same render when the new field value is `null`.
+
+### `PR #13667` — `fix(setValues): update fields registered under an object or array value` (SHIPPED Aug 20 00:24Z)
+
+**Merged 2026-08-20T00:24:46Z.** `setValues` used `flatten()` which only emits leaf paths — so a field registered at a container path (`tags` for `tags: ['b', 'c']`) was never found, and `_setValue` was skipped entirely. An empty array/object produced zero keys and the update disappeared.
+
+```tsx
+// These are affected:
+// <select multiple {...register('tags')} /> — keeps old selection
+// a checkbox group sharing one name — keeps old checked state
+// a container path registered directly by a Controller — never receives the new value
+// setValues({ tags: [] }) — does NOT clear anything (BUG)
+```
+
+The fix: replaced flatten-and-lookup with a path walk over the provided values, so a container value is passed to `_setValue` as-is.
+
+### Migration action
+
+```bash
+# Update to the latest RHF master. When v7.86.0 ships:
+npm install react-hook-form@latest
+```
+
+Both fixes are internal behavioral corrections with no API changes. The `setValues` fix brings it into alignment with `setValue` which already handled these cases correctly.
+
+### Sources
+
+- [RHF PR #13668 — fix: useWatch returns stale value on name change when new value is null (merged 2026-08-21T00:24:02Z)](https://github.com/react-hook-form/react-hook-form/pull/13668)
+- [RHF PR #13667 — fix(setValues): update fields registered under an object or array value (merged 2026-08-20T00:24:46Z)](https://github.com/react-hook-form/react-hook-form/pull/13667)
+- [RHF master commits 2026-08-13–21](https://github.com/react-hook-form/react-hook-form/commits?since=2026-08-13) — PRs #13668, #13667, #13664, #13662, #13661, #13660, #13659, #13658, #13657, #13655
+
+---
+
+## zod@canary — New Drops Since v1.5.81 + STABLE Forecast Update (August 20–21, 2026)
+
+### New canary drops since v1.5.81 (2026-08-21T00:09Z check)
+
+The zod@canary train produced new drops between the v1.5.81 cron (Aug 21 00:09Z) and this cycle's check (Aug 21 06:02Z):
+
+| Canary Version | npm Published | Gap from Prior | Notes |
+|---|---|---|---|
+| `4.5.0-canary.20260819T185743` | 2026-08-19T19:04:57Z | +2h 49m from prior | |
+| `4.5.0-canary.20260819T173014` | 2026-08-19T19:03:43Z | −1m from prior | re-tarball |
+| `4.5.0-canary.20260820T144632` | 2026-08-20T14:49:56Z | +5h 22m from prior | |
+| `4.5.0-canary.20260820T144642` | 2026-08-20T14:49:47Z | −9s from prior | re-tarball |
+| `4.5.0-canary.20260820T145307` | 2026-08-20T14:56:23Z | +6m 36s from prior | |
+| `4.5.0-canary.20260820T151954` | 2026-08-20T15:23:08Z | +26m 45s from prior | |
+| **`4.5.0-canary.20260820T155656`** | **2026-08-20T16:00:10Z** | **+37m from prior** | **Current tip; STABLE-train promoted** |
+
+Plus 5 re-tarballs at 2026-08-20T19:41–19:43Z (same content, new tarballs).
+
+### Current state
+
+`npm view zod@latest` → `4.4.3` (STABLE, May 4 2026)
+`npm view zod@canary` → `4.5.0-canary.20260820T155656` (STABLE-train promoted Aug 20 16:00Z)
+
+### zod@4.5.0 STABLE forecast — **August 22–24, 2026**
+
+The STABLE-train promotion (Aug 20 16:00Z) combined with the 4-drops-per-day cadence confirms the v1.5.81 forecast of "Aug 21-23" is slightly ahead — the promotion happened ~5h before the Aug 21 window opened. Revised forecast:
+
+- **Most likely: August 22, 2026 (T+16h to T+40h from 2026-08-21 06:02Z)**
+- **Range: August 22–24, 2026 (T+16h to T+64h)**
+- The 4-drops-per-day cadence is sustained. The STABLE cut is imminent.
+
+### Migration checklist for projects on zod@4.4.3
+
+- [ ] Review breaking changes documented in `## zod@4.5.0 Breaking Changes to Review Before Upgrading` section
+- [ ] Audit custom ZodEffects usage (PR #6440 fixes .catch() behavior — verify custom error handling)
+- [ ] Audit recursive schemas with shared nodes (PR #6443 changes memoized issue caching)
+- [ ] Test object schema parsing in performance-critical paths (PR #6445 provides ~12% union-parse improvement)
+- [ ] Update `zod@canary` pin to `4.5.0-canary.20260820T155656` for early access
+- [ ] Plan `zod@4.5.0` upgrade window (target: within 48h of STABLE ship)
+
+### Sources
+
+- [`npm view zod dist-tags`](https://registry.npmjs.org/zod) — confirmed `latest: 4.4.3`, `canary: 4.5.0-canary.20260820T155656` at this cycle's 06:02Z check
+- [Zod commits 2026-08-20](https://github.com/colinhacks/zod/commits?since=2026-08-20T00:00:00Z) — PRs #5913, #6440, #6443, #6445
+- [Zod PR #5913 — Add z.toZod helper (merged 2026-08-20T15:15:26Z)](https://github.com/colinhacks/zod/pull/5913)

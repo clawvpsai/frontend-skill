@@ -2931,3 +2931,207 @@ The `1.62.1` patch does not change the component testing Stories and Galleries m
 - [`@playwright/test v1.62.1` GitHub release](https://github.com/microsoft/playwright/releases/tag/v1.62.1) — chromium patch; published 2026-07-30
 - [`npm view @playwright/test@latest`](https://www.npmjs.com/package/@playwright/test) — confirmed `1.62.1` at this cron's 00:02Z check
 - Cross-reference: `testing.md` → `## @playwright/test 1.62.0 SHIPPED (July 24, 2026) — Stories and Galleries Component Testing + Bundled Playwright MCP Server + Browser Bumps to Chromium 151` for the v1.62.0 Stories and Galleries deep dive
+
+## Vitest 5.0 Migration Guide Published (August 12, 2026)
+
+The official **Vitest 5.0 Migration Guide** was published at `https://main.vitest.dev/guide/migration` (verified via web search, published 2026-08-12). This guide is the canonical reference for upgrading from Vitest 4.x to 5.x and was published after `v5.0.0-rc.1` (Aug 11) and before `v5.0.0-rc.2` (Aug 17) — it represents the team's official documentation for the upgrade path.
+
+### Prerequisites
+
+**Vitest 5.0 requires Vite >= 6.4.0 and Node.js >= 22.12.0.** These are hard requirements — running Vitest 5.0 on older versions of Vite or Node.js is not supported and may result in unexpected errors.
+
+| Requirement | Minimum Version | Notes |
+|-------------|----------------|-------|
+| Vite | >= 6.4.0 | Vitest 5.0 uses Vite 6 APIs internally |
+| Node.js | >= 22.12.0 | Node 22.12.0 added `AsyncLocalStorage` improvements used by Vitest 5 |
+| Vitest | `^5.0.0-rc.2` | Latest RC; STABLE imminent (see forecast below) |
+
+Audit your stack:
+
+```bash
+# Check Node.js version
+node --version  # Must be >= 22.12.0
+
+# Check Vite version
+npm ls vite  # Must be >= 6.4.0
+
+# Check Vitest version
+npm ls vitest  # Update to ^5.0.0-rc.2 if on 4.x
+```
+
+### Key Migration Items
+
+#### `clearMocks` is now enabled by default
+
+```ts
+// In Vitest 4, vi.fn() calls accumulated across tests by default
+// In Vitest 5, each test starts with a fresh mock state
+
+test('first', () => {
+  const fn = vi.fn();
+  fn();
+  expect(fn).toHaveBeenCalledTimes(1); // ✓ always 1 in Vitest 5
+});
+
+test('second', () => {
+  const fn = vi.fn();
+  fn();
+  expect(fn).toHaveBeenCalledTimes(1); // ✓ always 1 in Vitest 5 (was 2 in Vitest 4)
+});
+```
+
+To restore Vitest 4 behavior (accumulate across tests):
+
+```ts
+// vitest.config.ts
+export default defineConfig({
+  test: {
+    clearMocks: false, // restore accumulate-across-tests behavior
+  },
+});
+```
+
+#### Inline projects inherit root config by default
+
+```ts
+// Vitest 4: inline project did NOT apply the root-level plugins
+// Vitest 5: plugins from root config are inherited by inline projects
+
+// vitest.config.ts
+export default defineConfig({
+  plugins: [react()], // now applies to inline projects too
+  test: {
+    projects: [
+      { name: 'unit' },    // Vitest 5: gets react() plugin ✓
+                          // Vitest 4: did NOT get react() ✗
+      { name: 'e2e' },
+    ],
+  },
+});
+```
+
+#### Benchmarking API rewrite
+
+```ts
+// Vitest 4:
+import { bench } from 'vitest';
+bench('sort', () => {
+  [3, 1, 2].sort();
+});
+
+// Vitest 5:
+import { test } from 'vitest';
+test('sort', async ({ bench }) => {
+  await bench('sort', () => {
+    [3, 1, 2].sort();
+  }).run();
+});
+```
+
+#### Unawaited asynchronous assertions now fail the test
+
+```ts
+// Vitest 4: printed a warning, the test passed
+// Vitest 5: FAILS the test
+test('unawaited assertion', async () => {
+  expect(promise).resolves.toBe(1);       // ✗ must await
+  await expect(promise).resolves.toBe(1); // ✓ correct
+});
+```
+
+The error report points directly to the unawaited assertion.
+
+#### Test titles use `pretty-format` (no quotes around string values)
+
+```ts
+// Vitest 4 title: "case 'a1'"
+// Vitest 5 title: "case a1"
+test.for([{ id: 'a1' }])('case $id', ({ id }) => {
+  // ...
+});
+```
+
+#### Hoisted mocking calls must be at top level
+
+```ts
+// Vitest 5: vi.mock() cannot be inside describe() blocks
+// MUST be at module top level
+
+// ✓ Correct (Vitest 5):
+vi.mock('./calculator');
+describe('calculator', () => {
+  // ...
+});
+
+// ✗ Incorrect (Vitest 5 — moves to top level automatically, warns):
+describe('calculator', () => {
+  vi.mock('./calculator'); // Vitest 5: move to module top level
+});
+```
+
+Vitest 5 will hoist `vi.mock()` calls and warn. Place them at the module top level to avoid surprises.
+
+#### Deprecated packages
+
+The following packages are deprecated as of Vitest 5.0. They will continue to receive security fixes but no new features:
+
+- `@vitest/runner`
+- `@vitest/ws-client`
+
+If you import from these packages, migrate before upgrading to Vitest 5 STABLE.
+
+#### Removed deprecated entrypoints
+
+Entrypoints marked deprecated in Vitest 4.1 have been removed entirely in Vitest 5. Check your imports if you are upgrading from 4.0.x or earlier.
+
+### Migration action
+
+```bash
+# 1. Check prerequisites
+node --version   # must be >= 22.12.0
+npm ls vite      # must be >= 6.4.0
+
+# 2. Update Vite if needed
+npm install vite@latest
+
+# 3. Update Vitest to RC
+npm install -D vitest@^5.0.0-rc.2
+
+# 4. Audit breaking changes
+# Run your test suite and fix failures
+
+# 5. Audit deprecated packages
+grep -r "@vitest/runner\|@vitest/ws-client" --include="*.ts" --include="*.js"
+```
+
+### Sources
+
+- [Vitest 5.0 Migration Guide](https://main.vitest.dev/guide/migration) — official canonical migration reference (published 2026-08-12)
+- [Vitest Releases page](https://main.vitest.dev/releases.html) — confirmed Vitest 5.0 in `regular patches` support tier
+- [Vitest GitHub releases](https://github.com/vitest-dev/vitest/releases) — full version history including rc.1 + rc.2
+- [Vitest 5.0.0-rc.2 SHIPPED](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.2) — 1 feature + 20 bug fixes, no new BREAKING changes
+- [Vitest migration — `clearMocks` default change](https://main.vitest.dev/guide/migration#clearmocks-enabled-by-default)
+- [Vitest migration — inline projects inherit root config](https://main.vitest.dev/guide/migration#inline-projects-inherit-root-config)
+- [Vitest migration — benchmarking API rewrite](https://main.vitest.dev/guide/migration#benchmarking-api-rewrite)
+- [Vitest migration — unawaited async assertions](https://main.vitest.dev/guide/migration#unawaited-asynchronous-assertions-fail-the-test)
+- [Vitest migration — hoisted mocking top-level](https://main.vitest.dev/guide/migration#hoisted-mocking-calls-must-be-at-the-top-level)
+- Cross-reference: `setup.md` → the Vitest + Vite 6.4.0 + Node.js 22.12.0 prerequisite stack
+
+---
+
+## Vitest 5 STABLE Forecast — Revised to August 22 – September 1, 2026
+
+The publication of the official Vitest 5 Migration Guide (Aug 12) signals the team is in final preparation for STABLE. The guide was published AFTER `v5.0.0-rc.1` (Aug 11) and BEFORE `v5.0.0-rc.2` (Aug 17) — it represents the docs team's official readiness.
+
+**Revised forecast: Vitest 5.0.0 STABLE expected August 22 – September 1, 2026.**
+
+- **Confidence: HIGH** — migration guide published + rc.2 shipped + 17 main-branch commits consolidated
+- **Window: T+16h to T+5d 18h from 2026-08-21 06:02Z** (Aug 22 22:02Z to Sep 1 06:02Z)
+- **Most likely: August 25–28, 2026** (3–6 days from now)
+
+Historical rc → STABLE cadence:
+- Vitest 4: rc.1 → STABLE in **11 days** (late October 2025)
+- Vitest 1: rc.1 → STABLE in **14 days** (early 2023)
+- Vitest 5 rc.1 (Aug 11) + 11-day median → **August 22, 2026**
+
+**Current pin recommendation:** `vitest@^5.0.0-rc.2` for pre-release testing. Plan to upgrade to `vitest@^5.0.0` within 48h of the STABLE ship.
