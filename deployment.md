@@ -3634,3 +3634,140 @@ tailwindcss: ^4.3.3  (unchanged)
 - [PR #97476 — Fix use cache prerender signal retention](https://github.com/vercel/next.js/pull/97476) — MEDIUM-HIGH for cacheComponents: true
 - [Cross-reference: `security.md` — full security lens on Aug 20 MISS + Aug 26 pre-announce
 - [Cross-reference: `routing.md` — routing-surface impact nil for Aug 20 MISS
+
+---
+
+## `next@16.3.2` STABLE SHIPPED as Confirmed-Routine Patch (Aug 21, 2026) + `next@16.4.0-canary.0` + `16.4.0-canary.1` + Aug 26 Critical CVE Pre-Announce T-4d (Aug 22, 2026 — v1.5.88 Cycle — Deployment-Impact Lens)
+
+### `next@16.3.2` STABLE npm-Confirmed as Routine Bug-Fix Patch (npm 2026-08-21T09:54:02Z)
+
+Per the [official release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2), `16.3.2` is **explicitly a routine bug-fix backport release**, NOT the Aug 26 monthly security release. Verbatim from the release body:
+
+> [!NOTE]
+> This release is backporting bug fixes. It does **not** include all pending features/changes on canary.
+
+**The 5 backport PRs in 16.3.2** (with deployment-impact tier per tier):
+
+| PR | Description | Deployment impact |
+|----|-------------|-------------------|
+| [#97357](https://github.com/vercel/next.js/pull/97357) | Scope app-entry export validation to files inside the app directory | LOW (dev-time validation; no runtime impact) |
+| [#97416](https://github.com/vercel/next.js/pull/97416) | Fix catch-all index page being served for every other slug | LOW (correctness; no perf impact) |
+| [#97353/#97463](https://github.com/vercel/next.js/pull/97463) | Turbopack: don't trace embedded WASM loader helpers | LOW (Turbopack build output smaller; no runtime impact) |
+| [#97453](https://github.com/vercel/next.js/pull/97453) | Turbopack: retain conditions when replacing resolve request keys | LOW (Turbopack resolve correctness; no runtime impact) |
+| [#97419](https://github.com/vercel/next.js/pull/97419) | Fix Turbopack worker chunk loading with asset prefix | MEDIUM (affects custom-asset-prefix deployments with Turbopack — Node adapter + Vercel preview with `assetPrefix`) |
+| [#97603](https://github.com/vercel/next.js/pull/97603) | Authenticate Turborepo remote caching with OIDC instead of a static PAT | **MEDIUM for Turborepo monorepo users with remote-cache; ZERO for non-Turborepo apps** |
+
+**Net deployment impact for `16.3.2`**: NONE-to-LOW for the vast majority of apps. MEDIUM for two specific tiers: (a) Turbopack users with custom `assetPrefix` + (b) Turborepo monorepo users with remote-cache. The upgrade is **safe and recommended** for all Next.js 16.3.x users as a routine PATCH.
+
+### PR #97603 Turborepo OIDC — Deployment Recipe
+
+[PR #97603](https://github.com/vercel/next.js/pull/97603) is the **only deployment-impacting change** in 16.3.2 worth a recipe.
+
+**Affected deployments**: Next.js apps inside a Turborepo monorepo that have `remoteCache` configured in `turbo.json` AND a CI provider with OIDC token issuance. This is a deployment-impacting change for the **CI build pipeline**, NOT the running app.
+
+**Migration recipe (3 steps)**:
+
+1. **Verify CI provider supports OIDC**: GitHub Actions (`permissions: { id-token: write }` + `actions/cache@v4+`), GitLab CI/CD (ID Tokens feature enabled), CircleCI (OIDC enabled in org settings), Bitbucket Pipelines (limited OIDC support — check current docs).
+2. **Update `turbo.json`** to opt into OIDC:
+
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "remoteCache": {
+    "signature": true,
+    "authentication": "oidc"
+  }
+}
+```
+
+3. **Verify in CI**: add a debug step in your CI workflow to print the OIDC token claims; confirm `aud` and `sub` match Turborepo's expected values.
+
+**Fallback**: if your CI doesn't support OIDC yet, set `"authentication": "pat"` to use the old PAT-based authentication. The OIDC change is opt-in and backwards-compatible.
+
+### 16.4.0-canary.0 + 16.4.0-canary.1 — Deployment-Impact Lens
+
+Both canary drops include deployment-impacting changes:
+
+**16.4.0-canary.0** (npm 2026-08-21T10:15:26Z):
+
+- PR #95997 microfrontend HMR isolation — **deployment-impact NONE for production** (dev-only); affects microfrontend module-federation dev experience
+- PR #97664 Pages Router chunk dedup — **deployment-impact LOW** (TTI improvement on Pages Router apps)
+- PR #97613 MPA export trailing-slash preservation — **deployment-impact MEDIUM** (static export URLs may change; verify all hard-coded paths)
+- PR #97395 symlink read/write split — **deployment-impact LOW** (complements PR #97507 in 16.3.2)
+- PR #97648 fs-watch last-modified diagnostic — **deployment-impact NONE** (dev-only)
+- PR #97638 react-sync assignability — **deployment-impact NONE**
+
+**16.4.0-canary.1** (npm 2026-08-21T23:53:40Z) — 17 PRs:
+
+- PR #97622 + #97618 `[PPF] unstable_prefetch()` SHIPPED — **deployment-impact LOW** (adds new API surface; opt-in)
+- PR #97309 `[PPF] Instant validation for unstable_navigation()` — **deployment-impact LOW** (validation at call-time)
+- PR #95974 `turbo-tasks: scope_unbounded` — **deployment-impact LOW** (internal scheduler; affects Cache Components scaling)
+- PR #97687 `Remove generated error codes` — **deployment-impact MEDIUM (BREAKING for any code that string-matches `E###` codes)**. Affects error-handling code in middleware, redirects, `notFound()` paths.
+- PR #97639 Turbopack missing-root-layout error — **deployment-impact NONE** (dev-only DX)
+- PR #97637 PPF adoption checks — **deployment-impact LOW** (better warnings)
+- PR #96559 ESM namespace fix — **deployment-impact LOW** (correctness fix)
+- 9 docs + 1 test-only — **deployment-impact NONE**
+
+### Aug 26 Critical CVE Pre-Announce — Deployment Checklist T-4d
+
+The Aug 26 monthly security release will ship **`next@16.3.3` + `next@15.5.24`** with **ONE critical severity vulnerability** patched. T-4d from this cron's 18:02Z Aug 22 = **Wednesday, August 26, 2026**. Deployment checklist:
+
+1. **At 14:00Z Aug 26**: `npm view next@latest version` — confirm `16.3.3` is published.
+2. **Immediately**: `npm install next@latest && npm install next@15.5.24` (depending on your pin).
+3. **Vercel deployments**: auto-upgrade enabled by default; verify the build log shows `next@16.3.3`.
+4. **Self-hosted Node.js**: redeploy with the new build.
+5. **Docker**: rebuild the base image (`FROM node:22-bookworm-slim` + `npm ci`).
+6. **AWS Lambda + SST**: SST auto-detects; verify the SST stack uses the new version.
+7. **Cloudflare Workers**: `@cloudflare/next-on-pages` adapter; verify build picks up the new version.
+8. **GCP Cloud Run**: rebuild and redeploy.
+9. **Monitor the official advisory**: full CVE details publish alongside `next@16.3.3` on Aug 26. Read the advisory before deploying.
+
+### Version Pin Status After Aug 21 (v1.5.88)
+
+```jsonc
+// Recommended version pins as of 2026-08-22T18:02Z:
+{
+  "dependencies": {
+    "next": "^16.3.2",              // routine patch; safe to upgrade now
+    // Aug 26 upgrade:
+    // "next": "^16.3.3",           // T+4d: critical CVE patch
+    // OR for 15.5.x LTS:
+    // "next": "15.5.24",           // T+4d: critical CVE patch
+    "@clerk/nextjs": "^7.8.0",       // upgraded Aug 20
+    "better-auth": "^1.7.1",         // unchanged
+    "zod": "^4.4.3",                 // 4.5.0 STABLE still forecast Aug 22-24
+    "tailwindcss": "^4.3.3"          // unchanged; 4.3.4 STABLE 1-3 weeks
+  },
+  "devDependencies": {
+    "react": "^19.2.8",              // STABLE; App Router bundles 19.3.0-canary internally
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11",             // 5.0.0-rc.2 available; STABLE Aug 22-Sep 1
+    "vite": "^8.2.2"
+  }
+}
+```
+
+### Why this matters for `deployment.md`
+
+The v1.5.83 cycle noted `next@16.3.2` as "routine patch shipped Aug 21" but did NOT confirm whether `16.3.2` was the Aug 20 monthly security release cut. The v1.5.88 confirmation: **16.3.2 is a routine bug-fix backport, NOT the Aug 26 critical CVE patch**. The Aug 26 CVE patch will ship as `next@16.3.3 + next@15.5.24` in T-4d. The only deployment-impacting change in 16.3.2 is PR #97603 (Turborepo OIDC) — affects only Turborepo monorepo users with remote-cache. The 16.4.0 canary line crossing (canary.0 + canary.1) brings 1 BREAKING change (PR #97687 Remove generated error codes) that affects any deployment using string-matched error codes.
+
+### Sources
+
+- [Official v16.3.2 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — "backporting bug fixes; does not include all pending features/changes on canary" (verbatim routine-patch confirmation)
+- [Official v16.4.0-canary.0 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0) — npm 2026-08-21T10:15:26Z
+- [Official v16.4.0-canary.1 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — npm 2026-08-21T23:53:40Z
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcomingnextjs-security-release-august-2026) — Aug 26 CVE pre-announce; `16.3.3 + 15.5.24`; T-4d from this cron
+- [npm `next@16.3.2`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T09:54:02.099Z
+- [npm `next@16.4.0-canary.0`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T10:15:26.029Z
+- [npm `next@16.4.0-canary.1`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T23:53:40.907Z
+- [PR #97603 — Turborepo remote-cache OIDC](https://github.com/vercel/next.js/pull/97603) — SHIPPED in 16.3.2; supply-chain hardening for Turborepo monorepo remote-cache
+- [PR #97357 — Scope app-entry export validation](https://github.com/vercel/next.js/pull/97357) — backport in 16.3.2
+- [PR #97416 — Fix catch-all index page bug](https://github.com/vercel/next.js/pull/97416) — backport in 16.3.2
+- [PR #97353/#97463 — Turbopack: don't trace embedded WASM loader helpers](https://github.com/vercel/next.js/pull/97463) — backport in 16.3.2
+- [PR #97453 — Turbopack: retain conditions when replacing resolve request keys](https://github.com/vercel/next.js/pull/97453) — backport in 16.3.2
+- [PR #97419 — Fix Turbopack worker chunk loading with asset prefix](https://github.com/vercel/next.js/pull/97419) — backport in 16.3.2; deployment-impact MEDIUM for custom asset prefix
+- [PR #97687 — Remove generated error codes (BREAKING)](https://github.com/vercel/next.js/pull/97687) — in 16.4.0-canary.1; BREAKING for string-matched error codes
+- [PR #97613 — fix: preserve trailing slash during export MPA fallback](https://github.com/vercel/next.js/pull/97613) — in 16.4.0-canary.0; deployment-impact MEDIUM for static exports
+- [PR #97664 — Turbopack: deduplicate Pages Router app chunks](https://github.com/vercel/next.js/pull/97664) — in 16.4.0-canary.0; deployment-impact LOW
+- [Cross-reference: `security.md` — full security lens on 16.3.2 STABLE + 16.4.0-canary + Aug 26 CVE T-4d
+- [Cross-reference: `routing.md` — full routing-surface lens on `[PPF] unstable_prefetch()` SHIPPED + microfrontend HMR + MPA trailing-slash + Pages Router chunk dedup

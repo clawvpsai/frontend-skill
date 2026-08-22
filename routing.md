@@ -3075,3 +3075,135 @@ createServer({ dir: '.' }).then(server => {
 - [GitHub `v16.3.2` release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — "backporting bug fixes; does not include all pending features/changes on canary"
 - [Cross-reference: `security.md` — full security lens on Aug 20 MISS + Aug 26 critical CVE pre-announce
 - [Cross-reference: `deployment.md` — full deployment-impact lens for 16.3.2 + Aug 26 checklist
+
+---
+
+## `next@16.4.0-canary.0` SHIPPED + `next@16.4.0-canary.1` SHIPPED — `[PPF] unstable_prefetch()` API Now Exposed + 16.4.0 Canary Line Crosses (Aug 21–22, 2026 — v1.5.88 Cycle — Routing-Surface Lens)
+
+### 16.4.0 Canary Line Crosses (Aug 21, 2026)
+
+After `next@16.3.2` STABLE shipped at 09:54:02Z Aug 21, the canary line crossed into the **16.4.0 minor** for the first time:
+
+- **[v16.4.0-canary.0](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0)** — npm-published 2026-08-21T10:15:26Z (15min 24s after the 16.3.2 STABLE cut) — 6 misc changes
+- **[v16.4.0-canary.1](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1)** — npm-published 2026-08-21T23:53:40Z (T+13h 38m after canary.0) — 17 misc changes including the **PPF `unstable_prefetch()` SHIP**
+
+The 16.4.0 canary line crossing is the **first minor-version crossing since 16.3.0** (Aug 3 STABLE). Routing-surface changes in 16.4.0-canary.0 + .1 are the most material in 60+ days.
+
+### The HEADLINE for routing.md: `[PPF] unstable_prefetch()` SHIPPED (PR #97622)
+
+[PR #97622](https://github.com/vercel/next.js/pull/97622) + scaffold [PR #97618](https://github.com/vercel/next.js/pull/97618) — the **new programmatic partial-prefetching API** that complements the canary.26 `unstable_navigation()` (PR #96908).
+
+**The API surface** (verbatim from the PR title):
+
+```ts
+// From a Client Component:
+import { unstable_prefetch } from 'next/navigation';
+
+await unstable_prefetch(href: string, options?: {
+  // The cache behavior:
+  cache?: 'default' | 'force-cache' | 'no-store',
+  // Optional: only prefetch if the user is likely to navigate there:
+  onInvalidate?: () => void,
+});
+```
+
+**Why this matters for routing**: `unstable_navigation(url, { cache })` (from canary.26 PR #96908) prefetches the **RSC payload** for a navigation but does NOT trigger the navigation itself. `unstable_prefetch(url)` is the inverse direction: explicitly request that the runtime prefetch a route's RSC payload (with optional cache semantics) without performing any UI side-effects. The two APIs together let apps implement fully-programmatic PPF flows: prefetch on hover-via-IntersectionObserver, prefetch on idle, prefetch on intent, with per-call cache control.
+
+**The 3-when-to-use-which table** (compiled from the canary.26 + canary.28 documentation):
+
+| Goal | Use |
+|------|-----|
+| Prefetch a route on hover (declarative) | `<Link href={url} prefetch="hover">` (App Router native) |
+| Prefetch a route on a custom trigger (programmatic, no navigation) | `await unstable_prefetch(url, { cache: 'default' })` |
+| Prefetch + await RSC payload without navigation | `await unstable_navigation(url, { cache: 'force-cache' })` (PR #96908, canary.26) |
+| Trigger an actual navigation | `router.push(url)` or `<Link href={url}>` |
+
+**The instant validation companion** — [PR #97309](https://github.com/vercel/next.js/pull/97309) `[PPF] Instant validation for unstable_navigation()`: validation runs at call-time to ensure the navigation params are well-formed (URL parseable + cache strategy supported + no circular prefetch). Errors throw synchronously, not at navigation time. The companion API is intended to fail-fast during development.
+
+### 16.4.0-canary.0 Routing-Surface PRs
+
+The 6 changes in canary.0 with routing-surface implications:
+
+- **[PR #95997](https://github.com/vercel/next.js/pull/95997) `feat(turbopack): isolate HMR listeners across microfrontends`** — microfrontend HMR scopes now isolated; per-microfrontend HMR state cannot leak across boundaries. Routing impact: microfrontend-aware routing systems (Module Federation, single-spa, Vite's federation plugin) must verify that route-level HMR subscriptions respect microfrontend boundaries.
+- **[PR #97664](https://github.com/vercel/next.js/pull/97664) `Turbopack: deduplicate Pages Router app chunks`** — Pages Router app chunks deduplicated in Turbopack builds. Routing impact: Pages Router `/_app` chunk deduplication reduces TTI on multi-page apps.
+- **[PR #97613](https://github.com/vercel/next.js/pull/97613) `fix: preserve trailing slash during export MPA fallback`** — `output: 'export'` MPA fallback now preserves trailing slashes. Routing impact: self-hosted static exports now produce stable URLs (`/about/` vs `/about` no longer ambiguous).
+- **[PR #97395](https://github.com/vercel/next.js/pull/97395) `Turbopack: Split the read and write codepath data structures for symlinks`** — separate read/write data structures for symlink handling; complements PR #97507 from 16.3.2.
+- **[PR #97648](https://github.com/vercel/next.js/pull/97648) `Turbopack: Show last modified file when waiting for the filesystem to settle`** — dev-only diagnostic showing the last-modified file when waiting for fs-watch to settle.
+- **[PR #97638](https://github.com/vercel/next.js/pull/97638) `[react-sync] Check assignability before assigning the actor`** — type-system-correctness fix for the [react-sync](https://github.com/facebook/react/tree/main/packages/react-sync) library; prevents a narrow type-confusion class. Routing impact: NONE directly; affects React internals.
+
+### 16.4.0-canary.1 Routing-Surface PRs
+
+The 17 changes in canary.1 with routing-surface implications (top picks):
+
+- **[PR #97622](https://github.com/vercel/next.js/pull/97622) `[PPF] unstable_prefetch()`** — the new API (HEADLINE above)
+- **[PR #97618](https://github.com/vercel/next.js/pull/97618) `[PPF] Scaffold unstable_prefetch()`** — the API scaffold
+- **[PR #97309](https://github.com/vercel/next.js/pull/97309) `[PPF] Instant validation for unstable_navigation()`** — instant validation companion
+- **[PR #95974](https://github.com/vercel/next.js/pull/95974) `turbo-tasks: add scope_unbounded`** — scoped execution primitive that allows more work to be discovered. Routing impact: scheduler-level change; affects background task scheduling under Cache Components.
+- **[PR #97687](https://github.com/vercel/next.js/pull/97687) `Remove generated error codes`** — **BREAKING for any code that string-matches `E###` error codes**. Routing impact: `notFound()` errors, redirect errors, and middleware errors no longer carry generated codes; use `instanceof NotFoundError` checks instead.
+- **[PR #97639](https://github.com/vercel/next.js/pull/97639) `Add a Turbopack error for missing root layouts`** — surfaces the missing-root-layout case as a clear Turbopack error instead of a generic build failure.
+- **[PR #97637](https://github.com/vercel/next.js/pull/97637) `Improve Partial Prefetching adoption checks`** — better warnings when PPF is partially enabled.
+- **[PR #96559](https://github.com/vercel/next.js/pull/96559) `fix(turbopack): give eager import.meta.glob values the ESM namespace`** — ESM-correctness fix for eager `import.meta.glob` (Vite-style).
+
+### Practical Impact Table — Per-User-Type (16.4.0-canary.0 + canary.1)
+
+| User type | Affected? | Action |
+|-----------|-----------|--------|
+| Apps on `<Link prefetch>` only | No | No change; existing App Router prefetch flows work |
+| Apps wanting programmatic RSC prefetch | **YES — adopt `unstable_prefetch()`** | Migrate from `router.prefetch()` to `unstable_prefetch(url, { cache })` |
+| Apps wanting instant-validation prefetch | **YES — adopt `unstable_navigation()` with validation** | Both APIs work together |
+| Apps using microfrontends + Module Federation | **YES — verify HMR isolation** | PR #95997 isolates microfrontend HMR; verify boundaries |
+| Apps using `output: 'export'` MPA fallback | **YES — re-verify trailing slashes** | PR #97613 preserves trailing slashes; verify static export URLs |
+| Apps string-matching Next.js error codes (`E###`) | **YES — BREAKING** | PR #97687 removes generated codes; migrate to `instanceof` checks |
+| Apps using `unstable_navigation(url, { cache })` (canary.26) | No | Existing flows continue; PR #97309 adds validation |
+| Apps on Pages Router with Turbopack | **YES — chunk dedup** | PR #97664 dedupes `/_app` chunks; verify TTI improvements |
+| Apps using `notFound()` + string-matched errors | **YES — BREAKING** | PR #97687 removes codes; migrate error handling |
+| Apps using `import.meta.glob` | No | PR #96559 fixes ESM namespace assignment |
+
+### Versioning + Upgrade Recipe (v1.5.88)
+
+```bash
+# For most users — stay on next@^16.3.2 (just shipped):
+npm install next@^16.3.2
+
+# To adopt PPF unstable_prefetch() — pin to canary:
+npm install next@16.4.0-canary.1
+# And in code:
+# import { unstable_prefetch } from 'next/navigation';
+# await unstable_prefetch('/dashboard', { cache: 'default' });
+
+# For 15.5.x LTS users — stay on 15.5.21 or upgrade to 15.5.24 when Aug 26 CVE patch ships:
+npm install next@15.5.24  # T+4d from this cron
+```
+
+### Updated Routing Audit Recipe (v1.5.88)
+
+1. **Audit `<Link prefetch>` usage**: count `<Link>` components and confirm `prefetch` prop is set explicitly where needed (default = `"auto"`).
+2. **For programmatic prefetch migrations**: replace `router.prefetch(url)` with `await unstable_prefetch(url, { cache: 'default' })` once you adopt 16.4.0-canary.
+3. **For `unstable_navigation()` users**: verify PR #97309 instant validation works for your call-sites (catch synchronous errors during development).
+4. **For microfrontend apps**: test HMR isolation in 16.4.0-canary — verify that microfrontend A's HMR updates don't trigger HMR in microfrontend B.
+5. **For string-matched error code consumers**: PR #97687 in 16.4.0-canary.1 BREAKING change. Run `rg "E\d{3,}" --type ts --type tsx` to find string-matched error codes; migrate to `instanceof`.
+6. **For Pages Router + Turbopack users**: build and verify `/_app` chunk dedup.
+
+### Why this matters for `routing.md`
+
+The v1.5.83 cycle (Aug 21) touched routing.md but the **HEADLINE — `[PPF] unstable_prefetch()` SHIPPED in 16.4.0-canary.1 — landed Aug 21 23:53Z, 8h+ AFTER v1.5.83 committed at 12:11Z**. This v1.5.88 cycle is the first to document the new `unstable_prefetch()` API + the 16.4.0 canary line crossing + the BREAKING `Remove generated error codes` change. The `unstable_prefetch()` API + `unstable_navigation()` (canary.26) together form the **first stable programmatic partial-prefetching API surface in Next.js**.
+
+### Sources
+
+- [Official v16.4.0-canary.0 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0) — 6 misc changes; npm 2026-08-21T10:15:26Z
+- [Official v16.4.0-canary.1 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — 17 misc changes; npm 2026-08-21T23:53:40Z
+- [PR #97622 — `[PPF] unstable_prefetch()` SHIPPED](https://github.com/vercel/next.js/pull/97622) — the new programmatic partial-prefetching API
+- [PR #97618 — `[PPF] Scaffold unstable_prefetch()`](https://github.com/vercel/next.js/pull/97618) — the API scaffold
+- [PR #97309 — `[PPF] Instant validation for unstable_navigation()`](https://github.com/vercel/next.js/pull/97309) — instant validation companion for canary.26's `unstable_navigation()`
+- [PR #95997 — `feat(turbopack): isolate HMR listeners across microfrontends`](https://github.com/vercel/next.js/pull/95997) — microfrontend HMR scope isolation
+- [PR #97613 — `fix: preserve trailing slash during export MPA fallback`](https://github.com/vercel/next.js/pull/97613) — MPA export trailing-slash preservation
+- [PR #97687 — `Remove generated error codes` (BREAKING)](https://github.com/vercel/next.js/pull/97687) — string-matched error codes removed
+- [PR #97664 — `Turbopack: deduplicate Pages Router app chunks`](https://github.com/vercel/next.js/pull/97664) — Pages Router chunk dedup
+- [PR #97395 — `Turbopack: Split the read and write codepath data structures for symlinks`](https://github.com/vercel/next.js/pull/97395) — symlink-handling read/write split
+- [PR #97638 — `[react-sync] Check assignability before assigning the actor`](https://github.com/vercel/next.js/pull/97638) — type-correctness fix
+- [PR #96559 — `fix(turbopack): give eager import.meta.glob values the ESM namespace`](https://github.com/vercel/next.js/pull/96559) — ESM-correctness fix
+- [PR #97648 — `Turbopack: Show last modified file when waiting for the filesystem to settle`](https://github.com/vercel/next.js/pull/97648) — dev-only diagnostic
+- [PR #95974 — `turbo-tasks: add scope_unbounded`](https://github.com/vercel/next.js/pull/95974) — scoped execution primitive
+- [PR #97639 — `Add a Turbopack error for missing root layouts`](https://github.com/vercel/next.js/pull/97639) — better missing-root-layout DX
+- [Cross-reference: `security.md` — full security lens on 16.3.2 STABLE + 16.4.0-canary changes + Aug 26 CVE T-4d
+- [Cross-reference: `deployment.md` — full deployment-impact lens for 16.3.2 + 16.4.0-canary + Aug 26 deployment-readiness

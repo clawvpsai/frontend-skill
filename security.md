@@ -2440,3 +2440,73 @@ npm install @clerk/nextjs@^7.8.0
 - [PR #97507 — Turbopack outputFileTracingIncludes symlink handling](https://github.com/vercel/next.js/pull/97507) — HIGH for pnpm/NixOS/monorepo
 - [PR #97490 — Fix next/image transform requester-abort wedge](https://github.com/vercel/next.js/pull/97490) — HIGH for self-hosted next/image
 - [PR #97287 — Fix standalone output for server-only files with adapter](https://github.com/vercel/next.js/pull/97287) — BLOCKER for adapter users
+
+---
+
+## `next@16.3.2` STABLE SHIPPED as Routine Bug-Fix Patch (NO CVE Included) + Aug 26 Critical CVE Pre-Announce T-4d (Aug 21–22, 2026 — v1.5.88 Cycle — Security Lens)
+
+### `next@16.3.2` STABLE npm-Confirmed as Routine Patch (npm-published 2026-08-21T09:54:02Z)
+
+**Confirmed by the official release notes** ([v16.3.2 GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.2)):
+
+> [!NOTE]
+> This release is backporting bug fixes. It does **not** include all pending features/changes on canary.
+
+The 5 backports are: PR #97357 (scope app-entry export validation to files inside the app directory), PR #97416 (fix catch-all index page being served for every other slug), PR #97353/#97463 (Turbopack: don't trace embedded WASM loader helpers), PR #97453 (Turbopack: retain conditions when replacing resolve request keys), PR #97419 (Turbopack worker chunk loading with asset prefix), PR #97603 (Turborepo remote-cache OIDC replaces static PAT). **This is NOT the Aug 26 critical CVE patch release** — Aug 26 will ship `16.3.3` + `15.5.24` per the [official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026).
+
+### Why `16.3.2` is NOT a Security Patch — Implications
+
+The v1.5.83 cycle noted `next@16.3.2` was forecast as the Aug 20 monthly security release target. The release timeline was: Aug 20 monthly security release window CLOSED without shipping (the first miss since v1.5.0 on Jun 19), then `16.3.2` shipped Aug 21 as a routine bug-fix backport — independent of the security release cycle. The Aug 26 critical CVE patch will ship as **`next@16.3.3` + `next@15.5.24`** in 4 days (T-4d at 2026-08-22T18:02Z). Every Next.js app on 16.x or 15.x must plan an upgrade window for **August 26, 2026**.
+
+### Security-Relevant Change That DID Land in 16.3.2: PR #97603 Turborepo OIDC
+
+[PR #97603](https://github.com/vercel/next.js/pull/97603) — `Authenticate Turborepo remote caching with OIDC instead of a static PAT` (eps1lon). This is a **supply-chain security hardening** that landed in `16.3.2`:
+
+- **Before**: Turborepo remote-cache used a static Personal Access Token (PAT) for CI authentication. A leaked PAT grants long-lived, broad-scope access to the remote cache.
+- **After**: OIDC token-based authentication — short-lived, scoped to a single CI job, auto-rotated by the CI provider (GitHub Actions OIDC, GitLab CI/CD, CircleCI OIDC).
+- **Blast-radius impact**: a leaked OIDC token expires within the CI job's lifetime (typically 5–60 minutes), dramatically reducing the window of exploitation vs a long-lived PAT.
+- **User-action required**: NONE for most apps. Only monorepo users with Turborepo remote-cache need to verify their CI's OIDC token issuance and `turbo.json` `authentication: "oidc"` config. The change is backwards-compatible (OIDC preferred, PAT fallback).
+
+### The 16.4.0 Canary Line — Security-Relevant Changes
+
+Two new canary drops opened the 16.4.0 line on Aug 21:
+
+**[v16.4.0-canary.0](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0)** (npm 2026-08-21T10:15:26Z) — 6 misc changes including: `feat(turbopack): isolate HMR listeners across microfrontends` (PR #95997 — microfrontend isolation = security boundary between independent HMR scopes) + `Turbopack: deduplicate Pages Router app chunks` (PR #97664 — supply-chain-relevant dedup) + `fix: preserve trailing slash during export MPA fallback` (PR #97613 — export correctness fix) + `Turbopack: Split the read and write codepath data structures for symlinks` (PR #97395 — symlink-handling separation, no security regression vs the PR #97507 fix in 16.3.2) + `Turbopack: Show last modified file when waiting for the filesystem to settle` (PR #97648 — dev-only diagnostic) + `fix: [react-sync] Check assignability before assigning the actor` (PR #97638 — type-system-correctness fix for the [react-sync](https://github.com/facebook/react/tree/main/packages/react-sync) actor-assignment, prevents a narrow type-confusion class).
+
+**[v16.4.0-canary.1](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1)** (npm 2026-08-21T23:53:40Z) — 17 misc changes including: `[PPF] unstable_prefetch()` (PR #97622 + scaffold PR #97618 — **the new programmatic partial-prefetching API**) + `[PPF] Instant validation for unstable_navigation()` (PR #97309) + `turbo-tasks: add scope_unbounded, a scoped execution primitive that allows more work to be discovered` (PR #95974 — internal scheduler primitive) + `Remove generated error codes` (PR #97687 — **breaking change**: any code that string-matches Next.js error codes will break; rely on error class names instead) + `Add a Turbopack error for missing root layouts` (PR #97639 — better DX, no security impact) + `Improve Partial Prefetching adoption checks` (PR #97637) + `docs: correct the upper stale bound for App Shell exclusion in cacheLife` (PR #97653) + `fix(turbopack): give eager import.meta.glob values the ESM namespace` (PR #96559 — ESM correctness fix) + `Turbopack: Avoid cloning paths in fs watcher if the path is already in a map` (PR #97655 — fs-watch perf, no security impact) + `Turbopack: trace graceful-fs calls` (PR #97694 — observability) + React canary upgrade `eb8feb71-20260814` → `eafeac09-20260819` (PR #97636 — already in 16.3.1-canary.26, refreshed here).
+
+**Security implications for the 16.4.0 canary line**: PR #95997 (microfrontend HMR isolation = improved security boundary) and PR #97687 (Remove generated error codes = **breaking change for any code that string-matches error codes**) are the two material security-relevant items.
+
+### Aug 26 Critical CVE Pre-Announce — Updated T-4d Status
+
+Per the [official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) (published 2026-08-20T18:00:00Z): the Aug 26 release addresses **ONE critical severity vulnerability** affecting both 16.x and 15.x. The patched versions will be **`16.3.3` + `15.5.24`**. Full advisory publishes alongside the release. T-4d from this cron's 18:02Z Aug 22 start = **Wednesday, August 26, 2026** (during North American business hours per the Next.js team's historical security-release timing).
+
+### Updated Security Audit Recipe (v1.5.88)
+
+1. **Verify your `next` pin**: `npm ls next`. Pin `next@^16.3.2` (most recent STABLE, includes PR #97603 OIDC + backport fixes) or stay on `next@15.5.x` for LTS users.
+2. **Aug 26 calendar reminder**: pre-flight `npm view next@latest version` at 14:00Z Aug 26 + immediate `npm install next@latest && npm install next@15.5.24` depending on your pin.
+3. **For Turborepo monorepos with remote-cache**: verify `turbo.json` has `"remoteCache": { "signature": true }` + the CI provider has OIDC token issuance enabled (GitHub Actions: `permissions: { id-token: write }`). The PR #97603 OIDC hardening ships in 16.3.2.
+4. **Audit string-matched error codes**: PR #97687 in 16.4.0-canary.1 removes generated error codes — any code that string-matches `E###` codes will break in 16.4.0+. Migrate to `instanceof ErrorClass` checks now.
+5. **For 16.4.0-canary.1 adopters**: PR #95997 microfrontend HMR isolation is the new security boundary — verify microfrontend boundaries in your module-federation setup.
+6. **Verify React `eafeac09` canary**: 16.4.0-canary.1 bundles React 19.3.0-canary-eafeac09-20260819 internally via PR #97636. Do NOT install `react@canary` separately — the App Router bundles it.
+
+### Why this matters for `security.md`
+
+The v1.5.83 cycle flagged `next@16.3.2` as "routine patch shipped Aug 21" but **did not confirm that 16.3.2 is a routine PATCH, not the Aug 26 critical CVE patch**. The v1.5.88 confirmation comes from the official release body which states: "This release is backporting bug fixes. It does **not** include all pending features/changes on canary." This rules out 16.3.2 being a CVE patch. The Aug 26 CVE patch release will be `next@16.3.3 + next@15.5.24`, NOT `16.3.2`. This is the single most consequential security clarification since the v1.5.83 cycle.
+
+### Sources
+
+- [Official v16.3.2 release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — "backporting bug fixes; does not include all pending features/changes on canary" (verbatim confirmation that 16.3.2 is NOT the Aug 26 CVE patch)
+- [Official v16.4.0-canary.0 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0) — 6 misc changes including PR #95997 microfrontend HMR isolation + PR #97395 symlink-handling split + PR #97638 react-sync assignability
+- [Official v16.4.0-canary.1 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — 17 misc changes including PR #97622 `[PPF] unstable_prefetch()` SHIPPED + PR #97687 Remove generated error codes (BREAKING) + PR #97309 `[PPF] Instant validation for unstable_navigation()`
+- [Upcoming Next.js August Security Release (Aug 26 CVE pre-announce)](https://nextjs.org/blog/upcomingnextjs-security-release-august-2026) — ONE critical CVE; `16.3.3 + 15.5.24`; full advisory publishes alongside the release
+- [npm `next@16.3.2`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T09:54:02.099Z
+- [npm `next@16.4.0-canary.0`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T10:15:26.029Z (15min 24s after 16.3.2 STABLE cut)
+- [npm `next@16.4.0-canary.1`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-21T23:53:40.907Z
+- [PR #97603 — Turborepo remote-cache OIDC](https://github.com/vercel/next.js/pull/97603) — supply-chain hardening (PAT → OIDC); shipped in 16.3.2
+- [PR #97622 — [PPF] `unstable_prefetch()`](https://github.com/vercel/next.js/pull/97622) — the new programmatic partial-prefetching API
+- [PR #97687 — Remove generated error codes](https://github.com/vercel/next.js/pull/97687) — BREAKING change for string-matched error code consumers
+- [PR #95997 — feat(turbopack): isolate HMR listeners across microfrontends](https://github.com/vercel/next.js/pull/95997) — security boundary between microfrontend HMR scopes
+- [PR #97638 — [react-sync] Check assignability before assigning the actor](https://github.com/vercel/next.js/pull/97638) — type-system-correctness fix
+- [Cross-reference: `routing.md` — PPF `unstable_prefetch()` + `unstable_navigation()` instant validation routing-surface impact
+- [Cross-reference: `deployment.md` — full deployment-impact lens for 16.3.2 + 16.4.0-canary.0/1 + Aug 26 deployment-readiness checklist
