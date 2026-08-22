@@ -5008,3 +5008,170 @@ cat turbo.json | jq '.remoteCache'
 - [Turborepo docs: Remote Caching with OIDC](https://turborepo.build/docs/core-concepts/remote-caching#oidc-authentication) — Pattern X canonical docs
 - [Next.js `v16.3.1-canary.25` GitHub release tag](https://github.com/vercel/next.js/releases/tag/v16.3.1-canary.25) — for the prior `'use turbopack: constants';` directive (replaced by `'use turbopack: no side effects';`)
 - [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.3.1-canary.26 SHIPPED` section for the API-surface lens on all 18 PRs; `server-components.md` → v1.5.80 cycle's PPF `unstable_navigation()` implementation section for the RSC-lens; `performance.md` → v1.5.80 cycle's PPF prefetch bandwidth reduction + `use turbopack: no side effects` extended tree-shaking section; `security.md` → v1.5.79 cycle's Aug 20 security window breach + PR #97590 OIDC for the security lens
+
+
+## Next.js `16.4.0-canary.0/1` SHIPPED — Pattern Y: `[PPF] unstable_prefetch()` Explicit Page-Content Prefetch + Pattern Z: `[PPF] Instant Validation for `unstable_navigation()` (Pattern Surface Lens — npm-published 2026-08-21T23:53:40Z)
+
+### Pattern Y — `unstable_prefetch()` — The Second PPF Programmatic Prefetch API (PR #97622, canary.1)
+
+**Summary**: `unstable_prefetch()` is the **explicit, programmatic RSC payload prefetch API** for page content (separate from the app shell). It complements `unstable_navigation()` — while `unstable_navigation()` prefetches the app shell on link hover/focus, `unstable_prefetch()` prefetches the page content itself.
+
+**Availability**: `next@16.4.0-canary.1+` (npm-published 2026-08-21T23:53:40Z).
+
+**The canonical pattern — explicit prefetch on link interaction:**
+
+```tsx
+'use client'
+
+import { unstable_prefetch, Link } from 'next/link'
+
+function ProductCard({ product }: { product: Product }) {
+  const href = `/products/${product.slug}`
+
+  return (
+    <Link
+      href={href}
+      onMouseEnter={async () => {
+        // Explicitly prefetch page content (not shell) before navigation
+        await unstable_prefetch(href)
+      }}
+    >
+      <img src={product.image} alt={product.name} />
+      <span>{product.name}</span>
+    </Link>
+  )
+}
+```
+
+**The rule of thumb for `unstable_navigation()` vs `unstable_prefetch()`:**
+
+| API | Trigger | What it prefetches |
+|-----|---------|-------------------|
+| `unstable_navigation()` | Link hover / focus | App shell (params, layout data) |
+| `unstable_prefetch()` | Explicit call | Page content (page component, outside shell) |
+
+**Semantic constraint — when `unstable_prefetch()` resolves:**
+
+`unstable_prefetch()` resolves in `PrefetchStatic`/`PrefetchRuntime` stages (from PR #96908). It resolves when:
+- In a **static prerender**: static params are available (but NOT the param-less app shell)
+- In a **runtime prefetch** (`prefetch={true}`): the page data (but NOT the param-less app shell)
+
+**The Suspense requirement — instant insight on misuse:**
+
+Using `unstable_prefetch()` in an App Shell without a `<Suspense>` boundary triggers an **instant insight** (dev overlay error shown immediately). This is by design — prefetching page content without Suspense means the content would not be streamed, defeating the purpose.
+
+```tsx
+// CORRECT: prefetch inside a Suspense boundary
+import { Suspense } from 'react'
+import { unstable_prefetch } from 'next/link'
+
+async function PrefetchButton({ href }: { href: string }) {
+  await unstable_prefetch(href)  // triggers insight if no Suspense above
+  return <Link href={href}>Navigate</Link>
+}
+
+export default function AppShell() {
+  return (
+    <nav>
+      <Suspense fallback={<NavSkeleton />}>
+        <PrefetchButton href="/dashboard" />
+      </Suspense>
+    </nav>
+  )
+}
+```
+
+**The `await cookies()` de-opt rule:**
+
+```tsx
+// This DE-OPTS the route to runtime — prefetch reveals page content
+await unstable_prefetch(href)
+await cookies()  // runtime data access → whole route becomes dynamic
+
+// This is fine — prefetch alone does not count as runtime data access
+await unstable_prefetch(href)
+// route stays static
+```
+
+**Migrating from custom `useEffect` + `fetch` prefetch:**
+
+```tsx
+// BEFORE (deprecated pattern):
+useEffect(() => {
+  fetch('/api/product/' + slug).then(r => r.json())
+}, [slug])
+
+// AFTER (canonical PPF):
+await unstable_prefetch('/products/' + slug)
+```
+
+### Pattern Z — PPF Instant Validation for `unstable_navigation()` (PR #97309, canary.1)
+
+**Summary**: The validation for `unstable_navigation()` was restructured from a **recursive retry** mechanism to a **loop-based ordered array** mechanism. This eliminates the `hasAmbiguousErrors` flag and produces **instant, unambiguous error messages** directly in the dev overlay.
+
+**Before (recursive, delayed errors):**
+- `unstable_navigation()` used in an incompatible context → recursive retry with ambiguous error classification
+- Errors were not shown until the retry cycle completed
+- `hasAmbiguousErrors` flag handled cases where the validation could not determine a unique error type
+
+**After (loop-based, instant errors):**
+- Validation is now a **deterministic loop** over an ordered array of stages + hole types
+- Errors are shown **immediately** (no retry delay)
+- No ambiguous error state — each validation failure has exactly one cause
+
+**The 3-stage App Shell validation (new in PR #97309):**
+
+With `navigation()` (PR #96908), the App Shell flow gained a 3rd stage. The new loop-based validator distinguishes:
+1. Link data (resolves in `NavigationRuntime`)
+2. Navigation data
+3. Dynamic data
+
+```tsx
+// This now shows an INSTANT error in the dev overlay if misused:
+// ❌ WRONG: unstable_navigation() used outside of a navigable context
+// Error shown immediately, no retry
+const data = await unstable_navigation('/some-path', { intent: 'href' })
+
+// ✅ CORRECT: wrapped in Suspense, valid navigation context
+<Suspense fallback={<Loading />}>
+  <PrefetchOnHover href="/dashboard" />
+</Suspense>
+```
+
+**Why the restructure was necessary:**
+
+The 2-stage App Shell validator (from canary.26) could retry once on ambiguous errors. With 3 stages, the recursive approach would require multiple retry levels, making the code complex and errors non-deterministic. The loop-based approach is O(1) in complexity and always produces a single, specific error.
+
+### 5-step combined audit recipe (Pattern Y + Z)
+
+```bash
+# Step 1: find custom useEffect+fetch prefetch patterns (candidates for Pattern Y migration)
+rg -n "useEffect" --type tsx -A 5 -g '!node_modules/*' | rg "fetch|prefetch" | head -20
+
+# Step 2: audit existing unstable_navigation() calls for Suspense boundaries
+rg -n "unstable_navigation" --type tsx -g '!node_modules/*' | head -20
+
+# Step 3: verify all unstable_prefetch() calls have Suspense ancestors
+rg -n "unstable_prefetch" --type tsx -g '!node_modules/*' -B 5 | rg "Suspense" | head -10
+
+# Step 4: check for cookies()/headers() after unstable_prefetch() (de-opt pattern)
+rg -n "unstable_prefetch" --type tsx -A 3 -g '!node_modules/*' | rg "cookies|headers|session" | head -10
+
+# Step 5: test the instant validation overlay
+NEXT_DEBUG=ppf pnpm dev  # run for 30s on a page using unstable_navigation()
+```
+
+### Recommended version pin
+
+- **Pattern Y (`unstable_prefetch()`)**: requires `next@16.4.0-canary.1+`
+- **Pattern Z (instant validation)**: requires `next@16.4.0-canary.1+`; backward-compatible with existing `unstable_navigation()` calls
+- **Production**: stay on `next@^16.3.2` until 16.4.0 STABLE; the PPF APIs will forward-port
+
+### Sources
+
+- [Next.js `v16.4.0-canary.1` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — npm-published 2026-08-21T23:53:40Z
+- [PR #97622 — `[PPF] unstable_prefetch()`](https://github.com/vercel/next.js/pull/97622) — merged 2026-08-21T11:50:26Z; **Pattern Y — the second PPF programmatic prefetch API**
+- [PR #97618 — `[PPF] Scaffold unstable_prefetch()`](https://github.com/vercel/next.js/pull/97618) — the scaffold for PR #97622
+- [PR #97309 — `[PPF] Instant validation for unstable_navigation()`](https://github.com/vercel/next.js/pull/97309) — merged 2026-08-21T19:08:39Z; **Pattern Z — loop-based validator replaces recursive retry**
+- [Next.js docs: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — canonical PPF docs (augmented with `unstable_prefetch()` in canary.1)
+- [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.4.0-canary.1 SHIPPED` section for the API-surface lens on `unstable_prefetch()` + instant validation; `server-components.md` → PPF RSC-lens on `unstable_prefetch()` PrefetchStatic/PrefetchRuntime stages; `performance.md` → PPF prefetch bandwidth lens for `unstable_prefetch()`

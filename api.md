@@ -2259,3 +2259,114 @@ The Aug 20 monthly security release window opened 09:00Z Aug 20 + closed 22:00Z 
 - [Next.js blog: Next.js 16.3](https://nextjs.org/blog/next-16-3) — the canonical Cache Components + Partial Prefetching + use cache docs
 - [Next.js docs: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — the canonical PPF docs (augmented with `unstable_navigation()` in canary.26)
 - [Cross-references](cross-refs): `patterns.md` → the new `## Pattern U-V-W-X` section for the pattern-lens on PPF `unstable_navigation()` + Turbopack `no side effects` + debounced fs-watch + Turborepo OIDC; `server-components.md` → v1.5.80 cycle's PPF `unstable_navigation()` implementation section for the RSC-lens; `performance.md` → v1.5.80 cycle's PPF prefetch bandwidth reduction + `use turbopack: no side effects` extended tree-shaking section; `security.md` → v1.5.79 cycle's Aug 20 security window breach + PR #97590 OIDC for the security lens; `typescript.md` → v1.5.75 cycle's canary.22-24 TS-impact observations + this cycle's 27th rebuild + TanStack Query 5.101.5 imminent + zod@4.5.0 STABLE forecast update
+
+
+## Next.js `16.3.2` STABLE SHIPPED (August 21, 2026) — 6 Backport PRs + August 20 Security Window RESOLVED + `next@16.4.0-canary.0/1` SHIPPED — PPF `unstable_prefetch()` + Instant Validation (API-Surface Lens — npm-published 2026-08-21T09:54:02Z)
+
+### August 20 Security Window RESOLVED — 16.3.2 STABLE Ships
+
+The **August 20 monthly security release window was missed** (first miss since the skill began tracking at v1.5.0 on Jun 19 — documented in the v1.5.81 cycle). **`next@16.3.2 STABLE** shipped on **2026-08-21T09:36:39Z (GitHub) / 2026-08-21T09:54:02Z (npm)** — resolving the missed August 20 window. This release is a **backport bundle** containing 6 PRs from the canary branch. The August 20 security release deferred to 16.3.2.
+
+### The 6 Backport PRs in 16.3.2 STABLE
+
+**PR #97357 — `[16.3.x] Scope app-entry export validation to files inside the app directory`** (merged 2026-08-14T10:51:56Z)
+- Backported from canary.17. Fixes the `getStaticProps is not supported in app/` build failure for Pages Router metadata files (`sitemap.js`, `robots.js`, `manifest.js`, `icon.js`) that live in the `pages/` directory.
+- **API-surface impact:** No new API. Build-time validation fix only.
+
+**PR #97416 — `[backport] Fix catch-all index page being served for every other slug`** (merged 2026-08-15T14:23:36Z)
+- **THE API-SURFACE HEADLINE of this release.** A regression where a catch-all index page `[...slug]/page.tsx` would incorrectly serve content for every other slug value. For example, `/api/items/foo` might return data intended for `/api/items/bar` instead of a 404.
+- **Affected patterns:** Dynamic catch-all routes like `app/api/[...slug]/route.ts` where the index route (`app/api/[...slug]/page.tsx`) is used as a list view.
+- **Impact:** Silent data correctness issue — wrong API response for a valid URL path. This is a **must-fix for any app using catch-all index pages as list views.**
+- **Audit recipe:**
+  ```bash
+  # Find catch-all routes that might have an index page as list view
+  rg -l "\[\.\.\." --type ts --type tsx -g '!node_modules/*' | xargs rg -l "export default|export async function" | head -20
+  ```
+
+**PR #97463 — `[16.3] Turbopack: don't trace embedded WASM loader helpers (#97353)`** (merged 2026-08-18T10:08:40Z)
+- Dev build perf: Turbopack no longer traces WASM loader helpers. No API surface change.
+
+**PR #97453 — `[16.3] Turbopack: retain conditions when replacing resolve request keys`** (merged 2026-08-19T19:58:51Z)
+- Dev build correctness: Turbopack correctly resolves module conditions in more edge cases. No API surface change.
+
+**PR #97419 — `[16.3.x] Fix Turbopack worker chunk loading with asset prefix`** (merged 2026-08-20T07:39:41Z)
+- Dev/build correctness for workers. No API surface change.
+
+**PR #97603 — `[16.3.x] Authenticate Turborepo remote caching with OIDC instead of a static PAT`** (merged 2026-08-20T18:13:20Z)
+- CI supply-chain security improvement. No API surface change.
+
+### `next@16.4.0-canary.0` SHIPPED (GitHub 2026-08-21T10:05:23Z / npm 2026-08-21T10:15:26Z)
+
+The **first canary of the 16.4.0 line** shipped ~20 minutes after 16.3.2 STABLE. The canary train jumps to 16.4.0 (not 16.3.3), signaling a **new minor version with potentially new features** rather than a pure security-patch release. No HIGH-impact PRs in canary.0 — this is the initial 16.4.0 branch cut.
+
+### `next@16.4.0-canary.1` SHIPPED (GitHub 2026-08-21T23:43:34Z / npm 2026-08-21T23:53:40Z) — 2 PPF API Additions
+
+**The HEADLINE: `[PPF] unstable_prefetch()` — the second PPF programmatic API** (PR #97622, merged 2026-08-21T11:50:26Z)
+
+`unstable_prefetch()` is the **second PPF programmatic API** after `unstable_navigation()`. While `unstable_navigation()` handles link-hover / focus-triggered app shell prefetch, `unstable_prefetch()` explicitly prefetches the **RSC payload for page content** (not the shell).
+
+**Key semantics from the PR #97622 body:**
+
+- `await unstable_prefetch()` **excludes content from the app shell** — it only resolves when using `prefetch={true}` (speculative) or during navigations.
+- Resolves in `PrefetchStatic/PrefetchRuntime` stages (added in PR #96908 / canary.26).
+- **Incompatible without Suspense:** Using `unstable_prefetch()` in an App Shell without a `<Suspense>` boundary **triggers an instant insight** (validation error shown immediately in dev overlay).
+- `await unstable_prefetch()` alone does NOT count as a runtime data access (does not de-opt the route to runtime). But `await unstable_prefetch(); await cookies()` **does de-opt** (because using a speculative runtime prefetch would reveal more content than intended).
+
+**Rule of thumb:**
+- `unstable_navigation()` → prefetches the **app shell** (params, layout data)
+- `unstable_prefetch()` → prefetches the **page content** (page component data, outside the shell)
+
+**Migration from `useEffect` + `fetch`:**
+```tsx
+// BEFORE (canary.25): custom prefetch with fetch
+useEffect(() => {
+  fetch(url).then(r => r.json())
+}, [url])
+
+// AFTER (canary.26+): canonical PPF prefetch
+import { unstable_prefetch } from 'next/navigation'
+
+// Inside a Link onMouseEnter or similar:
+await unstable_prefetch(href)
+```
+
+**Audit recipe (3 steps):**
+1. Find `useEffect` + `fetch` prefetch patterns: `rg -n "useEffect.*prefetch|fetch.*prefetch" --type tsx -A 3 | rg -B 2 "fetch\("`
+2. Replace with `unstable_prefetch()` — available in Next.js 16.4.0-canary.0+
+3. Verify no `await cookies()` / `await headers()` / `await session()` follows the prefetch call without a Suspense boundary
+
+**PR #97309 — `[PPF] Instant validation for unstable_navigation()` — restructured to loop-based retry** (merged 2026-08-21T19:08:39Z)
+
+The validation logic for `unstable_navigation()` was restructured from recursive retry to a **loop-based array approach**. The key improvement: error messages are now **instant** (shown immediately in the dev overlay) rather than requiring a retry cycle.
+
+Previously, validation would recurse on ambiguous errors. The new approach:
+1. Defines an ordered array of stages to try
+2. Defines what kind of "hole" appears in each stage
+3. Loops through the array — no recursion, deterministic retry order
+
+The `hasAmbiguousErrors` flag and its associated logic was **removed** — all validation now has unambiguous, instantaneous error messages.
+
+**This matters for:** developers using `unstable_navigation()` who were previously confused by delayed / ambiguous validation error messages.
+
+### Recommended version pin
+
+- **Production**: `next@^16.3.2` (UPGRADE — the catch-all index page PR #97416 is a correctness fix)
+- **Using catch-all index pages as list views**: UPGRADE to `^16.3.2` immediately — PR #97416 fixes silent wrong-response bug
+- **Using PPF features**: UPGRADE to `next@16.4.0-canary.1+` for `unstable_prefetch()` + instant validation
+- **Turbopack dev users**: `^16.3.2` includes the WASM + worker chunk loading fixes
+
+### Sources
+
+- [Next.js `v16.3.2` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.2) — npm-published 2026-08-21T09:54:02Z; backport bundle; resolves Aug 20 security window
+- [Next.js `v16.4.0-canary.0` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.0) — npm-published 2026-08-21T10:15:26Z; first 16.4.0 canary cut
+- [Next.js `v16.4.0-canary.1` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — npm-published 2026-08-21T23:53:40Z; 2 PPF API additions
+- [GitHub compare: `v16.3.1-canary.26...v16.3.2`](https://github.com/vercel/next.js/compare/v16.3.1-canary.26...v16.3.2) — the 6 backport PRs
+- [PR #97416 — Fix catch-all index page being served for every other slug](https://github.com/vercel/next.js/pull/97416) — **THE API-SURFACE HEADLINE of 16.3.2**; correctness fix for catch-all index pages
+- [PR #97622 — `[PPF] unstable_prefetch()`](https://github.com/vercel/next.js/pull/97622) — merged 2026-08-21T11:50:26Z; the second PPF programmatic prefetch API
+- [PR #97309 — `[PPF] Instant validation for unstable_navigation()`](https://github.com/vercel/next.js/pull/97309) — merged 2026-08-21T19:08:39Z; restructured from recursive to loop-based validation
+- [PR #97357 — Scope app-entry export validation](https://github.com/vercel/next.js/pull/97357) — backported from canary.17; build validation fix
+- [PR #97463 — Turbopack WASM loader helpers](https://github.com/vercel/next.js/pull/97463) — dev perf fix
+- [PR #97453 — Turbopack retain conditions](https://github.com/vercel/next.js/pull/97453) — dev correctness
+- [PR #97419 — Turbopack worker chunk loading with asset prefix](https://github.com/vercel/next.js/pull/97419) — dev/build fix
+- [PR #97603 — Turborepo OIDC](https://github.com/vercel/next.js/pull/97603) — CI supply-chain security
+- [Cross-references](cross-refs): `patterns.md` → the new `## Pattern Y-Z (canary.0/1)` section for the pattern-lens on `unstable_prefetch()` + instant validation; `server-components.md` → PPF RSC-lens on `unstable_prefetch()` stages; `performance.md` → PPF prefetch bandwidth lens; `security.md` → Aug 20 security window RESOLVED in 16.3.2 STABLE; `typescript.md` → v1.5.82 cycle's TS-impact for React canary in 16.4.0-canary

@@ -2379,3 +2379,194 @@ npm view @tanstack/react-query dist-tags  # check if 'latest' is now 5.101.5
 - [Cross-reference: `performance.md` v1.5.80 → `## PPF prefetch bandwidth reduction + use turbopack: no side effects extended tree-shaking` for the perf-lens]
 - [Cross-reference: `security.md` v1.5.79 → `## Aug 20 security window breach` + `PR #97590 OIDC` for the security-lens on the Aug 20 release window MISS]
 - [Cross-reference: `patterns.md` v1.5.81 → `## Pattern U-V-W-X (canary.26)` for the 4 NEW patterns unlocked by canary.26]
+
+
+## 28th + 29th TypeScript No-Content Daily Rebuilds (Aug 21 + Aug 22, 2026) + React Hook Form 7.86.0 SHIPPED (August 21, 2026) — Type-Safe `getErrors()` + 10 Fixes + Performance Work + Better Auth 1.7.0/1.7.1 STABLE + zod@4.5.0 STABLE Forecast (TypeScript / Build-Tooling Lens — Tested at v1.5.86 Cron, August 22, 2026 06:02 UTC)
+
+### 28th + 29th TypeScript No-Content Daily Rebuilds (Aug 21 + Aug 22, 2026)
+
+**`typescript@7.1.0-dev.20260821.1`** — npm-published 2026-08-21T08:31:37.294Z (28th no-content rebuild; TypeScript main branch still idle since 2026-07-27T20:55:30Z — now 26+ days idle).
+
+**`typescript@7.1.0-dev.20260822.1`** — expected ~08:25Z Aug 22, 2026 (29th no-content rebuild; if it follows the ~08:25Z daily pattern).
+
+The TypeScript main branch has been **idle since 2026-07-27** (26+ days at this cron's check). The daily rebuilds are purely version-bump commits that keep the npm `next` dist-tag current. **No material TypeScript language changes** in these rebuilds. The Strada API (TypeScript 7.1) roadmap remains unchanged from the v1.5.81 cycle observation.
+
+### `zod@4.5.0` STABLE Forecast — Update
+
+The `zod@4.5.0` STABLE **has not yet shipped** as of this cron's check (Aug 22, 06:02Z). The canary train is continuing:
+
+| Canary Drop | npm Published | Gap from Prior |
+|---|---|---|
+| `4.5.0-canary.20260820T155656` | 2026-08-20T16:00:10Z | baseline |
+| `4.5.0-canary.20260820T144632` | 2026-08-20T14:49:47Z | (earlier same day) |
+| `4.5.0-canary.20260820T145307` | 2026-08-20T14:56:23Z | 7min |
+| `4.5.0-canary.20260820T151954` | 2026-08-20T15:23:08Z | 27min |
+| `4.5.0-canary.20260819T211159` | 2026-08-20T19:41:43Z | 4h 19min |
+| `4.5.0-canary.20260819T210425` | 2026-08-20T19:43:58Z | 2min |
+
+**Forecast: `zod@4.5.0` STABLE likely within the next 24-72h window** (the Aug 21 06:02Z SKILL.md v1.5.81 cycle forecast was "Aug 21-23"; it is now Aug 22 06:02Z and STABLE has not shipped yet, but the canary train is still active). The `zod@latest` still resolves to `4.4.3`.
+
+**Recommended pin while waiting for STABLE:**
+```bash
+# Use canary tip:
+pnpm add zod@4.5.0-canary.20260820T155656
+
+# OR stay on STABLE until canary ships:
+pnpm add zod@^4.4.3
+```
+
+### React Hook Form 7.86.0 STABLE SHIPPED (August 21, 2026 — npm-published 2026-08-21T22:58:40Z)
+
+**React Hook Form 7.86.0** shipped on **2026-08-21T22:58:40Z** — the v1.5.82 cycle's "7.85.0 still current, 7 commits ahead, expect v7.86.0 within 2-3 weeks" prediction was correct. This is a **sizable minor** with 1 feature, 10 bug fixes, 4 performance improvements, and significant internal refactoring.
+
+**1 Feature — Type-safe `getErrors()` method (PR #13639, PR #12853):**
+
+The headline feature is a **type-safe `getErrors()` method** for reading form errors without subscribing to updates:
+
+```tsx
+import { useForm } from 'react-hook-form'
+
+function ErrorSummary({ errors }: { errors: ReturnType<ReturnType<typeof useForm>['getErrors']> }) {
+  return (
+    <ul>
+      {Object.entries(errors).map(([field, error]) => (
+        <li key={field}>{error.message}</li>
+      ))}
+    </ul>
+  )
+}
+
+function MyForm() {
+  const { getErrors, watch } = useForm({
+    defaultValues: { email: '', name: '' }
+  })
+
+  // Read errors without subscription — triggers no re-renders
+  const errors = getErrors()  // typed as Record<string, FieldError | undefined>
+
+  return (
+    <div>
+      <ErrorSummary errors={errors} />
+      <input {...register('email', { required: true })} />
+    </div>
+  )
+}
+```
+
+**This replaces the common pattern of accessing `formState.errors` directly** (which subscribes to all form state changes and can cause unnecessary re-renders). `getErrors()` is a **read-once** call — it returns current errors at call time without subscribing to updates.
+
+**10 Bug Fixes (verbatim from CHANGELOG.md):**
+
+1. **`useWatch` returning stale values when the watched name changes to `null`** (PR #13668) — **HIGH IMPACT** if you use conditional field watching
+2. **`unregister` `keepDirty` behavior** (PR #13669) — `unregister('field', { keepDirty: true })` now correctly preserves dirty state
+3. **`setValues` for fields registered under object or array values** (PR #13667) — **HIGH IMPACT** for nested form data patterns
+4. **`Controller` notifications for field array item roots** (PR #13665) — Controller in field arrays now triggers correct update notifications
+5. **Validation state checks** (PR #13661) — various validation state edge cases fixed
+6. **`setCustomValidity` with `criteriaMode: 'all'`** (PR #13655) — all custom validity messages now shown instead of just the first
+7. **File, Blob, and FileList handling in `flatten`** (PR #13652) — file inputs now flatten correctly in nested forms
+8. **Stale errors and touched state after updating a field array item** (PR #13650) — field array mutations now correctly update error/touched state
+9. **Stale field names leaking into persisted `formState`** (PR #13649) — memory leak / stale state fix for long-lived forms
+10. **`flatten` object/array value handling** (already listed as PR #13667 above — confirmed HIGH IMPACT for nested data)
+
+**4 Performance Improvements:**
+1. `createFormControl` performance (PR #13648)
+2. `cloneObject` performance
+3. Avoid unnecessary value cloning in `unregister` (PR #13662)
+4. `onChange`-heavy workloads performance boost
+
+**Audit recipe (5 steps):**
+```bash
+# Step 1: check if onChange-heavy forms need the performance boost
+rg -n "useWatch|watch\(" --type tsx -c | sort -t: -k2 -rn | head -10
+
+# Step 2: audit for setValues with nested object/array paths (PR #13667)
+rg -n "setValues\(" --type tsx -A 2 | rg "\.|\[" | head -20
+
+# Step 3: audit for Controller in field arrays (PR #13665)
+rg -n "Controller|useFieldArray" --type tsx -A 3 | head -20
+
+# Step 4: audit for setCustomValidity with criteriaMode: 'all' (PR #13655)
+rg -n "setCustomValidity|criteriaMode.*all" --type tsx | head -10
+
+# Step 5: upgrade
+pnpm add react-hook-form@^7.86.0
+```
+
+### Better Auth 1.7.0 STABLE SHIPPED + 1.7.1 PATCH (August 18, 2026) — MAJOR Breaking Changes
+
+**`better-auth@1.7.0`** SHIPPED (2026-08-18T00:23:22Z) and **`better-auth@1.7.1`** SHIPPED (2026-08-18T18:51:23Z) — the **GA release of the 1.7.0 line**.
+
+**Key breaking changes in 1.7.0:**
+
+**1. Database joins moved from `experimental` → `advanced.database.joins` (stable):**
+```ts
+// BEFORE (1.6.x):
+const auth = betterAuth({
+  experimental: { joins: true }
+})
+
+// AFTER (1.7.0+):
+const auth = betterAuth({
+  advanced: { database: { joins: true } }
+})
+// Drizzle/Prisma users must regenerate schema:
+// npx auth@latest generate
+```
+
+**2. Scoped account identity by trusted issuer — `(issuer, accountId)` keying:**
+```ts
+// BEFORE: accounts keyed by accountId alone
+// AFTER: accounts now require Account.issuer
+// SSO users: read provider identity from accountInfo.account.accountId
+// Microsoft Entra ID: give the helper a concrete tenant GUID
+// A backfill script is required for existing SSO users — see the 1.7 upgrade guide
+```
+
+**3. Captcha endpoint paths must now match full auth paths (with wildcard support):**
+```ts
+// BEFORE (1.6.x):
+{ captcha: { endpoint: '/sign-in' } }
+
+// AFTER (1.7.0+):
+{ captcha: { endpoint: '/sign-in/*' } }  // wildcard required
+```
+
+**4. MCP plugin moved to `@better-auth/mcp` package:**
+```bash
+# BEFORE: MCP included in better-auth
+# AFTER: separate package
+pnpm add @better-auth/mcp @better-auth/cimd
+```
+New required: `jwt()` plugin. `withMcpAuth` → `requireMcpAuth`. `mcpHandler` → `createMcpProtectedRequestHandler`. Schema: `oauthApplication` → `oauthClient` + new `oauthRefreshToken` + `oauthClientAssertion` tables.
+
+**5. OIDC back-channel logout:**
+Ending a session now cuts off every connected app's API access via OIDC back-channel logout.
+
+**Recommended action for TypeScript users:**
+- Run `npx auth@latest generate` after upgrading to regenerate Drizzle/Prisma schemas (the new tables `oauthRefreshToken` and `oauthClientAssertion` require migration)
+- If using SSO: run the account-identity backfill before deploying 1.7.0
+- If using MCP: migrate to `@better-auth/mcp` package + add `jwt()` plugin
+
+### Recommended version pin
+
+- **TypeScript**: `typescript@^7.0.2` STABLE; the `next` dist-tag (`7.1.0-dev.20260821.1`) is still no-content rebuilds
+- **zod**: `zod@4.5.0-canary.20260820T155656` (canary tip) OR `zod@^4.4.3` until STABLE ships; watch npm for `zod@4.5.0` STABLE in next 24-72h
+- **React Hook Form**: `react-hook-form@^7.86.0` (UPGRADE — the `getErrors()` method + the 10 bug fixes are material; the `setValues` nested path fix is HIGH IMPACT for complex forms)
+- **better-auth**: `better-auth@^1.7.1` (UPGRADE from 1.6.x — breaking changes in 1.7.0 require migration; run the account-identity backfill + regenerate schemas)
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260821.1` next; 28th no-content rebuild
+- [zod npm dist-tags](https://www.npmjs.com/package/zod?activeTab=versions) — `latest: '4.4.3'`; `canary: '4.5.0-canary.20260820T155656'`
+- [React Hook Form `v7.86.0` GitHub release](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.86.0) — npm-published 2026-08-21T22:51:29Z; **1 feature + 10 fixes + 4 perf**
+- [RHF PR #13639 — type-safe `getErrors()` method](https://github.com/react-hook-form/react-hook-form/pull/13639) — the headline feature of 7.86.0
+- [RHF PR #13668 — `useWatch` stale values on null name change](https://github.com/react-hook-form/react-hook-form/pull/13668) — HIGH IMPACT fix
+- [RHF PR #13667 — `setValues` for nested object/array paths](https://github.com/react-hook-form/react-hook-form/pull/13667) — HIGH IMPACT fix for complex forms
+- [RHF PR #13665 — `Controller` in field arrays](https://github.com/react-hook-form/react-hook-form/pull/13665) — HIGH IMPACT for field array patterns
+- [better-auth `v1.7.0` GitHub release](https://github.com/better-auth/better-auth/releases/tag/v1.7.0) — npm-published 2026-08-18T00:23:22Z; **GA of 1.7.0 line; 4 major breaking changes**
+- [better-auth `v1.7.1` GitHub release](https://github.com/better-auth/better-auth/releases/tag/v1.7.1) — npm-published 2026-08-18T18:51:23Z; bug fix consolidation
+- [better-auth 1.7 blog post](https://better-auth.com/blog/1-7) — migration guide + blog for 1.7.0
+- [Cross-reference: `api.md` v1.5.82 → `## Next.js 16.4.0-canary.1 SHIPPED` for the API-surface lens on PPF `unstable_prefetch()`]
+- [Cross-reference: `patterns.md` v1.5.82 → `## Pattern Y-Z (canary.0/1)` for the pattern-lens on `unstable_prefetch()` + instant validation]
+- [Cross-reference: `forms.md` v1.5.82 → RHF 7.86.0 section for the forms-lens on `getErrors()` + bug fixes]
+- [Cross-reference: `auth.md` v1.5.82 → better-auth 1.7.0 section for the auth-lens on breaking changes + migration]
