@@ -4140,3 +4140,50 @@ npx shadcn@latest migrate --help
 - [shadcn/ui August 2026 — Questionnaire dedicated page](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire)
 - [shadcn/ui master commits August 13–20, 2026](https://github.com/shadcn-ui/ui/commits?since=2026-08-13)
 - [shadcn/ui registry additions #11485, #11493, #11496, #11513, #11473, #11543, #11314, #11398](https://github.com/shadcn-ui/ui/pulls?q=is%3Apr+merged%3A2026-08-13..2026-08-21+registry)
+
+---
+
+## shadcn Cascader + Filters via ReUI.io (August 19, 2026) + Shadcn Blocks for Vue (August 18, 2026)
+
+### shadcn Cascader + Filters (ReUI.io, August 19, 2026)
+
+**ReUI.io** published shadcn/ui-compatible Cascader and Filters component documentation on **2026-08-19** (reui.io/roadmap, published Aug 19; reui.io/components/cascader):
+
+> "Shadcn Cascader lands as a nested tree selection, and **Shadcn Filters** is rebuilt on it into a faceted filter component."
+
+| Component | Description | Source |
+|---|---|---|
+| **Shadcn Cascader** | Hierarchical tree-selection dropdown (e.g. locations, categories, org structures) | [reui.io/components/cascader](https://reui.io/components/cascader) |
+| **Shadcn Filters** | Faceted filter UI, rebuilt on Cascader | [reui.io](https://reui.io/roadmap) |
+
+These are **community shadcn-compatible components** built and documented by the ReUI team — not the official shadcn/ui package. They follow the same copy-paste distribution model and are installable as custom components in a shadcn/ui project.
+
+### Shadcn Blocks for Vue (August 18, 2026) — 1,400+ Components
+
+**shadcnblocksvue.com** launched **2026-08-18** as a dedicated Vue 3 + shadcn/ui component library (sister site to shadcnblocks.com):
+
+> "We've launched a sister site for Vue: [shadcnblocksvue.com](https://www.shadcn-vue.com/). It's a dedicated catalog of **1,400+ blocks** built on [shadcn-vue](https://www.shadcn-vue.com/) — same team and design bar, not a tab on this site."
+
+Also in the same window: **Shadcn Admin Kit v2.3.0** (Aug 9, 2026) — adds a full Payment Processor app under `/payment-processor/*` with volume charts, cards, and recent payments.
+
+### Recommended actions
+
+```bash
+# For tree-selection / hierarchical dropdown needs:
+# → Add shadcn-compatible Cascader from ReUI.io
+# (follow the copy-paste shadcn workflow — not an npm package)
+
+# For Vue 3 + shadcn/ui projects:
+# → Browse shadcnblocksvue.com for 1,400+ Vue-compatible blocks
+
+# For admin dashboards with payment flows:
+# → Check shadcnblocks.com for Admin Kit v2.3.0 Payment Processor
+```
+
+### Sources
+
+- [ReUI.io roadmap — Shadcn Cascader + Filters (Aug 19, 2026)](https://reui.io/roadmap)
+- [ReUI.io — Cascader component](https://reui.io/components/cascader)
+- [shadcnblocks.com changelog — Shadcn Blocks for Vue (Aug 18, 2026)](https://www.shadcnblocks.com/changelog)
+- [shadcn-vue.com](https://www.shadcn-vue.com/) — official Vue shadcn port
+- [shadcnblocksvue.com](https://www.shadcnblocksvue.com/) — 1,400+ Vue blocks catalog

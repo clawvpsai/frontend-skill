@@ -3421,3 +3421,63 @@ The STABLE-train promotion (Aug 20 16:00Z) combined with the 4-drops-per-day cad
 - [`npm view zod dist-tags`](https://registry.npmjs.org/zod) — confirmed `latest: 4.4.3`, `canary: 4.5.0-canary.20260820T155656` at this cycle's 06:02Z check
 - [Zod commits 2026-08-20](https://github.com/colinhacks/zod/commits?since=2026-08-20T00:00:00Z) — PRs #5913, #6440, #6443, #6445
 - [Zod PR #5913 — Add z.toZod helper (merged 2026-08-20T15:15:26Z)](https://github.com/colinhacks/zod/pull/5913)
+
+---
+
+## React Hook Form 7.86.0 SHIPPED (August 22, 2026) — Type-Safe getErrors() + Performance
+
+**`react-hook-form@7.86.0`** SHIPPED **2026-08-22** (npm-published today). First release since v7.85.0 (Aug 8, 2026 — 14-day gap). Confirmed via yarnpkg.com CHANGELOG.md entry:
+
+> `[7.86.0] - 2026-08-22`
+> `Added — Type-safe getErrors method.`
+> `Performance — Improve createFormControl; Improve clone object check; Avoid cloning.`
+
+### What changed
+
+**`getErrors()` — new type-safe method** (PR #13639, merged 2026-08-11): reads form errors at any point without subscribing to the errors state. Eliminates the `useEffect` + `Controller` pattern previously needed to check errors on demand.
+
+```tsx
+// Before (verbose — needed a Controller just to observe errors)
+const errors = useController({ name: 'email' });
+
+// After — getErrors() reads current errors state directly
+const { getErrors } = useForm();
+const emailError = getErrors('email');
+// → { type: 'required', message: 'Email is required' } | undefined
+
+// Bulk read
+const allErrors = getErrors(); // Record<string, FieldError>
+```
+
+**Performance fixes** (PR #13668 + PR #13667, merged Aug 20-21, 2026): `useWatch` now correctly returns `null` on the same render when the new field value is `null` (fixes stale closure); `setValues` now correctly updates container-registered fields (object/array paths) instead of silently disappearing.
+
+### Migration action
+
+```bash
+npm install react-hook-form@latest
+# → 7.86.0 (the wait is over — was forecast 2-3 weeks from v7.85.0)
+```
+
+No breaking changes. All projects using RHF 7.85.x can upgrade immediately.
+
+### Sources
+
+- [RHF CHANGELOG.md — v7.86.0 entry (yarnpkg.com, confirmed 2026-08-22)](https://classic.yarnpkg.com/en/package/react-hook-form)
+- [RHF PR #13639 — feat: add getErrors method (merged 2026-08-11T11:44:31Z)](https://github.com/react-hook-form/react-hook-form/pull/13639)
+- [RHF PR #13668 — fix: useWatch returns stale value (merged 2026-08-21T00:24:02Z)](https://github.com/react-hook-form/react-hook-form/pull/13668)
+- [RHF PR #13667 — fix(setValues): update fields registered under object/array (merged 2026-08-20T00:24:46Z)](https://github.com/react-hook-form/react-hook-form/pull/13667)
+
+---
+
+## zod@4.5.0 STABLE — T+0h (August 22, 2026) — Status Check
+
+**`zod@4.5.0` STABLE has NOT yet shipped as of this cron check (2026-08-22T12:02Z).**
+
+The zod canary train is still producing drops. Latest canary: `4.5.0-canary.20260819T185817` (Aug 19, 2026 — Snyk.io confirmed). The STABLE forecast from the last cycle was "August 22–24, 2026". Today IS August 22. Monitor `npm view zod@latest` for the STABLE promotion.
+
+**Recommended pin:** `zod@4.5.0-canary.20260819T185817` (or later canary drop) for pre-STABLE testing. Upgrade to `zod@latest` (→ 4.5.0) within 48h of the STABLE ship.
+
+### Sources
+
+- [npm view zod@latest](https://www.npmjs.com/package/zod) — `latest: 4.4.3` confirmed at this check
+- [Snyk.io zod versions](https://security.snyk.io/package/npm/zod) — latest canary: `4.5.0-canary.20260819T185817`

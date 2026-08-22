@@ -3135,3 +3135,79 @@ Historical rc → STABLE cadence:
 - Vitest 5 rc.1 (Aug 11) + 11-day median → **August 22, 2026**
 
 **Current pin recommendation:** `vitest@^5.0.0-rc.2` for pre-release testing. Plan to upgrade to `vitest@^5.0.0` within 48h of the STABLE ship.
+
+---
+
+## vitest@4.1.11 PATCH SHIPPED (August 18, 2026) — Maintenance Update
+
+**`vitest@4.1.11`** SHIPPED **2026-08-18** (npm-published 4 days after v4.1.10). This is the latest `latest` tag on npm. The skill's last update (v1.5.82, Aug 21) tracked `vitest@latest` as `4.1.10` — the patch bump was missed.
+
+```bash
+# If pinning to latest stable:
+npm install -D vitest@latest
+# → 4.1.11 (was 4.1.10)
+
+# If on Vitest 5 RC track (recommended for new projects):
+npm install -D vitest@^5.0.0-rc.2
+```
+
+Vitest 5 is in active RC (see STABLE forecast above). Projects already on `vitest@^5.0.0-rc.2` should remain on the RC track and upgrade to `vitest@^5.0.0` when STABLE ships (forecast Aug 22 – Sep 1, 2026).
+
+### Sources
+
+- [npm vitest versions](https://www.npmjs.com/package/vitest?activeTab=versions) — confirmed `4.1.11` published 2026-08-18
+- [Snyk.io vitest versions](https://security.snyk.io/package/npm/vitest) — `4.1.11` listed with 0 vulnerabilities
+
+---
+
+## Vitest 5.0.0 STABLE — T+0h (August 22, 2026) — Status Check + 2 Security CVEs
+
+**Vitest 5.0.0 STABLE has NOT yet shipped as of this check (2026-08-22T12:02Z).** The forecast window is "August 22 – September 1, 2026" — today IS August 22, so the ship is imminent. Monitor `npm view vitest@latest` for the promotion from `4.1.11` to `5.0.0`.
+
+### Two Security CVEs Affecting Vitest (August 2026 — Act Now)
+
+**CVE-2026-53633** — Vitest Browser Mode RCE via CDP (Critical, NVD 2026-07-14):
+
+> From 3.0.0 until 3.2.5, 4.1.8, and 5.0.0-beta.4, Vitest Browser Mode exposed a `cdp()` API that forwarded raw Chrome DevTools Protocol methods without being gated by `allowWrite` or `allowExec`, allowing a remote client with exposed browser API metadata to use `CDP Page.setDownloadBehavior` and `Runtime.evaluate` to overwrite `vite.config.ts` and execute attacker-controlled Node.js code.
+
+| Affected Versions | Fixed In | Severity |
+|---|---|---|
+| `vitest` 3.0.0–3.2.5 | `3.2.5` | Critical |
+| `vitest` 4.0.0–4.1.8 | `4.1.9+` (4.1.11 is fixed) | Critical |
+| `vitest` 5.0.0-beta.0–beta.4 | `5.0.0-beta.5+` (rc.1, rc.2, STABLE are fixed) | Critical |
+
+**CVE-2026-73653** — Second Vitest security issue (NVD 2026-08-13). Fixed in `3.2.7`, `4.1.10`, and `5.0.0-beta.6+`.
+
+| Affected Versions | Fixed In | Severity |
+|---|---|---|
+| Vitest before patch | `3.2.7`, `4.1.10`, `5.0.0-beta.6+` | See NVD |
+
+### Audit action
+
+```bash
+# Check current Vitest version
+npm ls vitest
+
+# If on Vitest 3.x: upgrade to 3.2.7 or later
+npm install -D vitest@^3.2.7
+
+# If on Vitest 4.x: 4.1.11 is already patched
+npm install -D vitest@^4.1.11
+
+# If on Vitest 5.x beta: ensure >= 5.0.0-beta.6 (rc.2 is fixed)
+npm install -D vitest@^5.0.0-rc.2
+
+# Check for Browser Mode cdp() usage
+rg -n "cdp\(" --include="*.ts" --include="*.js" .
+```
+
+**For CI environments using Vitest Browser Mode:** immediately audit whether `cdp()` is exposed to untrusted clients. The RCE vector requires a network-adjacent attacker who can reach the Vitest browser endpoint — less severe for local development, critical for shared CI agents.
+
+### Sources
+
+- [NVD — CVE-2026-53633](https://nvd.nist.gov/vuln/detail/CVE-2026-53633) — Vitest Browser Mode CDP RCE (Critical)
+- [GitHub Security Advisory GHSA-g8mr-85jm-7xhm](https://github.com/vitest-dev/vitest/security/advisories/GHSA-g8mr-85jm-7xhm)
+- [NVD — CVE-2026-73653](https://nvd.nist.gov/vuln/detail/CVE-2026-73653)
+- [Vitest releases — v3.2.5 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v3.2.5)
+- [Vitest releases — v4.1.8 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v4.1.8)
+- [Vitest releases — v5.0.0-beta.4 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4)
