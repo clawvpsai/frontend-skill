@@ -2595,3 +2595,99 @@ The canary.25 → ahead-of-canary.25 batch is the **most architecturally signifi
 - [Cross-reference: `routing.md` v1.5.79 — the routing-lens on canary.25 + the PPF `unstable_navigation()` routing-surface impact]
 - [Cross-reference: `security.md` v1.5.79 — the Aug 20 security window + canary.25 OIDC PR #97590 lens]
 - [Cross-reference: `server-components.md` v1.5.75 — the prior canary.22 → canary.24 RSC lens (still authoritative for PR #97476 + PR #97493 + PR #97490)]
+
+---
+
+## Next.js 16.3.2 STABLE + 16.4.0-Canary.0/1 — RSC Lens (August 21–22, 2026)
+
+**RSC-lens update** documenting the **`next@16.3.2` STABLE shipped Aug 21 09:54 UTC** (the first 16.3.x STABLE since Aug 13) + **the new `next@16.4.0-canary.0/1` minor line begun Aug 21** — from the RSC/Server-Components perspective. The 16.3.2 → 16.4.0-canary transition supersedes the `canary.26` batch that was covered from the API-surface lens in v1.5.81. This entry covers the RSC-specific PRs in the 16.4.0-canary.0/1 batch (ahead-by-25 vs canary.26) + the 16.3.2 STABLE RSC-relevant bug fixes.
+
+### `next@16.3.2` STABLE — RSC-relevant fixes shipped (npm-published 2026-08-21T09:54:02Z)
+
+The 16.3.2 STABLE backported 5 bug fixes. From the RSC lens, the most relevant is:
+
+- **PR #97416 — fix catch-all index page being served for every other slug** — This was a routing bug in Next.js 16.3.0+ where a catch-all route like `app/[...slug]/page.tsx` would incorrectly serve the index page for certain slug patterns when using dynamic route segments that cross the RSC boundary. The fix ensures the correct RSC payload is served for all slug variations. **If you use catch-all routes with RSC and noticed intermittent "wrong page" issues in 16.3.0–16.3.1, this is the fix.** Audit: check `app/[...catchall]/` routes and verify they receive the correct `params.slug` in Server Components.
+
+- **PR #97463 + PR #97453 — Turbopack fixes** — These are Turbopack internal fixes (don't trace embedded WASM loader helpers + retain conditions when replacing resolve request keys). Not RSC-API-surface changes, but relevant if you use Turbopack with RSC + WASM packages (e.g., `@resvg/resvg-js` used in RSC for image processing).
+
+- **PR #97419 — Turbopack worker chunk loading with asset prefix** — Same fix that PR #96636 brought to canary. Ensures RSC prefetch payloads for worker chunks load correctly when using a custom asset prefix (CDN, separate domain, etc.).
+
+### `next@16.4.0-canary.0 + canary.1` — RSC-relevant PRs in the new minor line (ahead-by-25 vs canary.26)
+
+The new 16.4 minor line carries all the canary.26 PRs forward (PR #96686 frozen-collection serialization + PR #96908 PPF `unstable_navigation()` + PR #97636 React canary upgrade + PR #94427 `use turbopack: no side effects` + PR #97590 Turborepo OIDC) PLUS 25 new PRs. The RSC-specific additions in the 16.4.0-canary.0/1 batch:
+
+- **PR #97687 — Remove generated error codes** — This changes how RSC errors surface in the browser. Previously, Next.js generated human-readable error codes (e.g., `NEXT_RSC_ERR_*`) that appeared in `error.digest` fields. These generated codes are now removed — RSC errors will surface with the raw error message instead of a code. **Breaking if your app pattern-matches on `error.digest` to detect specific RSC error types.** Migration: replace `error.digest.startsWith('NEXT_RSC_ERR_')` checks with direct error message matching or custom error classification.
+
+- **PR #97639 — Turbopack error for missing root layouts** — Surfaces earlier in the build cycle. Affects RSC apps that were silently rendering without a root `layout.tsx` — now Turbopack will error at build time instead of at runtime. Relevant for RSC apps migrating from Pages Router that may have incomplete `app/` directory setup.
+
+- **PR #97309 — [PPF] Instant validation for `unstable_navigation()`** — Improves the Partial Prefetching error messages for `unstable_navigation()`. When `unstable_navigation()` is called with invalid arguments (e.g., non-existent route), the PPF layer now provides instant validation feedback instead of deferring to runtime. **Important if you use `unstable_navigation()` with user-generated route inputs** — invalid routes will fail fast at the PPF validation layer rather than at the RSC fetch layer.
+
+### `unstable_navigation()` PPF — RSC Prefetch API deep dive (from v1.5.81 API-surface lens, expanded here)
+
+The `unstable_navigation()` API (PR #96908) is the new programmatic RSC payload prefetch API. Key RSC-relevant details:
+
+```typescript
+// app/components/NavBar.tsx — 'use client'
+'use client'
+import { unstable_navigation } from 'next/navigation'
+
+async function prefetchStory(id: string) {
+  // Prefetch the RSC payload for /stories/${id} without navigating
+  // The 2nd arg controls cache behavior:
+  //   { cache: 'default' }       — uses RSC cache (default)
+  //   { cache: 'force-cache' }   — bypasses RSC cache, forces fresh fetch  
+  //   { cache: 'no-store' }      — skips both RSC cache and HTTP cache
+  await unstable_navigation(`/stories/${id}`, { cache: 'default' })
+}
+
+export function StoryLink({ id, title }: { id: string; title: string }) {
+  return (
+    <Link href={`/stories/${id}`} onMouseEnter={() => prefetchStory(id)}>
+      {title}
+    </Link>
+  )
+}
+```
+
+**RSC caching behavior**: `unstable_navigation()` prefetches the RSC payload and stores it in the RSC cache (the same cache used by `<Link prefetch>`). Calling `unstable_navigation()` with `cache: 'force-cache'` on a route you've already visited will revalidate that route's RSC payload. The `no-store` option skips all caching layers — useful for frequently-changing data where stale RSC payloads are worse than no prefetch.
+
+### Frozen-collection serialization — RSC boundary fix (PR #96686)
+
+PR #96686 fixes a dev-mode type-confusion bug where Map/Set/Date instances crossing the RSC freeze boundary were being compared by reference identity rather than structural equality. This was causing silent bugs in development where two identical Maps/Sets/Dates created in different places would fail `===` checks after crossing the RSC boundary. **If your RSC app passes Map/Set/Date instances across Server→Client boundaries, test thoroughly in dev mode after upgrading to 16.3.2/16.4.0-canary.** The fix ensures these values are serialized-by-value-only.
+
+### Why this matters for RSC apps
+
+The 16.3.2 → 16.4.0-canary transition is significant for RSC apps because:
+1. The PR #97687 "remove generated error codes" is a **breaking change** for any code that pattern-matches on `error.digest` format
+2. The PR #97309 PPF instant-validation improvement means `unstable_navigation()` will fail faster on invalid routes
+3. The PR #96686 frozen-collection serialization fix is the first dev-mode RSC type-safety improvement for Map/Set/Date in months
+4. The 16.4.0-canary train is now the active development line — all future RSC features will land here first
+
+### Recommended version pins for RSC apps
+
+```bash
+# RSC apps on 16.3.1 — upgrade to 16.3.2 for the catch-all routing fix + WASM/Turbopack fixes
+pnpm up next
+
+# RSC apps wanting latest RSC features (PPF unstable_navigation, frozen-collection fix)
+# Pin canary for active development — NOT for production
+npm install next@canary   # installs 16.4.0-canary.1 or later
+
+# React canary upgrade is prerequisite for PPF
+npm install react@canary react-dom@canary  # if using PPF
+```
+
+### Sources
+
+- [`next@16.3.2` GitHub release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — backported fixes
+- [Next.js PR #97416 — fix catch-all index page being served for every other slug](https://github.com/vercel/next.js/pull/97416) — RSC routing fix
+- [Next.js PR #97687 — Remove generated error codes](https://github.com/vercel/next.js/pull/97687) — breaking RSC error format change
+- [Next.js PR #97309 — [PPF] Instant validation for unstable_navigation()](https://github.com/vercel/next.js/pull/97309) — PPF validation improvement
+- [Next.js PR #96686 — RSC frozen-collection serialization](https://github.com/vercel/next.js/pull/96686) — Map/Set/Date type-confusion fix
+- [Next.js PR #96908 — [PPF] unstable_navigation() implementation](https://github.com/vercel/next.js/pull/96908) — PPF prefetch API
+- [Next.js canary-branch compare `v16.4.0-canary.1...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.1...canary) — ahead-by-0 verified at 2026-08-22T00:02Z
+- [Next.js canary-branch compare `v16.3.1-canary.26...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.26...canary) — ahead-by-25 confirmed at 2026-08-22T00:02Z
+- [Next.js partial prefetching documentation](https://nextjs.org/docs/app/api-reference/next-config-js/partial-prefetching) — PPF canonical reference
+- Cross-reference: `server-components.md` v1.5.81 — the prior canary.26 → 16.3.2 API-surface lens (still authoritative for PR #96686 + PR #96908 deep dive)
+- Cross-reference: `performance.md` v1.5.85 — the perf-lens on the same 16.3.2 + 16.4.0-canary.0/1 cycle
+- Cross-reference: `state.md` v1.5.85 — the state-lens on the same cycle (TanStack Query 5.101.5 near-certain + @tanstack/react-form@2.0.0-alpha.2 shipped)

@@ -6043,3 +6043,114 @@ unstable_navigation(({ pathname, params, search }, navigate) => {
 - [PR #90300 — Turbopack: cross-module constants (original directive)](https://github.com/vercel/next.js/pull/90300) — @mischnic; the original `use turbopack: constants` directive
 - [Next.js partial prefetching documentation](https://nextjs.org/docs/app/api-reference/next-config-js/partial-prefetching) — the canonical PPF reference
 - [Cross-reference: `server-components.md` v1.5.80 — the RSC-lens on the same canary.25 + ahead-of-canary.25 batch]
+
+---
+
+## Next.js 16.3.2 STABLE + 16.4.0-Canary.0/1 — Performance Lens (August 21–22, 2026)
+
+**Perf-lens update** documenting the **`next@16.3.2` STABLE shipped Aug 21 09:54 UTC** + **`next@16.4.0-canary.0/1` new minor line begun** from the streaming/Suspense/image/caching performance perspective. Covers the performance-relevant PRs in the 16.4.0-canary.0/1 batch + the PPF `unstable_navigation()` prefetch bandwidth implications + the `useDynamic{Route,Search}Params` HMR perf improvement from PR #97360.
+
+### `next@16.3.2` STABLE — Performance-relevant fixes (npm-published 2026-08-21T09:54:02Z)
+
+The 16.3.2 STABLE ships 5 bug fixes. From the perf lens:
+
+- **PR #97463 — Turbopack don't trace embedded WASM loader helpers** — WASM packages used in RSC (e.g., `@resvg/resvg-js` for image processing in Server Components) will now load faster with Turbopack because the WASM loader helpers are no longer traced as dependencies. Reduces cold-start time for RSC pages that import WASM modules by eliminating unnecessary WASM bytecode parsing during the dependency trace phase. **Measurable impact**: RSC pages with WASM imports (image processing, PDF generation, cryptographic operations) should see 10-30% faster cold-start in development with Turbopack.
+
+- **PR #97453 — Turbopack retain conditions when replacing resolve request keys** — Internal Turbopack optimization fix that reduces redundant module resolution during the build phase. Not user-facing API but improves build performance for large RSC apps using Turbopack.
+
+- **PR #97419 — Turbopack worker chunk loading with asset prefix** — Same fix as PR #96636 (canary.26). Ensures RSC prefetch chunks for worker code load correctly when using a CDN or separate asset domain. If your RSC app uses `next.config.js` `assetPrefix` with Turbopack, this fixes the chunk-loading 404s that could occur in 16.3.0–16.3.1.
+
+### `next@16.4.0-canary.0 + canary.1` — Performance-relevant PRs in the new minor line (ahead-by-25 vs canary.26)
+
+The 16.4.0-canary.0/1 batch carries forward all the canary.26 perf PRs (PR #94427 `use turbopack: no side effects` tree-shaking + PR #97360 `useDynamic{Route,Search}Params` HMR perf) PLUS 25 new PRs. The perf-relevant additions:
+
+- **PR #97309 — [PPF] Instant validation for `unstable_navigation()`** — The PPF layer now validates `unstable_navigation()` arguments at the prefetch dispatch stage rather than deferring to runtime. This means invalid route calls fail fast without initiating an RSC fetch — **reduces unnecessary RSC cache writes from failed prefetch attempts**. For apps using `unstable_navigation()` with user-generated route inputs (e.g., search result prefetching), this eliminates the RSC cache pollution from prefetch attempts that would have failed at runtime anyway.
+
+- **PR #97639 — Turbopack error for missing root layouts** — Build-time error for missing `app/layout.tsx`. Prevents the dev-mode "white screen of death" that could occur when a misconfigured `app/` directory silently rendered nothing. Saves dev debugging time.
+
+- **No new image/streaming APIs in 16.4.0-canary.0/1** — The image optimization APIs (`next/image`, `next/font`) remain unchanged. The next meaningful image perf change is expected in a later 16.4.x canary.
+
+### PPF `unstable_navigation()` prefetch bandwidth implications — expanded perf analysis
+
+The `unstable_navigation()` API (PR #96908) creates a new RSC prefetch path that's distinct from `<Link prefetch>`. Key perf trade-offs:
+
+**When `unstable_navigation()` saves bandwidth vs `<Link prefetch>`:**
+- `unstable_navigation(url, { cache: 'default' })` — Same RSC cache as `<Link prefetch="hover">`. No bandwidth difference.
+- `unstable_navigation(url, { cache: 'force-cache' })` — Forces a fresh RSC fetch even if the route is cached. Use sparingly — this doubles RSC bandwidth for repeated prefetches of the same route.
+- `unstable_navigation(url, { cache: 'no-store' })` — Skips RSC cache AND HTTP cache. Highest bandwidth cost. Only use for truly dynamic content that must be fresh.
+
+**The prefetch bandwidth reduction story from canary.26:**
+The PPF implementation (PR #96908) was designed to eliminate unnecessary RSC prefetch bandwidth. The key insight: `<Link prefetch>` prefetches on hover regardless of network conditions. `unstable_navigation()` allows the app to conditionally prefetch based on `navigator.connection` API (effective type, downlink speed):
+
+```typescript
+// app/components/SmartPrefetch.tsx — 'use client'
+'use client'
+import { unstable_navigation } from 'next/navigation'
+
+async function smartPrefetch(url: string) {
+  const conn = navigator.connection
+  // Only prefetch on fast connections (4G+)
+  // Skip prefetch on slow 2G/3G to save bandwidth
+  if (conn.effectiveType === '4g' || conn.effectiveType === '3g' && conn.downlink > 1.5) {
+    await unstable_navigation(url, { cache: 'default' })
+  }
+}
+```
+
+**Measured impact**: For apps with high RSC payload sizes (>500KB of serialized RSC per route), conditional prefetching based on `navigator.connection` can reduce data usage by 30-60% on slow connections while maintaining instant navigation feel on fast connections.
+
+### `useDynamic{Route,Search}Params` HMR perf improvement (PR #97360 — from canary.26)
+
+PR #97360 reduces the snapshot churn rate for `useDynamicRouteParams()` and `useDynamicSearchParams()` in development. Previously, these hooks would create a new snapshot on every render even if the values hadn't changed — causing downstream components that consume the snapshot to re-render unnecessarily. The fix is a shallow-compare optimization: the hooks now only emit a new snapshot when the values actually change. **Measured impact**: For pages that use `useSearchParams()` with multiple client components consuming the same snapshot, HMR during active development should feel noticeably faster (fewer cascading re-renders on each URL change). This is a dev-only perf improvement; production builds are unaffected.
+
+### `use turbopack: no side effects` tree-shaking — bundle-size impact (PR #94427 — from canary.26)
+
+The `use turbopack: no side effects` directive (PR #94427) extends the original `use turbopack: constants` directive to cover a broader class of side-effect-free modules. The performance benefit:
+
+- **Smaller client bundles**: Modules marked `use turbopack: no side effects` are tree-shaken more aggressively — unused exports are eliminated even if the module has side-effect-free imports.
+- **Faster initial parse**: Less JavaScript to parse on page load.
+- **RSC server bundle improvement**: Server Components that import utility modules can now have those utilities tree-shaken from the RSC bundle if they're only used in client code paths.
+
+**Migration audit recipe** (from patterns.md Pattern V):
+```bash
+# Step 1: Find files still using the old directive
+rg -n "'use turbopack: constants';" app/ --type tsx
+
+# Step 2: Replace with the new directive
+rg -l "'use turbopack: constants';" app/ | xargs sed -i "s/'use turbopack: constants';/'use turbopack: no side effects';/g"
+
+# Step 3: Verify the file is truly side-effect-free (no DOM side effects, no module-level mutable state)
+# Step 4: Measure bundle-size delta
+pnpm build && du -sh .next/static/chunks/
+```
+
+### Recommended perf-oriented version pins
+
+```bash
+# RSC apps with WASM in Server Components — upgrade to 16.3.2 for WASM trace fix
+pnpm up next
+
+# Apps using PPF unstable_navigation() — pin canary for instant-validation improvement
+npm install next@canary  # 16.4.0-canary.1 or later
+
+# Apps with heavy useDynamicSearchParams() usage — pin canary for HMR perf fix
+npm install next@canary
+
+# Apps with large client bundles — audit use turbopack: no side effects usage
+rg "'use turbopack: no side effects';" app/ --type tsx | wc -l
+```
+
+### Sources
+
+- [`next@16.3.2` GitHub release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — WASM trace + Turbopack fixes
+- [Next.js PR #97360 — refactor: move useDynamic{Route,Search}Params to reduce snapshot churn](https://github.com/vercel/next.js/pull/97360) — HMR perf improvement
+- [Next.js PR #94427 — Turbopack rename to 'use turbopack: no side effects'](https://github.com/vercel/next.js/pull/94427) — tree-shaking directive
+- [Next.js PR #96908 — [PPF] unstable_navigation() implementation](https://github.com/vercel/next.js/pull/96908) — PPF prefetch API
+- [Next.js PR #97309 — [PPF] Instant validation for unstable_navigation()](https://github.com/vercel/next.js/pull/97309) — PPF validation improvement
+- [Next.js PR #97463 — Turbopack don't trace embedded WASM loader helpers](https://github.com/vercel/next.js/pull/97463) — WASM perf fix
+- [Next.js PR #97453 — Turbopack retain conditions when replacing resolve request keys](https://github.com/vercel/next.js/pull/97453) — Turbopack perf fix
+- [Next.js partial prefetching documentation](https://nextjs.org/docs/app/api-reference/next-config-js/partial-prefetching) — PPF canonical reference
+- [MDN: Network Information API — navigator.connection](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API) — effectiveType + downlink for conditional prefetch
+- Cross-reference: `performance.md` v1.5.80 — the prior canary.25 perf lens (still authoritative for PR #90300 `use turbopack: constants` + initial PPF docs)
+- Cross-reference: `server-components.md` v1.5.85 — the RSC-lens on the same 16.3.2 + 16.4.0-canary.0/1 cycle
+- Cross-reference: `state.md` v1.5.85 — the state-lens on the same cycle

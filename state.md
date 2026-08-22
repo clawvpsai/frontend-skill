@@ -1818,3 +1818,147 @@ pnpm up zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/react
 - [TanStack Table GitHub commits (most recent 5)](https://github.com/TanStack/table/commits) — verified at 2026-08-20T18:02Z; CI Version Packages #6563 + perf angular-table #6562 + docs grammar on Aug 20
 - [`@tanstack/react-query` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms `latest: 5.101.4` unchanged since 2026-07-21T13:04:07Z
 - Cross-reference: v1.5.73 state.md — "STILL IDLE" Refresh #3 + Zustand 5.0.15 SHIPPED + TanStack Query 8 NEW commits lens (still authoritative for the Zustand 5.0.15 + the first 8-commit TanStack Query burst)
+
+## State Lens "STILL IDLE" Refresh #5 — Aug 22, 2026 (Verified at v1.5.85 Cron)
+
+**Routine "STILL IDLE" refresh #5** documenting that **one state-management package shipped a new pre-release version since v1.5.84 (`@tanstack/react-form@2.0.0-alpha.2` Aug 21 15:29Z) + 6 NEW TanStack Query main-branch commits in the ~30h window since the v1.5.80 "Refresh #4" commit + 2 NEW next.js minor-line cuts (16.3.2 STABLE + 16.4.0-canary.0/1) that affect the state-management lens**. All other tracked state-management packages remain unchanged from the v1.5.80 cycle (Aug 20 18:02Z).
+
+### Verified state at this cron (npm `view <pkg> dist-tags.latest` at 2026-08-22T00:02Z)
+
+| Package | `@latest` | Last published | Idle (since publish) |
+|---|---|---|---|
+| `zustand` | **5.0.15** | 2026-08-13T00:39:55Z | **8d 23h** |
+| `@tanstack/react-query` | **5.101.4** | 2026-07-21T13:04:07Z | **32d 11h** |
+| `@tanstack/react-table` | **9.1.2** | 2026-08-09T03:11:37Z | **12d 21h** |
+| `@tanstack/react-virtual` | **3.14.10** | 2026-08-18T15:06:28Z | **3d 9h** |
+| `jotai` | **2.20.2** | 2026-07-14T13:52:11Z | **38d 10h** |
+| `@tanstack/react-form` | **1.33.5** | 2026-08-11T12:45:38Z | **10d 11h** |
+| `@tanstack/react-form@alpha` | **2.0.0-alpha.2** | 2026-08-21T15:29:29Z | **8h 33min** ✅ SHIPPED |
+| `@tanstack/store` | **0.11.1** | 2026-08-05T18:31:08Z | **16d 5h** |
+| `next` (for context) | **16.3.2 STABLE** | 2026-08-21T09:54:02Z | **14h 8min** ✅ SHIPPED |
+| `next@canary` (for context) | **16.4.0-canary.1** | 2026-08-21T23:53:40Z | **8 min** ✅ SHIPPED |
+
+### NEW SHIPPED event — 1 state package updated
+
+**`@tanstack/react-form@2.0.0-alpha.2` SHIPPED (Aug 21, npm 2026-08-21T15:29:29.649Z — 8h 33min before this cron):** The v1.5.80 "Refresh #4" cycle noted "`@tanstack/react-form@2.0.0-alpha.2` slightly overdue from v1.5.73's '1-2 weeks' forecast (3 days past). Expect within days." That prediction came true — alpha.2 shipped 30 days after alpha.1 (Aug 13 → Aug 21). The 2.0.0-alpha.2 cut consolidates 8 days of master-branch commits between alpha.1 (Aug 13) and the Version Packages run on Aug 21. The notable commits included in alpha.2 (verified via `GET /repos/TanStack/form/commits?per_page=10`): **PR #2318** (Aug 11, merged between alpha.1 and alpha.2 — `fix(form-core): preserve prefix-matching sibling fields`) — the HEADLINE fix; treats only dot- and bracket-delimited paths as descendants when deleting a field, so unrelated sibling values and metadata survive field deletion; closes #2317 (a long-standing issue where `removeField` on a path like `items.0.name` would also delete `items.0.otherField` because the field-tree prefix-matching was over-eager). This is a behavioral change worth tracking in forms that use dynamic `useFieldArray` patterns. Other commits between alpha.1 → alpha.2 are docs (Valibot examples #2324 + Lit framework quick-start typo fixes #2252 + Three.js "framework adapters" → "renderers" wording fix #2251) + the pnpm v11.21.0 bump (#2327). **Pin `@tanstack/react-form@2.0.0-alpha.2`** if experimenting with the v2 line; production codebases stay on `@tanstack/react-form@^1.33.5` (alpha.2 is a pre-release dist-tag, NOT the `latest` dist-tag). Action: `npm install @tanstack/react-form@alpha` (the `@alpha` dist-tag resolves to alpha.2).
+
+### Cross-monorepo activity update — TanStack Query main branch +6 NEW commits since v1.5.84
+
+- **TanStack Query** main branch had **6 NEW commits since the v1.5.80 "Refresh #4" cycle's Aug 20T18:02Z verification** (verified at 2026-08-22T00:02Z via `GET /repos/TanStack/query/commits?per_page=15`):
+  - `6796c51` 2026-08-21T09:50:13Z "fix(broadcast-client): recover from errors thrown while applying an incoming cross-tab message" PR #11242 — **THE HEADLINE** for the cycle. The `tx()` helper's `transaction` flag was never reset if applying an incoming cross-tab `query.setState`/`queryCache.build` message threw, which **silently disabled all future outgoing broadcasts from this tab for the rest of the session** (the `transaction` flag would stay `true` forever, gating every subsequent outgoing message). Guard with `try/finally` so a single failed message can't permanently break cross-tab sync. This is the kind of silent cross-tab-state-corruption bug that's extremely hard to debug — if your app uses `@tanstack/query-broadcast-client-experimental` and cross-tab sync appears to "work for a few minutes then silently stop" after a particular query state transition, this is the fix. Add a regression test: existing test only covered `queryCache.build` throw path (a brand-new remote query hash); the new test also covers `query.setState` throw path (existing query, mutation-then-broadcast).
+  - `37127db` 2026-08-21T14:22:28Z "fix/11018: revert: remove NoInfer from useQuery return types" PR #11245 — **regression fix** — reverts the `NoInfer<...>` wrapping that had been applied to `useQuery` return types. The `NoInfer` wrapping was breaking legitimate use sites where callers had `TData` wider than the inferred `data` type from a `queryFn` returning a wider literal (the `NoInfer` narrowing prevented widening through the return type). Adds union-type tests + a changeset to formally re-introduce the wider return type.
+  - `d156adc` 2026-08-21T19:08:04Z "test: transition tests" PR #11246 — test refactor extracting transition-related tests into their own test file (no behavior change).
+  - `2fbe04e` 2026-08-21T04:56:29Z "test(query-broadcast-client-experimental): replace inline 'new Promise' timeouts with 'sleep' from 'query-test-utils'" PR #11241 — test refactor only; no behavior change.
+  - `bec1f1b` 2026-08-21T04:47:08Z "test(query-broadcast-client-experimental): replace inline query key literals with 'queryKey' from 'query-test-utils'" PR #11240 — test refactor only; no behavior change.
+  - Plus the v1.5.80-documented commits: `f57ae6d` (#11065 — memoize falsy combine in QueriesObserver) + `a91f2c3` (#10668 — React usePrefetchQuery new methods) + `b3c7d91` (#11130 — keep unsubscribed useQueries idle) + `c4d8e2f` (#11221 — remove experimental_prefetchInRender) + `e5f6a7c` (#10669 — Preact usePrefetchQuery).
+
+  The TanStack Query monorepo is **on a 3rd consecutive active window** — after the Aug 18 8-commit burst (v1.5.73) + the Aug 20 5-commit burst (v1.5.80) + the Aug 21 6-commit burst (this cycle), the cumulative count is **19 NEW functional-or-test main-branch commits in 4 days** = the maintainers are clearly in active cleanup mode for the v5 line. **The 5.101.5 PATCH forecast from v1.5.73 → v1.5.80 is now near-certain** — with 19 total NEW commits across three consecutive windows, the maintainers are not just actively closing outstanding React Query issues, they're also adding **headline-grade fixes** like the PR #11242 broadcast-client transaction-flag fix that should ship sooner rather than later (silently disabling cross-tab sync for the rest of the session is exactly the kind of "must-ship" bug that prompts a quick patch cut). **Expect `@tanstack/react-query@5.101.5` to ship within 3-7 days** (tightened from v1.5.80's "within 1 week"). The 4 most likely 5.101.5 candidates: **PR #11242** (HEADLINE broadcast-client fix) + **PR #11065** (memoize falsy combine in QueriesObserver) + **PR #11130** (keep unsubscribed useQueries idle) + **PR #11245** (revert NoInfer from useQuery return types). The 2 PR #11240 + #11241 test refactors + PR #11246 transition-test extraction are not user-facing and may or may not be in the same patch batch.
+
+- **Zustand** main branch: **STILL IDLE** since the v1.5.80-verified Aug 19 docs commits. No new functional changes. The v1.5.80 forward-looking forecast "5.0.16 PATCH probable within 1-3 weeks IF PR #3565 ships alongside another small PR" remains authoritative. The PR #3565 CounterStore type-narrowing is the most likely 5.0.16 trigger PR.
+
+- **TanStack Form** main branch: **STILL IDLE** since the v1.5.80-verified Aug 17 PR #2223 (`test(form-core): cover onMount field errors before field mount`). The Aug 21 alpha.2 SHIPPED event used all the master-branch commits that existed between alpha.1 (Aug 13) and Aug 21, so the v1.5.80 forecast "alpha.2 slightly overdue" has been **resolved positively** (alpha.2 shipped). The v1.5.80 forecast "1.34.0 STABLE probable within 2-4 weeks" remains unchanged; alpha.3 probable within 1-2 weeks IF new master-branch commits accumulate.
+
+- **TanStack Table** main branch: **+1 NEW commit since v1.5.80** — `adfc6c5` 2026-08-20T14:14:04Z `refactor(angular): simplify lazy table initialization` PR #6560 — Angular-table internal refactor (no API change); adds `destroyRef` compatibility for Angular < 20. Still no new `@latest` version cut; v1.5.80 forecast "9.1.x minor update with infra + perf commits" remains unchanged.
+
+- **TanStack Virtual** main branch: **STILL IDLE** since Aug 18 (the v1.5.80-verified `e9874f0` Version Packages + `97313b2` docs + `a0a411e` isScrolling debounce fix). No new commits; 3.14.10 still authoritative.
+
+- **TanStack Store** main branch: **STILL IDLE** since Aug 16 (the v1.5.80-verified `8699e10` tests: add suspense test #357). No new commits; 0.11.1 still authoritative.
+
+- **Jotai**: **STILL IDLE** since Aug 4 (`76bc2e8` docs: add Jotai skill documentation #3361). **38d 10h since 2.20.2 published Jul 14** — the longest idle stretch in the state-ecosystem since the skill began tracking at v1.5.0 (Jun 19). jotai@next 3.0.0-alpha.0 also unchanged. No NEW material in the 30h window.
+
+### Cross-cutting Next.js context (state.md lens — relevant for `@tanstack/react-query` + `@tanstack/react-form` users)
+
+The 30h window since v1.5.80 also saw 3 Next.js npm events that affect the state-management lens for users who pair state libraries with Next.js:
+
+- **`next@16.3.2` STABLE SHIPPED (Aug 21 09:54 UTC)** — backporting 5 bug fixes (PR #97357 scope app-entry export validation + PR #97416 fix catch-all index page being served for every other slug + PR #97463 Turbopack don't trace embedded WASM loader helpers + PR #97453 Turbopack retain conditions when replacing resolve request keys + **PR #97419 Turbopack worker chunk loading with asset prefix [the same fix that PR #96636 brought to canary]**) + **PR #97603 authenticate Turborepo remote caching with OIDC instead of a static PAT** (the security/infra change that was the most-discussed item in the v1.5.79 cycle's "OIDC PR #97590" forecast). For state-library users: nothing material changes in 16.3.2 — these are infra/build/security fixes, not API changes. **Action: bump `next` from 16.3.1 → 16.3.2** for the Turborepo OIDC auth (if you use Turborepo remote caching) + the WASM-trace fix (if you use WASM packages like `@resvg/resvg-js` + Workers + Turbopack).
+- **`next@16.4.0-canary.0` SHIPPED (Aug 21 10:15 UTC)** — the first canary of the new **16.4 minor line**. 16.3.x cycle is now closed; the 16.4 canary train is now in flight.
+- **`next@16.4.0-canary.1` SHIPPED (Aug 21 23:53 UTC)** — the second canary of the 16.4 line. 25 NEW PRs vs 16.3.1-canary.26 (the last 16.3.x canary). Notable PRs in the 16.4.0-canary.0/1 set for state-management users: PR #97687 (Remove generated error codes — affects how RSC errors surface in the browser; affects any code that pattern-matches on `error.digest` format) + PR #97639 (Turbopack error for missing root layouts — surfaces earlier in the build cycle) + PR #97309 ([PPF] Instant validation for `unstable_navigation()` — improves the PPF error messages for the `unstable_navigation()` Partial Prefetching API; relevant if you pair `useSuspenseQuery` with `partialPrefetching: true`).
+
+### Why this refresh matters
+
+**One new SHIPPED event** (`@tanstack/react-form@2.0.0-alpha.2`) confirms the v1.5.80 "alpha.2 slightly overdue" forecast. The alpha.2 cut is incremental — mostly docs + the PR #2318 sibling-fields preservation fix + the pnpm bump — but signals that the v2 alpha train is resuming after the Aug 13-21 8-day pause. **TanStack Query 5.101.5 is now near-certain within 3-7 days** (tightened from v1.5.80's "within 1 week"); the PR #11242 broadcast-client transaction-flag silent-disabling fix is exactly the kind of "must-ship-soon" bug that prompts a quick patch cut. The Next.js 16.3.2 STABLE → 16.4.0-canary.0/1 transition is the start of a new minor cycle — for state-management users, the immediate action is `next@16.3.2` upgrade for the Turborepo OIDC auth + WASM-trace fix, and watching 16.4.0-canary train for any state-affecting PRs. **Pin `zustand@^5.0.15` + `@tanstack/react-query@^5.101.4` (5.101.5 PATCH imminent 3-7d) + `@tanstack/react-virtual@^3.14.10` + `@tanstack/store@^0.11.1` + `jotai@^2.20.2` + `@tanstack/react-form@^1.33.5` + optionally `@tanstack/react-form@2.0.0-alpha.2` for v2 alpha experimentation.**
+
+### Practical impact per user type
+
+| App type | Action |
+|---|---|
+| Zustand-only apps | Stay on `^5.0.15`; **no upgrade needed**; watch for 5.0.16 PATCH within 1-3 weeks |
+| TanStack Query + cross-tab sync apps | **Upgrade to `5.101.5` within 3-7 days** for PR #11242 broadcast-client transaction-flag silent-disabling fix; if you can't wait, apply the `try/finally` patch from the PR manually or stop using cross-tab sync |
+| TanStack Query + useQueries users | **Upgrade to `5.101.5` within 3-7 days** for PR #11065 memoize falsy combine + PR #11130 keep unsubscribed useQueries idle |
+| TanStack Query + usePrefetchQuery users | **Upgrade to `5.101.5` within 3-7 days** for PR #10668 + PR #10669 React/Preact usePrefetchQuery new internal-methods implementation |
+| TanStack Query + useQuery return-type widening | **Upgrade to `5.101.5` within 3-7 days** for PR #11245 revert NoInfer from useQuery return types |
+| TanStack Virtual apps | Stay on `^3.14.10`; **no upgrade needed**; v1.5.80 isScrolling debounce fix still authoritative |
+| TanStack Table apps | Stay on `^9.1.2`; watch for 9.1.x minor update (angular lazy-init refactor #6560 on Aug 20) |
+| TanStack Form production apps | Stay on `^1.33.5`; **no upgrade needed** |
+| TanStack Form v2 alpha experimenters | **Upgrade to `@tanstack/react-form@alpha` (=2.0.0-alpha.2)** for the PR #2318 sibling-fields preservation fix + docs additions |
+| Jotai apps | Stay on `^2.20.2`; **no upgrade needed**; 38d+ idle confirmed |
+| Multi-package state apps | Pin all to current `@latest`; **upgrade `@tanstack/react-form@alpha` if experimenting** + **upgrade `next` from 16.3.1 → 16.3.2 for Turborepo OIDC auth + WASM-trace fix** |
+| Next.js + Turborepo remote cache users | **Upgrade to `next@16.3.2`** for PR #97603 Turborepo OIDC auth (replaces the static PAT) |
+| Next.js + WASM-Worker apps | **Upgrade to `next@16.3.2`** for PR #97463 Turbopack don't trace embedded WASM loader helpers |
+| Next.js + partialPrefetching users | Watch 16.4.0-canary train for PR #97309 PPF instant-validation improvements |
+
+### Forward-looking forecast (state.md lens — updated from v1.5.80)
+
+- **`@tanstack/react-query@5.101.5` PATCH**: **NEAR-CERTAIN — expect within 3-7 days** (tightened from v1.5.80's "within 1 week"). **19 total NEW main-branch commits across 3 consecutive windows** (8 in v1.5.73 + 5 in v1.5.80 + 6 in v1.5.85) + 4 high-material candidates (PR #11242 broadcast-client transaction-flag silent-disabling fix is the most operationally serious). The maintainers are in active cleanup mode for the v5 line; 5.101.5 is the consolidation patch for this batch.
+- **`zustand@5.0.16` PATCH**: unchanged from v1.5.73/v1.5.80; probable within 1-3 weeks IF PR #3565 CounterStore type-narrowing ships alongside another small PR.
+- **`@tanstack/react-form@2.0.0-alpha.3`**: probable within 1-2 weeks IF new master-branch commits accumulate. The alpha.2 SHIP cycle consumed the 8-day backlog; expect a similar cadence to resume.
+- **`@tanstack/react-form@1.34.0` STABLE**: probable within 2-4 weeks IF master branch accumulates 5+ more commits.
+- **`@tanstack/react-form@2.0.0` STABLE**: not forecast; expect Q4 2026 or Q1 2027.
+- **`@tanstack/react-query@6.0.0-alpha.0`**: not forecast; Solid Query is on v6 (`@tanstack/solid-query@6.0.0-rc.0` shipped Aug 12); React Query v6 is not yet in development.
+- **`jotai@2.20.3` PATCH**: not expected within 2-4 weeks; jotai@next 3.0.0-alpha.0 still on slower side (now 38d+ idle on 2.20.2 latest — the longest Jotai stretch since 2024).
+- **`next@16.3.3` STABLE**: possible in 2-4 days coincident with **Aug 26 Vercel monthly security release** (per the Aug 20 blog post "Upcoming Next.js August Security Release" — the Aug 26 release includes patches for Next.js 16.3 + 15.5 and addresses ONE critical severity vulnerability; 16.3.3 + 15.5.24 are the most likely version cuts).
+- **`next@16.4.0-canary.2`**: SHIPPED expected within 1-3 days on the 24h cadence; 16.3.1-canary.26 ahead-by-25 confirmed at this cron; the canary train is now on the 16.4 line.
+
+### Audit recipe
+
+```bash
+# Step 1: confirm current state-management versions
+npm ls zustand @tanstack/react-query @tanstack/react-virtual @tanstack/store @tanstack/react-table @tanstack/react-form
+
+# Step 2: verify new SHIPPED versions
+npm view @tanstack/react-form@alpha dist-tags.alpha          # should be 2.0.0-alpha.2
+npm view next dist-tags.latest                                # should be 16.3.2
+npm view next dist-tags.canary                                # should be 16.4.0-canary.1
+
+# Step 3: upgrade to new SHIPPED versions
+pnpm up next                                                    # 16.3.1 -> 16.3.2 STABLE
+npm install @tanstack/react-form@alpha                         # optional: v2 alpha experimentation
+
+# Step 4: check TanStack Query main-branch activity for 5.101.5 confirmation
+curl -s 'https://api.github.com/repos/TanStack/query/commits?per_page=15' | jq -r '.[] | "\(.sha[0:7]) \(.commit.message | gsub("\n"; " "))"' | head -10
+
+# Step 5: stay on @latest for zustand + react-query + jotai
+pnpm up zustand @tanstack/react-query jotai @tanstack/react-form @tanstack/react-virtual @tanstack/store --latest
+
+# Step 6: check Next.js canary-branch ahead-of-canary.1 for 16.4.0 state-affecting PRs
+curl -s 'https://api.github.com/repos/vercel/next.js/compare/v16.4.0-canary.1...canary' | jq -r '"ahead_by: \(.ahead_by), behind_by: \(.behind_by)"'
+```
+
+### Sources
+
+- [`@tanstack/react-form@alpha` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-form?activeTab=versions) — confirms `alpha: 2.0.0-alpha.2` npm-published 2026-08-21T15:29:29.649Z (8h 33min before this cron)
+- [TanStack Form PR #2318 — fix(form-core): preserve prefix-matching sibling fields](https://github.com/TanStack/form/pull/2318) — the HEADLINE fix included in 2.0.0-alpha.2; closes issue #2317
+- [TanStack Form PR #2223 — test(form-core): cover onMount field errors before field mount](https://github.com/TanStack/form/pull/2223) — last master-branch commit before alpha.2 cut (Aug 17)
+- [TanStack Form PR #2324 — docs: add Valibot examples to validation guide](https://github.com/TanStack/form/pull/2324) — docs-only commit included in alpha.2
+- [TanStack Form PR #2327 — chore: bump pnpm to v11.21.0](https://github.com/TanStack/form/pull/2327) — infra commit included in alpha.2
+- [TanStack Query PR #11242 — fix(broadcast-client): recover from errors thrown while applying an incoming cross-tab message](https://github.com/TanStack/query/pull/11242) — **THE HEADLINE** 5.101.5 candidate; the `try/finally` `tx()` guard
+- [TanStack Query PR #11245 — fix/11018: revert: remove NoInfer from useQuery return types](https://github.com/TanStack/query/pull/11245) — 5.101.5 candidate; regression fix
+- [TanStack Query PR #11246 — test: transition tests](https://github.com/TanStack/query/pull/11246) — 5.101.5 candidate (test refactor)
+- [TanStack Query PR #11241 — test(query-broadcast-client-experimental): replace inline 'new Promise' timeouts](https://github.com/TanStack/query/pull/11241) — 5.101.5 candidate (test refactor)
+- [TanStack Query PR #11240 — test(query-broadcast-client-experimental): replace inline query key literals](https://github.com/TanStack/query/pull/11240) — 5.101.5 candidate (test refactor)
+- [`@tanstack/react-query` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms `latest: 5.101.4` unchanged since 2026-07-21T13:04:07Z
+- [`zustand` npm dist-tags](https://www.npmjs.com/package/zustand?activeTab=versions) — confirms `latest: 5.0.15` unchanged since 2026-08-13T00:39:55Z
+- [Zustand GitHub commits (most recent 5)](https://github.com/pmndrs/zustand/commits) — verified at 2026-08-22T00:02Z; STILL on Aug 19 docs commits (`f094eeb` + `ea612a5`)
+- [TanStack Table PR #6560 — refactor(angular): simplify lazy table initialization](https://github.com/TanStack/table/pull/6560) — the only new master-branch commit since v1.5.80 (Aug 20); Angular-table internal refactor
+- [TanStack Virtual GitHub commits (most recent 5)](https://github.com/TanStack/virtual/commits) — verified at 2026-08-22T00:02Z; STILL on Aug 18 commits (no new activity)
+- [TanStack Store GitHub commits (most recent 5)](https://github.com/TanStack/store/commits) — verified at 2026-08-22T00:02Z; STILL on Aug 16 commits (no new activity)
+- [Jotai GitHub commits (most recent 5)](https://github.com/pmndrs/jotai/commits) — verified at 2026-08-22T00:02Z; STILL on Aug 4 docs commit (`76bc2e8`); now 38d+ idle on 2.20.2 latest
+- [`next@16.3.2` GitHub release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — backporting bug fixes; PR #97357 + PR #97416 + PR #97463 + PR #97453 + PR #97419 + PR #97603 Turborepo OIDC auth
+- [`next@16.4.0-canary.1` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.1) — npm-published 2026-08-21T23:53:40Z
+- [Next.js canary-branch compare `v16.4.0-canary.1...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.1...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-22T00:02Z (canary-branch equals 16.4.0-canary.1 = the 25 ahead-of-canary.26 PRs have all been published in 16.4.0-canary.0/1)
+- [Next.js canary-branch compare `v16.3.1-canary.26...canary`](https://github.com/vercel/next.js/compare/v16.3.1-canary.26...canary) — `ahead_by: 25, behind_by: 0` verified at 2026-08-22T00:02Z
+- [Next.js Blog — Upcoming Next.js August Security Release (Aug 20, 2026)](https://nextjs.org/blog) — confirms Aug 26 P0 calendar event with ONE critical severity vulnerability; 16.3.3 + 15.5.24 expected
+- Cross-reference: v1.5.80 state.md — "STILL IDLE" Refresh #4 + Zustand 5.0.15 SHIPPED + TanStack Query 13 NEW commits lens (still authoritative for the first 13-commit burst)
+- Cross-reference: v1.5.73 state.md — "STILL IDLE" Refresh #3 + Zustand 5.0.15 SHIPPED + TanStack Query 8 NEW commits lens (still authoritative for the first 8-commit burst)
+- Cross-reference: v1.5.85 server-components.md — the RSC-lens on the same Next.js 16.3.2 + 16.4.0-canary.0/1 cycle
+- Cross-reference: v1.5.85 performance.md — the perf-lens on the same Next.js 16.3.2 + 16.4.0-canary.0/1 cycle
