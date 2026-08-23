@@ -2452,3 +2452,61 @@ rg "theme inline|--color-" src/**/*.css 2>/dev/null | head -5
 - [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)
 - [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)
 - [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)
+
+---
+
+## Styling Idle Check Refresh #4 — Tailwind Insider Train STILL Frozen (240h+ / 10+ Days) + shadcn Ecosystem STILL Idle + No v4.3.4 Stable (August 23, 2026 — Styling Lens)
+
+**Styling Idle Assessment (August 23, 2026):**
+
+### Tailwind Insider Train Still Completely Frozen
+
+The `tailwindcss@insiders` train is now at **zero drops in 240h+ / 10+ days**. The last drop was `0.0.0-insiders.90f8ff4` on **2026-08-14T19:54:08Z** (Aug 14, 19:54 UTC). No new insiders drops in the 10 days since then.
+
+**This is the longest sustained freeze since tracking began at v1.5.0 (June 19, 2026).** The previous longest stretch was ~168h / 7 days (Aug 14 refresh #3).
+
+The v4.3.4 stable train has not materialized. The npm `latest` dist-tag remains `4.3.3` (published Jul 16, 2026 — **38+ days ago**). The v4.3.4 forecast (oxide WASM fallback + canonicalization + `supports-[selector]` space-out) appears to be delayed or the PRs are still in review on the Tailwind main branch.
+
+### shadcn Ecosystem Still Idle
+
+No movement since the last refresh:
+
+| Package | Version | Last Change | Idle |
+|---------|---------|-------------|------|
+| `shadcn@latest` | `4.18.0` | Aug 13, 2026 | **10+ days** |
+| `@shadcn/react@latest` | `0.3.0` | Aug 5, 2026 | **18+ days** |
+| `@shadcn/helpers@latest` | `0.2.0` | Aug 11, 2026 | **12+ days** |
+
+No ViewTransition wrapper has been added to shadcn since the Aug 18, 2026 Next.js blog post. shadcn still requires native `experimental.viewTransition: true` in `next.config.ts`.
+
+### Styling Audit Recipe (Unchanged)
+
+```bash
+# Check Tailwind stable
+npm ls tailwindcss
+
+# Check Tailwind insiders (if using)
+npm ls tailwindcss@insiders
+
+# Check shadcn versions
+npm ls shadcn
+npm ls @shadcn/react
+```
+
+### Common Mistakes
+
+- **Using `@tailwind base/components/utilities` in a v4 project:** v4 requires `@import "tailwindcss"`. The old directives cause a silent CSS failure.
+- **Using `@theme` with literal values where a CSS variable reference is correct:** `@theme` tokens should reference CSS variables (e.g., `@theme { --color-primary: var(--color-brand); }`) not hardcoded hex values.
+
+### Sources
+
+- [`tailwindcss@latest` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `4.3.3` unchanged since 2026-07-16T12:03:35Z; **38+ days**
+- [`tailwindcss@insiders` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `0.0.0-insiders.90f8ff4` unchanged since 2026-08-14T19:54:08Z; **0 new drops in 240h+ (10+ days) = longest freeze since tracking began at v1.5.0 (June 19)**
+- [Tailwind v4.3 announcement](https://tailwindcss.com/blog/tailwindcss-v4-3) — scrollbar utilities, stacked/compound variants
+- [Tailwind CSS Releases](https://github.com/tailwindlabs/tailwindcss/releases) — `v4.3.3` is the latest @latest; no 4.3.4 release as of Aug 23
+- [Tailwind CSS EOL / Version Support](https://endoflife.date/tailwind-css) — `v4.3` released 2026-05-08; latest `4.3.3` shipped 2026-07-16
+- [shadcn/ui releases](https://github.com/shadcn-ui/ui/releases) — still `4.18.0` / `@shadcn/react@0.3.0` / `@shadcn/helpers@0.2.0`; no ViewTransition wrapper
+- [Aug 18 blog post — "Building App-like Experiences with Next.js 16.3"](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — `<ViewTransition>` integration; no shadcn wrapper yet
+- [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)
+- [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)
+- [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)

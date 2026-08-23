@@ -6154,3 +6154,62 @@ rg "'use turbopack: no side effects';" app/ --type tsx | wc -l
 - Cross-reference: `performance.md` v1.5.80 — the prior canary.25 perf lens (still authoritative for PR #90300 `use turbopack: constants` + initial PPF docs)
 - Cross-reference: `server-components.md` v1.5.85 — the RSC-lens on the same 16.3.2 + 16.4.0-canary.0/1 cycle
 - Cross-reference: `state.md` v1.5.85 — the state-lens on the same cycle
+
+---
+
+## PPF `remove-partial-prefetch` Codemod + PPF Stable Adoption Guide + PPF Memory Benchmarks (16.3.2 Stable PPF Ecosystem Update — August 23, 2026 — Performance Lens)
+
+### PPF `remove-partial-prefetch` Codemod — Per-Route Opt-Out Now Redundant
+
+The new stable [`/guides/adopting-partial-prefetching`](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) guide and [`/guides/upgrading/codemods`](https://nextjs.org/docs/app/guides/upgrading/codemods) page document the **`remove-partial-prefetch`** codemod (ships with `@next/codemod@canary`):
+
+```bash
+npx @next/codemod@canary remove-partial-prefetch ./app
+```
+
+After enabling `partialPrefetching: true` globally, the per-route `export const prefetch = 'partial'` is now redundant. The codemod strips it in one automated pass across all `page` and `layout` files. Only `'partial'` is removed; `prefetch = 'force-disabled'` is preserved. **Verify the file count** before running — a wrong path silently reports `0 ok`.
+
+The new first-party **`next-partial-prefetching-adoption`** skill automates the full three-step adoption workflow (audit → incremental → sweep) for teams that prefer agent-driven migration:
+
+```bash
+npx skills add vercel/next.js --skill next-partial-prefetching-adoption
+```
+
+### PPF Performance Evidence — Real-World Memory Benchmarks
+
+The Aug 3, 2026 Next.js announcement ([X @nextjs](https://x.com/nextjs/status/2084399942618263752)) included **real-world memory benchmarks** for two production sites after compiling **50 routes**:
+
+| Site | Without PPF (MB) | With PPF (MB) |
+|------|-----------------|---------------|
+| Site A | **192 MB** | **~3 MB** |
+| Site B | **~12K** | **~1 MB** |
+
+**PPF achieves 64× memory reduction for content-heavy sites** (192MB → 3MB) and **~12× reduction** for lighter sites (12K → 1MB) by sharing one reusable App Shell per route across all links to that route, instead of duplicating per-link RSC payloads.
+
+### Aug 26 Critical CVE: T-3d (3 Days Away)
+
+**Aug 26, 2026 is 3 days away.** Every Next.js app on `next@16.x` or `next@15.x` should have an upgrade window scheduled. `next@16.3.2` (published Aug 21) is the **last safe stable before the CVE patch**. The CVE patch will be `next@16.3.3` + `next@15.5.24`.
+
+**Pre-CVE audit recipe:**
+
+```bash
+# Check current Next.js version
+npm ls next
+
+# Audit App Router usage (most exposed to the CVE)
+rg "experimental_useCache|cacheComponents|use cache" app/ --type tsx | wc -l
+
+# Plan upgrade for Aug 26
+# npm install next@latest  # on Aug 26 morning UTC
+```
+
+### Sources
+
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js X: PPF memory benchmarks — 50-route comparison](https://x.com/nextjs/status/2084399942618263752) — Aug 3, 2026 announcement with real-world memory data (192MB → 3MB; 12K → 1MB)
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — T-3d (Aug 23, 2026)
+- [MDN: Network Information API — navigator.connection](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API) — effectiveType + downlink for conditional prefetch
+- Cross-reference: `performance.md` v1.5.89 — the prior PPF perf-lens section (still authoritative for `unstable_navigation()` + `unstable_prefetch()` API)
+- Cross-reference: `server-components.md` v1.5.90 — the RSC-surface PPF codemod section (just added above)

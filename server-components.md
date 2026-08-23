@@ -2691,3 +2691,54 @@ npm install react@canary react-dom@canary  # if using PPF
 - Cross-reference: `server-components.md` v1.5.81 — the prior canary.26 → 16.3.2 API-surface lens (still authoritative for PR #96686 + PR #96908 deep dive)
 - Cross-reference: `performance.md` v1.5.85 — the perf-lens on the same 16.3.2 + 16.4.0-canary.0/1 cycle
 - Cross-reference: `state.md` v1.5.85 — the state-lens on the same cycle (TanStack Query 5.101.5 near-certain + @tanstack/react-form@2.0.0-alpha.2 shipped)
+
+---
+
+## PPF Adopts Stable Adoption Guide + `remove-partial-prefetch` Codemod (16.3.2 Stable PPF Ecosystem Update — August 23, 2026 — RSC / Server Components Lens)
+
+### PPF `remove-partial-prefetch` Codemod Now in Stable Docs
+
+**The per-route `export const prefetch = 'partial'` is now officially redundant.** The new stable [`/guides/adopting-partial-prefetching`](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) guide (version `16.3.2`, lastUpdated 2026-08-10) and the [`/guides/upgrading/codemods`](https://nextjs.org/docs/app/guides/upgrading/codemods) page (lastUpdated 2026-08-05) now include the **`remove-partial-prefetch`** codemod:
+
+```bash
+npx @next/codemod@canary remove-partial-prefetch ./app
+# Pass `./src/app` in a src/ project
+```
+
+**What it does:** Strips `export const prefetch = 'partial'` from every `page` and `layout` file in the target directory.
+
+**When to use it:** After enabling `partialPrefetching: true` globally in `next.config.ts`. The per-route opt-in is now redundant — the global flag handles the same behavior. The codemod removes the boilerplate in one pass.
+
+**Key caveat:** A wrong path reports `0 ok` instead of failing — always check the file count before running. The codemod only removes `'partial'` value; `prefetch = 'force-disabled'` is left intact.
+
+### PPF Adoption Is Now a First-Party Next.js Skill
+
+The Next.js team ships a **`next-partial-prefetching-adoption`** skill that drives the adoption with a coding agent:
+
+```bash
+npx skills add vercel/next.js --skill next-partial-prefetching-adoption
+# Then give the agent the prompt:
+# "Adopt Partial Prefetching in this project using the next-partial-prefetching-adoption skill."
+```
+
+The skill automates the three-step adoption path: (1) audit `<Link prefetch={true}>` calls, (2) adopt incrementally per-route, (3) sweep for URL-data insights after enabling. Requires Next.js 16.3+.
+
+### `next@canary` at `16.4.0-canary.2` — 1 PR (Low-Impact)
+
+As documented in v1.5.89, `next@canary` crossed to `16.4.0-canary.2` at npm 2026-08-22T23:55:51Z. The only PR is PR #97284 (Turbopack backend-storage options-struct refactor) — no RSC or server-components API surface change.
+
+### Aug 26 Critical CVE: T-3d (3 Days Away)
+
+**Aug 26, 2026 is 3 days away.** The critical CVE pre-announce (`next@16.3.3` + `next@15.5.24`) is unchanged from the v1.5.89 cycle. Every App Router project should plan the upgrade window now. The `next@16.3.2` routine PATCH is already published and does **not** address the CVE.
+
+### Sources
+
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js PR #97284 — Turbopack backend-storage options-struct refactor](https://github.com/vercel/next.js/pull/97284) — canary.2 only-PR (LOW-IMPACT, no RSC surface change)
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — T-3d (Aug 23, 2026)
+- [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — ahead-by-0 verified at v1.5.89 cycle
+- Cross-reference: `server-components.md` v1.5.89 — PPF `unstable_prefetch()` + `unstable_navigation()` RSC-surface lens (still authoritative for PR #96908 + PR #97309 deep dive)
+- Cross-reference: `performance.md` v1.5.89 — the PPF perf-lens on the same PPF ecosystem evolution
+- Cross-reference: `routing.md` v1.5.88 — the PPF routing-surface lens (still authoritative for the `unstable_prefetch()` routing comparison table)
