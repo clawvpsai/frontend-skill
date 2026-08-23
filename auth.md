@@ -2307,3 +2307,137 @@ npm install vite@^8.2.2
 - [Cross-reference: `setup.md` — canary.26 setup-recipe lens + Aug 26 CVE upgrade recipe
 - [Cross-reference: `security.md` — Aug 26 CVE pre-announce + advisory when published
 - [Cross-reference: `deployment.md` — the `vite@8.2.2` build-tooling PATCH
+
+## Aug 26 Critical CVE Now T-3d Pre-Announce Refresh + @clerk/nextjs@canary 22nd + 23rd + 24th Drops (August 21–22, 2026 — Auth Lens)
+
+The Aug 26 CVE pre-announce has moved from **T-4d** in v1.5.84 (Aug 21 18:09Z) to **T-3d** at this v1.5.89 cron (Aug 23 00:02Z = 3 days to Wed Aug 26). And `@clerk/nextjs@canary` dropped 3 NEW canary versions since v1.5.84 (the 22nd + 23rd + 24th drops since v1.5.50) — rapid-fire on the 7.8.x development line.
+
+### Aug 26 Critical CVE — Now T-3d (vs T-4d at v1.5.84)
+
+Since v1.5.84 (Aug 21 18:09Z) two material updates affect the auth surface:
+
+- **`next@16.3.2` STABLE SHIPPED Aug 21 09:54Z** — confirmed **routine PATCH** via the official GitHub release body verbatim: *"This release is backporting bug fixes. It does not include all pending features/changes on canary."* — **NOT the Aug 26 CVE patch**. The Aug 26 release will ship as **`next@16.3.3` + `next@15.5.24`** in 3 days. The single auth-relevant change in 16.3.2 is **PR #97603 (Turborepo OIDC replaces static PAT)** — internal CI plumbing; no app-user impact unless your app uses Turborepo for monorepo CI (then verify CI jobs still authenticate correctly post-OIDC).
+- **`@clerk/nextjs@canary` advanced 3 more drops in 30h** — see below. The acceleration is a strong signal of active 7.8.x development.
+
+**The auth-affected surface analysis** (refined from v1.5.84 with **T-3d urgency**):
+
+**If the Aug 26 CVE touches middleware or routing** (HIGH probability given the auth-critical surface), the following will need upgrade verification on Aug 26:
+
+```bash
+# TODAY (Aug 23) — pre-flight for Aug 26
+rg "clerkMiddleware|authMiddleware" src/middleware.ts
+# Expected: clerkMiddleware() (the recommended pattern from @clerk/nextjs 7+)
+# If authMiddleware(): plan a Core 2/3 migration independently
+
+# Verify Clerk is on 7.8.0 STABLE
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.0
+
+# Verify next is on 16.3.2 STABLE (the routine PATCH)
+npm view next dist-tags.latest
+# Expected: 16.3.2
+
+# Aug 26 — when 16.3.3 STABLE publishes (THE CVE PATCH)
+npm install next@latest @clerk/nextjs@^7.8.0
+npm ls next @clerk/nextjs
+# Expected: next@16.3.3.x + @clerk/nextjs@7.8.0+
+
+# If on Next.js 15.5.x LTS branch
+npm install next@15.5.24 @clerk/nextjs@^7.8.0
+
+# Verify the dev server boots cleanly on the upgraded versions
+npm run dev
+# Should boot without CSP or middleware errors in the console
+
+# Calendar reminder: Aug 26, 2026 = P0 upgrade day
+# Watch https://nextjs.org/blog on Aug 26 for full advisory + affected version matrix
+```
+
+**Specific auth-bearing scenarios that demand priority upgrade on Aug 26**:
+
+1. **Apps using `clerkMiddleware()`** — verify the middleware still loads after 16.3.3 upgrade. The CSP header generation improvement (auto-includes `connect-src` for Clerk API on non-443 ports, backport of PR #9458 from 7.7.8 STABLE) means the Clerk dev tools integration should remain stable post-upgrade.
+2. **Apps using `authMiddleware()` (deprecated since Core 2)** — plan a separate migration (see Clerk Core 2 + Core 3 upgrade guides). The Auth.js v5 beta.32 + NextAuth.js v4 4.24.15 security backport from v1.5.79 should still be the immediate priority for these apps.
+3. **Apps using Better Auth 1.7.1** — verify the `getSession()` + `withAuth()` middleware still resolves correctly. The 1.7.x line is the most recent Vercel-acquisition release (Jul 7) and the Vercel team is maintaining it actively.
+4. **Apps using NextAuth.js v5 beta.32** — verify the `@auth/core@0.41.3` security fixes from July 20 still hold. The Aug 26 CVE may surface a NEW `@auth/core` advisory; watch for it.
+
+### @clerk/nextjs@canary — 22nd + 23rd + 24th Drops in 30h
+
+**The canary train accelerated from T+47min in v1.5.84 to T+15min in this v1.5.89 cron**: 3 NEW drops since v1.5.84 (`v20260820221209` documented in v1.5.84):
+
+- **[`@clerk/nextjs@canary` `7.8.1-canary.v20260821031411`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)** — npm-published **2026-08-21T03:19:26.207Z**; **the 22nd canary drop since v1.5.50** (T+5h 1min after v1.5.84's 7.8.1-canary.v20260820221209 line)
+- **[@clerk/nextjs@canary `7.8.1-canary.v20260821034516`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)** — npm-published **2026-08-21T03:50:41.497Z**; **the 23rd canary drop since v1.5.50** (T+31min after v20260821031411)
+- **[@clerk/nextjs@canary `7.8.1-canary.v20260821144536`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions)** — npm-published **2026-08-21T14:51:13.858Z**; **the 24th canary drop since v1.5.50** (T+11h 0min after v20260821034516)
+
+**Velocity analysis** (per the 6h-cycle tracker since v1.5.50):
+- **Aug 21 alone**: 3 drops in 11h 32m (03:19Z → 14:51Z) — 1 drop every ~3h 50min on Aug 21
+- **Aug 22 alone**: 0 new drops (the canary train went silent for 24h on Aug 22 — a notable pause)
+- **Since v1.5.50 (16d ago at the cron)**: 24 canary drops total = **1.5 drops/day average**
+
+**Forecasts for the canary train**:
+- **`@clerk/nextjs@7.8.1` STABLE forecast**: 2-3 weeks from this cron = **Sep 8–15, 2026**. The v1.5.74 '7.7.9-or-7.8.0 STABLE forecast 1-2 weeks' LANDED at 7.8.0 STABLE on Aug 20; the 7.8.1 STABLE forecast tightens to 2-3 weeks given the canary train velocity.
+- **Aug 26 CVE may trigger a 7.8.2 emergency PATCH** — if the Aug 26 CVE affects the Clerk integration, the team may cut 7.8.2 within 24-48h of the advisory. Watch https://github.com/clerk/javascript/releases.
+
+**The 7.8.x development line activity correlation**:
+- 3 drops in 30h = the team is **actively merging PRs** into the canary branch (vs the idle-on-7.7.x pattern from v1.5.60-v1.5.74)
+- The pattern suggests 7.8.1 is building toward the next minor with feature work (not just CVE pre-positioning)
+
+### Auth Audit Recipe — Verify Post-Aug 22 Setup
+
+```bash
+# Step 1: confirm @clerk/nextjs 7.8.0 STABLE
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.0
+
+# Step 2: confirm @clerk/nextjs@canary tip (24th drop)
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.1-canary.v20260821144536
+
+# Step 3: upgrade to STABLE 7.8.0 (skip canary unless testing future 7.8.1 features)
+npm install @clerk/nextjs@^7.8.0
+# OR (canary for v2 testing):
+npm install @clerk/nextjs@7.8.1-canary.v20260821144536
+
+# Step 4: pre-flight check for Aug 26 CVE
+rg "clerkMiddleware|authMiddleware" src/middleware.ts
+
+# Step 5: verify TanStack Query is on 5.102.0 (for any Next.js app using React Query)
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.0 (the state.md update from this v1.5.89 cycle)
+
+# Step 6: pre-flight verification of the recommended setup (Aug 26 countdown)
+echo "T-3d to Aug 26 CVE; upgrade plan:"
+echo "  - upgrade next@latest to 16.3.3 on Aug 26"
+echo "  - OR upgrade next@15.5.24 if on 15.5.x LTS"
+echo "  - stay on @clerk/nextjs@^7.8.0 (no upgrade needed unless CVE advisory specifies)"
+echo "  - upgrade @tanstack/react-query to ^5.102.0 (the broadcast-client PR #11242 fix)"
+echo "  - upgrade @tanstack/react-query-devtools to ^5.102.0 (matches query-core)"
+```
+
+### Why This Matters for Auth
+
+- **Aug 26 CVE now T-3d** = the routine upgrade window for `next@16.3.2` closes; **`next@16.3.3` + `next@15.5.24`** will be the CVE patches on Aug 26. Plan a calendar reminder for Aug 26 morning UTC.
+- **Auth-bearing Next.js apps have the highest urgency** to upgrade on Aug 26 because the auth middleware surface is the canonical attack surface for any CVE that touches routing.
+- **`@clerk/nextjs@canary` 22nd + 23rd + 24th drops in 30h** = the canary train is healthy. The 24h pause on Aug 22 is not concerning — the typical cadence is 1 drop per 4-12h, not constant firing.
+- **`@tanstack/react-query@5.102.0` PR #11242 `broadcast-client` cross-tab silent-break hardening** — apps using `broadcastQueryClient` for auth state sync (e.g., logout broadcast) are operationally dependent on this fix. **If your auth state syncs across tabs via TanStack Query broadcast, 5.102.0 is mandatory.**
+- **Better Auth 1.7.1 unchanged** — Vercel-acquisition integration continues; the Agent Auth Protocol roadmap (Q4 2026-Q1 2027) is still pending. No new Better Auth releases since v1.5.79.
+- **`@auth/core@0.41.3` is the security floor** — apps on NextAuth v5 beta.32 + v4 4.24.15 have the July 20 security backport; the Aug 26 CVE may surface an `@auth/core` advisory (NEW or extension of the prior). Watch the Auth.js blog.
+
+### Sources
+
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — Aug 20, 2026 by Josh Story + Karim Rahal + Sebastian Silbermann; one critical CVE; ships Aug 26 as 16.3.3 + 15.5.24
+- [`next@16.3.2` GitHub release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — npm-published 2026-08-21T09:54:02Z; routine PATCH (NOT the Aug 26 CVE patch); 6 backports
+- [PR #97603 — Turborepo remote-cache OIDC](https://github.com/vercel/next.js/pull/97603) — included in 16.3.2; the only deployment-impacting auth-relevant change
+- [`@clerk/nextjs@canary` `7.8.1-canary.v20260821031411`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-21T03:19:26.207Z; **22nd canary drop since v1.5.50**
+- [`@clerk/nextjs@canary` `7.8.1-canary.v20260821034516`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-21T03:50:41.497Z; **23rd canary drop since v1.5.50**
+- [`@clerk/nextjs@canary` `7.8.1-canary.v20260821144536`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-21T14:51:13.858Z; **24th canary drop since v1.5.50**
+- [`@clerk/nextjs` npm dist-tags](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — confirms `latest: 7.8.0` (Aug 20 22:17:48Z) + `canary: 7.8.1-canary.v20260821144536`
+- [Clerk Core 3 Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3) — most projects can upgrade in <30 min using the upgrade CLI
+- [Clerk Core 2 / Next.js Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-2/nextjs) — for apps still on deprecated `authMiddleware()` (pre-Core 2)
+- [`@clerk/nextjs` CHANGELOG (main branch)](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — historical breaking-change audit reference
+- [Better Auth 1.7.1 npm](https://www.npmjs.com/package/better-auth?activeTab=versions) — unchanged from v1.5.79; the Vercel acquisition integration continues
+- [NextAuth v5 beta.32 + Auth.js 0.41.3 advisory](https://authjs.dev) — July 20 security fixes; watch the Auth.js blog for Aug 26 extensions
+- [TanStack Query PR #11242 — broadcast-client cross-tab silent-break](https://github.com/TanStack/query/pull/11242) — operationally critical for `broadcastQueryClient` users; included in 5.102.0
+- [Cross-reference: `setup.md` — Aug 26 CVE T-3d setup-recipe lens + TanStack Query `tsup → tsdown` build infra
+- [Cross-reference: `security.md` — Aug 26 CVE pre-announce + advisory when published
+- [Cross-reference: `state.md` — TanStack Query 5.102.0 STABLE + the `query()` + `infiniteQuery()` new feature from the state-management lens
+- [Cross-reference: `routing.md` — PR #96686 RSC frozen-serialization + PR #97416 catch-all routing fix from the routing lens

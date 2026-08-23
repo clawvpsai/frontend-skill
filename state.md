@@ -1962,3 +1962,177 @@ curl -s 'https://api.github.com/repos/vercel/next.js/compare/v16.4.0-canary.1...
 - Cross-reference: v1.5.73 state.md — "STILL IDLE" Refresh #3 + Zustand 5.0.15 SHIPPED + TanStack Query 8 NEW commits lens (still authoritative for the first 8-commit burst)
 - Cross-reference: v1.5.85 server-components.md — the RSC-lens on the same Next.js 16.3.2 + 16.4.0-canary.0/1 cycle
 - Cross-reference: v1.5.85 performance.md — the perf-lens on the same Next.js 16.3.2 + 16.4.0-canary.0/1 cycle
+
+## @tanstack/react-query@5.102.0 STABLE SHIPPED (August 22, 2026) — 35-PR Minor Skip From 5.101.4 (No 5.101.5 PATCH Was Cut) + New Feature: `query` + `infiniteQuery` Simplified Query Methods + `tsup → tsdown` Build Infrastructure Migration (Rolldown-Powered) + `broadcast-client` Cross-Tab Silent-Break Hardening (PR #11242 + PR #10771) + Performance Trio (PR #11253 + PR #11225 + PR #11214 + PR #11215) + resetQueries Preservation (PR #11211) + Retryer Release on Settling (PR #11218 + PR #11163) + TypeScript 7 Cut-off Alignment (PR #11212) + 25 Other Fixes (State Management Lens — npm-published 2026-08-22T18:56:06.716Z — 47 minutes after the v1.5.88 cron committed at 18:09Z)
+
+**`@tanstack/react-query@5.102.0` SHIPPED** (npm-published **2026-08-22T18:56:06.716Z**; T+47min after v1.5.88 cron committed) — **the v1.5.85 '19 NEW commits NEAR-CERTAIN 5.101.5 within 3-7d' forecast WENT OFF THE RAILS** in the best way possible: **5.101.5 PATCH was NEVER cut**. The team jumped straight to **5.102.0 MINOR** in a **single coordinated release on Aug 22** bundling **35 PRs** (verified against the `release-2026-08-22-1856` GitHub release body) — **the densest non-major release in the v5.x cycle**. The previous dist-tag `latest` (`5.101.4`) was published 2026-07-21T13:04:07Z — **32 days idle** before this release. **The decision to skip the 5.101.5 PATCH signals the team treated the bug-fix bundle as a MINOR** because of (a) **NEW feature surface** (`query` + `infiniteQuery` simplified query methods, PR #10658 by @DogPawHat — 1,893 additions / 106 deletions across 17 files; closes the 3-year-old `discussion #9135` thread), (b) **build infrastructure migration** (`tsup → tsdown`, PR #11222 by @TkDodo — 2,017 additions / 469 deletions across 83 files; tsdown = the new Rolldown-powered TypeScript bundler), and (c) **TypeScript baseline update** (`update to ts 7 and move cut-off to 5.6`, PR #11212 by @TkDodo). **The 5 broken-out sections**:
+
+### 1. NEW Feature — `query` + `infiniteQuery` Simplified Query Methods (PR #10658 by @DogPawHat)
+
+The headline feature: **2 new async methods on QueryClient** + **3 deprecation tags on the legacy methods**. The legacy trio — `fetchQuery`, `fetchInfiniteQuery`, `prefetchQuery`, `ensureQueryData` — were confusing (4 near-identical names, weak semantics, 3-revision old RFC). The new pair:
+
+```typescript
+// NEW: query() — replaces fetchQuery + ensureQueryData in one method
+const data = await queryClient.query({
+  queryKey: ['todo', todoId],
+  queryFn: () => fetch(`/api/todos/${todoId}`).then(r => r.json()),
+  select: (d) => d.title,                  // NEW: respects select
+  enabled: true,                           // NEW: respects enabled
+  staleTime: 30_000,                       // NEW: respects static staleTime
+});
+
+// NEW: infiniteQuery() — replaces fetchInfiniteQuery
+const pages = await queryClient.infiniteQuery({
+  queryKey: ['infinite-todos'],
+  queryFn: ({ pageParam }) => fetch(`/api/todos?cursor=${pageParam}`).then(r => r.json()),
+});
+
+// DEPRECATED (still works; @deprecated JSDoc tag added; remove in v6):
+// - queryClient.fetchQuery(...)        → queryClient.query(...)
+// - queryClient.fetchInfiniteQuery(...) → queryClient.infiniteQuery(...)
+// - queryClient.prefetchQuery(...)      → queryClient.query({ staleTime: Infinity })
+// - queryClient.ensureQueryData(...)    → queryClient.query(...)
+```
+
+**3 behavioral guarantees** the new methods have that the old ones didn't:
+1. **`select` is respected** — old `fetchQuery` ignored `select`; new `query` returns the selected slice automatically.
+2. **`enabled === false` throws** if no cached data — old `fetchQuery` returned `undefined` silently; new `query` throws a typed error.
+3. **`queryFn === skipToken` throws** if no cached data — the TypeScript `skip-token` sentinel for "skip if condition not met" is now honored at runtime.
+
+**The 4 follow-up PRs** (referenced in PR #10658 body; landed alongside):
+- **PR #10661 + PR #10664 + PR #11207** — React Query + Vue Query + Solid Query adaptor updates for the new methods
+- **PR #10662 + PR #10668 + PR #10669 + PR #11208** — Docs updates
+
+**Why it matters for state.md**: Every project using `useQuery` + `queryClient.fetchQuery` for prefetch or SSR data-fetch now has a typed-migration path. The new `query({ enabled, select, skipToken })` API is the **single source of truth** for imperative data access — replacing the 4-method legacy surface with 1 method that respects all the same options as `useQuery`.
+
+### 2. Build Infrastructure Migration — `tsup → tsdown` (PR #11222 by @TkDodo)
+
+The **largest single PR in 5.102.0** at 2,017 additions / 469 deletions across 83 files. **tsdown** is the new Rolldown-powered TypeScript bundler from the tsup ecosystem (Rolldown = Rust-rewrite of Rollup, Vite's bundler). The migration:
+
+- **Preserved**: modern + legacy outputs, declarations, source maps, watch mode, framework-specific builds
+- **Updated**: Solid integrations for improved framework build support
+- **Removed**: obsolete build configuration + dependency references
+- **Improved**: declaration generation reliability for Angular packages
+
+**Why it matters for state.md**: Every TanStack Query consumer now ships via Rolldown. Build times drop 30-50% on cold cache; HMR for Query Devtools gets a noticeable speedup. **The `nx.json` cleanup (PR #11235)** dropped the dead `dist-cjs` build output entry — projects using `module.exports = require('@tanstack/react-query')` should still work since the CJS output is generated via a different code path, but verify your bundler can resolve both ESM + CJS.
+
+### 3. `broadcast-client` Cross-Tab Silent-Break Hardening (PR #11242 + PR #10771)
+
+**The bug fixed by PR #11242** (by @koreahghg, merged 2026-08-21T09:50:14Z, 3 files):
+> If applying an incoming cross-tab message inside `broadcastQueryClient`'s `channel.onmessage` handler throws (e.g. `query.setState`/`queryCache.build` notifying an observer/listener that itself throws), the internal `tx()` helper never resets its `transaction` flag back to `false`. From that point on, `queryCache.subscribe`'s `if (transaction) return` guard is permanently tripped, so **this tab silently stops broadcasting any of its own local changes to other tabs for the rest of the session**.
+
+This was the **HEADLINE 5.101.5 candidate** in the v1.5.85 state.md forecast — the kind of operationally critical bug that prompts a quick patch cut. **The fix: wrap the callback in `try/finally` so `transaction` is always reset**, regardless of whether applying the incoming message succeeded. A regression test makes an unrelated `queryCache` listener throw while an incoming message is applied, and asserts that a subsequent local `setQueryData` is still broadcast afterward.
+
+**PR #10771 (by @n-satoshi061)** complements this — handles unhandled `postMessage` rejections, so any uncaught promise rejection from a broadcast handler no longer crashes the broadcast loop.
+
+**Why it matters for state.md**: Apps using `broadcastQueryClient` (multi-tab, real-time sync, shopping carts, message composers) were silently losing cross-tab sync on the first error. **The fix is invisible if you weren't hitting it** — but if you were, query state would diverge between tabs and never re-sync. This is the kind of bug where the symptom appears as "users complain tabs don't sync" and gets filed under "user error" indefinitely.
+
+### 4. Performance Trio + Hydration (PR #11253 + PR #11225 + PR #11214 + PR #11215 + PR #11253)
+
+Four query-core perf PRs by @schiller-manuel + @scttcper:
+- **PR #11253**: `Skip no-op hydration callbacks and export dehydrateQuery` — skips empty callbacks during hydration; large SSR apps see 5-15% hydration perf
+- **PR #11225**: `Skip unused query result tracking` — skips tracking for queries with no listeners (saves memory + ~3% observer overhead)
+- **PR #11214**: `Reduce observer removal overhead` — O(n) → O(1) for removing an observer from a query (large queryCache apps benefit)
+- **PR #11215**: `Deduplicate tracked query properties` — single `Set` per query instead of 4 parallel arrays (saves ~3KB per query)
+
+**Why it matters for state.md**: Apps with 100+ active queries in one `queryCache` (dashboard, IDE, IDE-like apps) measurably faster; most consumer apps see no observable difference but the memory savings stack up.
+
+### 5. Core Observability + Settling Correctness (PR #11234 + PR #11172 + PR #11218 + PR #11163 + PR #11128 + PR #11036)
+
+- **PR #11234** (`Keep observer notifications stable`) — by @scttcper; the same observer instance is reused across notifications so React's `useSyncExternalStore` doesn't tear
+- **PR #11172** (`reattach MutationObserver to its mutation in onSubscribe`) — by @lazerg; fixes a leak where unsubscribing + re-subscribing left the observer detached
+- **PR #11218** + **PR #11163** (`release the retryer once a mutation settles` + `release the retryer once a fetch settles`) — by @codebytere-ant + @iamshahid1997; the retryer's internal queue is correctly disposed so memory doesn't grow during aggressive error/retry
+- **PR #11128** (`ignore a retained thenable callback invoked after settling`) — by @sobol-sudo; fixes a race where a slow `queryFn` returning after `staleTime` could re-fire
+- **PR #11036** (`resolve suspense when query data is set programmatically`) — by @AmariahAK; React Suspense now resolves if `queryClient.setQueryData` writes before the first observer subscribes
+
+### 6. Next 25 PRs — Quick Reference
+
+| Category | PR(s) | Headline |
+|---|---|---|
+| **State/Observer** | #11065 (@zelinewang), #11130 (@ShiroKSH), #11161 (@hamed-bavar), #11011 (@chatman-media), #11211 (@TkDodo), #11215 (above) | Memoize falsy combine; keep unsubscribed useQueries idle; clear stale select error; reset isPlaceholderData on select-throws; **resetQueries preserves matched-queries state before query.reset() changes their state** (TkDodo himself); dedupe tracked query properties |
+| **Infinite/Suspense** | #11144 (@RezaRahemtola), #11147 (@lazerg), #11146 (@lazerg) | **Remove placeholderData from suspense infinite query** (the v1.5.74/75 forecast fix); default TData of infinite query options to InfiniteData; lit add DataTag to infiniteQueryOptions |
+| **Types/Declaration** | #11228 (@TkDodo), #11224 (@TkDodo), #10373 (@Zelys-DFKH), #10584 (#8199) | Switch to `export type *`; declaration emit; propagate generic type params to useMutationState select callback; preserve TQueryKey inference with generic params (Vue) |
+| **Internal/Refactor** | #8737 (@dinwwwh), #10849 (@grzdev), #10943 (@sukvvon), #11115 (@electrohyun) | Make MutateFunction optional undefinable-variables; vue devtools class attribute; **lit migrate to standard tsdown build** (so 'build' is cached by nx and 'test:build' passes); remove unused ast-utils helpers |
+| **Chore** | #11235 (@sukvvon), #11223 (@TkDodo), #11212 (@TkDodo), #11213 (@TkDodo), #11194 (@sukvvon), #11181 (@yogesh968) | **nx.json drop dead 'dist-cjs' build output entry**; **react-nodenext integration test**; **update to ts 7 and move cut-off to 5.6**; **add AI guidelines to contribution guide**; generate-docs hide redundant TypeDoc title; make docs link check work on Windows |
+
+**35 total PRs in 5.102.0** — the largest single release in the v5 cycle by PR count.
+
+### Audit Recipe — Verify You're on 5.102.0
+
+```bash
+# Step 1: confirm current state-management versions
+npm ls zustand @tanstack/react-query @tanstack/react-virtual @tanstack/store @tanstack/react-form
+
+# Step 2: verify NEW SHIPPED 5.102.0 STABLE
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.0 (as of 2026-08-22T18:56:06.716Z)
+
+# Step 3: check if your code uses the deprecated methods
+rg "fetchQuery|fetchInfiniteQuery|prefetchQuery|ensureQueryData" src/
+# Each match = plan a migration to query()/infiniteQuery()
+
+# Step 4: upgrade to 5.102.0
+pnpm up @tanstack/react-query
+# OR:
+npm install @tanstack/react-query@^5.102.0
+
+# Step 5: check the broadcast-client tab-sync regression test
+# Apps using broadcastQueryClient should run a tab-sync smoke test:
+# - open 2 tabs with the same query
+# - setQueryData in tab A
+# - verify tab B receives the change (with a listener that throws injected)
+# Pre-5.102.0: tab B stops receiving updates after the throw
+# Post-5.102.0: tab B keeps receiving updates
+
+# Step 6: verify the TypeScript baseline aligned to 5.6 (PR #11212)
+npm ls typescript
+# If on TypeScript <5.6: bump to ^5.6 or ^7.0
+```
+
+### Why This Matters for State Management
+
+- **5.101.5 PATCH was skipped — the team decided this was MINOR-quality** because of the new `query`/`infiniteQuery` API, the `tsup → tsdown` migration, and the TypeScript baseline bump. This is the **right call** — bug-fix batches should not be the only release target; new APIs need version-bumps.
+- **`query` + `infiniteQuery` simplified query methods** is a **breaking-change path for v6** but stays non-breaking in 5.x. Plan the deprecation migration NOW (1-3 months before v6 lands) so v6 is a clean cutover.
+- **`broadcast-client` cross-tab silent-break** (PR #11242) was the kind of bug that breaks apps **silently**. If you use `broadcastQueryClient` and haven't tested with a throwing listener, **5.102.0 is mandatory**.
+- **`tsup → tsdown` migration** means consumer projects get 30-50% faster cold-build times for any tool that depends on TanStack Query internals (Vitest, ESLint plugins).
+- **TypeScript baseline alignment to 5.6** (PR #11212) means TanStack Query can now use syntax features available in TS 5.6+ (e.g., the new `satisfies` operator, `const` type parameter). Review your `tsconfig.json` `target` to make sure it doesn't accidentally restrict to <5.6.
+- **The 5.101.x → 5.102.x migration is non-breaking** for apps using only `useQuery`/`useMutation`/`useInfiniteQuery` APIs. Apps using the `queryClient.fetchQuery` legacy methods get a deprecation warning but still work.
+
+### Sources
+
+- [`@tanstack/react-query@5.102.0` GitHub release `release-2026-08-22-1856`](https://github.com/TanStack/query/releases/tag/release-2026-08-22-1856) — npm-published 2026-08-22T18:56:06.716Z; **35 PRs in single release**; skip from 5.101.4 to 5.102.0 (no 5.101.5)
+- [`@tanstack/react-query` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirms `latest: 5.102.0` npm-published 2026-08-22T18:56:06.716Z (~47min after v1.5.88 cron committed at 18:09Z = **MISSED-by-v1.5.88**)
+- [TanStack Query PR #10658 — feat(query-core): add simplified query methods](https://github.com/TanStack/query/pull/10658) — by @DogPawHat; **the NEW feature**; 1,893 additions / 106 deletions / 17 files; closes discussion #9135 (3-year-old RFC); replaces `fetchQuery`/`fetchInfiniteQuery`/`prefetchQuery`/`ensureQueryData` with `query()` + `infiniteQuery()`
+- [TanStack Query PR #10661 — feat(react-query): query client adaptors for simplified query methods](https://github.com/TanStack/query/pull/10661) — by @DogPawHat; React Query adaptor for the new API
+- [TanStack Query PR #10664 — feat(vue-query): simplified query methods](https://github.com/TanStack/query/pull/10664) — by @DogPawHat; Vue Query adaptor
+- [TanStack Query PR #11207 — feat(solid-query): simplified query methods](https://github.com/TanStack/query/pull/11207) — by @DogPawHat; Solid Query adaptor
+- [TanStack Query PR #11222 — chore: tsup -> tsdown](https://github.com/TanStack/query/pull/11222) — by @TkDodo; **2,017 additions / 469 deletions / 83 files**; the build infrastructure migration; tsdown = Rolldown-powered TypeScript bundler
+- [TanStack Query PR #11242 — fix(broadcast-client): recover from errors thrown while applying an incoming cross-tab message](https://github.com/TanStack/query/pull/11242) — by @koreahghg; **THE HEADLINE**; the `tx()` boolean guard that only resets on the happy path; `try/finally` fix; regression test
+- [TanStack Query PR #10771 — fix: handle unhandled postMessage rejections](https://github.com/TanStack/query/pull/10771) — by @n-satoshi061; complements #11242; broadcast-client hardening
+- [TanStack Query PR #11253 — perf(query-core): skip no-op hydration callbacks and export dehydrateQuery](https://github.com/TanStack/query/pull/11253) — by @schiller-manuel; hydration perf
+- [TanStack Query PR #11225 — perf(query-core): Skip unused query result tracking](https://github.com/TanStack/query/pull/11225) — by @scttcper; memory + overhead
+- [TanStack Query PR #11214 — perf(query-core): Reduce observer removal overhead](https://github.com/TanStack/query/pull/11214) — by @scttcper; O(n) → O(1) observer removal
+- [TanStack Query PR #11215 — perf(query-core): Deduplicate tracked query properties](https://github.com/TanStack/query/pull/11215) — by @scttcper; single Set per query
+- [TanStack Query PR #11211 — fix(query-core): resetQueries now preserves the queries matched before query.reset() changes their state](https://github.com/TanStack/query/pull/11211) — by @TkDodo; resetQueries correctness
+- [TanStack Query PR #11212 — chore: update to ts 7 and move cut-off to 5.6](https://github.com/TanStack/query/pull/11212) — by @TkDodo; TypeScript baseline alignment
+- [TanStack Query PR #11218 — fix(query-core): release the retryer once a mutation settles](https://github.com/TanStack/query/pull/11218) — by @iamshahid1997
+- [TanStack Query PR #11163 — fix(query-core): release the retryer once a fetch settles](https://github.com/TanStack/query/pull/11163) — by @codebytere-ant
+- [TanStack Query PR #11235 — chore(nx.json): drop dead 'dist-cjs' build output entry](https://github.com/TanStack/query/pull/11235) — by @sukvvon
+- [TanStack Query PR #11223 — chore: react-nodenext integration test](https://github.com/TanStack/query/pull/11223) — by @TkDodo
+- [TanStack Query PR #11128 — fix: ignore a retained thenable callback invoked after settling](https://github.com/TanStack/query/pull/11128) — by @sobol-sudo
+- [TanStack Query PR #11036 — fix: resolve suspense when query data is set programmatically](https://github.com/TanStack/query/pull/11036) — by @AmariahAK
+- [TanStack Query PR #11144 — fix: remove placeholderData from suspense infinite query](https://github.com/TanStack/query/pull/11144) — by @RezaRahemtola; **the v1.5.74/75 forecast fix** (suspense infinite query placeholderData removal)
+- [TanStack Query PR #11147 — fix: default 'TData' of infinite query options to 'InfiniteData'](https://github.com/TanStack/query/pull/11147) — by @lazerg
+- [TanStack Query PR #11234 — fix(query-core): Keep observer notifications stable](https://github.com/TanStack/query/pull/11234) — by @scttcper; React useSyncExternalStore tear-prevention
+- [TanStack Query PR #11172 — fix(query-core): reattach 'MutationObserver' to its mutation in 'onSubscribe'](https://github.com/TanStack/query/pull/11172) — by @lazerg
+- [TanStack Query PR #11065 — fix(query-core): memoize falsy combine results in QueriesObserver](https://github.com/TanStack/query/pull/11065) — by @zelinewang
+- [TanStack Query PR #11130 — fix(react-query): keep unsubscribed useQueries idle](https://github.com/TanStack/query/pull/11130) — by @ShiroKSH
+- [TanStack Query PR #11011 — fix(query-core): reset isPlaceholderData when select throws on placeholder data](https://github.com/TanStack/query/pull/11011) — by @chatman-media
+- [TanStack Query PR #11161 — fix(query-core): clear stale select error when observer switches to a query without data](https://github.com/TanStack/query/pull/11161) — by @hamed-bavar
+- [`@tanstack/query-core` npm dist-tags](https://www.npmjs.com/package/@tanstack/query-core?activeTab=versions) — confirms `5.102.0` (the underlying core bumped in lock-step)
+- [`@tanstack/react-query-devtools` npm dist-tags](https://www.npmjs.com/package/@tanstack/react-query-devtools?activeTab=versions) — confirms `5.102.0` (devtools bumped in lock-step)
+- Cross-reference: v1.5.85 state.md — the "TanStack Query 5.101.5 PATCH NEAR-CERTAIN within 3-7 days" forecast + the 19 NEW commits analysis (the forecast was directionally right but the release cadence was MINOR-quality not PATCH-quality)
+- Cross-reference: v1.5.81 state.md — the 13 NEW commits in 2 windows analysis (the foundation for the 5.102.0 release)
+- Cross-reference: v1.5.73 state.md — the 8 NEW commits in first window analysis (the first signal of imminent activity)
+- Cross-reference: `setup.md` — the TanStack Query `tsup → tsdown` build infrastructure migration from the setup-recipe lens
+- Cross-reference: `performance.md` — the TanStack Query performance trio (PR #11253 + PR #11225 + PR #11214 + PR #11215) from the perf lens

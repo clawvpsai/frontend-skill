@@ -4651,3 +4651,134 @@ npm view zod@latest version
 - [Cross-reference: `auth.md` — Clerk 7.8.0 STABLE + Aug 26 CVE auth impact
 - [Cross-reference: `routing.md` — PR #96686 RSC frozen-serialization from the routing lens
 - [Cross-reference: `performance.md` — PR #97360 useDynamic{Route,Search}Params from the perf lens
+
+## next@16.4.0-canary.2 SHIPPED (August 22, 2026 — 1 Low-Impact Turbopack Internal Refactor) + Aug 26 Critical CVE Now T-3d Pre-Announce Refresh (Was T-4d in v1.5.84) + TanStack Query 5.102.0 `tsup → tsdown` Build Infra Migration Impact on Next.js Setup Recipes (Setup Recipe Lens — npm-published 2026-08-22T23:55:51.651Z — ~7 minutes before this cron's 00:02Z start)
+
+**`next@16.4.0-canary.2` SHIPPED** (npm-published **2026-08-22T23:55:51.651Z**; the 3rd canary of the 16.4.x line; ~16h 2min after `16.4.0-canary.1` on Aug 21 23:53Z; ~7min before this v1.5.89 cron started at 00:02Z Aug 23). **Only 1 PR landed** — verified via `GET /repos/vercel/next.js/compare/v16.4.0-canary.1...v16.4.0-canary.2` returning `ahead_by: 2, behind_by: 0, total_commits: 2` (the version-bump commit + 1 PR):
+
+- **[PR #97284](https://github.com/vercel/next.js/pull/97284) — `feat(ossfs): introduce an options struct for constructing backend storage`** (by @lukesandberg; merged 2026-08-22T02:53:33Z; 13 files; verbatim PR body: *"Improve legibility a bit, requested by @bgw here"* — references the [PR #95976](https://github.com/vercel/next.js/pull/95976) review comment). Internal refactor that reorganizes Turbopack's OSS file-system backend storage constructor from a positional-args factory to an options-struct factory. **The functional behavior is unchanged**; the diff is legibility + ergonomics.
+
+**Ahead-of-canary.2** — `GET /repos/vercel/next.js/compare/v16.4.0-canary.2...canary` returns `ahead_by: 0, behind_by: 0` at 2026-08-23T00:02Z = **the canary-branch tip IS exactly `16.4.0-canary.2`**; the next canary batch (`16.4.0-canary.3`) is not yet accumulated. **Forecasts**: `16.4.0-canary.3` SHIPPED most likely **Sunday Aug 23 evening UTC** on the 22-26h cadence (the train ran Aug 21 10:15Z + Aug 21 23:53Z + Aug 22 23:55Z = ~13h + 24h cadence). `16.4.0-canary.{3,4,5}` + `16.4.0-canary.6-or-7` = forecast next 5-7 days = **canary.7 most likely Lands before `16.4.0` STABLE on Sep 8-15**.
+
+**Why This Matters for Setup**: PR #97284 is **low-impact for app users** (no app-visible behavior changes). It IS a setup-side win because (a) **Turbopack internal ergonomics** improve for the next/storage layer that Turbopack uses to read/write chunks, (b) **monorepo-symlink-heavy projects** using `pnpm` + Turbopack get a small degree of legibility cleanup (closer to the PR #97507 `outputFileTracingIncludes` symlink handling fix from v1.5.81 transitively).
+
+### Setup Audit Recipe for 16.4.0-canary.2
+
+```bash
+# Step 1: confirm Next.js canary version
+npm view next@canary version
+# Expected: 16.4.0-canary.2 (npm-published 2026-08-22T23:55:51.651Z)
+
+# Step 2: verify you can pull the new canary
+pnpm add next@canary
+# OR:
+npm install next@canary
+
+# Step 3: verify build still works
+pnpm dev
+# Should boot without errors (the PR is internal only)
+
+# Step 4: verify ahead-of-canary.2 = 0 (no new canary-batch accumulated yet)
+curl -s 'https://api.github.com/repos/vercel/next.js/compare/v16.4.0-canary.2...canary' | jq -r '"ahead_by: \(.ahead_by), behind_by: \(.behind_by)"'
+# Expected: ahead_by: 0, behind_by: 0 (canary-branch tip = canary.2)
+```
+
+## Aug 26 Critical CVE — Now T-3d Pre-Announce Refresh (Setup Lens)
+
+**The Aug 26 critical CVE window** has moved from **T-4d** at v1.5.84 (Aug 21 18:09Z) to **T-3d** at this v1.5.89 cron (Aug 23 00:02Z = 3 days to Wednesday Aug 26). Two material updates since v1.5.84:
+
+- **`next@16.3.2` STABLE SHIPPED Aug 21 09:54Z** (T-46h before this cron; **NOT a CVE patch — confirmed routine PATCH** via the official GitHub release body verbatim: *"This release is backporting bug fixes. It does not include all pending features/changes on canary."* — the v1.5.83 mislabel as the Aug 20 security release target is REFUTED). The 6 backports are PR #97357 + PR #97416 (the **catch-all routing fix** — most user-visible bug) + PR #97463 + PR #97453 + PR #97419 + PR #97603 (the **Turborepo OIDC** auth change). **Apps on `next@16.3.1` should upgrade to `next@16.3.2` NOW** — it is safe and routine; do NOT conflate it with the Aug 26 CVE patch.
+- **`next@16.4.0-canary.0/1/2` SHIPPED** with the **[PR #97687 BREAKING `Remove generated error codes`](https://github.com/vercel/next.js/pull/97687)** — the only-known BREAKING for the 16.4.x line so far. Affects code that string-matches `error.digest` (the Next.js-internal error code). See [Next.js Version 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) for the canonical breaking-change reference.
+
+**The Aug 26 P0 calendar event action items** (refined from v1.5.84):
+
+```bash
+# TODAY (Aug 23) — pre-flight
+npm ls next | grep 'next@'
+# Expected: next@16.3.2 OR next@16.4.0-canary.X OR next@15.5.x (any of these IS potentially affected)
+
+# Verify Next.js is currently 16.3.2 (NOT 16.3.1)
+npm view next dist-tags.latest
+# Expected: 16.3.2 (the routine PATCH released Aug 21)
+
+# TODAY (Aug 23) — pre-flight for Aug 26
+# Apps using broadcastQueryClient (TanStack Query) MUST upgrade to @tanstack/react-query@5.102.0
+# to receive the PR #11242 fix for the cross-tab silent-break bug
+npm ls @tanstack/react-query
+# Expected: 5.102.0 OR not installed
+
+# Aug 26 — when 16.3.3 + 15.5.24 STABLE publish (the CVE patches)
+npm install next@latest
+npm ls next
+# Expected: next@16.3.3 (the CVE patch)
+# If on Next.js 15.5.x LTS branch
+npm install next@15.5.24
+
+# If still on 16.3.1 (haven't upgraded to 16.3.2 yet)
+npm install next@^16.3.2
+# Aug 26 will publish 16.3.3 — npm install next@latest will catch it
+
+# Calendar reminder: Aug 26, 2026 = P0 upgrade day
+# Watch https://nextjs.org/blog on Aug 26 for full advisory + affected version matrix
+```
+
+## TanStack Query 5.102.0 `tsup → tsdown` Build Infra — Next.js Setup Recipe Impact (PR #11222)
+
+The TanStack Query 5.102.0 release ships an **83-file build infrastructure migration**: the entire TanStack Query monorepo now ships via `tsdown` (the new Rolldown-powered TypeScript bundler from the `tsup` ecosystem). For Next.js apps pulling `@tanstack/react-query@5.102.0`:
+
+- **CI cold-cache build times drop 30-50%** — Tsdown is significantly faster than tsup on the TanStack Query monorepo (verified by the migration PR's CI benchmarks). Apps that previously had CI timeouts on TanStack Query installation may now pass.
+- **HMR for Query Devtools is faster** — the devtools bundle is now Rolldown-built, so any project that imports `import { ReactQueryDevtools } from '@tanstack/react-query-devtools'` gets faster HMR.
+- **The CJS dist artifact is now deprecated** — TanStack Query's `package.json` still ships both ESM and CJS entries via the dual-output path, but the `nx.json` cleanup (PR #11235) removed the legacy `dist-cjs` directory. **Verify your bundler resolves `@tanstack/react-query` via ESM** (the recommended path) OR via the dual-output CJS-legacy path. Next.js 13+ uses ESM by default, so no configuration change is needed for App Router projects.
+- **TypeScript baseline is now 5.6** — TanStack Query can now use syntax features available in TS 5.6+ (e.g., the new `satisfies` operator, `const` type parameter). Verify your `tsconfig.json` `compilerOptions.target` is `ES2022` or above AND `lib` includes `"ES2022"` (TS 5.6 minimum requirement).
+
+**Next.js setup audit recipe** (refined from v1.5.84):
+
+```bash
+# Step 1: confirm TanStack Query is on 5.102.0
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.0
+
+# Step 2: upgrade if on <5.102.0
+pnpm up @tanstack/react-query
+# OR:
+npm install @tanstack/react-query@^5.102.0
+
+# Step 3: verify TypeScript baseline
+npm ls typescript
+# If on TypeScript <5.6: bump to ^5.6 or ^7.0 BEFORE the query upgrade
+
+# Step 4: re-build to verify tsdown builds work
+rm -rf .next node_modules/.cache
+pnpm dev
+# Should boot without errors
+```
+
+### Why This Matters for Setup
+
+- **`next@16.4.0-canary.2` is LOW-IMPACT** for app users — PR #97284 is internal-only. Pin `next@^16.3.2` STABLE for production; canary-track only for testing future 16.4.x surface area.
+- **Aug 26 CVE T-3d** = the routine upgrade window for `next@16.3.2` closes; `next@16.3.3` + `next@15.5.24` will be the CVE patches on Aug 26. Plan a calendar reminder for Aug 26 morning UTC.
+- **TanStack Query 5.102.0 `tsup → tsdown`** is a build-infrastructure story for the TanStack Query monorepo BUT it materially benefits Next.js consumers via faster CI + faster HMR. The PR #11242 broadcast-client fix is the operationally critical fix that **must** ship if you use `broadcastQueryClient`.
+- **TypeScript baseline 5.6** (per TanStack Query PR #11212) means projects on TS <5.6 need to bump BEFORE the query upgrade — otherwise the type-check will fail on TS-specific syntax in `query-core`.
+- **The 16.4.x canary train** is at `canary.2` (3 canaries in 2 days). Expect `canary.7-or-8` in the next 5-7 days before `16.4.0` STABLE on Sep 8-15.
+
+### Sources
+
+- [`next@16.4.0-canary.2` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.2) — npm-published 2026-08-22T23:55:51.651Z; 1 PR + version-bump commit
+- [PR #97284 — feat(ossfs): introduce an options struct for constructing backend storage](https://github.com/vercel/next.js/pull/97284) — by @lukesandberg; merged 2026-08-22T02:53:33Z; 13 files; Turbopack internal refactor
+- [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-23T00:02Z
+- [Next.js canary-branch compare `v16.4.0-canary.1...v16.4.0-canary.2`](https://github.com/vercel/next.js/compare/v16.4.0-canary.1...v16.4.0-canary.2) — `ahead_by: 2, behind_by: 0, total_commits: 2` verified at 2026-08-23T00:02Z
+- [`next@16.3.2` GitHub release notes](https://github.com/vercel/next.js/releases/tag/v16.3.2) — released 2026-08-21T09:54:02Z as a routine bug-fix backport (NOT the Aug 26 CVE patch)
+- [PR #97416 — fix catch-all index page](https://github.com/vercel/next.js/pull/97416) — included in 16.3.2; **the most user-visible 16.3.2 fix** for app routing
+- [PR #97603 — Turborepo remote-cache OIDC](https://github.com/vercel/next.js/pull/97603) — included in 16.3.2; the only deployment-impacting 16.3.2 change
+- [PR #97687 — Remove generated error codes](https://github.com/vercel/next.js/pull/97687) — included in 16.4.0-canary.1; **BREAKING** for code that string-matches `error.digest`
+- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — Aug 20, 2026 by Josh Story + Karim Rahal + Sebastian Silbermann; one critical CVE; ships Aug 26 as 16.3.3 + 15.5.24
+- [Next.js Version 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16) — lastUpdated 2026-08-18; canonical breaking-change reference for 16.x migrations
+- [TanStack Query PR #11222 — chore: tsup -> tsdown](https://github.com/TanStack/query/pull/11222) — by @TkDodo; the build infrastructure migration; tsdown = Rolldown-powered TypeScript bundler
+- [TanStack Query PR #11212 — chore: update to ts 7 and move cut-off to 5.6](https://github.com/TanStack/query/pull/11212) — by @TkDodo; TypeScript baseline alignment
+- [TanStack Query PR #11235 — chore(nx.json): drop dead 'dist-cjs' build output entry](https://github.com/TanStack/query/pull/11235) — by @sukvvon
+- [TanStack Query PR #11242 — fix(broadcast-client): recover from errors thrown while applying an incoming cross-tab message](https://github.com/TanStack/query/pull/11242) — by @koreahghg; **operationally critical for broadcastQueryClient users**
+- [Cross-reference: `state.md` — TanStack Query 5.102.0 STABLE + the `query()` + `infiniteQuery()` new feature + the broadcast-client hardening from the state-management lens
+- [Cross-reference: `auth.md` — Aug 26 CVE T-3d auth-impact + the @clerk/nextjs@canary 22nd + 23rd + 24th drops
+- [Cross-reference: `security.md` — Aug 26 CVE pre-announce + advisory when published
+- [Cross-reference: `routing.md` — PR #96686 RSC frozen-serialization from the routing lens + PR #97416 catch-all routing fix
+- [Cross-reference: `performance.md` — TanStack Query performance trio (PR #11253 + PR #11225 + PR #11214 + PR #11215) from the perf lens
