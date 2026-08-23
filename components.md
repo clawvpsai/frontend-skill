@@ -4187,3 +4187,81 @@ Also in the same window: **Shadcn Admin Kit v2.3.0** (Aug 9, 2026) — adds a fu
 - [shadcnblocks.com changelog — Shadcn Blocks for Vue (Aug 18, 2026)](https://www.shadcnblocks.com/changelog)
 - [shadcn-vue.com](https://www.shadcn-vue.com/) — official Vue shadcn port
 - [shadcnblocksvue.com](https://www.shadcnblocksvue.com/) — 1,400+ Vue blocks catalog
+
+---
+
+## shadcn@4.19.0 SHIPPED (August 21, 2026) — base-color Migrate + Private GitHub Registry Support + 9 New Registries
+
+**`shadcn@4.19.0`** SHIPPED **2026-08-21** (npm-published 2026-08-21T17:33Z). 19 commits ahead of 4.18.0 (Aug 13). The headline additions are a new CLI migration command and GitHub registry private repo support.
+
+### Headline changes
+
+**`npx shadcn migrate base-color` (PR #11248) — NEW CLI command:**
+Switch a project's base color without regenerating all components. Previously, changing the base color required a full `npx shadcn init` re-run with the new `--base-color` flag, which overwrote `components.json` and risked losing customizations. The new migrate command does an in-place transformation:
+
+```bash
+# Before (had to re-init — risky for existing projects):
+npx shadcn@latest init --base-color new-color
+
+# After (in-place migration — safe):
+npx shadcn@latest migrate base-color --from slate --to indigo
+```
+
+The migrate command parses existing `components.json`, extracts the current base color, transforms it, and writes back without destructive overwrite.
+
+**Private repository support for GitHub registries via GH_TOKEN (PR #11582):**
+`npx shadcn@latest add` can now install components from private GitHub repositories when `GH_TOKEN` is set or GitHub CLI credentials are available. Previously, private registry entries in `components.json` required manual token handling.
+
+```bash
+# With GH_TOKEN set:
+export GH_TOKEN="ghp_xxxx"
+npx shadcn@latest add @myorg/my-component
+
+# Or with GitHub CLI credentials (gh auth login):
+gh auth login
+npx shadcn@latest add @myorg/my-component
+```
+
+**9 new community registry additions** (Aug 13–21):
+| Registry | Added |
+|---|---|
+| `@remotionui` | Aug 17 |
+| `@flagcn` | Aug 17 |
+| `@velobits` | Aug 17 |
+| `@vernostudio` | Aug 20 |
+| `@better-auth-ui` | Aug 20 |
+| `@blode` | Aug 21 |
+| `@washiveil` | Aug 21 |
+| `@brut-ui` | Aug 21 |
+| `@persianlabsui` | Aug 17 |
+| `@ilinxa` | Aug 17 |
+| `@motion-lexicon` | Aug 17 |
+| `@honest-ui` | Aug 21 |
+
+**Style/fix commits:**
+- Questionnaire and field choice-card styles unified (fix #11436)
+- Accordion excluded from typeset styles (fix #11579)
+
+### Migration action
+
+```bash
+# Update shadcn CLI
+npx shadcn@latest --version
+# → 4.19.0
+
+# Full upgrade (safe — keeps existing components, only updates CLI and config):
+npx shadcn@latest upgrade
+
+# Try the new base-color migration (for projects wanting to change base color):
+npx shadcn@latest migrate --help
+```
+
+No component breaking changes. The `migrate base-color` is additive CLI functionality. Private repo support is a new capability, not a breaking change.
+
+### Sources
+
+- [GitHub — shadcn-ui/ui releases — shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn@4.19.0)
+- [GitHub — PR #11248 — add shadcn migrate base-color](https://github.com/shadcn-ui/ui/pull/11248)
+- [GitHub — PR #11582 — private repository support for GitHub registries](https://github.com/shadcn-ui/ui/pull/11582)
+- [GitHub — compare shadcn@4.18.0...shadcn@4.19.0](https://github.com/shadcn-ui/ui/compare/shadcn@4.18.0...shadcn@4.19.0)
+- [npm — shadcn@4.19.0](https://www.npmjs.com/package/shadcn)

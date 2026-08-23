@@ -3211,3 +3211,46 @@ rg -n "cdp\(" --include="*.ts" --include="*.js" .
 - [Vitest releases — v3.2.5 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v3.2.5)
 - [Vitest releases — v4.1.8 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v4.1.8)
 - [Vitest releases — v5.0.0-beta.4 (fixes CVE-2026-53633)](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-beta.4)
+
+---
+
+## @testing-library/user-event@14.6.5 + @14.6.6 SHIPPED (August 18–22, 2026)
+
+**`@testing-library/user-event@14.6.5`** SHIPPED **2026-08-18** (npm-published 2026-08-18T03:30Z). Fixes tab retargeting when focus moves during keydown — the key regression fix.
+
+**`@testing-library/user-event@14.6.6`** SHIPPED **2026-08-22** (npm-published 2026-08-22T02:06Z). Fixes default pointer event `pointerType` to empty string instead of the string `"undefined"`.
+
+```bash
+npm install -D @testing-library/user-event@latest
+# → 14.6.6 (was 14.6.4; v1.5.87 cycle tracked 14.6.5)
+```
+
+### What each patch fixes
+
+**#14.6.5 — tab retargeting on keydown focus move:**
+When a keydown handler moves focus (e.g., Tab pressed → focus moves to another element), the library now correctly retargets subsequent keyup/keypress events to the new focus target rather than the original element.
+
+**#14.6.6 — pointerType default value:**
+Before: `pointerEvent.pointerType` was `"undefined"` (string)
+After: `pointerEvent.pointerType` is `""` (empty string — correct per the PointerEvent spec)
+
+Both are patch fixes with no API changes. All projects on user-event 14.x can upgrade.
+
+### Vitest 5 STABLE — Still in RC as of August 23, 2026
+
+`vitest@latest` remains `4.1.11` (Aug 18). The STABLE forecast of "August 22 – September 1, 2026" has not materialized yet. The canary train is still on `5.0.0-rc.2` (Aug 17). The 2–3 week RC period (per the Aug 14 team comment: "planning to have a 2-3 week rc period until we release a stable version") suggests **Vitest 5.0.0 STABLE is most likely in the August 25–September 1 window**.
+
+```bash
+# Recommended pre-release pin for new projects:
+npm install -D vitest@^5.0.0-rc.2
+```
+
+The 2 Vitest CVEs (CVE-2026-53633 + CVE-2026-73653) are both fixed in `4.1.11`. No action needed on the CVE front for Vitest 4.x users.
+
+### Sources
+
+- [npm — @testing-library/user-event](https://www.npmjs.com/package/@testing-library/user-event)
+- [GitHub — user-event v14.6.5 compare](https://github.com/testing-library/user-event/compare/v14.6.4...v14.6.5)
+- [GitHub — user-event v14.6.6 compare](https://github.com/testing-library/user-event/compare/v14.6.5...v14.6.6)
+- [GitHub — Vitest 5 discussion — 2-3 week RC period](https://github.com/vitest-dev/vitest/discussions/9664)
+- [npm — vitest versions](https://www.npmjs.com/package/vitest?activeTab=versions)

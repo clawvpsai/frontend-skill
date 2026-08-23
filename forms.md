@@ -3481,3 +3481,235 @@ The zod canary train is still producing drops. Latest canary: `4.5.0-canary.2026
 
 - [npm view zod@latest](https://www.npmjs.com/package/zod) — `latest: 4.4.3` confirmed at this check
 - [Snyk.io zod versions](https://security.snyk.io/package/npm/zod) — latest canary: `4.5.0-canary.20260819T185817`
+
+---
+
+## TanStack Form v2 Alpha — Validators Pipeline Rework + v2 Alpha.1 SHIPPED (August 6–13, 2026)
+
+**`@tanstack/react-form@2.0.0-alpha.1`** SHIPPED **2026-08-13** (npm-published). The official blog post "Form v2 is here: All you need to know about the alpha" by Luca Jakob (Aug 6, 2026) announced the v2 rewrite. This is the most significant TanStack Form architectural change since the library launched.
+
+### What changed in v2
+
+**Validators rework (the headline architectural change):**
+
+In v1, validators were keyed by trigger event — which worked for simple cases but became awkward when one validator needed multiple triggers or multiple validators needed the same trigger.
+
+```tsx
+// v1 — awkward: duplicate validator setup for each trigger
+const form = useForm({
+  validators: {
+    onChange: mySchema,
+    onBlur: mySchema,  // same schema, repeated
+  },
+})
+```
+
+In v2, validators use a pipeline with `triggers` array:
+
+```tsx
+// v2 — clean: define once, declare triggers
+const form = useForm({
+  defaultValues: { name: '' },
+  validators: [
+    {
+      run: mySchema,
+      triggers: ['change', 'blur'],  // runs on both without duplication
+    },
+  ],
+})
+```
+
+**Faster runtime performance** — core rewrite optimized for reduced re-renders and smaller bundle.
+**Safer types** — improved TypeScript inference throughout the form lifecycle.
+**Redesigned APIs** — the parts of v1 that caused the most friction (field arrays, nested forms) redesigned.
+
+### v2 Alpha.1 ships with:
+- React adapter first (most popular; remaining adapters Vue/Svelte/Solid/Lit come after main issues patched)
+- Migration guide at `tanstack.com/form/latest`
+- `@tanstack/react-form-start@2.0.0-alpha.1` — Next.js integration package
+- `@tanstack/react-form-nextjs@2.0.0-alpha.1` — Next.js-specific helpers
+
+### Migration action
+
+```bash
+# For new projects: try v2 alpha
+npm install @tanstack/react-form@alpha
+
+# For existing v1 projects: read the migration guide first
+# https://tanstack.com/form/latest
+```
+
+v2 is still alpha — do not use in production yet. v1 (`@tanstack/react-form@^1.x`) remains STABLE and recommended for production.
+
+### Sources
+
+- [TanStack Blog — Form v2 is here: All you need to know about the alpha (Aug 6, 2026)](https://tanstack.com/blog/announcing-tanstack-form-v2-alpha)
+- [TanStack Form v2 Migration Guide](https://tanstack.com/form/latest)
+- [GitHub — @tanstack/react-form@2.0.0-alpha.1](https://github.com/TanStack/form/releases)
+- [GitHub — @tanstack/react-form-start@2.0.0-alpha.1](https://github.com/TanStack/form/releases)
+- [GitHub — @tanstack/react-form-nextjs@2.0.0-alpha.1](https://github.com/TanStack/form/releases)
+
+---
+
+## React Hook Form 7.86.0 — Full PR Breakdown + shouldTouch Forecast (August 22–23, 2026)
+
+**`react-hook-form@7.86.0`** SHIPPED **2026-08-22** (npm-published 2026-08-21T22:58Z). The v1.5.87 cycle captured the headline features. This cycle captures the full 19-PR breakdown:
+
+### 19-PR detailed breakdown
+
+| PR | Type | Description |
+|---|---|---|
+| #13648 | perf | improve `createFormControl` — core perf fix |
+| #13649 | perf | improve clone object check — avoid cloning |
+| #13650 | fix | field array update leaving stale errors and touched state at updated index |
+| #13652 | fix | flatten: preserve File and Blob values as leaf nodes |
+| #13639 | feat | add type-safe `getErrors` method (headline feature) |
+| #13655 | fix | validateField: pass field error to `setCustomValidity` when criteriaMode is `all` |
+| #13659 | fix | fix ts error ignore on getCheckboxValues |
+| #13661 | fix | has validation check issue |
+| #13662 | perf | avoid cloning values in `unregister` without subscribers |
+| #13665 | fix | notify Controller registered on field array item root when setValue targets nested leaf |
+| #13667 | fix | setValues: update fields registered under object or array value |
+| #13668 | fix | useWatch returns stale value on name change when new value is null |
+| #13669 | fix | unregister: keepDirty inverted when broadcasting isDirty |
+
+### Migration action
+
+```bash
+npm install react-hook-form@latest
+# → 7.86.0 (19 PRs; no breaking changes)
+```
+
+All projects on RHF 7.85.x can upgrade immediately. The `getErrors()` addition is additive. Field array stale error/touched fix (#13650) may change behavior for projects relying on the buggy behavior.
+
+### RHF `shouldTouch` on `trigger()` — STABLE forecast 2–3 weeks
+
+The v1.5.91 SKILL.md noted "RHF master has `shouldTouch` option for `trigger()`" (PR #13669 is the unregister keepDirty fix — a different PR from the `shouldTouch` feature). The `shouldTouch` option for `trigger()` is tracked as a GitHub discussion (#9830, Jan 2023) and issue (#11370, closed completed). It is **not yet shipped as of 7.86.0 STABLE**. Forecast: expect `shouldTouch` option on `trigger()` to land in RHF 7.87.0 or 7.88.0 within 2–3 weeks.
+
+```tsx
+// Expected API once shipped:
+trigger(undefined, { shouldTouch: true });
+// → validates AND marks all fields as touched
+// Useful for: "show all validation markers on initial submit attempt"
+```
+
+### Sources
+
+- [GitHub — react-hook-form v7.86.0 compare to v7.85.0](https://github.com/react-hook-form/react-hook-form/compare/v7.85.0...v7.86.0)
+- [GitHub — RHF Discussion #9830 — shouldTouch on trigger()](https://github.com/orgs/react-hook-form/discussions/9830)
+- [GitHub — RHF Issue #11370 — trigger needs shouldTouch option](https://github.com/react-hook-form/react-hook-form/issues/11370)
+- [npm — react-hook-form@latest](https://www.npmjs.com/package/react-hook-form)
+
+---
+
+## TanStack Form v2 Alpha — Validators Pipeline Rework + v2 Alpha.1 SHIPPED (August 6–13, 2026)
+
+**`@tanstack/react-form@2.0.0-alpha.1`** SHIPPED **2026-08-13** (npm-published). The official blog post "Form v2 is here: All you need to know about the alpha" by Luca Jakob (Aug 6, 2026) announced the v2 rewrite. This is the most significant TanStack Form architectural change since the library launched.
+
+### What changed in v2
+
+**Validators rework (the headline architectural change):**
+
+In v1, validators were keyed by trigger event — which worked for simple cases but became awkward when one validator needed multiple triggers or multiple validators needed the same trigger.
+
+```tsx
+// v1 — awkward: duplicate validator setup for each trigger
+const form = useForm({
+  validators: {
+    onChange: mySchema,
+    onBlur: mySchema,  // same schema, repeated
+  },
+})
+```
+
+In v2, validators use a pipeline with `triggers` array:
+
+```tsx
+// v2 — clean: define once, declare triggers
+const form = useForm({
+  defaultValues: { name: "" },
+  validators: [
+    {
+      run: mySchema,
+      triggers: ["change", "blur"],  // runs on both without duplication
+    },
+  ],
+})
+```
+
+**Faster runtime performance** — core rewrite optimized for reduced re-renders and smaller bundle.
+**Safer types** — improved TypeScript inference throughout the form lifecycle.
+**Redesigned APIs** — the parts of v1 that caused the most friction (field arrays, nested forms) redesigned.
+
+### v2 Alpha.1 ships with:
+- React adapter first (most popular; remaining adapters Vue/Svelte/Solid/Lit come after main issues patched)
+- Migration guide at `tanstack.com/form/latest`
+- `@tanstack/react-form-start@2.0.0-alpha.1` — Next.js integration package
+- `@tanstack/react-form-nextjs@2.0.0-alpha.1` — Next.js-specific helpers
+
+### Migration action
+
+```bash
+# For new projects: try v2 alpha
+npm install @tanstack/react-form@alpha
+
+# For existing v1 projects: read the migration guide first
+# https://tanstack.com/form/latest
+```
+
+v2 is still alpha — do not use in production yet. v1 (`@tanstack/react-form@^1.x`) remains STABLE and recommended for production.
+
+### Sources
+
+- [TanStack Blog — Form v2 is here: All you need to know about the alpha (Aug 6, 2026)](https://tanstack.com/blog/announcing-tanstack-form-v2-alpha)
+- [TanStack Form v2 Migration Guide](https://tanstack.com/form/latest)
+- [GitHub — @tanstack/react-form@2.0.0-alpha.1](https://github.com/TanStack/form/releases)
+
+---
+
+## React Hook Form 7.86.0 — Full 19-PR Breakdown + shouldTouch Forecast (August 22–23, 2026)
+
+**`react-hook-form@7.86.0`** SHIPPED **2026-08-22** (npm-published 2026-08-21T22:58Z). Full 19-PR breakdown:
+
+| PR | Type | Description |
+|---|---|---|
+| #13648 | perf | improve `createFormControl` — core perf fix |
+| #13649 | perf | improve clone object check — avoid cloning |
+| #13650 | fix | field array update leaving stale errors and touched state at updated index |
+| #13652 | fix | flatten: preserve File and Blob values as leaf nodes |
+| #13639 | feat | add type-safe `getErrors` method (headline feature) |
+| #13655 | fix | validateField: pass field error to `setCustomValidity` when criteriaMode is `all` |
+| #13659 | fix | fix ts error ignore on getCheckboxValues |
+| #13661 | fix | has validation check issue |
+| #13662 | perf | avoid cloning values in `unregister` without subscribers |
+| #13665 | fix | notify Controller on field array item root when setValue targets nested leaf |
+| #13667 | fix | setValues: update fields registered under object or array value |
+| #13668 | fix | useWatch returns stale value on name change when new value is null |
+| #13669 | fix | unregister: keepDirty inverted when broadcasting isDirty |
+
+### Migration action
+
+```bash
+npm install react-hook-form@latest
+# → 7.86.0 (19 PRs; no breaking changes)
+```
+
+All projects on RHF 7.85.x can upgrade immediately. The `getErrors()` addition is additive. Field array stale error/touched fix (#13650) may change behavior for projects relying on the buggy behavior.
+
+### RHF `shouldTouch` on `trigger()` — STABLE forecast 2–3 weeks
+
+The `shouldTouch` option for `trigger()` is tracked as GitHub discussion #9830 (Jan 2023) and issue #11370 (closed completed). It is **not yet shipped as of 7.86.0 STABLE**. Forecast: expect `shouldTouch` option on `trigger()` to land in RHF 7.87.0 or 7.88.0 within 2–3 weeks.
+
+```tsx
+// Expected API once shipped:
+trigger(undefined, { shouldTouch: true });
+// → validates AND marks all fields as touched
+// Useful for: "show all validation markers on initial submit attempt"
+```
+
+### Sources
+
+- [GitHub — react-hook-form v7.86.0 compare to v7.85.0](https://github.com/react-hook-form/react-hook-form/compare/v7.85.0...v7.86.0)
+- [GitHub — RHF Discussion #9830 — shouldTouch on trigger()](https://github.com/orgs/react-hook-form/discussions/9830)
+- [GitHub — RHF Issue #11370 — trigger needs shouldTouch option](https://github.com/react-hook-form/react-hook-form/issues/11370)
+- [npm — react-hook-form@latest](https://www.npmjs.com/package/react-hook-form)
