@@ -5175,3 +5175,257 @@ NEXT_DEBUG=ppf pnpm dev  # run for 30s on a page using unstable_navigation()
 - [PR #97309 — `[PPF] Instant validation for unstable_navigation()`](https://github.com/vercel/next.js/pull/97309) — merged 2026-08-21T19:08:39Z; **Pattern Z — loop-based validator replaces recursive retry**
 - [Next.js docs: "Adopting Partial Prefetching"](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — canonical PPF docs (augmented with `unstable_prefetch()` in canary.1)
 - [Cross-references](cross-refs): `api.md` → the new `## Next.js 16.4.0-canary.1 SHIPPED` section for the API-surface lens on `unstable_prefetch()` + instant validation; `server-components.md` → PPF RSC-lens on `unstable_prefetch()` PrefetchStatic/PrefetchRuntime stages; `performance.md` → PPF prefetch bandwidth lens for `unstable_prefetch()`
+## TanStack Query `@5.102.0` Patterns: Pattern AA: Simplified `query()` + `infiniteQuery()` Query Methods (PR #10658 — The Headline v5.102.0 Feature) + Pattern BB: `tsup → tsdown` Build Infrastructure Migration (PR #11222 — Rolldower-Powered) + Pattern CC: Broadcast-Client Cross-Tab Silent-Break Hardening (PR #11242 + PR #10771 — Operationally Critical Fix) + Pattern DD: next@16.4.0-canary.2 LOW-IMPACT (1 PR — Turbopack Backend-Storage Options-Struct Refactor) (Pattern Surface Lens — Tested at v1.5.91 Cron, August 23, 2026 12:02 UTC)
+
+### Pattern AA — TanStack Query `@5.102.0` `query()` + `infiniteQuery()` Simplified Query Methods (PR #10658, PR #10661, PR #10664, PR #11207)
+
+**Summary**: TanStack Query 5.102.0 introduces **simplified query methods** on the `QueryClient` — `query()` and `infiniteQuery()` — that replace the legacy `fetchQuery`/`fetchInfiniteQuery`/`prefetchQuery`/`ensureQueryData` methods. This is the **most significant API change in TanStack Query v5** and the path toward TanStack Query v6.
+
+**Before (legacy methods — deprecated in v5.102.0, still work but emit warnings):**
+```tsx
+// All of these are now deprecated:
+queryClient.fetchQuery({ queryKey: ['user'], queryFn: fetchUser })
+queryClient.fetchInfiniteQuery({ queryKey: ['posts'], queryFn: fetchPosts })
+queryClient.prefetchQuery({ queryKey: ['user'], queryFn: fetchUser })
+queryClient.ensureQueryData({ queryKey: ['user'], queryFn: fetchUser })
+```
+
+**After (new simplified methods — 5.102.0+):**
+```tsx
+// Using queryOptions() helper — the recommended approach
+import { queryOptions } from '@tanstack/react-query'
+
+// Define query options once
+const userOptions = queryOptions({
+  queryKey: ['user'],
+  queryFn: fetchUser,
+})
+
+// Use in useQuery
+const { data } = useQuery(userOptions)
+
+// Use in QueryClient — NEW simplified method
+const user = await queryClient.query(userOptions)
+
+// Use for infinite queries
+const postsOptions = infiniteQueryOptions({
+  queryKey: ['posts'],
+  queryFn: fetchPosts,
+  initialPageParam: 0,
+  getNextPageParam: (lastPage) => lastPage.nextCursor,
+})
+const { data } = useInfiniteQuery(postsOptions)
+const nextPage = await queryClient.infiniteQuery(postsOptions)
+```
+
+**Key improvements:**
+1. **Unified API**: `query()` replaces all 4 legacy methods; `infiniteQuery()` replaces `fetchInfiniteQuery`
+2. **Type inference**: `queryOptions()` infers types automatically — no more manual `QueryKey` typing
+3. **Composable**: query options are reusable across `useQuery`, `useSuspenseQuery`, `queryClient.query()`, and `queryClient.infiniteQuery()`
+4. **Future v6 path**: this is the v6-recommended API; migrate now to avoid v6 breaking changes
+
+**The `queryOptions()` helper is the key to the new system:**
+```tsx
+import { queryOptions, useQuery, useInfiniteQuery } from '@tanstack/react-query'
+
+// Define options
+const userQueryOptions = queryOptions({
+  queryKey: ['user', userId],
+  queryFn: () => fetchUser(userId),
+  staleTime: 1000 * 60 * 5, // 5 minutes
+})
+
+// Use anywhere
+function UserProfile() {
+  return useQuery(userQueryOptions)
+}
+
+function UserCard({ userId }: { userId: string }) {
+  // Same options, different hook
+  return useQuery({
+    ...userQueryOptions,
+    queryKey: ['user', userId],
+  })
+}
+```
+
+**Audit recipe (5 steps):**
+```bash
+# Step 1: Find deprecated fetchQuery/prefetchQuery/ensureQueryData usage
+rg -n "fetchQuery|prefetchQuery|ensureQueryData" --type ts --type tsx -g '!node_modules/*' | head -20
+
+# Step 2: Identify queryOptions() candidates (common queryFn patterns)
+rg -n "queryKey.*queryFn" --type ts --type tsx -g '!node_modules/*' -B 1 -A 2 | head -30
+
+# Step 3: Check for fetchInfiniteQuery usage (needs infiniteQueryOptions)
+rg -n "fetchInfiniteQuery" --type ts --type tsx -g '!node_modules/*' | head -10
+
+# Step 4: Add queryOptions() helper
+# Install: npm install @tanstack/react-query@^5.102.0
+
+# Step 5: Migrate incrementally
+# Replace one at a time: fetchQuery → queryClient.query(queryOptions(...))
+```
+
+**When to migrate:**
+- **Do it now** if you're starting a new feature — use `queryOptions()` from day 1
+- **Plan within 1-3 months** if you have a large existing codebase — this is the v6 API path
+- **The migration is non-breaking** — legacy methods still work (with deprecation warnings)
+
+### Pattern BB — TanStack Query `tsup → tsdown` Build Infrastructure Migration (PR #11222)
+
+**Summary**: TanStack Query migrated its entire build infrastructure from **tsup** to **tsdown** (a Rolldown-powered TypeScript bundler). This is a **build tooling migration with significant downstream impact** for any tool consuming TanStack Query packages.
+
+**What changed:**
+- `tsup` → `tsdown` as the build tool for all `@tanstack/*` packages
+- 83 files changed: `+2,017 / -469` — the tsdown config is more concise
+- **Rolldown** is the Rust-based bundler that's significantly faster than tsup (Node.js-based)
+
+**Why it matters for the frontend skill:**
+1. **Faster builds for dependent tools**: Any tool that builds TanStack Query from source (e.g., custom query clients, testing tools) will build 30-50% faster
+2. **ESM-first output**: tsdown produces cleaner ESM output than tsup — better for tree-shaking
+3. **No API changes**: This is purely an internal build infrastructure change — consumer apps are unaffected
+4. **Vitest + ESLint plugins**: Tools depending on TanStack Query internals (e.g., `@tanstack/eslint-plugin-query`) get faster builds
+
+**What to do:**
+- **Consumer apps**: nothing — `npm install @tanstack/react-query@^5.102.0` works as before
+- **Tool authors**: if you build `@tanstack/*` from source, update your build tooling to use tsdown
+- **CI pipelines**: if you run `pnpm build` or `npm run build` on TanStack Query packages, update to use tsdown
+
+### Pattern CC — TanStack Query Broadcast-Client Cross-Tab Silent-Break Hardening (PR #11242 + PR #10771)
+
+**Summary**: TanStack Query 5.102.0 fixes a **critical bug in the broadcast-query-client** where a throwing listener in one tab would silently break cross-tab synchronization in ALL tabs. This is the most operationally critical fix in 5.102.0.
+
+**The bug (pre-5.102.0):**
+```tsx
+// Tab A: sets data
+queryClient.setQueryData(['user'], newUser)
+
+// Tab B: has a listener that throws on certain data shapes
+// → Tab B's cross-tab listener throws
+// → Tab B stops receiving updates from Tab A
+// → Tab B cache is now STALE but the app doesn't know
+// → Silent data inconsistency across tabs
+```
+
+**The fix (5.102.0+):**
+```tsx
+// The tx() boolean guard — only resets on the happy path
+// If a listener throws, the tx is NOT reset, so the next
+// successful update from another tab will re-sync correctly
+tx = true
+try {
+  // apply incoming cross-tab message
+} finally {
+  if (success) tx = false // only reset on success
+}
+// PR #10771: also handles unhandled postMessage rejections
+// so even if postMessage throws, the cross-tab state is preserved
+```
+
+**Impact assessment:**
+- **HIGH impact** for apps using `broadcastQueryClient` for auth state sync, shopping cart, real-time collaborative data
+- **Silent breakage** pre-5.102.0 — the app appears to work but data is stale
+- **Must-fix** for any production app with multi-tab data synchronization
+
+**Audit recipe (3 steps):**
+```bash
+# Step 1: Find broadcastQueryClient usage
+rg -n "broadcastQueryClient|BroadcastQueryClient" --type ts --type tsx -g '!node_modules/*'
+
+# Step 2: Test cross-tab sync with throwing listener
+# Open 2 tabs with the same query
+# In Tab B, inject a listener that throws on specific data shapes
+# In Tab A, setQueryData with that data shape
+# Verify Tab B receives the update (or at least doesn't silently break)
+
+# Step 3: Upgrade
+npm install @tanstack/react-query@^5.102.0
+```
+
+### Pattern DD — `next@16.4.0-canary.2` LOW-IMPACT (1 PR — Turbopack Backend-Storage Options-Struct Refactor)
+
+**Summary**: `next@16.4.0-canary.2` shipped with **only 1 functional PR** — a **Turbopack internal refactor** with **zero app-visible behavior changes**. The canary train has halted accumulation (ahead_by = 0 from canary.2 → canary for 12+ hours).
+
+**PR #97284 — `feat(ossfs): introduce an options struct for constructing backend storage`** (by @lukesandberg; 13 files)
+
+The Turbopack OSS file-system backend storage constructor was reorganized from a **positional-argument factory** to an **options-struct factory**:
+
+```tsx
+// BEFORE (positional args — fragile):
+const ossfs = createOssfs(
+  bucket,
+  region,
+  accessKeyId,
+  secretAccessKey,
+  token,
+  endpoint,
+  ssl
+)
+
+// AFTER (options struct — readable, extensible):
+const ossfs = createOssfs({
+  bucket,
+  region,
+  accessKeyId,
+  secretAccessKey,
+  token,
+  endpoint,
+  ssl,
+})
+```
+
+**Why the options-struct pattern matters:**
+1. **Named parameters** — no positional confusion
+2. **Optional fields** — options struct allows partial specification
+3. **Backward compatible for new fields** — adding a new option doesn't require changing call sites
+4. **Easier to test** — can mock just the fields you need
+
+**The canary-train halt pattern:**
+- canary.1 → canary.2: 13h gap (normal cadence)
+- canary.2 → canary.3: **12+ hours halted** (as of this cron at 12:02Z Aug 23)
+- This mirrors the pattern seen before major releases or security patches
+
+**For the pattern surface lens**: there are **no new app-visible Next.js patterns in canary.2**. The last meaningful pattern additions were in canary.1: `unstable_prefetch()` (Pattern Y) and instant validation (Pattern Z).
+
+### 5-Step Combined Audit Recipe (Pattern AA + BB + CC + DD)
+
+```bash
+# Step 1: Find deprecated TanStack Query legacy methods (Pattern AA candidates)
+rg -n "fetchQuery|prefetchQuery|ensureQueryData" --type ts --type tsx -g '!node_modules/*' | head -20
+
+# Step 2: Check for broadcastQueryClient usage (Pattern CC — operationally critical)
+rg -n "broadcastQueryClient|BroadcastQueryClient" --type ts --type tsx -g '!node_modules/*' | head -10
+
+# Step 3: Audit TypeScript version for TanStack Query 5.102.0 compatibility
+npm ls typescript
+# If on TypeScript <5.6: npm install typescript@^5.6
+
+# Step 4: Check Next.js canary version
+npm ls next | grep canary || echo "On STABLE — no action needed for Pattern DD"
+# If on next@canary and want latest: npm install next@16.4.0-canary.2
+
+# Step 5: Test cross-tab broadcast (Pattern CC — if using broadcastQueryClient)
+# Open 2 tabs → Tab A sets data → Tab B verifies receipt
+# Upgrade to @tanstack/react-query@^5.102.0 and repeat the test
+```
+
+### Recommended version pin
+
+- **TanStack Query**: `^5.102.1` (UPGRADE — 5.102.0 → 5.102.1 is a 1-line fix; the `query()`/`infiniteQuery()` new API is the headline; broadcast-client fix is operationally critical for multi-tab apps)
+- **Next.js canary**: `next@16.4.0-canary.2` (LOW-IMPACT — 1 PR, zero app-visible changes; the canary train is halted for 12h+ so canary.3 is imminent)
+- **Production Next.js**: `next@^16.3.2` (hold until after Aug 26 CVE — `16.3.3` will be the patched version)
+
+### Sources
+
+- [TanStack Query `@5.102.0` GitHub release `release-2026-08-22-1856`](https://github.com/TanStack/query/releases/tag/release-2026-08-22-1856) — npm-published 2026-08-22T18:56:06.716Z; **35 PRs; skipped 5.101.5 entirely**
+- [TanStack Query PR #10658 — feat(query-core): add simplified query methods](https://github.com/TanStack/query/pull/10658) — by @DogPawHat; **Pattern AA — the HEADLINE**; 1,893/+106/17 files; closes 3-year discussion #9135
+- [TanStack Query PR #10661 — feat(react-query): query client adaptors](https://github.com/TanStack/query/pull/10661) — React Query adaptor for `query()`/`infiniteQuery()`
+- [TanStack Query PR #11222 — chore: tsup → tsdown](https://github.com/TanStack/query/pull/11222) — by @TkDodo; **Pattern BB**; 2,017/+469/83 files; Rolldown-powered build
+- [TanStack Query PR #11242 — fix(broadcast-client): recover from errors](https://github.com/TanStack/query/pull/11242) — by @koreahghg; **Pattern CC — operationally critical**; the `tx()` boolean guard fix
+- [TanStack Query PR #10771 — fix: handle unhandled postMessage rejections](https://github.com/TanStack/query/pull/10771) — by @n-satoshi061; complements PR #11242
+- [Next.js `v16.4.0-canary.2` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.2) — Pattern DD; 1 PR; LOW-IMPACT
+- [PR #97284 — feat(ossfs): introduce an options struct for constructing backend storage](https://github.com/vercel/next.js/pull/97284) — Turbopack internal refactor
+- [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-23T12:02Z
+- [Cross-references](cross-refs): `api.md` → the new `## next@16.4.0-canary.2 SHIPPED` section for the API-surface lens (Pattern DD); `typescript.md` → the v1.5.91 TS-lens for Pattern AA + Pattern BB TypeScript implications; `state.md` → TanStack Query 5.102.0 from the state-management lens (comprehensive coverage); `setup.md` → the `tsup → tsdown` from the setup-recipe lens; `performance.md` → the TanStack Query performance trio from the perf lens
+

@@ -2370,3 +2370,52 @@ The `hasAmbiguousErrors` flag and its associated logic was **removed** — all v
 - [PR #97419 — Turbopack worker chunk loading with asset prefix](https://github.com/vercel/next.js/pull/97419) — dev/build fix
 - [PR #97603 — Turborepo OIDC](https://github.com/vercel/next.js/pull/97603) — CI supply-chain security
 - [Cross-references](cross-refs): `patterns.md` → the new `## Pattern Y-Z (canary.0/1)` section for the pattern-lens on `unstable_prefetch()` + instant validation; `server-components.md` → PPF RSC-lens on `unstable_prefetch()` stages; `performance.md` → PPF prefetch bandwidth lens; `security.md` → Aug 20 security window RESOLVED in 16.3.2 STABLE; `typescript.md` → v1.5.82 cycle's TS-impact for React canary in 16.4.0-canary
+## next@16.4.0-canary.2 SHIPPED (August 22, 2026) — 1 Low-Impact Turbopack Internal Refactor + Ahead-of-canary.2 = 0 (Pattern of Halted Canary Accumulation) + canary.3 Forecast (API-Surface Lens — npm-published 2026-08-22T23:55:51.651Z)
+
+### `next@16.4.0-canary.2` SHIPPED — 1 PR (LOW-IMPACT)
+
+As documented in v1.5.89, `next@canary` crossed to `16.4.0-canary.2` at npm 2026-08-22T23:55:51.651Z. **Only 1 PR landed** — verified via `GET /repos/vercel/next.js/compare/v16.4.0-canary.1...v16.4.0-canary.2` returning `ahead_by: 2, behind_by: 0, total_commits: 2` (the version-bump commit + 1 PR):
+
+**PR #97284 — `feat(ossfs): introduce an options struct for constructing backend storage`** (by @lukesandberg; merged 2026-08-22T02:53:33Z; 13 files)
+
+Internal refactor that reorganizes Turbopack's OSS file-system backend storage constructor from a positional-args factory to an options-struct factory. **The functional behavior is unchanged**; the diff is legibility + ergonomics. This is the same PR documented in setup.md and server-components.md — the API-surface lens confirms: **zero app-visible API changes in this canary**.
+
+### Ahead-of-canary.2 = 0 — Pattern of Halted Canary Accumulation
+
+`GET /repos/vercel/next.js/compare/v16.4.0-canary.2...canary` returns `ahead_by: 0, behind_by: 0` at both 2026-08-23T00:02Z (as documented in v1.5.89) **and at 2026-08-23T12:02Z** (this cycle's verification). The canary-branch tip IS exactly `16.4.0-canary.2` — the train has **halted accumulation** for the second consecutive 6h cycle.
+
+**The pattern of halted canary accumulation is now established:**
+- canary.1 → canary.2: 13h 2m gap (Aug 21 23:53Z → Aug 22 23:55Z)
+- canary.2 → canary.3: **halted for 12+ hours** (as of Aug 23 12:02Z)
+- This mirrors the pattern seen in canary.22 → canary.23 in v1.5.75 (where the train also stalled for ~12h before resuming)
+
+**Thishalted-accumulation pattern is significant for the API-surface lens** because it means no new API-surface PRs have entered the canary branch since Aug 22 23:55Z. The 16.4.0 line is either in a quiet integration phase (baking the canary.0/1 PRs before resuming new feature PRs) or the Next.js team is pacing releases ahead of the **Aug 26 critical CVE** (T-3d from this cron).
+
+### Canary.3 Forecast
+
+`16.4.0-canary.3` SHIPPED most likely **Sunday Aug 23 evening UTC** on the 22-26h cadence (the train ran Aug 21 10:15Z + Aug 21 23:53Z + Aug 22 23:55Z = ~13h + 24h cadence). `16.4.0-canary.{3,4,5}` + `16.4.0-canary.6-or-7` = forecast next 5-7 days = **canary.7 most likely lands before `16.4.0` STABLE on Sep 8-15**.
+
+The Aug 26 critical CVE is a strong forcing function: the Next.js team will want `16.4.0` STABLE to be as stable as possible before the CVE ships `16.3.3 + 15.5.24`. The canary train may go quiet for 48-72h around Aug 26.
+
+### API-Surface Impact Assessment
+
+For the API-surface lens, the canary.2 halt means **no new RSC, routing, or server-components API additions in the last 12+ hours**. The last meaningful API additions to the 16.4.0 line were in canary.1:
+- `unstable_prefetch()` (PR #97622) — already documented in api.md
+- Instant validation for `unstable_navigation()` (PR #97309) — already documented in api.md
+
+**No new API-surface material from canary.2 for the API lens.**
+
+### Recommended version pin
+
+- **Production**: `next@^16.3.2` (UNCHANGED — the Aug 26 CVE patch will be `16.3.3`, not a 16.4.x STABLE)
+- **API exploration**: `next@16.4.0-canary.2` for the 16.4.x API surface (but no new surface since canary.1)
+- **Awaiting Aug 26 CVE**: hold on any canary.2 → canary.3 upgrade until after the CVE ships; the canary train may shift dramatically post-CVE
+
+### Sources
+
+- [Next.js `v16.4.0-canary.2` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.2) — npm-published 2026-08-22T23:55:51.651Z; 1 PR + version-bump commit
+- [PR #97284 — feat(ossfs): introduce an options struct for constructing backend storage](https://github.com/vercel/next.js/pull/97284) — by @lukesandberg; merged 2026-08-22T02:53:33Z; 13 files; Turbopack internal refactor
+- [Next.js canary-branch compare `v16.4.0-canary.1...v16.4.0-canary.2`](https://github.com/vercel/next.js/compare/v16.4.0-canary.1...v16.4.0-canary.2) — `ahead_by: 2, behind_by: 0, total_commits: 2` verified at 2026-08-23T12:02Z
+- [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-23T12:02Z = canary branch tip IS exactly 16.4.0-canary.2
+- [Cross-references](cross-refs): `setup.md` → the `## next@16.4.0-canary.2 SHIPPED` section (same PR #97284 from the setup-recipe lens); `server-components.md` → the PPF RSC-lens on `unstable_prefetch()` + canary.2 LOW-IMPACT confirmation; `patterns.md` → Pattern AA-D for the pattern-lens on the 16.4.0 canary patterns; `typescript.md` → the TS-lens on the 16.4.0 canary for TypeScript users; `security.md` → the Aug 26 CVE T-3d section (canary train may go quiet around Aug 26)
+

@@ -2570,3 +2570,244 @@ Ending a session now cuts off every connected app's API access via OIDC back-cha
 - [Cross-reference: `patterns.md` v1.5.82 → `## Pattern Y-Z (canary.0/1)` for the pattern-lens on `unstable_prefetch()` + instant validation]
 - [Cross-reference: `forms.md` v1.5.82 → RHF 7.86.0 section for the forms-lens on `getErrors()` + bug fixes]
 - [Cross-reference: `auth.md` v1.5.82 → better-auth 1.7.0 section for the auth-lens on breaking changes + migration]
+## 30th TypeScript No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260823.1`, Aug 23 08:28Z) + TanStack Query `@5.102.0` STABLE SHIPPED (35-PR MINOR — SKIPPED 5.101.5 PATCH ENTIRELY) + `@5.102.1` PATCH (Aug 23 11:00Z — Accept Partial Dehydrated State) + React Hook Form Master 4 Commits Ahead (`shouldTouch` Option for `trigger()`, PR #13671) + zod@4.5.0 STABLE Forecast Update (Canary Train COOLED — Still Not Shipped; v1.5.86 Forecast "Aug 21-23" Was Wrong) + shadcn@4.19.0 SHIPPED (Aug 21, New MINOR With `migrate base-color` + Private Repo GH_TOKEN Support) (TypeScript / Build-Tooling Lens — Tested at v1.5.91 Cron, August 23, 2026 12:02 UTC)
+
+### 30th TypeScript No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260823.1`, Aug 23 08:28Z)
+
+The **30th consecutive no-content TypeScript daily rebuild** shipped at `7.1.0-dev.20260823.1` (npm-published **2026-08-23T08:28:53.671Z**), landing ~3 minutes after the v1.5.90 cron on Aug 23 06:02Z. This cron verifies it as **CONFIRMED SHIPPED**.
+
+**TypeScript main branch context** (verified at 2026-08-23T12:02Z):
+- **TypeScript main branch still idle 30+ days** since 2026-07-27T20:55:30Z — 0 functional commits in the main branch
+- The daily rebuilds are **automated no-op rebuilds** of the existing codebase — no new features, no bug fixes
+- **31st rebuild PENDING ~08:25Z Aug 24** (the standard daily cadence)
+- The **STABLE release is still `TypeScript 7.0.2`** (Jul 8 2026) — the `7.1.0` STABLE is months away
+
+**Why the no-content rebuilds matter for TypeScript tooling:**
+
+The daily rebuilds serve as a forcing function for package managers and CI systems. The skill tracks them because:
+1. Each rebuild bumps the `7.1.0-dev.YYYYMMDD.N` version number
+2. CI systems pinning `typescript@next` get a new version every 24h (but it does nothing)
+3. The TypeScript team is in a **deep freeze** — no new TS features being merged to main
+4. This freeze is typical **pre-major-release** behavior — the TypeScript team stabilizes the API before cutting STABLE
+
+### TanStack Query `@5.102.0` STABLE SHIPPED — 35-PR MINOR (SKIPPED 5.101.5 PATCH ENTIRELY)
+
+**`@tanstack/react-query@5.102.0`** SHIPPED (npm-published **2026-08-22T18:56:06.716Z**) as a **35-PR MINOR — the team SKIPPED the 5.101.5 PATCH entirely** and jumped from 5.101.4 to 5.102.0. This is the most significant TanStack Query release since 5.0.0 GA.
+
+**Why 5.102.0 was SKIPPED as a PATCH:**
+The team decided the new `query()` + `infiniteQuery()` simplified query methods (PR #10658) warranted a MINOR version bump. Skipping from 5.101.4 → 5.102.0 (rather than 5.101.5) signals the API significance of the new methods.
+
+**The HEADLINE new feature — PR #10658 `query()` + `infiniteQuery()` simplified query methods** (by @DogPawHat; 1,893 additions / 106 deletions / 17 files; closes 3-year-old discussion #9135):
+
+```tsx
+// BEFORE (traditional approach):
+const queryClient = useQueryClient()
+const query = queryClient.getQueryData(['key'])
+if (!query) {
+  queryClient.fetchQuery({ queryKey: ['key'], queryFn: fetchKey })
+}
+
+// AFTER (simplified, v5.102.0+):
+const { data } = useQuery(queryOptions({
+  queryKey: ['key'],
+  queryFn: fetchKey,
+}))
+
+// OR using the new query() client method directly:
+const result = await queryClient.query(queryOptions({
+  queryKey: ['key'],
+  queryFn: fetchKey,
+}))
+```
+
+The **simplified query methods** replace `fetchQuery`/`fetchInfiniteQuery`/`prefetchQuery`/`ensureQueryData` with a unified `query()` + `infiniteQuery()` API on the `QueryClient`. This is the **path for v6 deprecation** but remains **non-breaking in 5.x**.
+
+**All 35 PRs in this release:**
+
+*New API (1):*
+- PR #10658 — `query()` + `infiniteQuery()` simplified query methods (HEADLINE)
+
+*Build infrastructure (1):*
+- PR #11222 — `tsup → tsdown` migration (2,017/+469/83 files; Rolldown-powered TypeScript bundler)
+
+*Broadcast-client hardening (2):*
+- PR #11242 — recover from errors thrown while applying cross-tab message (`try/finally` tx() guard)
+- PR #10771 — handle unhandled postMessage rejections
+
+*Performance (4):*
+- PR #11253 — skip no-op hydration callbacks + export `dehydrateQuery`
+- PR #11225 — skip unused query result tracking
+- PR #11214 — reduce observer removal overhead (O(n) → O(1))
+- PR #11215 — deduplicate tracked query properties (single Set per query)
+
+*Correctness fixes (15):*
+- PR #11234 — keep observer notifications stable (React useSyncExternalStore)
+- PR #11211 — resetQueries now preserves queries matched before `query.reset()` state change
+- PR #11036 — resolve Suspense when query data is set programmatically
+- PR #11172 — reattach `MutationObserver` in `onSubscribe`
+- PR #11065 — memoize falsy combine results in `QueriesObserver`
+- PR #11130 — keep unsubscribed `useQueries` idle
+- PR #11147 — default `TData` of infinite query options to `InfiniteData`
+- PR #11144 — remove `placeholderData` from Suspense infinite query
+- PR #11161 — clear stale select error when observer switches query
+- PR #11011 — reset `isPlaceholderData` when select throws
+- PR #11128 — ignore retained thenable callback invoked after settling
+- PR #11218 — release retryer once mutation settles
+- PR #11163 — release retryer once fetch settles
+- PR #8737 — make `MutateFunction` optional undefinable variables
+- PR #11166 — allow `retryOnMount` when `throwOnError` is function
+
+*TypeScript / declaration (3):*
+- PR #11212 — update to TS 7 and move cut-off to 5.6 (baseline alignment)
+- PR #11224 — declaration emit fix
+- PR #10373 — propagate generic type params to `useMutationState` select callback
+
+*Other framework adapters (5):*
+- PR #10849 — vue devtools class attribute
+- PR #10584 — vue-query TQueryKey inference
+- PR #10943 — lit-query `tsup → tsdown` migration
+- PR #10571 — solid-query resolve query client outside memos
+- PR #10664 / PR #11207 / PR #10661 — Vue/Solid/React adaptors for `query()`/`infiniteQuery()`
+
+### TanStack Query `@5.102.1` PATCH SHIPPED (Aug 23 11:00:31Z) — Accept Partial Dehydrated State
+
+**`@tanstack/react-query@5.102.1`** SHIPPED (npm-published **2026-08-23T11:00:31.880Z**) — a **1-PR PATCH** on top of 5.102.0:
+
+**PR #11260 — `fix(query-core): accept partial dehydrated state`** (by @schiller-manuel; commit `134890dbd`)
+
+This fix allows `dehydrateQuery()` output to accept partial state — meaning you can now serialize and rehydrate a subset of the query cache. This is particularly useful for:
+- **Persistence adapters**: rehydrating only specific queries from storage
+- **SSR dehydration**: partial dehydration for streaming scenarios
+- **Cross-tab sync**: syncing a subset of query state
+
+```tsx
+// Before 5.102.1: dehydrated state required ALL query fields
+const dehydrated = dehydrate(queryClient, {
+  shouldDehydrateQuery: (query) => query.state.status === 'success'
+})
+// After 5.102.1: partial dehydrated state is accepted by rehydrate
+const cache = hydrate(queryClient, dehydrated)
+// The rehydration now tolerates missing optional fields
+```
+
+### React Hook Form Master 4 Commits Ahead — `shouldTouch` Option for `trigger()` (PR #13671)
+
+**RHF master is 4 commits ahead of `v7.86.0`** (verified at 2026-08-23T12:02Z):
+
+**PR #13671 — `feat: add shouldTouch option to trigger()`** (commit `916c7f0`)
+
+The new `shouldTouch` option for `trigger()` allows controlling whether fields should be marked as "touched" during a manual trigger validation:
+
+```tsx
+// Default (unchanged): trigger marks fields as touched
+trigger(['email', 'password'])
+
+// New in master: skip marking fields as touched
+trigger(['email', 'password'], { shouldTouch: false })
+
+// Useful for: search/filter forms where validation should run
+// without triggering "touched" state that shows error styling
+```
+
+Other RHF master commits:
+- PR #13672 / #13673 — fix inconsistent behavior among `useController().field.onChange()`-like APIs
+- PR #13670 — chore: fix compress action (build/devtools only)
+
+**RHF `v7.87.0` forecast: 1-2 weeks** — the `shouldTouch` addition is a small but useful addition; the fix PRs are bug fixes.
+
+### zod@4.5.0 STABLE Forecast Update — Canary Train COOLED (Still Not Shipped)
+
+**`zod@4.5.0` STABLE has NOT shipped** as of 2026-08-23T12:02Z — the v1.5.86 forecast of "Aug 21–23, most likely Aug 21 today" **was WRONG**.
+
+**Evidence of cooled canary train:**
+- `zod@canary` is still on `4.5.0-canary.20260820T155656` (npm-published Aug 20 16:00Z) — **72+ hours idle** with 0 new canary drops
+- The 4-drops-per-day cadence seen in Aug 19-20 has completely stopped
+- `zod@latest` is still `4.4.3` (May 4 2026)
+
+**Updated forecast: zod@4.5.0 STABLE deferred to Sep 1–15, 2026**
+- The canary train appears to have been paused — likely the Zod team is doing final stabilization work before the STABLE cut
+- The `4.5.0-canary.20260820T155656` tip has been stable for 72h+ — this is consistent with a "feature freeze" before STABLE
+- **Watch for a sudden burst of new canary drops** — that would signal the STABLE cut is imminent within 24-48h
+- Until then: pin `zod@^4.4.3` for production; `zod@4.5.0-canary.20260820T155656` for early testing
+
+### shadcn@4.19.0 SHIPPED (Aug 21, 2026) — New MINOR With `migrate base-color` + GH_TOKEN Private Repo Support
+
+**`shadcn@4.19.0`** SHIPPED (npm-published **2026-08-21T17:28:23Z** / **2026-08-21T17:33:28.977Z** on npm) — a **new MINOR release** with two significant additions:
+
+**PR #11248 — `migrate base-color` CLI command** (merged Aug 20 08:34Z; already documented in components.md from the components lens)
+
+The `migrate base-color` command switches a project's base color and rewrites its theme CSS variables non-destructively:
+
+```bash
+# Switch to zinc
+npx shadcn@latest migrate base-color --to zinc
+
+# From zinc to neutral (non-interactive)
+npx shadcn@latest migrate base-color --from zinc --to neutral --yes
+```
+
+**PR #11582 — Private repository support via GitHub CLI credentials or `GH_TOKEN`** (merged Aug 21)
+
+The shadcn CLI now supports private GitHub registries via GitHub CLI credentials or `GH_TOKEN`. This is significant for enterprise users who maintain private component libraries:
+
+```bash
+# Configure private registry
+export GH_TOKEN=ghp_your_token_here
+npx shadcn@latest init --registry https://github.com/your-org/your-private-repo
+
+# Or use GitHub CLI credentials (if logged in via gh auth login)
+gh auth status
+npx shadcn@latest init --registry github:your-org/your-private-repo
+```
+
+### TypeScript / Build-Tooling Impact Analysis
+
+**For TypeScript users of the frontend stack:**
+
+1. **TanStack Query 5.102.0** requires TypeScript **5.6+** (PR #11212 raised the minimum to 5.6). If your project is on TypeScript <5.6, upgrade before upgrading TanStack Query:
+   ```bash
+   npm install typescript@^5.6
+   npm install @tanstack/react-query@^5.102.0
+   ```
+
+2. **The `query()`/`infiniteQuery()` new API** is the most significant TypeScript API addition. The types are fully inferred:
+   ```tsx
+   // Fully typed — no manual type casting needed
+   const result = await queryClient.query(
+     queryOptions({ queryKey: ['user'], queryFn: fetchUser })
+   )
+   // result is inferred as User (from fetchUser's return type)
+   ```
+
+3. **`tsup → tsdown`** in TanStack Query ecosystem means tools depending on `@tanstack/query-core` types may see faster build times (Rolldown is faster than tsup for TypeScript output).
+
+4. **Zod 4.5.0 STABLE** is still pending — TypeScript-first validation with Zod is on hold for another 2-4 weeks.
+
+### Recommended version pin
+
+- **TypeScript**: `typescript@^7.0.2` STABLE; `typescript@next` (`7.1.0-dev.20260823.1`) is still no-content rebuilds
+- **TanStack Query**: `^5.102.1` (UPGRADE — the 5.102.0 → 5.102.1 patch is a 1-line fix; pin `^5.102.0` if already on 5.102.0; the 5.101.x → 5.102.x migration is non-breaking for `useQuery`/`useMutation` users)
+- **zod**: `zod@^4.4.3` (STABLE line) OR `zod@4.5.0-canary.20260820T155656` (canary tip, for early testing); watch npm for `zod@4.5.0` STABLE (deferred to Sep 1-15)
+- **React Hook Form**: `react-hook-form@^7.86.0` (STABLE); `v7.87.0` forecast 1-2 weeks
+- **shadcn**: `shadcn@^4.19.0` (UPGRADE — the `migrate base-color` + GH_TOKEN private repo support are material; run `npx shadcn@latest upgrade` to get 4.19.0)
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260823.1` next; 30th no-content rebuild; 31st PENDING ~08:25Z Aug 24
+- [`@tanstack/react-query@5.102.0` GitHub release `release-2026-08-22-1856`](https://github.com/TanStack/query/releases/tag/release-2026-08-22-1856) — npm-published 2026-08-22T18:56:06.716Z; **35 PRs; skipped 5.101.5 entirely; jumped from 5.101.4 to 5.102.0**
+- [`@tanstack/react-query@5.102.1` GitHub release `release-2026-08-23-1100`](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1100) — npm-published 2026-08-23T11:00:31.880Z; 1 PR #11260 fix
+- [TanStack Query PR #10658 — feat(query-core): add simplified query methods](https://github.com/TanStack/query/pull/10658) — by @DogPawHat; **the HEADLINE**; 1,893/+106/17 files; closes 3-year discussion #9135
+- [TanStack Query PR #11260 — fix(query-core): accept partial dehydrated state](https://github.com/TanStack/query/pull/11260) — by @schiller-manuel; the only change in 5.102.1
+- [TanStack Query PR #11222 — chore: tsup → tsdown](https://github.com/TanStack/query/pull/11222) — by @TkDodo; 2,017/+469/83 files; Rolldown-powered build
+- [TanStack Query PR #11242 — fix(broadcast-client): recover from errors](https://github.com/TanStack/query/pull/11242) — by @koreahghg; the critical broadcast fix
+- [TanStack Query PR #11253 / #11225 / #11214 / #11215 — performance trio](https://github.com/TanStack/query/pulls?q=is%3Apr+is%3Amerged+author%3Ascttcper+merged%3A2026-08-22) — the 4 perf PRs
+- [TanStack Query PR #11212 — chore: update to ts 7 and move cut-off to 5.6](https://github.com/TanStack/query/pull/11212) — TS 5.6 minimum baseline
+- [RHF PR #13671 — feat: add shouldTouch option to trigger()](https://github.com/react-hook-form/react-hook-form/pull/13671) — 4 commits ahead of v7.86.0; new in master
+- [RHF master compare `v7.86.0...master`](https://github.com/react-hook-form/react-hook-form/compare/v7.86.0...master) — `ahead_by: 4` verified at 2026-08-23T12:02Z
+- [zod npm dist-tags](https://www.npmjs.com/package/zod?activeTab=versions) — `latest: '4.4.3'`; `canary: '4.5.0-canary.20260820T155656'` (72h+ idle); 4.5.0 STABLE forecast **deferred to Sep 1-15, 2026**
+- [shadcn-ui/ui GitHub releases](https://github.com/shadcn-ui/ui/releases) — `shadcn@4.19.0` npm-published 2026-08-21T17:33:28.977Z
+- [shadcn-ui/ui#11582 — add private repository support](https://github.com/shadcn-ui/ui/pull/11582) — GH_TOKEN + GitHub CLI private registry support
+- [Cross-reference: `state.md` v1.5.89 → TanStack Query 5.102.0 from the state-management lens (the most comprehensive coverage)]
+- [Cross-reference: `setup.md` → the `tsup → tsdown` build infra migration from the setup-recipe lens]
+- [Cross-reference: `components.md` v1.5.87 → shadcn@4.19.0 section for the components-lens on `migrate base-color`]
+
