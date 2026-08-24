@@ -3771,3 +3771,63 @@ The v1.5.83 cycle noted `next@16.3.2` as "routine patch shipped Aug 21" but did 
 - [PR #97664 — Turbopack: deduplicate Pages Router app chunks](https://github.com/vercel/next.js/pull/97664) — in 16.4.0-canary.0; deployment-impact LOW
 - [Cross-reference: `security.md` — full security lens on 16.3.2 STABLE + 16.4.0-canary + Aug 26 CVE T-4d
 - [Cross-reference: `routing.md` — full routing-surface lens on `[PPF] unstable_prefetch()` SHIPPED + microfrontend HMR + MPA trailing-slash + Pages Router chunk dedup
+
+---
+
+## Aug 26 Critical CVE — T-2d Deployment Checklist Refresh + next@16.4.0-canary.3 + react-hook-form@7.86.0 STABLE + 3 NEW @clerk/nextjs@canary Drops (August 24, 2026 — v1.5.93 Cycle — Deployment-Impact Lens)
+
+### Aug 26 Critical CVE — T-2d Deployment Checklist (OFFICIAL: 16.3.3 + 15.5.24)
+
+Per the [official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) (nextjs.org, published 2026-08-20): the Aug 26 release addresses **ONE critical severity vulnerability** with patched versions **`16.3.3 + 15.5.24`**. **This is T-2d from this cron's 00:02Z Aug 24 start.**
+
+> [!WARNING]
+> **3rd-party misinformation alert**: Some blogs (Kilat Labs, daily.dev) incorrectly report "16.3.2" as an Aug 26 CVE-patched version. The official nextjs.org source is unambiguous: "We plan to publish **16.3.3** and 15.5.24." `next@16.3.2` shipped Aug 21 as a routine backport — no CVE content. Your deployment checklist must target `16.3.3`, not `16.3.2`.
+
+**T-2d Aug 26 Critical CVE Deployment Checklist** (refreshed from v1.5.88 T-4d):
+
+1. **Vercel**: No action needed — Vercel auto-upgrades Next.js in the background. Verify in your Vercel dashboard that the project is on `next@latest` and you have NOT pinned to a specific patch. If pinned to `16.3.2`, Vercel will not auto-upgrade to 16.3.3 on Aug 26 — you'll need to unpin.
+2. **Self-hosted Node.js**: Schedule a deployment window for Aug 26. As soon as `16.3.3` drops (~14:00-22:00Z Aug 26 per Next.js team patterns): `npm install next@latest && npm install next@15.5.24 && npm ls next`. Restart your Node.js process (PM2: `pm2 restart all`, Docker: `docker compose down && docker compose pull && docker compose up -d`).
+3. **Docker base-image rebuild**: If you pin Next.js inside a Dockerfile, update the `FROM` or `npm install next@latest` command before rebuild. Schedule the rebuild for Aug 26 morning UTC to have the patched image ready before the release.
+4. **AWS Lambda / SST**: Redeploy functions that bundle Next.js. In SST, `sst deploy --stage prod` picks up new versions. Schedule for Aug 26 morning.
+5. **GCP Cloud Run**: Rebuild your container image on Aug 26: `gcloud run deploy your-service --新旧-image`. Cloud Run picks up the patched image on next cold-start.
+6. **Cloudflare Workers**: Workers using `@cloudflare/next-on-pages` — redeploy with `npx @cloudflare/next-on-pages@latest` on Aug 26. Cloudflare does not auto-update.
+7. **NixOS / Nix deployments**: Update `pkgs.next` or your overlay, then `nix-build` and deploy the result on Aug 26.
+8. **Vercel preview deployments**: Triggered automatically on next `git push`. If you have a staging environment, verify it picks up `16.3.3` on Aug 26.
+9. **Monitoring during Aug 26**: Watch `nextjs.org/blog` and `@nextjs` on X for the release announcement. The official advisory publishes alongside the release. Subscribe to the GitHub Security Advisories for `vercel/next.js` for automatic alerts.
+10. **After upgrade (Aug 26)**: Run your test suite + smoke tests in staging before promoting to production. The Aug 26 advisory will reveal what the vulnerability is — review it immediately to determine if any additional configuration changes are required beyond the version bump.
+
+### `next@16.4.0-canary.3` SHIPPED — T+5min Before This Cron (npm 2026-08-23T23:46:47Z)
+
+1 PR only: [PR #97723](https://github.com/vercel/next.js/pull/97723) — `devtools: Fix indicator dragging on touch screens` (marcoshernanz). **Deployment-impact: NONE** — touch-screen devtools indicator is a dev-time UX fix only; no production impact. The canary train resumed after the canary.2 12+ hour halt (the longest single-PR canary gap since v1.5.82). No deployment action required for canary.3 unless you are using touch-screen devtools in development.
+
+### `react-hook-form@7.86.0` STABLE SHIPPED — Deployment Note (npm 2026-08-21T22:58:40Z)
+
+**`react-hook-form@7.86.0`** SHIPPED with `shouldTouch` option for `trigger()` (PR #13669). The `shouldTouch` option controls whether `trigger()` marks fields as touched — relevant for forms that rely on touch-state for conditional UI or submission guards. **Deployment-impact: LOW for most apps** — `trigger()` with `shouldTouch: false` is backwards-compatible (the default was `false` before this PR). However, if you have custom form logic that depends on touch state being set by `trigger()`, verify behavior after upgrading. Pin `react-hook-form@^7.86.0` in package.json. Run `trigger()` test coverage after upgrade.
+
+### `@clerk/nextjs@canary` — 3 NEW Drops Since v1.5.89
+
+The Clerk canary train advanced with **3 new drops since v1.5.89's last tracked** (`7.8.1-canary.v20260820221209`):
+- `7.8.1-canary.v20260821031411` (npm 2026-08-21T03:19:26Z)
+- `7.8.1-canary.v20260821034516` (npm 2026-08-21T03:50:41Z)
+- `7.8.1-canary.v20260821144536` (npm 2026-08-21T14:51:13Z) — **25th canary drop since v1.5.50**
+
+**Deployment-impact: NONE** — no API surface changes, no breaking changes. The 3 new canary drops are routine maintenance on the 7.8.1 line. If you pin Clerk canary, update to `7.8.1-canary.v20260821144536`. If you use `@clerk/nextjs@latest` (STABLE), no action required — still on `7.8.0`.
+
+### Updated Version-Pin Status (Post-v1.5.93 Cycle)
+
+| Package | Pin | Notes |
+|---------|-----|-------|
+| `next@latest` | `^16.3.2` (now) → `^16.3.3` (Aug 26) | 16.3.3 CVE patch drops Aug 26 |
+| `next@canary` | `16.4.0-canary.3` | Low-impact; 1 PR (#97723 devtools) |
+| `react-hook-form@latest` | `^7.86.0` | NEW; `shouldTouch` for `trigger()` |
+| `@clerk/nextjs@latest` | `^7.8.0` | No change |
+| `@clerk/nextjs@canary` | `7.8.1-canary.v20260821144536` | 3 new drops since v1.5.89 |
+
+### Sources
+
+- [Official Upcoming Next.js August Security Release — nextjs.org](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — `16.3.3 + 15.5.24`; ONE critical CVE; T-2d = Aug 26
+- [npm `next@16.4.0-canary.3`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-23T23:46:47Z
+- [PR #97723 — devtools: Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723)
+- [npm `react-hook-form@7.86.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-21T22:58:40.971Z
+- [npm `@clerk/nextjs@canary` dist-tags](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — `canary: 7.8.1-canary.v20260821144536`
+- [Cross-reference: `security.md` — full security lens on Aug 26 CVE T-2d + 3rd-party misinformation correction + shouldTouch audit

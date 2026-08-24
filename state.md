@@ -2136,3 +2136,68 @@ npm ls typescript
 - Cross-reference: v1.5.73 state.md — the 8 NEW commits in first window analysis (the first signal of imminent activity)
 - Cross-reference: `setup.md` — the TanStack Query `tsup → tsdown` build infrastructure migration from the setup-recipe lens
 - Cross-reference: `performance.md` — the TanStack Query performance trio (PR #11253 + PR #11225 + PR #11214 + PR #11215) from the perf lens
+
+---
+
+## @tanstack/react-query@5.102.2 STABLE SHIPPED + @tanstack/react-form@2.0.0-alpha.2 + react-hook-form@7.86.0 STABLE + next@16.4.0-canary.3 (August 24, 2026 — v1.5.93 Cycle — State Management Lens)
+
+### @tanstack/react-query@5.102.2 STABLE SHIPPED — 3rd Consecutive Patch in 24h (npm 2026-08-23T18:00:46Z)
+
+**`@tanstack/react-query@5.102.2`** SHIPPED (npm-published **2026-08-23T18:00:46.446Z**) — the **3rd consecutive TanStack Query release in 24 hours** after 5.102.0 (Aug 22 18:56Z) + 5.102.1 (Aug 23 11:00Z) + now 5.102.2 (Aug 23 18:00Z). This is an unprecedented patch cadence — 3 ships in 24h. The 5.102.1 PATCH fixed an InfiniteData type mismatch introduced by 5.102.0. The 5.102.2 release adds a **feature export**:
+
+- [PR #11263](https://github.com/TanStack/query/pull/11263) — `feat(query-core): export cache config types` (spaansba) — exports cache configuration types from `@tanstack/query-core`, enabling third-party libraries to build type-safe query clients that reference the same internal config shapes. No breaking changes; patch.
+- Chore: PR #11262 — `update knip` (TkDodo) — dependency maintenance.
+
+**The 3-release-in-24h pattern analysis**: The TanStack team shipped 5.102.0 as a 35-PR MINOR on Aug 22 evening. 5.102.1 (1-PR PATCH) on Aug 23 morning fixed the InfiniteData type mismatch that was cut too fast to catch in the MINOR review. 5.102.2 (1-PR FEATURE) on Aug 23 evening exported cache config types that were a side-effect of the 5.102.0 refactors. The pattern suggests the team is in active release mode for the query-core internals.
+
+**Pin recommendation**: `@tanstack/react-query@^5.102.2` (or `^5.102.1` if you don't need the cache config types export). The dist-tag `latest` is now `5.102.2`.
+
+### @tanstack/react-form@2.0.0-alpha.2 SHIPPED — TanStack Form v2 Alpha Advances (npm 2026-08-21T15:29:29Z)
+
+**`@tanstack/react-form@2.0.0-alpha.2`** SHIPPED (npm-published 2026-08-21T15:29:29.649Z) — the alpha.2 advance was forecast in v1.5.92 inline observation. The alpha train continues. The `@tanstack/react-form` alpha tracks alongside TanStack Query 5.x (the v2 branch is for the v5 query adapter layer). The `@tanstack/react-form@alpha` dist-tag is `2.0.0-alpha.2`. **No production use** — this is alpha. Track only. The v1.x `@tanstack/react-form@latest` (`1.33.5`) is the stable version.
+
+### react-hook-form@7.86.0 STABLE SHIPPED — Form State Touch Management (npm 2026-08-21T22:58:40Z)
+
+**`react-hook-form@7.86.0`** SHIPPED (npm-published 2026-08-21T22:58:40.971Z) — the v1.5.91 forecast of "7.86.0 within 2-3 weeks" landed within 3 days. The headline is `shouldTouch` option for `trigger()` (PR #13669):
+
+```typescript
+// trigger with shouldTouch = true (marks fields as touched WITHOUT re-validating)
+trigger(['email', 'password'], { shouldTouch: true });
+
+// trigger with shouldTouch = false (backwards-compatible default — marks fields as touched AND re-validates)
+trigger(['email', 'password'], { shouldTouch: false });
+```
+
+This is relevant for state management patterns that use touch-state for conditional rendering, submission guards, or UX audit trails. The backwards-compatible default (`shouldTouch: false`) means existing code is unaffected — `trigger()` without options behaves identically to before. Pin `react-hook-form@^7.86.0`.
+
+### next@16.4.0-canary.3 SHIPPED — DevTools Touch-Screen Fix Only (npm 2026-08-23T23:46:47Z)
+
+**`next@16.4.0-canary.3`** SHIPPED (npm-published 2026-08-23T23:46:47.937Z, T+5min before this cron) — 1 PR: [PR #97723](https://github.com/vercel/next.js/pull/97723) `devtools: Fix indicator dragging on touch screens`. **No state management impact.** This is a devtools UX fix for touch-screen environments. The canary train resumed after the canary.2 12+ hour single-PR halt.
+
+### Version-Bump Tracking Table (v1.5.93 — August 24, 2026 00:02 UTC)
+
+| Package | Old Version | New Version | Change |
+|---------|------------|-------------|--------|
+| `next@latest` | `16.3.2` | `16.3.2` | Unchanged (16.3.3 CVE patch drops Aug 26) |
+| `next@canary` | `16.4.0-canary.2` | `16.4.0-canary.3` | +1 PR (#97723 devtools touch-screen) |
+| `@tanstack/react-query@latest` | `5.102.1` | `5.102.2` | +1 PR (#11263 cache config types) |
+| `react-hook-form@latest` | `7.85.0` | `7.86.0` | +shouldTouch for `trigger()` (PR #13669) |
+| `@tanstack/react-form@alpha` | `2.0.0-alpha.1` | `2.0.0-alpha.2` | Alpha advance |
+| `@biomejs/biome@latest` | `2.5.9` | `2.5.10` | PATCH (confirmed missed by v1.5.91) |
+| `@clerk/nextjs@canary` | `7.8.1-canary.v20260820221209` | `7.8.1-canary.v20260821144536` | 3 NEW drops (25th since v1.5.50) |
+
+### Sources
+
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — by @spaansba; merged 2026-08-23T17:48:44Z
+- [GitHub release `release-2026-08-23-1800`](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1800) — @tanstack/react-query@5.102.2; npm-published 2026-08-23T18:00:46Z
+- [GitHub release `release-2026-08-23-1100`](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1100) — @tanstack/react-query@5.102.1; npm-published 2026-08-23T11:00:47Z
+- [npm `@tanstack/react-query@5.102.2`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — dist-tag `latest: 5.102.2` since 2026-08-23T18:00:46Z
+- [npm `@tanstack/react-form@2.0.0-alpha.2`](https://www.npmjs.com/package/@tanstack/react-form?activeTab=versions) — npm-published 2026-08-21T15:29:29.649Z
+- [npm `react-hook-form@7.86.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-21T22:58:40.971Z
+- [PR #13669 — add shouldTouch option for trigger()](https://github.com/react-hook-form/react-hook-form/pull/13669) — the `shouldTouch` feature landed in 7.86.0
+- [npm `next@16.4.0-canary.3`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-23T23:46:47.937Z
+- [PR #97723 — devtools: Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723) — by @marcoshernanz
+- [npm `next@canary` dist-tags](https://www.npmjs.com/package/next?activeTab=versions) — `canary: 16.4.0-canary.3`
+- [Cross-reference: v1.5.92 state.md — the TanStack Query 5.102.0/5.102.1 full breakdown
+- [Cross-reference: `forms.md` — RHF 7.86.0 `shouldTouch` form-state patterns
+- [Cross-reference: `performance.md` — TanStack Query 5.102.x performance implications

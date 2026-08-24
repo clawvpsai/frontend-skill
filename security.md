@@ -2510,3 +2510,57 @@ The v1.5.83 cycle flagged `next@16.3.2` as "routine patch shipped Aug 21" but **
 - [PR #97638 — [react-sync] Check assignability before assigning the actor](https://github.com/vercel/next.js/pull/97638) — type-system-correctness fix
 - [Cross-reference: `routing.md` — PPF `unstable_prefetch()` + `unstable_navigation()` instant validation routing-surface impact
 - [Cross-reference: `deployment.md` — full deployment-impact lens for 16.3.2 + 16.4.0-canary.0/1 + Aug 26 deployment-readiness checklist
+
+---
+
+## Aug 26 Critical CVE — T-2d Status + next@16.4.0-canary.3 SHIPPED + react-hook-form@7.86.0 STABLE (August 24, 2026 — v1.5.93 Cycle — Security Lens)
+
+### Aug 26 Critical CVE — T-2d Status (OFFICIAL: 16.3.3 + 15.5.24 — NOT 16.3.2)
+
+Per the [official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) (nextjs.org, published 2026-08-20): the Aug 26 release addresses **ONE critical severity vulnerability** with patched versions **`16.3.3 + 15.5.24`**. T-2d from this cron's 00:02Z Aug 24 start = **Wednesday, August 26, 2026** (during North American business hours).
+
+> [!WARNING]
+> **Third-party misinformation alert**: Some 3rd-party blogs (Kilat Labs, daily.dev) are incorrectly reporting "16.3.2 and 15.5.24" as the Aug 26 CVE patched versions. **This is wrong.** The official nextjs.org source unambiguously states "We plan to publish **16.3.3** and 15.5.24." `next@16.3.2` shipped Aug 21 as a **routine bug-fix backport** — confirmed by the official release body ("backporting bug fixes; does not include all pending features/changes on canary"). The CVE patch is **16.3.3**, not 16.3.2. Do not use 16.3.2 as your CVE-patched pin.
+
+**Every Next.js app on 16.x or 15.x must plan an upgrade window for August 26, 2026.** `next@16.3.2` does NOT contain the CVE fix. Pin to `next@^16.3.2` now; update to `next@^16.3.3` or `next@^15.5.24` on Aug 26.
+
+### `next@16.4.0-canary.3` SHIPPED — T+5min Before This Cron (npm 2026-08-23T23:46:47Z)
+
+[PR #97723](https://github.com/vercel/next.js/pull/97723) — `devtools: Fix indicator dragging on touch screens` (marcoshernanz). **Low-impact**: fixes the Next.js DevTools panel indicator drag behavior on touch-screen devices. Single-PR ship; 2 commits total (PR #97723 + version-bump). The canary train resumed after the canary.2 12+ hour halt. Canary.3 contains no security-relevant changes.
+
+### `react-hook-form@7.86.0` STABLE SHIPPED — Form State Security Surface (npm 2026-08-21T22:58:40Z)
+
+**`react-hook-form@7.86.0`** SHIPPED with the `shouldTouch` option for `trigger()` (PR #13669) — the form-level touch state management feature that was being forecast since v1.5.89. The `shouldTouch` option lets `trigger()` mark fields as touched without re-validating (or with validation, depending on config), which is relevant for security-sensitive form UX audit flows. The v1.5.91 inline observation "RHF 7.86.0 within 2-3 weeks" landed early (within 3 days). Pin `react-hook-form@^7.86.0`.
+
+### `@clerk/nextjs@canary` — 3 NEW Drops Since v1.5.89 (7.8.1-canary Line)
+
+The Clerk canary train advanced with **3 new drops since v1.5.89's last tracked** (`7.8.1-canary.v20260820221209` at Aug 20 22:18Z):
+- `7.8.1-canary.v20260821031411` (npm 2026-08-21T03:19:26Z)
+- `7.8.1-canary.v20260821034516` (npm 2026-08-21T03:50:41Z)
+- `7.8.1-canary.v20260821144536` (npm 2026-08-21T14:51:13Z) — **25th canary drop since v1.5.50**
+
+No new STABLE for Clerk. The 3 new canary drops are routine maintenance on the 7.8.1 line. No security-relevant changes confirmed in these drops.
+
+### Updated Security Audit Recipe (v1.5.93)
+
+1. **Verify your `next` pin NOW**: `npm ls next`. You are on `16.3.2` — this is NOT the CVE patch. Plan to update to `next@^16.3.3` or `next@^15.5.24` on Aug 26.
+2. **Aug 26 calendar reminder**: pre-flight `npm view next@latest version` at 14:00Z Aug 26. As soon as 16.3.3 drops: `npm install next@latest && npm install next@15.5.24` for LTS pin.
+3. **Ignore 3rd-party blogs** reporting "16.3.2" as the CVE patch — this is incorrect. Only the official nextjs.org blog is authoritative.
+4. **For Turborepo monorepos with remote-cache**: verify `turbo.json` has `"remoteCache": { "signature": true, "authentication": "oidc" }` (PR #97603 OIDC hardening is in 16.3.2 — already deployed).
+5. **Audit string-matched error codes**: PR #97687 in 16.4.0-canary.1 removes generated error codes — migrate to `instanceof ErrorClass` checks now.
+6. **Update `react-hook-form@^7.86.0`**: this STABLE ships `shouldTouch` for `trigger()` — audit your form validation flows for security implications of touch-state management.
+7. **Pin Clerk canary at `7.8.1-canary.v20260821144536`** if using Clerk canary — 3 new drops since last tracked.
+
+### Why This Matters for `security.md`
+
+The v1.5.92 cycle confirmed `next@16.3.2` as routine patch. This v1.5.93 cycle confirms that the Aug 26 CVE patch is **16.3.3**, not 16.3.2. The 3rd-party misinformation from Kilat Labs and daily.dev citing "16.3.2" as the CVE-patched version is actively circulating and needs to be called out. The T-2d countdown is now active. The combined form-state (`shouldTouch`) + canary + canary.3 news round out the security surface.
+
+### Sources
+
+- [Official Upcoming Next.js August Security Release — nextjs.org](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — ONE critical CVE; `16.3.3 + 15.5.24`; full advisory publishes alongside Aug 26 release
+- [npm `next@16.4.0-canary.3`](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-23T23:46:47Z; 1 PR (#97723 devtools touch-screen)
+- [PR #97723 — devtools: Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723) — by @marcoshernanz
+- [npm `react-hook-form@7.86.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-21T22:58:40.971Z; `shouldTouch` option for `trigger()` (PR #13669)
+- [npm `@clerk/nextjs@canary` dist-tags](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — `canary: 7.8.1-canary.v20260821144536`; 3 NEW drops since v1.5.89
+- [Kilat Labs — INCORRECTLY reports "16.3.2 and 15.5.24" as Aug 26 CVE patched versions](https://kilatlabs.com/journal/nextjs-august-2026-security-release-critical/) — WARNING: this is wrong; the official nextjs.org source says 16.3.3
+- [Cross-reference: `deployment.md` — Aug 26 T-2d deployment checklist + version pins
