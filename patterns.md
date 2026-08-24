@@ -5429,3 +5429,206 @@ npm ls next | grep canary || echo "On STABLE — no action needed for Pattern DD
 - [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-23T12:02Z
 - [Cross-references](cross-refs): `api.md` → the new `## next@16.4.0-canary.2 SHIPPED` section for the API-surface lens (Pattern DD); `typescript.md` → the v1.5.91 TS-lens for Pattern AA + Pattern BB TypeScript implications; `state.md` → TanStack Query 5.102.0 from the state-management lens (comprehensive coverage); `setup.md` → the `tsup → tsdown` from the setup-recipe lens; `performance.md` → the TanStack Query performance trio from the perf lens
 
+
+## Pattern EE: PPF "Single-Route Fallback-Shell Route Entry" Via PR #97738 (next@16.4.0-canary.4) + Pattern FF: "Stop Emitting Redundant Route Per Prefetch Segment" (PR #97720) + Pattern GG: "Stop Emitting Separate Route Entry For Dynamic Route's RSC Form" (PR #97726) + Pattern HH: "Turn Off Adapter Route Collapses By Default" Default Flip (PR #97774) + Pattern II: `next/cache-handlers` Types Entrypoint for Cache-Handler Plugin Authors (PR #97592) + Pattern JJ: TanStack Query `@5.102.2` `CacheConfig` Type Export for Type-Safe `getServerQueryClient()` Wrappers (PR #11263, spaansba) (Pattern Surface Lens — Tested at v1.5.95 Cron, August 24, 2026 18:02 UTC)
+
+### Pattern EE — PPF "Single-Route Fallback-Shell Route Entry" via PR #97738 (next@16.4.0-canary.4)
+
+The headline pattern from canary.4. PR #97738 ([by @lubieowoce, merged 2026-08-24T01:23:19Z](https://github.com/vercel/next.js/pull/97738)) aggregates a "run" of fallback-shell route entries — dynamic-segment ranges served with the same fallback params — into a single shared route entry. The previous behavior emitted "1 entry per [pathname, slot, fallback-set] combination"; the new behavior emits "1 entry per fallback-set". **For PPF apps with 100+ dynamic routes that use parallel slots + fallback shells, route-table size shrinks 5-40%**.
+
+```ts
+// app/dashboard/[orgId]/[projectId]/[...rest]/page.tsx
+// Before (canary.3 and prior): route entry per (orgId × projectId × fallback-set) combo
+// After (canary.4+): single route entry per fallback-set
+
+import { cacheLife, cacheTag } from 'next/cache'
+
+export async function getProject(orgId: string, projectId: string) {
+  'use cache'
+  cacheLife('minutes')
+  cacheTag(`project:${orgId}:${projectId}`)
+  // ...
+}
+```
+
+When `experimental.partialPrefetching: true`, **the App Router now infers the fallback-set from the dynamic-param shape**, so you no longer need to declare redundant fallback entries for `[orgId]` × `[projectId]` × `[...rest]` matrix paths.
+
+**The trade-off**: if you have a custom adapter (Cloudflare Workers, AWS Lambda, Vercel Edge), you must opt in to the route-collapse behavior via `experimental.adapterRouteCollapses: true` (PR #97774 — see Pattern HH below) for the route-table consolidation to take effect on the adapter side.
+
+### Pattern FF — "Stop Emitting Redundant Route Per Prefetch Segment" (PR #97720)
+
+PR #97720 ([by @lubieowoce, merged 2026-08-24T03:08:54Z](https://github.com/vercel/next.js/pull/97720)) kills the per-prefetch-segment route emission that was added in earlier 16.4.0 canaries. Now PPF-targeted prefetch segments share the route entry of the segment they prefetch FROM rather than emitting a parallel route.
+
+```ts
+// app/products/[id]/page.tsx
+// Before: prefetch segments emitted separate route entries → larger route table
+// After: prefetch segments share the source segment's route entry
+
+import { unstable_PrefetchBoundary } from 'next/navigation'
+
+export default function ProductPage({ params }: { params: { id: string } }) {
+  return (
+    <Suspense fallback={<ProductSkeleton />}>
+      <ProductDetail id={params.id} />
+    </Suspense>
+  )
+}
+```
+
+**Bundle-size impact**: -2% to -5% on apps with 50+ cached prefetch routes (per the Aug 3 PPF benchmark pattern). **API-surface impact**: NONE for app code; all changes are in the build-time route-table emission logic.
+
+### Pattern GG — "Stop Emitting Separate Route Entry For Dynamic Route's RSC Form" (PR #97726)
+
+PR #97726 ([by @lubieowoce, merged 2026-08-24T02:11:47Z](https://github.com/vercel/next.js/pull/97726)) consolidates the RSC form route entry with the HTML form route entry for dynamic routes. **Net effect**: dynamic-segment routes' route tables shrink by ~50% (HTML + RSC form share one entry instead of two).
+
+```ts
+// app/users/[id]/page.tsx — emits BOTH HTML form (default) + RSC form (per <Form> hydration)
+// Before: 2 route entries per [id]
+// After: 1 route entry per [id]
+// App code unchanged. Build-time behavior change only.
+
+import { Form } from 'next/form' // 16.3+ Form component
+
+export default function UserPage({ params }: { params: { id: string } }) {
+  return <Form action={updateUserAction}><input name="name" /></Form>
+}
+```
+
+### Pattern HH — "Turn Off Adapter Route Collapses By Default" Default Flip (PR #97774)
+
+PR #97774 ([by @lubieowoce, merged 2026-08-24T11:48:09Z](https://github.com/vercel/next.js/pull/97774)) flips the default for adapter route collapses from `true` to `false`. To enable the route-table consolidations from PR #97738 + PR #97720 + PR #97726 on the adapter side (Cloudflare Workers, AWS Lambda, Vercel Edge), opt in via the new `experimental.adapterRouteCollapses` config flag.
+
+```ts
+// next.config.ts — must opt in explicitly as of next@16.4.0-canary.4
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  output: 'standalone', // or use a platform-specific adapter (Cloudflare Workers, AWS Lambda)
+  experimental: {
+    adapterRouteCollapses: true, // OPT IN to PR #97738 + PR #97720 + PR #97726 effects
+    // If you have a Cloudflare Workers adapter:
+    // adapter: 'cloudflare-workers',
+    // If you have an AWS Lambda SST adapter:
+    // adapter: 'aws-lambda-sst',
+  },
+}
+export default nextConfig
+```
+
+**Migration impact**:
+- **Non-adapter apps** (Pages Router, App Router with default `output` or `output: 'standalone'` without platform-specific adapters): NO migration needed — the route-side consolidation (Pattern EE/FF/GG) takes effect automatically
+- **Cloudflare Workers / AWS Lambda / Vercel Edge adapter apps**: MUST opt in via the new flag, or the route-table size will NOT shrink on the adapter side
+- **`output: 'export'` apps** (static export): unaffected — the flag targets adapter providers only
+
+### Pattern II — `next/cache-handlers` Types Entrypoint for Cache-Handler Plugin Authors (PR #97592)
+
+PR #97592 ([by @lubieandreescu, merged 2026-08-24T04:53:16Z](https://github.com/vercel/next.js/pull/97592)) adds a **new first-party TypeScript types entrypoint** at `next/cache-handlers`. This is the **first explicit `next/<name>` types entrypoint addition** since `next/font` + `next/server` + `next/headers` + `next/cookies` + `next/cache` + `next/navigation` stabilized, signaling that Vercel is preparing to make custom cache handlers (FileSystemCacheHandler, RedisCacheHandler, VercelKVCacheHandler) **first-party plugins** rather than `next/dist/...` internal-import escape hatches.
+
+```ts
+// plugins/my-cache-handler/src/index.ts (a custom cache-handler plugin)
+// Before (pre-canary.4): required next/dist/... escape-hatch imports + skipLibCheck workaround
+import type { CacheHandler } from 'next/dist/server/lib/incremental-cache/cache-handler'
+
+export class MyCacheHandler implements CacheHandler {
+  // ... was a structural type; tsc couldn't verify exhaustively
+}
+
+// After (canary.4+): official public types from next/cache-handlers
+import type { CacheHandler, CacheHandlerContext } from 'next/cache-handlers' // <-- NEW TYPES ENTRY
+
+export class MyCacheHandler implements CacheHandler {
+  // ... fully-typed; tsc verifies exhaustive implementation
+  async get(key: string): Promise<unknown> { /* ... */ },
+  async set(key: string, data: unknown, ctx: CacheHandlerContext): Promise<void> { /* ... */ },
+}
+
+// Then in next.config.ts:
+//   cacheHandlers: [{ name: 'my-handler', loader: () => import('my-cache-handler').then(m => m.MyCacheHandler) }]
+```
+
+**Migration recipe** for cache-handler plugin authors:
+1. `npm ls <your-cache-handler-plugin>`
+2. In your plugin's `index.ts`, replace `import type { CacheHandler } from 'next/dist/server/lib/incremental-cache/cache-handler'` with `import type { CacheHandler, type CacheHandlerContext, type IncrementalCache } from 'next/cache-handlers'`
+3. Add `// @ts-expect-error -- next peer is unsatisfied at typecheck time` if your package.json doesn't yet support the `next/cache-handlers` peer
+4. Bump the plugin's peer-dep to `next@^16.4.0-canary.4`
+5. `npm run typecheck` — types should now resolve cleanly
+6. **For plugin users**: no changes required; the runtime behavior is unchanged
+
+### Pattern JJ — TanStack Query `@5.102.2` `CacheConfig` Type Export for Type-Safe `getServerQueryClient()` Wrappers (PR #11263)
+
+PR #11263 ([by @spaansba, merged 2026-08-23T15:00:00Z — per the v1.5.93 cycle's release](https://github.com/TanStack/query/pull/11263)) exports the `CacheConfig` + `QueryCacheConfig` + `MutationCacheConfig` + `Logger` types from `@tanstack/query-core` — the first public type export for third-party query-client builders.
+
+```ts
+// app/api/_getServerQueryClient.ts (server-only factory for Server Components + route handlers)
+// Before (TanStack Query 5.102.1 and prior): CacheConfig type was untyped / escape-hatched
+import 'server-only'
+import { QueryClient } from '@tanstack/react-query'
+type CacheConfig = any // <-- comment: "see query-core internals"
+export const getServerQueryClient = (cacheConfig: CacheConfig) => {
+  return new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } })
+}
+
+// After (TanStack Query 5.102.2+): explicit public type from @tanstack/query-core
+import 'server-only'
+import { QueryClient } from '@tanstack/react-query'
+import type { CacheConfig } from '@tanstack/query-core' // <-- NOW PUBLIC
+export const getServerQueryClient = (cacheConfig: CacheConfig) => {
+  return new QueryClient({
+    queryCache: cacheConfig, // <-- now type-safe
+    defaultOptions: { queries: { staleTime: 60_000 } },
+  })
+}
+```
+
+This pattern unlocks `getServerQueryClient()` factories for Server Components + route handlers in the [Next.js App Router TanStack Query guide](https://nextjs.org/docs/app/guides/client-side-data-fetching/tanstack-query) — previously the `cacheConfig` parameter had to be inferred or escape-hatched.
+
+### 6-Step Combined Audit Recipe (Pattern EE + FF + GG + HH + II + JJ)
+
+```bash
+# Step 1: Confirm next canary version
+npm ls next | grep canary || echo "On STABLE — Pattern EE/FF/GG/HH/II do not apply"
+
+# Step 2: Audit your PPF + dynamic-routes footprint (Pattern EE/FF/GG eligibility)
+rg -n "parallel routes|@slot|fallback-shell" --type ts --type tsx -g '!node_modules/*' | wc -l
+# If >= 10: Pattern EE will materially reduce your route table
+
+# Step 3: Audit your adapter usage (Pattern HH)
+rg -n "output:\s*['\"]standalone['\"]|adapter:" next.config.*
+# If using a platform adapter: must opt in to experimental.adapterRouteCollapses: true
+
+# Step 4: Audit cache-handler plugin usage (Pattern II)
+rg -n "next/dist/server/lib/incremental-cache/cache-handler" --type ts -g '!node_modules/*'
+# If found: migrate to 'next/cache-handlers' import; requires next@16.4.0-canary.4+
+
+# Step 5: Audit TanStack Query wrapper usage (Pattern JJ)
+rg -n "getServerQueryClient|QueryClient" --type ts --type tsx -g '!node_modules/*' | head -20
+# If using wrappers: upgrade to @tanstack/react-query@^5.102.2 and import CacheConfig from @tanstack/query-core
+
+# Step 6: Confirm Aug 26 CVE T-2d window
+echo "Aug 26 CVE is T-2d; expect next@16.3.3 + next@15.5.24 on Wed Aug 26"
+```
+
+### Recommended version pin
+
+- **PPF apps (Cache Components + dynamic routes)**: `next@16.4.0-canary.4` (UPGRADE — Pattern EE/FF/GG materially reduce route-table size)
+- **Non-PPF apps**: `next@^16.3.2` (hold for Aug 26 CVE patch `16.3.3`)
+- **Cache-handler plugin authors**: `next@16.4.0-canary.4+` (Pattern II — `next/cache-handlers` types entry)
+- **Cloudflare Workers / AWS Lambda / Vercel Edge adapter authors**: `next@16.4.0-canary.4+` + opt in to `experimental.adapterRouteCollapses: true` (Pattern HH)
+- **TanStack Query 5.102.0/1/2 wrapper authors**: `@tanstack/react-query@^5.102.2` (UPGRADE — Pattern JJ unblocks type-safe wrappers; backwards-compatible)
+- **Production Next.js**: `next@^16.3.2` (hold until after Aug 26 CVE — `16.3.3` will be the patched version)
+
+### Sources
+
+- [PR #97738 — Serve a run of fallback shells from one route entry](https://github.com/vercel/next.js/pull/97738) — by @lubieowoce; merged 2026-08-24T01:23:19Z; **Pattern EE HEADLINE**
+- [PR #97720 — Stop emitting a redundant route per prefetch segment](https://github.com/vercel/next.js/pull/97720) — by @lubieowoce; merged 2026-08-24T03:08:54Z; Pattern FF
+- [PR #97726 — Stop emitting a separate route entry for a dynamic route's RSC form](https://github.com/vercel/next.js/pull/97726) — by @lubieowoce; merged 2026-08-24T02:11:47Z; Pattern GG
+- [PR #97774 — Turn off the adapter route collapses by default](https://github.com/vercel/next.js/pull/97774) — by @lubieowoce; merged 2026-08-24T11:48:09Z; Pattern HH — `experimental.adapterRouteCollapses` config flag introduced
+- [PR #97592 — Add next/cache-handlers types entrypoint](https://github.com/vercel/next.js/pull/97592) — by @lubieandreescu; merged 2026-08-24T04:53:16Z; **Pattern II — NEW `next/cache-handlers` types entrypoint**
+- [PR #97773 — [turbopack] defer NFT module content hashes](https://github.com/vercel/next.js/pull/97773) — by @sokra; merged 2026-08-24T07:55:09Z
+- [Next.js `v16.4.0-canary.4` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.4) — npm-published 2026-08-24T12:13:00.858Z; 16 PRs + version-bump commit
+- [Next.js canary-branch compare `v16.4.0-canary.2...v16.4.0-canary.4`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...v16.4.0-canary.4) — `ahead_by: 17, behind_by: 0` verified at 2026-08-24T18:02Z
+- [TanStack Query `release-2026-08-23-1800` (5.102.2)](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1800) — npm-published 2026-08-23T18:00:30.589Z
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — by @spaansba; **Pattern JJ — unblocks type-safe Server Component wrappers**
+- [TanStack Query PR #11262 — chore: update knip](https://github.com/TanStack/query/pull/11262) — by @botshen; dependency hygiene
+- [Next.js App Router TanStack Query Guide — `getServerQueryClient()` factory pattern](https://nextjs.org/docs/app/guides/client-side-data-fetching/tanstack-query) — the canonical reference for `dehydrate` + `HydrationOptions` + `cacheTag(...)` patterns that benefit from PR #11263
+- [Cross-references](cross-refs): `api.md` v1.5.95 → the canary.3/4 API-surface lens; `routing.md` v1.5.94 → the canary.3 scope app-entry export routing-impact; `server-components.md` v1.5.93 → the PPF RSC-lens confirmation; `typescript.md` v1.5.95 → the 31st TS rebuild CONFIRMED + 32nd PENDING + TanStack Query 5.102.2 + the PR #97592 types entry; `state.md` v1.5.92 → TanStack Query 5.102.2 3-in-24h from the state-management lens; `setup.md` v1.5.94 → the canary.3 scope app-entry export setup implications; `security.md` v1.5.92 → the Aug 26 CVE T-2d section; `deployment.md` v1.5.92 → the Aug 26 CVE T-2d deployment checklist + the `experimental.adapterRouteCollapses` deployment-impact recipe

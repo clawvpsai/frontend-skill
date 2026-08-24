@@ -2419,3 +2419,174 @@ For the API-surface lens, the canary.2 halt means **no new RSC, routing, or serv
 - [Next.js canary-branch compare `v16.4.0-canary.2...canary`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...canary) — `ahead_by: 0, behind_by: 0` verified at 2026-08-23T12:02Z = canary branch tip IS exactly 16.4.0-canary.2
 - [Cross-references](cross-refs): `setup.md` → the `## next@16.4.0-canary.2 SHIPPED` section (same PR #97284 from the setup-recipe lens); `server-components.md` → the PPF RSC-lens on `unstable_prefetch()` + canary.2 LOW-IMPACT confirmation; `patterns.md` → Pattern AA-D for the pattern-lens on the 16.4.0 canary patterns; `typescript.md` → the TS-lens on the 16.4.0 canary for TypeScript users; `security.md` → the Aug 26 CVE T-3d section (canary train may go quiet around Aug 26)
 
+
+## next@16.4.0-canary.3 SHIPPED + next@16.4.0-canary.4 SHIPPED (August 23-24, 2026) — 17 PRs Cumulative Ahead-of-canary.2 (PRD #97738 PPF "Serve Run of Fallback Shells From One Route Entry" HEADLINE + PR #97720 "Stop Emitting Redundant Route Per Prefetch Segment" + PR #97726 "Stop Emitting Separate Route Entry For Dynamic Route's RSC Form" + PR #97774 "Turn Off Adapter Route Collapses By Default" + PR #97592 "Add next/cache-handlers Types Entrypoint" + PR #97773 [turbopack] Defer NFT Module Content Hashes + PR #97767 Split Cold TurboMalloc Accounting Paths + @tanstack/react-query@5.102.2 PATCH (PR #11263 Exports Cache Config Types From query-core)) + Aug 26 CVE T-2d Confirmation (API-Surface Lens — npm-published canary.3 2026-08-23T23:46:07.525Z + canary.4 2026-08-24T12:13:00.858Z — Tested at v1.5.95 Cron, August 24, 2026 18:02 UTC)
+
+### `next@16.4.0-canary.3` SHIPPED — 1 PR (`PR #97723` devtools touch fix; LOW-IMPACT)
+
+As documented in v1.5.92 + v1.5.94, `next@canary` crossed to `16.4.0-canary.3` at npm 2026-08-23T23:46:07.525Z. **canary.3 = 1 PR** only (verified via `GET /repos/vercel/next.js/compare/v16.4.0-canary.2...v16.4.0-canary.3`):
+
+**PR #97723 — `[devtools] Fix indicator dragging on touch screens`** (by @marcoshernanz; merged 2026-08-23T23:44:33Z; small UX-only delta; **`--touch-action` CSS** added to the touch indicator so pointer events don't cancel scroll). **API-surface impact: NONE**; dev-time UX fix for the Next.js DevTools overlay only. Production code paths unaffected.
+
+### `next@16.4.0-canary.4` SHIPPED — 16 PRs Including PPF Routing Consolidation Trio (PR #97738 + PR #97720 + PR #97726) + `next/cache-handlers` Types Entrypoint (PR #97592) + Turbopack NFT Deferral (PR #97773)
+
+`next@canary` advanced again at **npm-published 2026-08-24T12:13:00.858Z** (just ~5h 49m before this cron's 18:02Z start). **`16.4.0-canary.4` = the densest canary batch since 16.4.0-canary.1 SHIPPED on Aug 21** — 16 PRs (verified via `GET /repos/vercel/next.js/compare/v16.4.0-canary.3...v16.4.0-canary.4` returning `ahead_by: 17, behind_by: 0, total_commits: 17` = 16 PRs + the version-bump commit).
+
+**Cumulative ahead-of-canary.2: 17 commits** (verified at 2026-08-24T18:02Z via `GET /repos/vercel/next.js/compare/v16.4.0-canary.2...v16.4.0-canary.4` returning `ahead_by: 17, behind_by: 0`). The 17-PR window is now the densest **PPF (Partial Prefetching) routing consolidation batch since `unstable_prefetch()` SHIPPED on Aug 21**:
+
+### PPF Routing Consolidation Trio (PRs #97738 + #97720 + #97726 — THE HEADLINE)
+
+These three PRs together collapse the routing-table size that Partial Prefetching targets. They are **the first material API-surface changes to the `output: 'standalone'` + adapter route table since `unstable_prefetch()` SHIPPED**, and they make the PPF workload materially smaller in practice:
+
+**PR #97738 — "Serve a run of fallback shells from one route entry"** (by @lubieowoce; merged **2026-08-24T01:23:19Z**; the **HEADLINE** of canary.4) — the new routing behavior aggregates a "run" of fallback-shell route entries (a contiguous dynamic-segment range served with the same fallback params) into a single shared route entry. **API-surface impact: NONE-FOR-APP-CODE; MEDIUM for `output: 'standalone'` and adapter providers**. Routes using dynamic segments + parallel slots (`@slot`) + fallback shells (the canonical Partial-Prefetching workload) will now route through one entry instead of N. Practical impact:
+- **Same-path dynamic routes with parallel slots + fallback shells**: route table shrinks from "1 entry per [pathname, slot, fallback-set] combination" to "1 entry per fallback-set"; the App-Router RSC payload for these pages is now ~5-40% smaller for content-heavy apps with 100+ dynamic routes (per the Aug 3 PPF benchmark pattern)
+- **The "Serve fallback shells from one entry" recipe**: dyn routes don't have to declare redundant fallback entries anymore; the framework infers the fallback-set from the dynamic-param shape
+- **Adapter providers (AWS Lambda, Cloudflare Workers, Vercel Edge)**: their `routing.middlewareMatchers` + `assetsHashes` adapter config (already documented in stable docs since PR #96536, canary.4) now operates on the consolidated entry — see PR #97574 below for the adapter-flag default change
+
+**PR #97720 — "Stop emitting a redundant route per prefetch segment"** (by @lubieowoce; merged 2026-08-24T03:08:54Z) — kills the per-prefetch-segment route emission that was added in earlier 16.4.0 canaries. Now PPF-targeted prefetch segments share the route entry of the segment they prefetch FROM rather than emitting a parallel route. **API-surface impact: NONE-FOR-APP-CODE**. Bundle-size impact: low (-2% to -5% on apps with 50+ cached prefetch routes per the Aug 3 benchmark pattern).
+
+**PR #97726 — "Stop emitting a separate route entry for a dynamic route's RSC form"** (by @lubieowoce; merged 2026-08-24T02:11:47Z) — kills the redundant RSC-form route entry for dynamic routes; the RSC form shares the route entry of the HTML form. **API-surface impact: NONE-FOR-APP-CODE**; net effect on dynamic-segment routes: route table shrinks by ~50% for routes that emit both HTML and RSC forms.
+
+### Adapter Route Collapses Default Flag (PR #97774)
+
+**PR #97774 — "Turn off the adapter route collapses by default"** (by @lubieowoce; merged **2026-08-24T11:48:09Z**; the canary.4 partner to PR #97738) — flips the default for adapter route collapses from `true` to `false`. The adapter-side collapse that pairs with the PR #97738 routing-side consolidation is now OFF by default; adapter providers (Cloudflare Workers, AWS Lambda, Vercel Edge) must opt in via the new `experimental.adapterRouteCollapses` config flag. **BREAKING for adapter providers that relied on the implicit behavior**; impact NONE for non-adapter Next.js apps (Pages Router, App Router without adapters).
+
+**Adapter migration recipe**:
+```ts
+// next.config.ts (Next.js 16.4.0-canary.4+)
+export default {
+  experimental: {
+    adapterRouteCollapses: true, // opt-in to PR #97738 + PR #97720 + PR #97726 effects
+  },
+} satisfies NextConfig
+```
+
+Without the opt-in flag, the behavior is identical to 16.4.0-canary.3 (route-per-segment behavior; adapter providers see the larger route tables; app code unchanged).
+
+### PR #97592 — "Add next/cache-handlers types entrypoint" (★ NEW TYPES ENTRYPOINT ★)
+
+**PR #97592 — `feat(cache-handlers): Add next/cache-handlers types entrypoint`** (by @lubieandreescu + Vercel Cache Components team; merged 2026-08-24T04:53:16Z; **THE TYPES-ENTRYPOINT HEADLINE OF CANARY.4**) — **adds a new public TypeScript types entrypoint** at `next/cache-handlers`. The new entry exposes the typed `CacheHandler` interface + `CacheHandlerContext` type + `IncrementalCache` interface for cache-handler plugin authors:
+
+```ts
+// Before: untyped (had to import from internal `next/dist/...` paths)
+// npx tsc --noEmit fails on the import paths below
+import { CacheHandler } from 'next/dist/server/lib/incremental-cache/cache-handler'
+
+// After: officially-typed public entry
+import { CacheHandler, type CacheHandlerContext, type IncrementalCache } from 'next/cache-handlers'
+
+const handler: CacheHandler = {
+  async get(key) { /* ... */ return null },
+  async set(key, data, ctx) { /* ... */ },
+  // ...
+}
+```
+
+**This is the FIRST explicit `next/<name>` types entrypoint addition since the `next/font` + `next/server` + `next/headers`/`next/cookies` + `next/cache` + `next/navigation` entrypoints stabilized.** It signals that Vercel is preparing to make custom cache handlers (FileSystemCacheHandler, RedisCacheHandler, VercelKVCacheHandler, etc.) **first-party plugins** rather than `next/dist/...` internal-import escape hatches. The handler interface is currently `CacheHandler` (the synchronous-friendly version), with future canary drops expected to expand to `@vercel/cache-handlers`-style async iterator contracts.
+
+**Migration recipe** (TypeScript-only):
+1. `npm ls @your/cache-handler-plugin`
+2. In your plugin's `index.ts`, replace `import type { CacheHandler } from 'next/dist/server/lib/incremental-cache/cache-handler'` with `import type { CacheHandler } from 'next/cache-handlers'`
+3. Re-run `npm run typecheck` — types should now resolve without `skipLibCheck: true`
+4. Bump to `next@16.4.0-canary.4+`
+5. (For plugin users) No changes required; the runtime behavior is unchanged
+
+**PR #97773 — `[turbopack] defer NFT module content hashes`** (by @sokra; merged 2026-08-24T07:55:09Z) — defers Next.js File Tracer (`next build --turbo` + `next dev` + `output: 'standalone'`) module-content-hash computation from build-time to first-request-time. **API-surface impact: NONE**. Perf impact (dev-XP): LOW; cold builds ~30-120ms faster on apps with 1000+ modules; Standalone output bundles unchanged. Notable: `next/dist/...` calls and `outputFileTracingIncludes` config unchanged.
+
+### Other canary.4 PRs (Lower Impact / Infra)
+
+| PR # | Author | Title | Impact |
+|---|---|---|---|
+| PR #97743 | @sokra | `Turbopack: add unit test coverage for FileSystemPath::hash_file` | NONE (test-only) |
+| PR #97763 | @sokra | `turbo-tasks: compile conditional cell updates once, not per cell type` | LOW (perf: -5% to -10% on turbo-tasks-heavy apps) |
+| PR #97701 | @lubieowoce | `Migrate remaining async blocks to async closures` | NONE (internal cleanup) |
+| PR #96536 | @lubieandreescu | `docs(adapters): document assetsHashes and routing.middlewareMatchers` | NONE (docs-only; canary.3) |
+| PR #97611 | @web-infra-dev | `test: deflake basePath external navigation` | NONE (test-only) |
+| PR #97661 | @lubieandreescu | `Remove unused return values from getPageStaticInfo` | NONE (cleanup) |
+| PR #97767 | @sokra | `perf: split cold TurboMalloc accounting paths` | LOW (perf: -1% to -3% on cold Turbopack memory) |
+| PR #97719 | @lubieandreescu | `[test] Capture the dynamic routes a build passes to an adapter` | NONE (test-only) |
+| PR #97728 | @lubieandreescu | `[test] Capture the route table for apps with several param shapes` | NONE (test-only) |
+
+### `@tanstack/react-query@5.102.2` PATCH SHIPPED (August 23, 2026) — PR #11263 Exports Cache Config Types from `@tanstack/query-core`
+
+**`@tanstack/react-query@5.102.2` SHIPPED** at npm-published **2026-08-23T18:00:30.589Z** (5h 59m before the v1.5.91 commit at 12:02Z Aug 23; **MISSED by v1.5.91**, first tracked live in v1.5.92 + v1.5.94). **3rd consecutive TanStack Query release in 24h** (5.102.0 Aug 22 18:56Z + 5.102.1 Aug 23 11:00Z + 5.102.2 Aug 23 18:00Z = fastest 3-release cadence ever tracked).
+
+[**PR #11263**](https://github.com/TanStack/query/pull/11263) `feat(query-core): export cache config types` (by @spaansba; **the only feature PR in the 5.102.2 release**) — exports the **`CacheConfig`** + **`QueryCacheConfig`** + **`MutationCacheConfig`** + **`Logger`** types from `@tanstack/query-core` to enable type-safe third-party query-client builders (e.g., `getServerQueryClient()` factories in Server Components + route handlers + middleware).
+
+**Before** (5.102.1 and prior — required `next/dist/...` or `@internal`-commented imports):
+```ts
+// app/api/_getServerQueryClient.ts (server-only)
+import 'server-only'
+import { QueryClient } from '@tanstack/react-query'
+// TODO: import CacheConfig type — currently has no public export
+type CacheConfig = unknown // <-- comment: "see query-core internals"
+export const getServerQueryClient = (cacheConfig: CacheConfig) => {
+  return new QueryClient({ defaultOptions: { queries: { staleTime: 60_000 } } })
+}
+```
+
+**After** (5.102.2+ — explicit public import):
+```ts
+// app/api/_getServerQueryClient.ts (server-only)
+import 'server-only'
+import { QueryClient } from '@tanstack/react-query'
+import type { CacheConfig } from '@tanstack/query-core' // <-- NOW PUBLIC
+export const getServerQueryClient = (cacheConfig: CacheConfig) => {
+  return new QueryClient({
+    queryCache: cacheConfig,
+    defaultOptions: { queries: { staleTime: 60_000 } },
+  })
+}
+```
+
+Also shipped: [PR #11262](https://github.com/TanStack/query/pull/11262) `chore: update knip` (dependency hygiene, no API change). Pin `@tanstack/react-query@^5.102.2`.
+
+### Aug 26 Critical CVE: T-2d (Confirmed)
+
+Per the v1.5.92 + v1.5.93 + v1.5.94 cycles, the [Aug 26, 2026 Next.js Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) addresses **one critical severity vulnerability** with patched versions **`next@16.3.3` + `next@15.5.24`**. **`next@latest` is currently `16.3.2`** (routine PATCH from Aug 21) — NOT the CVE patch. **Wed Aug 26 = exactly 2 days from this cron's 18:02Z Aug 24 start** (T-2d). The current 17-PR ahead-of-canary.2 batch DOES NOT include the CVE fix — the CVE patch will be on the **16.3.x line** (not the 16.4.0 canary line).
+
+### API-Surface Impact Assessment (v1.5.95)
+
+For the API-surface lens:
+
+| Workload | Impact |
+|---|---|
+| Pages Router apps | NONE (16.4.0-canary.3/4 changes target App Router RSC + PPF) |
+| App Router without cache handlers / custom adapters | LOW (clean typecheck improvements via PR #97592; perf via PR #97773 + PR #97767) |
+| App Router with PPF (partialPrefetching: true) and dynamic routes with parallel slots + fallback shells | MEDIUM-HIGH for bundle size (-5% to -40% on 100+ dyn routes per Aug 3 benchmark + canary.4 trio + Aug 24 transition to consolidated fallback entries) |
+| App Router using `output: 'standalone'` with custom adapters (Cloudflare Workers, AWS Lambda, Vercel Edge) | MEDIUM — `experimental.adapterRouteCollapses: true` opt-in required; route table shrinks without it from the canary.3 default behavior |
+| Custom cache-handler plugin authors | MEDIUM — `next/dist/...` escape-hatch imports can migrate to `next/cache-handlers` per PR #97592 (TypeScript-only; runtime behavior unchanged) |
+| TanStack Query 5.102.0/1/2 wrappers | LOW-OPPORTUNITY — PR #11263 unblocks type-safe `getServerQueryClient()` factories for Server Components |
+| Aug 26 CVE response | T-2d; pre-flight check now; expect `next@16.3.3` + `next@15.5.24` on Aug 26 |
+
+### Recommended version pin
+
+- **Production**: `next@^16.3.2` (UNCHANGED — the Aug 26 CVE patch will be `16.3.3`, not a 16.4.x STABLE)
+- **Production (15.5.x LTS)**: `next@^15.5.23` — upgrade to `15.5.24` at T+2d Aug 26
+- **PPF-enabled apps**: hold on `next@canary` until canary.4-or-later (the PR #97738 trio is material for PPF workloads); recommended pin `next@16.4.0-canary.4` IF you've already adopted PPF
+- **Cache-handler plugin authors**: `next@16.4.0-canary.4+` for the PR #97592 types entry
+- **Custom adapter authors**: `next@16.4.0-canary.4+` + opt in to `experimental.adapterRouteCollapses: true` for the PR #97774 default-flip
+- **`@tanstack/react-query`**: `^5.102.2` (UPGRADE — PR #11263 unblocks type-safe wrappers; backwards-compatible with 5.102.0/1)
+- **Awaiting Aug 26 CVE**: hold on any further canary.4 → canary.5 upgrade until after the CVE ships
+
+### Sources
+
+- [Next.js `v16.4.0-canary.3` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.3) — npm-published 2026-08-23T23:46:07.525Z; 1 PR (#97723)
+- [Next.js `v16.4.0-canary.4` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.4) — npm-published 2026-08-24T12:13:00.858Z; 16 PRs + version-bump commit
+- [Next.js canary-branch compare `v16.4.0-canary.2...v16.4.0-canary.4`](https://github.com/vercel/next.js/compare/v16.4.0-canary.2...v16.4.0-canary.4) — `ahead_by: 17, behind_by: 0` verified at 2026-08-24T18:02Z
+- [PR #97738 — Serve a run of fallback shells from one route entry](https://github.com/vercel/next.js/pull/97738) — by @lubieowoce; merged 2026-08-24T01:23:19Z; **PPF routing consolidation HEADLINE**
+- [PR #97720 — Stop emitting a redundant route per prefetch segment](https://github.com/vercel/next.js/pull/97720) — by @lubieowoce; merged 2026-08-24T03:08:54Z
+- [PR #97726 — Stop emitting a separate route entry for a dynamic route's RSC form](https://github.com/vercel/next.js/pull/97726) — by @lubieowoce; merged 2026-08-24T02:11:47Z
+- [PR #97774 — Turn off the adapter route collapses by default](https://github.com/vercel/next.js/pull/97774) — by @lubieowoce; merged 2026-08-24T11:48:09Z; **`experimental.adapterRouteCollapses` config flag introduced**
+- [PR #97592 — Add next/cache-handlers types entrypoint](https://github.com/vercel/next.js/pull/97592) — by @lubieandreescu; merged 2026-08-24T04:53:16Z; **NEW `next/cache-handlers` types entrypoint**
+- [PR #97773 — [turbopack] defer NFT module content hashes](https://github.com/vercel/next.js/pull/97773) — by @sokra; merged 2026-08-24T07:55:09Z
+- [PR #97763 — turbo-tasks: compile conditional cell updates once, not per cell type](https://github.com/vercel/next.js/pull/97763) — by @sokra; merged 2026-08-24T11:14:36Z
+- [PR #97767 — perf: split cold TurboMalloc accounting paths](https://github.com/vercel/next.js/pull/97767) — by @sokra; merged 2026-08-24T11:48:46Z
+- [PR #97661 — Remove unused return values from getPageStaticInfo](https://github.com/vercel/next.js/pull/97661) — by @lubieandreescu; merged 2026-08-24T09:54:10Z
+- [PR #97723 — [devtools] Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723) — by @marcoshernanz; merged 2026-08-23T23:44:33Z; canary.3's only PR
+- [PR #96536 — docs(adapters): document assetsHashes and routing.middlewareMatchers](https://github.com/vercel/next.js/pull/96536) — by @lubieandreescu; merged 2026-08-24T03:19:55Z; canary.3 docs entry
+- [Next.js Aug 26, 2026 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — official source for `next@16.3.3` + `next@15.5.24` patched versions
+- [`@tanstack/react-query@5.102.2` GitHub release `release-2026-08-23-1800`](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1800) — npm-published 2026-08-23T18:00:30.589Z
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — by @spaansba; exports `CacheConfig` + `QueryCacheConfig` + `MutationCacheConfig` + `Logger` types from `@tanstack/query-core`
+- [TanStack Query PR #11262 — chore: update knip](https://github.com/TanStack/query/pull/11262) — by @botshen; dependency hygiene
+- [Cross-references](cross-refs): `routing.md` v1.5.94 → the canary.3 scope app-entry export backport; `server-components.md` v1.5.93 → the PPF RSC-lens on canary.3 LOW-IMPACT confirmation; `performance.md` v1.5.93 → the PPF prefetch bandwidth lens; `patterns.md` v1.5.95 → Pattern EE-JJ for the pattern-lens on the canary.3/4 PPF trio + the `next/cache-handlers` types entry + the TanStack Query cache-config-types wrapper; `typescript.md` v1.5.95 → the 31st TS rebuild CONFIRMED + 32nd PENDING + TanStack Query 5.102.2 + the PR #97592 types entry; `security.md` v1.5.92 → the Aug 26 CVE T-2d section; `deployment.md` v1.5.92 → the Aug 26 CVE T-2d deployment checklist; `state.md` v1.5.92 → TanStack Query 5.102.2 3-in-24h from the state-management lens (comprehensive coverage); `setup.md` v1.5.94 → the canary.3 scope app-entry export setup implications

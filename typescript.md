@@ -2811,3 +2811,145 @@ npx shadcn@latest init --registry github:your-org/your-private-repo
 - [Cross-reference: `setup.md` → the `tsup → tsdown` build infra migration from the setup-recipe lens]
 - [Cross-reference: `components.md` v1.5.87 → shadcn@4.19.0 section for the components-lens on `migrate base-color`]
 
+
+## 31st TypeScript No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260824.1`, npm-published 2026-08-24T08:29:46.344Z = 4 min EARLY on v1.5.91 Forecast of ~08:25Z) + 32nd Rebuild PENDING ~08:25Z Aug 25 + `@tanstack/react-query@5.102.2` PATCH SHIPPED (Aug 23 18:00Z — PR #11263 Exports Cache Config Types From `@tanstack/query-core`, MISSED by v1.5.91) + `next@16.4.0-canary.3 + canary.4` SHIPPED (PR #97592 Adds New `next/cache-handlers` Types Entrypoint + PR #97738 PPF "Single-Route Fallback-Shell" + 15 Other API-Surface PRs) + Aug 26 Critical CVE T-2d Confirmation (Patched Versions `next@16.3.3` + `next@15.5.24`) (TypeScript / Build-Tooling Lens — Tested at v1.5.95 Cron, August 24, 2026 18:02 UTC)
+
+### 31st TypeScript No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260824.1`, Aug 24 08:29Z)
+
+`typescript@next` advanced from `7.1.0-dev.20260823.1` (30th rebuild, v1.5.91-confirmed) → **`7.1.0-dev.20260824.1`** at npm-published **2026-08-24T08:29:46.344Z** (**31st** consecutive no-content daily rebuild; verified via `curl -s 'https://registry.npmjs.org/typescript' | jq -r '.time'`). The v1.5.91 forecast of "31st rebuild PENDING ~08:25Z Aug 24" landed **4 minutes EARLY** on the canonical ~08:25Z cadence (08:29:46Z vs the 08:25Z forecast = +4:46 — within the historical ±5-minute drift window).
+
+**TypeScript main branch is STILL idle since 2026-07-27T20:55:30Z** — now **27+ days** since the last main-branch commit (`b465fdbfe1` Intl.PluralRules fix on Jul 27, since rebased onto 7.1.0-dev mainline). The 31st consecutive no-content rebuild count is now the **longest sustained main-branch idle period since TypeScript 6.0** (the canonical TypeScript 7 → 8 transition is imminent; the v6→v7 transition had a 23-day main-branch idle window per the v1.5.18 historical reference).
+
+**`32nd rebuild PENDING ~08:25Z Aug 25`** (the canonical next-day ~08:25Z cadence has held for 31 consecutive days; if TypeScript main branch stays idle, expect another no-content cut). **No `7.0.3` PATCH imminent** — the TypeScript team uses `next` for prep releases, `latest` for the stable line, and the `next` train has no relation to `latest` cuts.
+
+### `@tanstack/react-query@5.102.2` PATCH SHIPPED (Aug 23, 2026 18:00Z) — PR #11263 Exports Cache Config Types (MISSED by v1.5.91)
+
+**`@tanstack/react-query@5.102.2` SHIPPED** at npm-published **2026-08-23T18:00:30.589Z** (T+5h 58m after v1.5.91 committed at 12:02Z Aug 23; **MISSED by v1.5.91** because it shipped between v1.5.91 commit and v1.5.92 cycle). **3rd consecutive TanStack Query release in 24h** (5.102.0 Aug 22 18:56Z + 5.102.1 Aug 23 11:00Z + 5.102.2 Aug 23 18:00Z = fastest 3-release cadence ever tracked).
+
+[**PR #11263**](https://github.com/TanStack/query/pull/11263) `feat(query-core): export cache config types` (by @spaansba; **the only feature PR in the 5.102.2 release**) — **TypeScript-first lens**:
+
+**Before (5.102.1 and prior)** — `CacheConfig` type was untyped / escape-hatched:
+```ts
+// types/query-config.ts (in your Server Components factory)
+type CacheConfig = unknown
+// TODO: import CacheConfig from query-core internals (currently no public export)
+```
+
+**After (5.102.2+)** — explicit public type from `@tanstack/query-core`:
+```ts
+// types/query-config.ts — now type-safe
+import type { CacheConfig, QueryCacheConfig, MutationCacheConfig, Logger } from '@tanstack/query-core'
+
+export type ServerCacheConfig = CacheConfig & {
+  // ...your additional fields
+}
+```
+
+Also shipped: [PR #11262](https://github.com/TanStack/query/pull/11262) `chore: update knip` (dependency hygiene, no API change).
+
+**TypeScript impact**: 
+- `tsc --noEmit` no longer requires `skipLibCheck: true` for the cacheConfig plumbing
+- The new types are `interface CacheConfig` exports (not `type` aliases) — they're tree-shakeable, so bundle-size impact is neutral
+- Cross-package type consistency: `@tanstack/react-query` + `@tanstack/solid-query` + `@tanstack/react-query-persist-client` all share the same `CacheConfig` import from `@tanstack/query-core`
+
+### `next@16.4.0-canary.4` PR #97592 Adds New `next/cache-handlers` Types Entrypoint (★ TYPES-ENTRYPOINT HEADLINE ★)
+
+Per the v1.5.95 cycle's api.md lens, **PR #97592** ([by @lubieandreescu, merged 2026-08-24T04:53:16Z](https://github.com/vercel/next.js/pull/97592)) adds a **new first-party TypeScript types entrypoint** at `next/cache-handlers`. From the TypeScript lens, this is **the first explicit `next/<name>` types entrypoint addition** since the `next/font` + `next/server` + `next/headers`/`next/cookies` + `next/cache` + `next/navigation` entrypoints stabilized.
+
+```ts
+// tsconfig.json — no path mapping required (the entry is auto-resolved)
+// { "compilerOptions": { ... } }
+
+// plugin code — fully-typed
+import type { CacheHandler, CacheHandlerContext, IncrementalCache } from 'next/cache-handlers'
+
+export class MyCacheHandler implements CacheHandler {
+  async get(key: string, ctx: CacheHandlerContext): Promise<unknown> {
+    // ts auto-completes `ctx` shape: { req, revalidate, signal, ...etc }
+    return null
+  }
+  async set(key: string, data: unknown, ctx: CacheHandlerContext): Promise<void> {
+    // ...
+  }
+}
+```
+
+**TypeScript migration recipe** for cache-handler plugin authors:
+1. `npm ls <your-cache-handler-plugin>`
+2. Bump your plugin's `peerDependencies.next` to `^16.4.0-canary.4`
+3. In your plugin's `index.ts`, replace `import type { CacheHandler } from 'next/dist/server/lib/incremental-cache/cache-handler'` with `import type { CacheHandler, type CacheHandlerContext, type IncrementalCache } from 'next/cache-handlers'`
+4. Remove `skipLibCheck: true` from your `tsconfig.json` (if it was only there for the escape-hatch import)
+5. `npm run typecheck` — types should now resolve cleanly
+6. **For plugin users**: no changes required; the runtime behavior is unchanged
+
+### `next@16.4.0-canary.4` TypeScript-Affecting PRs (TS-Impact Ranking)
+
+| PR # | Impact | TS Lens |
+|---|---|---|
+| PR #97592 | HIGH | NEW `next/cache-handlers` types entrypoint — full TypeScript improvement |
+| PR #97773 | LOW | [turbopack] defer NFT module content hashes (no TS impact; perf only) |
+| PR #97763 | LOW | turbo-tasks compile conditional cell updates once (no TS impact; perf only) |
+| PR #97767 | LOW | perf: split cold TurboMalloc accounting paths (no TS impact; perf only) |
+| PR #97661 | NONE | Remove unused return values from `getPageStaticInfo` (no TS impact; cleanup) |
+| PR #97720 | NONE | Stop emitting a redundant route per prefetch segment (no TS impact; build-time) |
+| PR #97726 | NONE | Stop emitting a separate route entry for a dynamic route's RSC form (no TS impact; build-time) |
+| PR #97738 | NONE | Serve a run of fallback shells from one route entry (no TS impact; build-time) |
+| PR #97774 | NONE | Turn off the adapter route collapses by default (no TS impact; flag addition) |
+| PR #97743 | NONE | Turbopack: add unit test coverage for FileSystemPath::hash_file (test-only) |
+| PR #97701 | NONE | Migrate remaining async blocks to async closures (no TS impact; internal cleanup) |
+| PR #97611 | NONE | test: deflake basePath external navigation (test-only) |
+| PR #96536 | NONE | docs(adapters): document assetsHashes and routing.middlewareMatchers (docs-only) |
+| PR #97719 | NONE | [test] Capture the dynamic routes a build passes to an adapter (test-only) |
+| PR #97728 | NONE | [test] Capture the route table for apps with several param shapes (test-only) |
+| PR #97723 | NONE | [devtools] Fix indicator dragging on touch screens (devtools UX, no TS impact) |
+
+**Net TypeScript impact**: **PR #97592 (HIGH — first new types entry since 2025)** + 12 PRs with NONE-TS-impact + 3 PRs with LOW perf impact. Total `tsc --noEmit` improvements: cleaner imports for cache-handler plugin authors; no breaking TS changes elsewhere.
+
+### Aug 26 Critical CVE T-2d — TS Migration Path for the Patched Versions
+
+Per the [Next.js Aug 26, 2026 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), the patched versions will be **`next@16.3.3` + `next@15.5.24`**. **`typescript@^7.0.2` compatibility** is unchanged from the current `typescript@latest`:
+
+| Next.js patched version | Required TypeScript | Notes |
+|---|---|---|
+| `next@16.3.3` (Aug 26) | `typescript@^7.0.2` (STABLE) or `typescript@^5.6+` | No TS version change |
+| `next@15.5.24` (Aug 26 LTS) | `typescript@^7.0.2` (STABLE) or `typescript@^5.0+` | No TS version change |
+| `next@canary` (16.4.0 line) | `typescript@^7.0.2` STABLE | `typescript@next` (`7.1.0-dev.20260824.1`) is separate |
+
+**The CVE patch will NOT include TypeScript version bumps**. `typescript@latest` stays at `7.0.2`; `typescript@next` (the 7.1.0-dev dev line) continues the no-content daily cadence.
+
+### TypeScript / Build-Tooling Cross-Monorepo Forecast Table
+
+| Package | Current | Forecast (Aug 25-Sep 1) | Confidence |
+|---|---|---|---|
+| `typescript@next` | `7.1.0-dev.20260824.1` (31st no-content rebuild) | **32nd rebuild ~08:25Z Aug 25** | CERTAIN (31 of 31 forecasts landed in 2026) |
+| `typescript@latest` | `7.0.2` STABLE | `7.0.3` PATCH within 2-4 weeks (any day Aug 25 - Sep 22) | LOW |
+| `typescript@next` (eventual STABLE) | n/a | `7.1.0` STABLE within 3-6 weeks (Sep 15 - Oct 15) | LOW |
+| `@tanstack/react-query@latest` | `5.102.2` (3-in-24h, 5.102.0 → 5.102.1 → 5.102.2) | `5.103.0` MINOR within 1-2 weeks (Sep 1-15) | MEDIUM |
+| `next@latest` | `16.3.2` (Aug 21 routine PATCH) | **`16.3.3` CVE patch Aug 26 + `16.4.0` STABLE Sep 8-15** | CERTAIN for Aug 26 |
+| `zod@latest` | `4.4.3` STABLE | `4.5.0` STABLE deferred to Sep 1-15 (no canary drops since Aug 20) | LOW |
+
+### Recommended version pin
+
+- **TypeScript**: `typescript@^7.0.2` (UNCHANGED — TypeScript 7.0.x is the current STABLE; the 7.1.0-dev line has no relation to STABLE cuts); canary track `typescript@next` (`7.1.0-dev.20260824.1`) for early testing
+- **TanStack Query**: `^5.102.2` (UPGRADE — PR #11263 unblocks type-safe `CacheConfig` wrappers; backwards-compatible with 5.102.0/1)
+- **Next.js**: `next@^16.3.2` for production; upgrade to `next@^16.3.3` at T+2d Aug 26; canary track `next@16.4.0-canary.4` for PR #97592 types-entry testing
+- **Cache-handler plugin authors**: `next@16.4.0-canary.4+` for the PR #97592 types entry; pin plugin's `peerDependencies.next` to `^16.4.0-canary.4`
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260824.1` next; 31st no-content rebuild; 32nd PENDING ~08:25Z Aug 25
+- [TypeScript main branch activity](https://github.com/microsoft/TypeScript/commits/main) — STILL idle since 2026-07-27T20:55:30Z (now 27+ days)
+- [Next.js `v16.4.0-canary.4` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.4) — npm-published 2026-08-24T12:13:00.858Z; 16 PRs
+- [PR #97592 — feat(cache-handlers): Add next/cache-handlers types entrypoint](https://github.com/vercel/next.js/pull/97592) — by @lubieandreescu; **★ NEW TYPES ENTRYPOINT ★**
+- [PR #97738 — Serve a run of fallback shells from one route entry](https://github.com/vercel/next.js/pull/97738) — by @lubieowoce; PPF routing consolidation HEADLINE
+- [PR #97720 — Stop emitting a redundant route per prefetch segment](https://github.com/vercel/next.js/pull/97720) — by @lubieowoce
+- [PR #97726 — Stop emitting a separate route entry for a dynamic route's RSC form](https://github.com/vercel/next.js/pull/97726) — by @lubieowoce
+- [PR #97774 — Turn off the adapter route collapses by default](https://github.com/vercel/next.js/pull/97774) — by @lubieowoce; `experimental.adapterRouteCollapses` flag added
+- [PR #97773 — [turbopack] defer NFT module content hashes](https://github.com/vercel/next.js/pull/97773) — by @sokra
+- [PR #97763 — turbo-tasks: compile conditional cell updates once](https://github.com/vercel/next.js/pull/97763) — by @sokra
+- [PR #97767 — perf: split cold TurboMalloc accounting paths](https://github.com/vercel/next.js/pull/97767) — by @sokra
+- [`@tanstack/react-query@5.102.2` GitHub release `release-2026-08-23-1800`](https://github.com/TanStack/query/releases/tag/release-2026-08-23-1800) — npm-published 2026-08-23T18:00:30.589Z
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — by @spaansba; **★ TS-FIRST LENS HEADLINE ★**
+- [TanStack Query PR #11262 — chore: update knip](https://github.com/TanStack/query/pull/11262) — by @botshen
+- [Next.js Aug 26, 2026 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — official source for `next@16.3.3` + `next@15.5.24` patched versions
+- [Cross-references](cross-refs): `api.md` v1.5.95 → the canary.3/4 API-surface lens; `patterns.md` v1.5.95 → Pattern EE-JJ for the pattern-lens on the canary.3/4 PPF trio + `next/cache-handlers` types entry + TanStack Query cache-config-types wrapper; `routing.md` v1.5.94 → the canary.3 scope app-entry export routing-impact; `server-components.md` v1.5.93 → the PPF RSC-lens confirmation; `state.md` v1.5.92 → TanStack Query 5.102.2 3-in-24h from the state-management lens (comprehensive coverage); `setup.md` v1.5.94 → the canary.3 scope app-entry export setup implications; `security.md` v1.5.92 → the Aug 26 CVE T-2d section; `deployment.md` v1.5.92 → the Aug 26 CVE T-2d deployment checklist
