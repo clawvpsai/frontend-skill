@@ -6213,3 +6213,70 @@ rg "experimental_useCache|cacheComponents|use cache" app/ --type tsx | wc -l
 - [MDN: Network Information API — navigator.connection](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API) — effectiveType + downlink for conditional prefetch
 - Cross-reference: `performance.md` v1.5.89 — the prior PPF perf-lens section (still authoritative for `unstable_navigation()` + `unstable_prefetch()` API)
 - Cross-reference: `server-components.md` v1.5.90 — the RSC-surface PPF codemod section (just added above)
+
+## Aug 26 Critical CVE: T-2d + `next@16.4.0-canary.3` LOW-IMPACT + `@tanstack/react-query@5.102.2` Cache-Config-Types Export + 3-in-24h TanStack Query Cadence (August 24, 2026 — v1.5.93 Cycle — Performance Lens)
+
+### Aug 26 Critical CVE: T-2d (2 Days Away) — Pre-CVE Audit Recipe Refreshed
+
+Per the [Aug 20 official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), Aug 26 = Wed Aug 26 = **2 days from this cron's 06:02Z Aug 24 start** (this is **T-2d**, was T-3d in the v1.5.90 cycle 24h ago). The critical CVE patched versions remain **`next@16.3.3` + `next@15.5.24`** per the official source.
+
+> **3rd-party misinformation callout** (from security.md + deployment.md v1.5.92): Kilat Labs and daily.dev incorrectly report "16.3.2 and 15.5.24" as the Aug 26 CVE patched versions. The official nextjs.org source is unambiguous: "**We plan to publish `16.3.3` and 15.5.24**." `next@16.3.2` shipped Aug 21 as a routine backport and is **NOT** the CVE patch.
+
+**Performance-implication: HIGH** — a critical CVE in a framework with Partial Prefetching + Turbopack + Cache Components could affect request-volume or memory-leak surfaces. Pin `next@^16.3.3` (or `next@^15.5.24`) on Aug 26 morning.
+
+**Updated Pre-CVE audit recipe (T-2d refresh):**
+
+```bash
+# Check current Next.js version
+npm ls next
+
+# Audit the perf-critical surfaces
+rg "experimental_useCache|cacheComponents|use cache" app/ --type tsx | wc -l
+rg "unstable_prefetch|unstable_navigation" app/ --type tsx | wc -l
+rg "revalidateTag|revalidatePath" app/ --type tsx | wc -l
+
+# Check Turbopack vs Webpack ratio in build output
+rg "Turbopack|webpack" .next/build-manifest.json 2>/dev/null
+
+# Schedule upgrade for Aug 26
+# npm install next@latest  # at T+0h on Wed Aug 26
+```
+
+### `next@16.4.0-canary.3` SHIPPED — 1 PR Devtools (LOW-IMPACT for Perf)
+
+Per the v1.5.92 cycle, `next@16.4.0-canary.3` npm-published 2026-08-23T23:46:47Z. The only PR is [PR #97723](https://github.com/vercel/next.js/pull/97723) `devtools: Fix indicator dragging on touch screens` (marcoshernanz).
+
+**Performance-impact: NONE** — devtime UX fix for the Next.js DevTools `<NavigationInspector>` indicator. No production runtime impact. No HMR change. The canary train resumed after the canary.2 12+ hour single-PR halt (longest since v1.5.82). No canary.4 yet as of this cron.
+
+### `@tanstack/react-query@5.102.2` SHIPPED — Perf-Lens: Cache Config + 3-in-24h Cadence
+
+Per the state.md v1.5.92 cycle, `@tanstack/react-query@5.102.2` SHIPPED 2026-08-23T18:00:46Z — the **3rd consecutive TanStack Query release in 24 hours** (5.102.0 STABLE MINOR at 2026-08-22T18:56Z + 5.102.1 PATCH at 2026-08-23T11:00Z + 5.102.2 FEATURE at 2026-08-23T18:00Z). This is the **fastest 3-release cadence the skill has ever tracked**.
+
+The performance-relevant changes across the 3 releases:
+
+1. **[5.102.0](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md)** (Aug 22 18:56Z) — the headline was `query()` + `infiniteQuery()` simplified query-method factory functions (PR #10658 by @DogPawHat, 1,893/+106 over 17 files; closes 3-year-old discussion #9135). **Perf-implication: NEUTRAL** — these are convenience wrappers; same internal perf characteristics as `useQuery({ queryKey, queryFn })`.
+2. **5.102.1** (Aug 23 11:00Z) — PATCH; the 35-PR MINOR bump excluded 5.101.5 PATCH entirely. **Perf-implication: NONE**.
+3. **5.102.2** (Aug 23 18:00Z) — [PR #11263](https://github.com/TanStack/query/pull/11263) `feat(query-core): export cache config types` (spaansba). Chore: PR #11262 `update knip`. **Perf-implication: NEUTRAL** — exports types from `@tanstack/query-core` for third-party type-safe query client builders; no runtime change. Pin `@tanstack/react-query@^5.102.2`.
+
+**Performance takeaway**: The TanStack team is in active `query-core` release mode — expect further cache-config-type exports + bundle-size optimizations in the next 1-2 weeks. Apps with custom `QueryClient` factories should audit their `defaultOptions.queries.staleTime` and `gcTime` settings against the new exported types to ensure consistency.
+
+### PPF `remove-partial-prefetch` Codemod + Adoption Skill (Unchanged from v1.5.90)
+
+The [`remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) codemod and the first-party [`next-partial-prefetching-adoption`](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) skill remain authoritative. The PPF memory benchmarks (192MB → 3MB for 50-route compile = 64x reduction; 12K → 1MB for lighter sites = 12x) remain the headline perf argument for adoption.
+
+### Sources
+
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js `next@16.4.0-canary.3` release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.3) — 1 PR #97723 devtools (LOW-IMPACT)
+- [Next.js PR #97723 — devtools: Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723) — canary.3 only-PR (LOW-IMPACT, no perf surface change)
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — 5.102.2 perf-neutral type export
+- [TanStack Query PR #10658 — feat: simplified query methods](https://github.com/TanStack/query/pull/10658) — 5.102.0 simplified query() + infiniteQuery()
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — T-2d (Aug 24, 2026; patched versions `16.3.3 + 15.5.24`)
+- [Next.js X: PPF memory benchmarks — 50-route comparison](https://x.com/nextjs/status/2084399942618263752) — Aug 3, 2026 announcement with real-world memory data (192MB → 3MB; 12K → 1MB)
+- [MDN: Network Information API — navigator.connection](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API) — effectiveType + downlink for conditional prefetch
+- Cross-reference: `performance.md` v1.5.90 — the prior PPF perf-lens section (still authoritative for `unstable_navigation()` + `unstable_prefetch()` API)
+- Cross-reference: `server-components.md` v1.5.93 — RSC-surface lens on the same material (just appended)
+- Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (newly authoritative with 3rd-party misinformation callout)
+- Cross-reference: `state.md` v1.5.92 — TanStack Query 5.102.2 3-in-24h + cache config types export (newly authoritative)

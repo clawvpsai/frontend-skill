@@ -2510,3 +2510,62 @@ npm ls @shadcn/react
 - [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)
 - [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)
 - [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)
+
+## Styling Idle Refresh #5 (August 24, 2026 — v1.5.93 Cycle — Styling Lens)
+
+**Status: tailwindcss insiders STILL frozen at `0.0.0-insiders.90f8ff4` (now 264h+ / 11+ days idle = 24h worse than v1.5.90's 240h+ measurement). `tailwindcss@latest` STILL `4.3.3` (now 39+ days since 2026-07-16 = 24h worse than v1.5.90's 38+ day measurement). shadcn ecosystem STILL idle (`shadcn@4.18.0` since 2026-08-13 = now 11+ days; `@shadcn/react@0.3.0` since 2026-08-05 = now 19+ days; `@shadcn/helpers@0.2.0` since 2026-08-11 = now 13+ days). No `4.3.4` STABLE. No new shadcn releases. No `<ViewTransition>` wrapper. No `next-themes` update.**
+
+| Metric | v1.5.84 (Aug 21 18:02Z) | v1.5.90 (Aug 23 06:02Z) | **v1.5.93 (Aug 24 06:02Z)** | Trend |
+|--------|-----------------------|------------------------|---------------------------|-------|
+| `tailwindcss@insiders` last cut | 168h+ | 240h+ / 10+ days | **264h+ / 11+ days** | ⏸ FROZEN |
+| `tailwindcss@latest` since `4.3.3` (Jul 16) | 36+ days | 38+ days | **39+ days** | ⏸ STALLED |
+| `shadcn@latest` since `4.18.0` (Aug 13) | 8+ days | 10+ days | **11+ days** | ⏸ IDLE |
+| `@shadcn/react@latest` since `0.3.0` (Aug 5) | 16+ days | 18+ days | **19+ days** | ⏸ IDLE |
+| `@shadcn/helpers@latest` since `0.2.0` (Aug 11) | 10+ days | 12+ days | **13+ days** | ⏸ IDLE |
+
+This is **the longest no-new-material stretch for styling since v1.5.0 baseline (Jun 19, 2026 = ~66+ days now)**. Every Tailwind insiders + shadcn + React transition metric is at-or-near its worst measurement window.
+
+### Why-This-Is-Fine Analysis
+
+- **`tailwindcss@4.3.3` maturity**: shipped Jul 16 with the [PR #20124](https://github.com/tailwindlabs/tailwindcss/pull/20124) CSS nesting fix; the 5+ since-shipped PRs ([PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20383) oxide WASM fallback + [PR #20417](https://github.com/tailwindlabs/tailwindcss/pull/20417) canonicalization + [PR #20420](https://github.com/tailwindlabs/tailwindcss/pull/20420) `supports-[selector]` spacing) have all landed in the `insiders` build (`0.0.0-insiders.90f8ff4`) — the next STABLE will batch them. Forecast unchanged: **`tailwindcss@4.3.4` STABLE within 2-4 weeks (Aug 25-Sep 8)** based on the v1.5.80 cycle.
+- **shadcn silence**: shadcn had a 10+-day idle in late July before the `4.17.0` → `4.18.0` rebase on Aug 13. The current 11+-day idle is unusual but not unprecedented. The next shadcn @latest cut is forecast for **Aug 27-Sep 10** depending on `class-variance-authority` + `@radix-ui/react-*` upstream cadence.
+- **`<ViewTransition>` wrapper**: shadcn still has not added a wrapper component for the Aug 18 React 19.2 `<ViewTransition>` integration. The pattern from [the Aug 18 blog post](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) requires `experimental.viewTransition: true` in `next.config.ts` + native React 19.2 `<ViewTransition>` (no shadcn abstraction). Forecast unchanged: **wrapper at `shadcn@4.19.0` or `@shadcn/react@0.4.0` within 2-3 weeks (Aug 27-Sep 5)**.
+
+### Aug 26 Critical CVE — Styling-Surface Impact: LOW
+
+The Aug 26 critical CVE pre-announce (T-2d at this cron's 06:02Z Aug 24 start; patched versions **`next@16.3.3 + next@15.5.24`**) does **not** target the styling layer. Tailwind + shadcn are independent of the CVE surface. **Styling-implication: NONE** — pin `tailwindcss@^4.3.3` + `shadcn@^4.18.0` regardless.
+
+### Styling Audit Recipe (Unchanged from v1.5.90)
+
+```bash
+# Check Tailwind insiders (if using)
+npm ls tailwindcss@insiders
+
+# Check shadcn versions
+npm ls shadcn
+npm ls @shadcn/react
+npm ls @shadcn/helpers
+
+# Check `experimental.viewTransition` flag (required for ViewTransition)
+rg "experimental.viewTransition" next.config.ts next.config.js next.config.mjs 2>/dev/null
+```
+
+### Common Mistakes
+
+- **Using `@tailwind base/components/utilities` in a v4 project:** v4 requires `@import "tailwindcss"`. The old directives cause a silent CSS failure.
+- **Using `@theme` with literal values where a CSS variable reference is correct:** `@theme` tokens should reference CSS variables (e.g., `@theme { --color-primary: var(--color-brand); }`) not hardcoded hex values.
+
+### Sources
+
+- [`tailwindcss@latest` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `4.3.3` unchanged since 2026-07-16T12:03:35Z; **39+ days** (was 38+ days 24h ago at v1.5.90)
+- [`tailwindcss@insiders` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `0.0.0-insiders.90f8ff4` unchanged since 2026-08-14T19:54:08Z; **0 new drops in 264h+ (11+ days) = longest sustained freeze since tracking began at v1.5.0 (June 19)**
+- [Tailwind v4.3 announcement](https://tailwindcss.com/blog/tailwindcss-v4-3) — scrollbar utilities, stacked/compound variants
+- [Tailwind CSS Releases](https://github.com/tailwindlabs/tailwindcss/releases) — `v4.3.3` is the latest @latest; no 4.3.4 release as of Aug 24
+- [Tailwind CSS EOL / Version Support](https://endoflife.date/tailwind-css) — `v4.3` released 2026-05-08; latest `4.3.3` shipped 2026-07-16
+- [shadcn/ui releases](https://github.com/shadcn-ui/ui/releases) — still `4.18.0` / `@shadcn/react@0.3.0` / `@shadcn/helpers@0.2.0`; no ViewTransition wrapper
+- [Aug 18 blog post — "Building App-like Experiences with Next.js 16.3"](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — `<ViewTransition>` integration; no shadcn wrapper yet
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — T-2d (Aug 24, 2026; patched versions `16.3.3 + 15.5.24`); styling-implication NONE
+- [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/setup.md)
+- [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/components.md)
+- [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/patterns.md)
+- [Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (Aug 23, 2026) section with 3rd-party misinformation callout (newly authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/security.md)

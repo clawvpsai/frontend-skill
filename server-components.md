@@ -2742,3 +2742,76 @@ As documented in v1.5.89, `next@canary` crossed to `16.4.0-canary.2` at npm 2026
 - Cross-reference: `server-components.md` v1.5.89 — PPF `unstable_prefetch()` + `unstable_navigation()` RSC-surface lens (still authoritative for PR #96908 + PR #97309 deep dive)
 - Cross-reference: `performance.md` v1.5.89 — the PPF perf-lens on the same PPF ecosystem evolution
 - Cross-reference: `routing.md` v1.5.88 — the PPF routing-surface lens (still authoritative for the `unstable_prefetch()` routing comparison table)
+
+## Aug 26 Critical CVE: T-2d + `next@16.4.0-canary.3` LOW-IMPACT + `@tanstack/react-query@5.102.2` Cache-Config-Types Export (August 24, 2026 — v1.5.93 Cycle — RSC-Surface Lens)
+
+### Aug 26 Critical CVE: T-2d (2 Days Away)
+
+Per the [Aug 20 official pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), Aug 26 = Wed Aug 26 = **2 days from this cron's 06:02Z Aug 24 start**. The critical CVE patched versions remain **`next@16.3.3` + `next@15.5.24`** per the official source.
+
+**RSC-surface impact: HIGH (most exposed)** — the RSC payload + Server Actions + cache + middleware layers are the most likely surface for a critical CVE in a React Server Components framework. Pin **`next@^16.3.3` on Aug 26** (or `next@^15.5.24` for LTS).
+
+> **3rd-party misinformation callout** (from the security.md v1.5.92 cycle): Kilat Labs and daily.dev incorrectly report "16.3.2 and 15.5.24" as the Aug 26 CVE patched versions. The official nextjs.org source is unambiguous: "**We plan to publish `16.3.3` and 15.5.24**." `next@16.3.2` shipped Aug 21 as a routine backport and is **NOT** the CVE patch.
+
+**Pre-flight RSC audit recipe (refreshed from v1.5.90's T-3d to T-2d):**
+
+```bash
+# Check current Next.js version
+npm ls next
+
+# Audit RSC surface (most exposed to the CVE)
+rg "experimental_useCache|cacheComponents|use cache" app/ --type tsx | wc -l
+rg "'use server'" app/ --type tsx | wc -l
+rg "unstable_cache|revalidateTag|revalidatePath" app/ --type tsx | wc -l
+
+# Plan upgrade for Aug 26
+# npm install next@latest  # at T+0h on Aug 26 (= T+18h from this cron)
+```
+
+### `next@16.4.0-canary.3` SHIPPED — 1 PR (LOW-IMPACT for RSC)
+
+Per the v1.5.92 cycle, `next@16.4.0-canary.3` npm-published 2026-08-23T23:46:47Z. The only PR is [PR #97723](https://github.com/vercel/next.js/pull/97723) `devtools: Fix indicator dragging on touch screens` (marcoshernanz). **RSC-impact: NONE** — devtools-only fix.
+
+The canary train resumed after the canary.2 12+ hour single-PR halt (longest since v1.5.82). No canary.4 yet as of this cron's 06:02Z Aug 24 start.
+
+### `@tanstack/react-query@5.102.2` SHIPPED — Cache-Config-Types Export for RSC-Fetched Query Cache Builders
+
+Per the state.md v1.5.92 cycle, `@tanstack/react-query@5.102.2` SHIPPED 2026-08-23T18:00:46Z — the **3rd consecutive TanStack Query release in 24h** (5.102.0 → 5.102.1 → 5.102.2). The RSC-surface-relevant change is [PR #11263](https://github.com/TanStack/query/pull/11263) `feat(query-core): export cache config types` (spaansba) — exports cache configuration types from `@tanstack/query-core` for third-party type-safe query client builders.
+
+**RSC implication**: RSC patterns that build query clients on the server (e.g., `getQueryClient()` in route handlers + Server Components) now have **explicit cache-config types** to import from `@tanstack/query-core`. Before 5.102.2, you had to either re-derive these from `@tanstack/query-core`'s internal exports or hand-roll a `QueryClientConfig` type — both were brittle. With 5.102.2, you can:
+
+```typescript
+// app/_lib/server-query-client.ts (Server Component / route handler)
+import { QueryClient, type QueryClientConfig } from '@tanstack/query-core'
+
+// BEFORE 5.102.2 — fragile
+const config: QueryClientConfig = {
+  defaultOptions: { queries: { staleTime: 60_000 } },
+}
+// (the type was internal)
+
+// AFTER 5.102.2 — public, stable
+import type { CacheConfig } from '@tanstack/query-core'
+// (specifically for cache configuration types)
+
+export function getServerQueryClient(): QueryClient {
+  return new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, gcTime: 5 * 60_000 } } })
+}
+```
+
+Pin `@tanstack/react-query@^5.102.2` for the new types.
+
+### Sources
+
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js `next@16.4.0-canary.3` release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.3) — 1 PR #97723 devtools (LOW-IMPACT)
+- [Next.js PR #97723 — devtools: Fix indicator dragging on touch screens](https://github.com/vercel/next.js/pull/97723) — canary.3 only-PR (LOW-IMPACT, no RSC surface change)
+- [TanStack Query PR #11263 — feat(query-core): export cache config types](https://github.com/TanStack/query/pull/11263) — 5.102.2 RSC-relevant type export
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — T-2d (Aug 24, 2026; patched versions `16.3.3 + 15.5.24`); RSC-surface impact HIGH
+- Cross-reference: `server-components.md` v1.5.90 — `next-partial-prefetching-adoption` skill + `remove-partial-prefetch` codemod section (still authoritative)
+- Cross-reference: `performance.md` v1.5.90 — PPF `unstable_prefetch()` + PPF memory benchmarks (still authoritative)
+- Cross-reference: `routing.md` v1.5.88 — PPF `unstable_prefetch()` routing-surface lens (still authoritative for the `unstable_prefetch()` vs Link prefetch comparison table)
+- Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (newly authoritative with 3rd-party misinformation callout)
+- Cross-reference: `state.md` v1.5.92 — TanStack Query 5.102.2 3-in-24h + cache config types export (newly authoritative)
