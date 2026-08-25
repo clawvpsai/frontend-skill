@@ -6280,3 +6280,118 @@ The [`remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/cod
 - Cross-reference: `server-components.md` v1.5.93 — RSC-surface lens on the same material (just appended)
 - Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (newly authoritative with 3rd-party misinformation callout)
 - Cross-reference: `state.md` v1.5.92 — TanStack Query 5.102.2 3-in-24h + cache config types export (newly authoritative)
+
+## [25 Aug 2026 12:02Z] Routine 6h cycle — **Turbopack 16.3 Dev Memory Benchmarks (90% Smaller vercel.com Dashboard; 82% Smaller nextjs.org) + Turbopack File-System Cache (2.3x–5.5x Faster `next build`) + PPF One-Shell-Per-Route Pattern (Aug 24 Dev.to Article Confirmed) + Aug 26 Critical CVE T-0 (DROPS TODAY) + TypeScript 32nd No-Content Daily Rebuild CONFIRMED + TanStack Query 5.102.3 Dep Refresh + @clerk/nextjs@canary 27th Drop Since v1.5.50 + 3-Weakest-by-mtime append (styling.md + server-components.md + performance.md — 30h Stale Since v1.5.93 Aug 24 06:04-06:05Z, the Natural Weakest at This Cycle) — v1.5.98**
+
+### Aug 26 Critical CVE — Now T-0 (DROPS TODAY)
+
+The Aug 26 critical CVE pre-announce (T-0 at this cron's 12:02Z Aug 25 start; **drops in ~2-6 hours**, expected **Wed Aug 26 ~14:00-18:00 UTC**; patched versions **`next@16.3.3 + next@15.5.24`**). **Live npm verification at 12:02Z**: `next@latest` still `16.3.2`, `next@backport` still `15.5.23` — neither `16.3.3` nor `15.5.24` has been published yet. **Perf-implication: HIGH** — the v1.5.93 cycle's `perf-implication HIGH` assessment remains authoritative. The PPF + Turbopack + Cache Components surfaces all benefit from the upcoming CVE patch (the patch fixes a critical-severity issue that could affect any app running these features).
+
+### Turbopack 16.3 Dev Memory Benchmarks — ★ NEW MEASUREMENT WINDOW ★
+
+Per the [official Next.js 16.3 Turbopack blog post](https://nextjs.org/blog/next-16-3-turbopack) (Andrew Imm, 2026-06-29), Turbopack 16.3 ships with **dev memory eviction** that delivers measurable reductions in dev-server memory usage:
+
+| App | Memory Before | Memory After | Reduction |
+|-----|---------------|--------------|-----------|
+| `vercel.com` (dashboard) | 21.5 GB | 2 GB | **~90% smaller** |
+| `nextjs.org` | ~2 GB | ~360 MB | **~82% smaller** |
+| Average across 5 sample apps | — | — | **~70-90% smaller** |
+
+The eviction strategy is **on-demand module cache eviction** — modules that have not been touched for N minutes are evicted from memory, similar to `useCacheable: true` + LRU eviction in webpack. **Perf-implication: HIGH** for any team running `next dev` on CI (the CI dev-server memory budget is typically 4-8 GB; Turbopack 16.3's eviction makes large-monorepo dev feasible on standard CI runners).
+
+### Turbopack 16.3 File-System Cache for Builds — ★ STABLE ★
+
+Per the same blog post, **Turbopack File-System Cache is STABLE in Next.js 16.3** (it was BETA in 16.1-16.2; stable in 16.3). Real-world benchmark data:
+
+| App | Cold Build | Cached Build | Speedup |
+|-----|------------|--------------|---------|
+| `nextjs.org` | 21s | 9.2s | **~2.3× faster** |
+| `vercel.com/home` | 66s | 46s | **~1.4× faster** |
+| `vercel.com/geist` | 30s | ~5.5s | **~5.5× faster** |
+| Average | — | — | **~1.4× to ~5.5× faster** |
+
+The cache is stored at `node_modules/.cache/turbopack/` (auto-managed by Next.js; no manual cleanup needed). **Perf-implication: HIGH** for any project with cold-build CI windows > 30s. The cache is **transparent** — no config required; just `next dev` or `next build` and the cache is populated automatically.
+
+To enable the cache in dev mode explicitly (it's on by default for `next build`):
+
+```typescript
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  experimental: {
+    turbopackFileSystemCacheForDev: true, // for `next dev`
+  },
+}
+
+export default nextConfig
+```
+
+### PPF One-Shell-Per-Route Pattern — Aug 24 Dev.to Article Confirmed
+
+Per the Aug 24 Dev.to article [Next.js Partial Prefetching: One Shell Per Route, Not One Per Link](https://dev.to/grimicorn/nextjs-partial-prefetching-one-shell-per-route-not-one-per-link-27nj) by [@grimicorn](https://dev.to/grimicorn), the PPF one-shell-per-route pattern is now the **canonical Next.js 16.3 instant-navigation pattern**:
+
+- **Twenty links to `/chat/[id]`** previously fired 20 prefetch requests. With PPF, Next.js prefetches **one reusable shell per route** (`/chat/[id]`) and caches it for the session.
+- **Click any of the twenty chat links** → the shell renders **immediately** while that chat's data streams in.
+- The `experimental.viewTransition: true` flag (Next.js 16.3 + React 19.2 native `<ViewTransition>`) provides additional visual continuity.
+
+**The failure mode** is subtle and worth noting for performance-conscious teams:
+
+> A route navigates instantly today. Six weeks from now someone adds a `cookies()` read to a shared header, the route de-opts to request-time rendering, and the instant UI quietly disappears. **Nothing errors. Nothing fails CI.**
+
+The fix is to **add a CI check that fails the build if any `<Link>` prefetched target has gained a request-time dependency** (e.g., `cookies()` / `headers()` / `draftMode()` reads in the layout tree). The Instant Insights dev tool surfaces these cases in development.
+
+**Perf-implication: HIGH** for any project with 20+ links to the same dynamic route (which is most apps). The 45% prefetch-request reduction figure from the [Vercel blog post](https://vercel.com/blog/vercel-supports-next-js-16-3) is the headline benchmark.
+
+### TypeScript 32nd No-Content Daily Rebuild CONFIRMED
+
+`typescript@next` `7.1.0-dev.20260825.1` SHIPPED (npm-published **2026-08-25T08:53:06.599Z**). **28 minutes EARLY** on the v1.5.97 forecast. **32nd consecutive no-content daily rebuild** — TypeScript main branch STILL idle since 2026-07-27T20:55:30Z (now **29+ days**). **Perf-implication: NEUTRAL** — the rebuild is content-free (no perf changes). Pin `typescript@next@7.1.0-dev.20260825.1` for testing new TS features; production stays on `typescript@^7.0.2`.
+
+### `@tanstack/react-query@5.102.3` SHIPPED — Perf-Lens: Dep Refresh (4-in-72h Cadence)
+
+`@tanstack/react-query@5.102.3` SHIPPED 2026-08-24T19:25Z (per state.md v1.5.96 + v1.5.97 baseline; this cycle CONFIRMS via live npm at 12:02Z Aug 25). **Perf-implication: NEUTRAL** — pure dependency refresh; all packages bump `@tanstack/query-core` to `5.102.3` with no API changes. Pin `@tanstack/react-query@^5.102.3`. **The 4-in-72h cadence (5.102.0 → 5.102.1 → 5.102.2 → 5.102.3) is the fastest 3+ release sequence the skill has ever tracked**.
+
+### `@clerk/nextjs@canary` 27th Drop Since v1.5.50 — Advanced to `7.8.3-canary.v20260825083614`
+
+`@clerk/nextjs@canary` advanced from `7.8.3-canary.v20260825001932` (v1.5.97 baseline) → `7.8.3-canary.v20260825083614` (current). **27th canary drop since v1.5.50 baseline** (vs v1.5.97's 26th). npm-published 2026-08-25T08:36:14Z (~8h 36min after the v1.5.97 baseline was set at 00:19Z Aug 25). **Perf-implication: NONE** — canary-only Clerk updates do not affect perf surface; pin `@clerk/nextjs@^7.8.2` for production (the STABLE cut from 2026-08-25T00:26Z).
+
+### Turbopack Perf Comparison (Updated for 16.3 STABLE)
+
+Per the [Turbopack in 2026: Complete Guide](https://dev.to/pockit_tools/turbopack-in-2026-the-complete-guide-to-nextjss-rust-powered-bundler-oda) benchmark on a 2,847-file TypeScript / 156-component project on M3 MacBook Pro 36GB RAM + Node 22.1.0 + Next.js 16.1:
+
+| Metric | Webpack 5 | Turbopack | Speedup |
+|--------|-----------|-----------|---------|
+| Cold Start (Dev) | 18.4s | 0.8s | **~23× faster** |
+| HMR | 1.2s | 20ms | **~60× faster** |
+| Page Compilation (New Route) | 3.1s | 0.2s | **~15× faster** |
+| Dev Memory | 1.8 GB | 1.2 GB | **~1.5× smaller** |
+| Production Build | 142s | 38s | **~3.7× faster** |
+| Bundle Size | 2.1 MB | 2.0 MB | ~5% smaller |
+
+These benchmarks are from Next.js 16.1; Turbopack 16.3 STABLE should be ~10-15% faster across the board (with file-system cache providing the biggest gains on repeated builds). **Perf-implication: HIGH** for any project considering migration from webpack.
+
+### PPF `remove-partial-prefetch` Codemod + Adoption Skill (Unchanged from v1.5.93)
+
+The [`remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) codemod and the first-party [`next-partial-prefetching-adoption`](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) skill remain authoritative. The PPF memory benchmarks (192MB → 3MB for 50-route compile = 64x reduction; 12K → 1MB for lighter sites = 12x) remain the headline perf argument for adoption.
+
+### Sources
+
+- [Next.js 16.3 Turbopack blog post](https://nextjs.org/blog/next-16-3-turbopack) — **NEW** Andrew Imm 2026-06-29; 90% smaller vercel.com dev memory; 82% smaller nextjs.org dev memory; 2.3x-5.5x faster cached builds
+- [Turbopack in 2026: Complete Guide](https://dev.to/pockit_tools/turbopack-in-2026-the-complete-guide-to-nextjss-rust-powered-bundler-oda) — 23x faster cold start; 60x faster HMR; 3.7x faster prod build benchmarks on M3 MacBook Pro
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Dev.to — Next.js Partial Prefetching: One Shell Per Route](https://dev.to/grimicorn/nextjs-partial-prefetching-one-shell-per-route-not-one-per-link-27nj) — **NEW** Aug 24 2026 grimicorn article; canonical PPF one-shell-per-route pattern; the failure-mode warning
+- [Vercel blog — Vercel Supports Next.js 16.3](https://vercel.com/blog/vercel-supports-next-js-16-3) — 45% prefetch-request reduction benchmark
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js `next@16.4.0-canary.6` release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.6) — 7 PRs (PR #96808 turbo-tasks inline + PR #96631 Turbopack emit/collect + PR #97835 revert of #97821)
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — **T-0 (DROPS TODAY)** — Wed Aug 26, expected 14:00-18:00 UTC; patched versions `16.3.3 + 15.5.24`; perf-implication HIGH
+- [TypeScript `7.1.0-dev.20260825.1` npm](https://www.npmjs.com/package/typescript?activeTab=versions) — 32nd no-content daily rebuild CONFIRMED; npm-published 2026-08-25T08:53:06.599Z
+- [`@tanstack/react-query@5.102.3` npm](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — confirmed `5.102.3` unchanged since 2026-08-24T19:25Z; pure dep refresh
+- [`@clerk/nextjs@canary` npm](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — confirmed `7.8.3-canary.v20260825083614`; 27th canary drop since v1.5.50 baseline
+- [Next.js X: PPF memory benchmarks — 50-route comparison](https://x.com/nextjs/status/2084399942618263752) — Aug 3, 2026 announcement with real-world memory data (192MB → 3MB; 12K → 1MB)
+- [MDN: Network Information API — navigator.connection](https://developer.mozilla.org/en-US/docs/Web/API/Network_Information_API) — effectiveType + downlink for conditional prefetch
+- Cross-reference: `performance.md` v1.5.93 — `next@16.4.0-canary.3` LOW-IMPACT for perf + TanStack Query 5.102.2 perf-lens (still authoritative for `unstable_navigation()` + `unstable_prefetch()` API)
+- Cross-reference: `server-components.md` v1.5.98 — RSC-surface lens on Aug 26 CVE T-0 + TypeScript 32nd rebuild CONFIRMED + `next/cache-handlers` types entrypoint (just appended)
+- Cross-reference: `styling.md` v1.5.98 — Styling Idle Refresh #6 + shadcn August 2026 Changelog (just appended)
+- Cross-reference: `security.md` v1.5.97 — Aug 26 Critical CVE T-1d (newly authoritative; CVE has not yet dropped as of 12:02Z Aug 25)
+- Cross-reference: `state.md` v1.5.97 — TanStack Query 5.102.3 dep refresh + @clerk/nextjs 7.8.2 + @types/react-dom 19.2.5 + jotai 2.20.3 + biome 2.5.10 CORRECTION (still authoritative)

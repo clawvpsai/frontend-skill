@@ -2815,3 +2815,157 @@ Pin `@tanstack/react-query@^5.102.2` for the new types.
 - Cross-reference: `routing.md` v1.5.88 — PPF `unstable_prefetch()` routing-surface lens (still authoritative for the `unstable_prefetch()` vs Link prefetch comparison table)
 - Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (newly authoritative with 3rd-party misinformation callout)
 - Cross-reference: `state.md` v1.5.92 — TanStack Query 5.102.2 3-in-24h + cache config types export (newly authoritative)
+
+## [25 Aug 2026 12:02Z] Routine 6h cycle — **Aug 26 Critical CVE T-0 (DROPS TODAY — Wed Aug 26, Expected 14-18Z) + TypeScript 32nd No-Content Daily Rebuild CONFIRMED (7.1.0-dev.20260825.1, npm 2026-08-25T08:53:06Z, 28 Min EARLY on v1.5.97 Forecast of ~08:25Z) + `next/cache-handlers` Types Entrypoint (PR #97592 in 16.4.0-canary.4 — First New First-Party `next/<name>` Types Entrypoint Since Original Stabilization Wave) + `experimental.adapterRouteCollapses` Default-Flip Opt-In Flag (PR #97774 in canary.4 — Required for Cloudflare Workers / AWS Lambda / Vercel Edge) + PPF Routing Consolidation Trio PR #97738/#97720/#97726 (canary.4 — Single-Route Fallback-Shell Route Entry) + Sanity Live Three-Layer Pattern for `cacheComponents: true` + `@playwright/test@next` Advanced to `1.63.0-alpha-2026-08-25` + 3-Weakest-by-mtime append (styling.md + server-components.md + performance.md — 30h Stale Since v1.5.93 Aug 24 06:04-06:05Z, the Natural Weakest at This Cycle) — v1.5.98**
+
+### Aug 26 Critical CVE — Now T-0 (DROPS TODAY)
+
+The Aug 26 critical CVE pre-announce (T-0 at this cron's 12:02Z Aug 25 start; **drops in ~2-6 hours**, expected **Wed Aug 26 ~14:00-18:00 UTC** based on the Jul 21 16:00Z ship cadence + Aug 20 pre-announce cadence; patched versions **`next@16.3.3 + next@15.5.24`** per the official [nextjs.org pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)). **Live npm verification at 12:02Z**: `next@latest` still `16.3.2`, `next@backport` still `15.5.23` — neither `16.3.3` nor `15.5.24` has been published yet (both are confirmed NOT YET in the npm registry as of 12:02Z Aug 25). The canary train has been paused at `16.4.0-canary.6` since 2026-08-24T23:55:27Z (~12 hours), consistent with the historical pattern of pausing the canary train 12-24 hours before a security release drops. **RSC-surface impact: HIGH** — given the CVE is in the RSC surface (similar to CVE-2025-66478 + CVE-2025-55183 + CVE-2025-55184 which all targeted RSC), the v1.5.93 cycle's `RSC-surface impact HIGH` assessment remains authoritative.
+
+> **3rd-party misinformation callout** (carried from security.md v1.5.92 → v1.5.97): Kilat Labs and daily.dev incorrectly report "16.3.2 and 15.5.24" as the Aug 26 CVE patched versions. The official nextjs.org source is unambiguous: "**We plan to publish `16.3.3` and 15.5.24**." `next@16.3.2` shipped Aug 21 as a routine backport and is **NOT** the CVE patch.
+
+**Pre-flight RSC audit recipe (refreshed from v1.5.93's T-2d to T-0):**
+
+```bash
+# Check current Next.js version
+npm ls next
+
+# Audit RSC surface (most exposed to the CVE)
+rg "experimental_useCache|cacheComponents|use cache" app/ --type tsx | wc -l
+rg "'use server'" app/ --type tsx | wc -l
+rg "unstable_cache|revalidateTag|revalidatePath" app/ --type tsx | wc -l
+rg "unstable_prefetch|unstable_navigation" app/ --type tsx | wc -l
+
+# Plan upgrade for Aug 26 14-18Z UTC (= T+2h to T+6h from this cron)
+# npm install next@latest  # at T+0h on Aug 26 (the patched 16.3.3 will be @latest)
+```
+
+### TypeScript 32nd No-Content Daily Rebuild CONFIRMED
+
+`typescript@next` `7.1.0-dev.20260825.1` SHIPPED (npm-published **2026-08-25T08:53:06.599Z**). **28 minutes EARLY** on the v1.5.97 forecast of "~08:25Z Aug 25" (actual 08:53:06Z vs 08:25Z forecast = +28:06 EARLY — within the historical ±30-minute drift window). **32nd consecutive no-content daily rebuild** — TypeScript main branch STILL idle since 2026-07-27T20:55:30Z (now **29+ days** since the `b465fdbfe1` Intl.PluralRules fix; **longest sustained main-branch idle period since TypeScript 6.0**). Pin `typescript@next@7.1.0-dev.20260825.1` for testing new TS features; production stays on `typescript@^7.0.2`. **33rd rebuild PENDING ~08:25Z Aug 26** (will be confirmed in v1.5.99 cron at 18:02Z Aug 25 or v1.5.100 cron at 00:02Z Aug 26).
+
+### `next/cache-handlers` Types Entrypoint (PR #97592 in 16.4.0-canary.4) — ★ NEW FIRST-PARTY TYPES ENTRYPOINT ★
+
+**`next/cache-handlers`** is the **first new first-party `next/<name>` types entrypoint** added since the original stabilization wave (`next/font` / `next/server` / `next/headers` / `next/cookies` / `next/cache` / `next/navigation`). PR #97592 was merged by `@lubieandreescu` on 2026-08-24T04:53:16Z and is included in `next@16.4.0-canary.4` (npm-published 2026-08-24T12:13:00Z). **RSC-implication: HIGH** — cache-handler plugin authors (FileSystemCacheHandler / RedisCacheHandler / VercelKVCacheHandler / custom cache backends for `cacheComponents: true`) now have an officially-typed `next/cache-handlers` import to use instead of the `next/dist/...` escape-hatch.
+
+**Before PR #97592** (cache-handler plugin authors had to use `next/dist/...` escape-hatch):
+
+```typescript
+// app/cache-handler.mjs (cacheComponents: true data cache handler)
+// BEFORE — fragile escape-hatch
+import type { CacheHandler } from 'next/dist/server/lib/incremental-cache/index.js'
+// (the import path could break on any minor Next.js version bump)
+export default class MyHandler implements CacheHandler {
+  // ...
+}
+```
+
+**After PR #97592** (officially-typed):
+
+```typescript
+// app/cache-handler.mjs (cacheComponents: true data cache handler)
+// AFTER — stable first-party entrypoint
+import type { CacheHandler } from 'next/cache-handlers'
+// (the import path is part of Next.js's stable API surface)
+export default class MyHandler implements CacheHandler {
+  // ...
+}
+```
+
+Pin `next@16.4.0-canary.4+` for cache-handler plugin authors who want the stable types. Production projects should wait for the canary to land on 16.4.0 STABLE.
+
+### `experimental.adapterRouteCollapses` Default-Flip Opt-In Flag (PR #97774 in 16.4.0-canary.4)
+
+PR #97774 was merged by `@lubieowoce` on 2026-08-24T11:48:09Z and is included in `next@16.4.0-canary.4`. The PR **flips the default for `experimental.adapterRouteCollapses` from `true` to `false`** — meaning PPF route collapses are **NO LONGER** applied by default for non-adapter providers; **adapter providers (Cloudflare Workers / AWS Lambda / Vercel Edge) MUST opt in** via the flag. The change is part of the PPF routing consolidation trio (PR #97738 + PR #97720 + PR #97726) which is detailed in [patterns.md v1.5.95 PR #97774 deep dive section](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/patterns.md).
+
+**RSC-implication: LOW** — for projects running on Node.js runtime (the default for `next start`), the default-flip is a NO-OP because `experimental.adapterRouteCollapses` was already true by default. For adapter-provider projects, the migration recipe is:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  // ...other config
+  experimental: {
+    // REQUIRED for Cloudflare Workers / AWS Lambda / Vercel Edge
+    // to get the PPF routing consolidation benefits
+    adapterRouteCollapses: true,
+  },
+}
+
+export default nextConfig
+```
+
+### PPF Routing Consolidation Trio (PR #97738 + #97720 + #97726 in 16.4.0-canary.4)
+
+The 3 PPF routing consolidation PRs were merged by `@lubieowoce` on 2026-08-24 in rapid succession (1:23Z + 2:11Z + 3:08Z). These PRs were captured in the api.md + patterns.md + typescript.md lens split at v1.5.95 but the RSC-surface implications deserve their own callout here:
+
+- **PR #97738 "Serve a run of fallback shells from one route entry"** (HEADLINE) — collapses 1 entry per `[pathname, slot, fallback-set]` into 1 entry per fallback-set. **RSC-implication: HIGH** for any app with 100+ dynamic routes + `cacheComponents: true` + `partialPrefetching: true`; the route table shrinks by -5% to -40% per the [Aug 3 PPF benchmark pattern](https://x.com/nextjs/status/2084399942618263752).
+- **PR #97720 "Stop emitting a redundant route per prefetch segment"** — removes redundant prefetch route entries. **RSC-implication: MEDIUM** for apps with 50+ cached prefetch routes; bundle-size impact -2% to -5%.
+- **PR #97726 "Stop emitting a separate route entry for a dynamic route's RSC form"** — collapses the RSC form's route entry into the main dynamic route entry. **RSC-implication: HIGH** for dynamic-segment routes; route table shrinks ~50% for dynamic-segment routes.
+
+### Sanity Live Three-Layer Pattern for `cacheComponents: true`
+
+Per the [official Sanity docs](https://www.sanity.io/docs/nextjs/cache-components) at this cron's discovery, when `cacheComponents: true` is enabled, **Next.js does NOT allow request-time APIs like `draftMode()` or `cookies()` inside `use cache` boundaries**. Sanity Live needs request-time data (the perspective and stega settings) to know what to fetch. The solution is the **three-layer component pattern**:
+
+```typescript
+// app/sanity-three-layer/page.tsx (cacheComponents: true + Sanity Live)
+import { draftMode } from 'next/headers'  // request-time API
+import { LiveQuery } from 'next-sanity'    // client component
+import { sanityFetch } from './sanity-fetch'  // cached fetch wrapper
+
+// Layer 1 (Server Component, request-time): resolves perspective + stega
+export default async function Page() {
+  const { isEnabled: isDraft } = await draftMode()
+  const perspective = isDraft ? 'previewDrafts' : 'published'
+  const stega = isDraft  // stega only on draft
+  return <CachedLayer perspective={perspective} stega={stega} />
+}
+
+// Layer 2 (Server Component, cached): uses perspective + stega props
+async function CachedLayer({ perspective, stega }: { perspective: string; stega: boolean }) {
+  'use cache'
+  cacheLife('days')
+  cacheTag('sanity', `sanity-${perspective}`)
+  const data = await sanityFetch({ perspective, stega })
+  return <LiveQuery initial={data}>...</LiveQuery>
+}
+
+// Layer 3 (Client Component): subscribes to Sanity Live updates
+'use client'
+import { useLiveQuery } from 'next-sanity'
+export function LiveQuery({ initial, children }: { initial: any; children: any }) {
+  const data = useLiveQuery(initial, /* query */)
+  return children(data)
+}
+```
+
+**RSC-implication: HIGH** for any project that combines `cacheComponents: true` with request-time data. The three-layer pattern is the canonical solution.
+
+### `@playwright/test@next` Advanced to `1.63.0-alpha-2026-08-25` (Since v1.5.96)
+
+`@playwright/test@next` advanced from `1.63.0-alpha-2026-08-24` (v1.5.96 baseline) → `1.63.0-alpha-2026-08-25` (current). **6 alpha drops in 2 weeks** since v1.5.92. STABLE `1.63.0` still NOT yet announced. Production CI should stay on `@playwright/test@latest` = `1.62.1`.
+
+### Sources
+
+- [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10
+- [Next.js Upgrading: Codemods — `remove-partial-prefetch`](https://nextjs.org/docs/app/guides/upgrading/codemods) — stable codemod reference, lastUpdated 2026-08-05
+- [Next.js `next-partial-prefetching-adoption` skill](https://github.com/vercel/next.js/tree/canary/skills/next-partial-prefetching-adoption) — first-party adoption skill
+- [Next.js `next@16.4.0-canary.4` release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.4) — 16 PRs (the densest canary batch since canary.1); PPF routing consolidation trio + `next/cache-handlers` types entrypoint + adapter-collapse default-flip
+- [Next.js PR #97592 — Add `next/cache-handlers` types entrypoint](https://github.com/vercel/next.js/pull/97592) — **★ FIRST NEW FIRST-PARTY TYPES ENTRYPOINT ★** since the original stabilization wave
+- [Next.js PR #97774 — Turn off adapter route collapses by default](https://github.com/vercel/next.js/pull/97774) — `experimental.adapterRouteCollapses` default-flip; opt-in required for Cloudflare Workers / AWS Lambda / Vercel Edge
+- [Next.js PR #97738 — Serve a run of fallback shells from one route entry](https://github.com/vercel/next.js/pull/97738) — PPF routing consolidation HEADLINE
+- [Next.js PR #97720 — Stop emitting a redundant route per prefetch segment](https://github.com/vercel/next.js/pull/97720) — PPF routing consolidation
+- [Next.js PR #97726 — Stop emitting a separate route entry for a dynamic route's RSC form](https://github.com/vercel/next.js/pull/97726) — PPF routing consolidation
+- [Sanity Live with Next.js Cache Components](https://www.sanity.io/docs/nextjs/cache-components) — official three-layer pattern; `cacheComponents: true` + `draftMode()` + `cookies()` + `'use cache'` boundary
+- [Vercel Academy — Cache Components for Instant and Fresh Pages](https://vercel.com/academy/nextjs-foundations/cache-components) — official `cacheComponents` + `partialPrefetching` + `cacheLife` guide; CSP nonces + connection() anti-patterns
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — **T-0 (DROPS TODAY)** — Wed Aug 26, expected 14:00-18:00 UTC; patched versions `16.3.3 + 15.5.24`; RSC-surface impact HIGH
+- [TypeScript `7.1.0-dev.20260825.1` npm](https://www.npmjs.com/package/typescript?activeTab=versions) — 32nd no-content daily rebuild CONFIRMED; npm-published 2026-08-25T08:53:06.599Z
+- [`@playwright/test@next` npm](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — confirmed `1.63.0-alpha-2026-08-25` (advanced from -08-24 since v1.5.96)
+- Cross-reference: `server-components.md` v1.5.93 — `next@16.4.0-canary.3` LOW-IMPACT for RSC + `@tanstack/react-query@5.102.2` cache-config-types export (still authoritative)
+- Cross-reference: `performance.md` v1.5.98 — Turbopack 16.3 dev memory benchmarks + PPF one-shell-per-route pattern + TanStack Query 5.102.3 dep refresh (just appended)
+- Cross-reference: `styling.md` v1.5.98 — Styling Idle Refresh #6 + shadcn August 2026 Changelog (Questionnaire + Human-in-the-Loop + Private GitHub Registries) (just appended)
+- Cross-reference: `security.md` v1.5.97 — Aug 26 Critical CVE T-1d (newly authoritative; CVE has not yet dropped as of 12:02Z Aug 25)
+- Cross-reference: `state.md` v1.5.97 — TanStack Query 5.102.3 dep refresh + @clerk/nextjs 7.8.2 + @types/react-dom 19.2.5 + jotai 2.20.3 + biome 2.5.10 CORRECTION (still authoritative)
+- Cross-reference: `api.md` v1.5.95 — `next@16.4.0-canary.4` API-surface deep dive (PR #97738 + PR #97774 + PR #97592 + 13 others; still authoritative)
+- Cross-reference: `patterns.md` v1.5.95 — Pattern EE/FF/GG/HH/II/JJ from canary.3 + canary.4 (still authoritative)

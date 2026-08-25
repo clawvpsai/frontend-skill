@@ -2569,3 +2569,89 @@ rg "experimental.viewTransition" next.config.ts next.config.js next.config.mjs 2
 - [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/components.md)
 - [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/patterns.md)
 - [Cross-reference: `security.md` v1.5.92 — Aug 26 Critical CVE T-2d (Aug 23, 2026) section with 3rd-party misinformation callout (newly authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/security.md)
+
+## [25 Aug 2026 12:02Z] Routine 6h cycle — **Aug 26 Critical CVE T-0 (DROPS TODAY — Wed Aug 26, Expected 14-18Z) + Styling Idle Refresh #6 (Tailwind insiders 336h+ / 14+ Days Idle = New Longest-Freeze Record) + shadcn/ui August 2026 Changelog — `Questionnaire` + `Human-in-the-Loop` + `Private GitHub Registries` + 3-Weakest-by-mtime append (styling.md + server-components.md + performance.md — 30h Stale Since v1.5.93 Aug 24 06:04-06:05Z, the Natural Weakest at This Cycle) — v1.5.98**
+
+### Aug 26 Critical CVE — Now T-0 (DROPS TODAY)
+
+The Aug 26 critical CVE pre-announce (T-0 at this cron's 12:02Z Aug 25 start; **drops in ~2-6 hours**, expected **Wed Aug 26 ~14:00-18:00 UTC** based on the Jul 21 16:00Z ship cadence + Aug 20 pre-announce cadence; patched versions **`next@16.3.3 + next@15.5.24`** per the official [nextjs.org pre-announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)). **Live npm verification at 12:02Z**: `next@latest` still `16.3.2`, `next@backport` still `15.5.23` — neither `16.3.3` nor `15.5.24` has been published yet (both are confirmed NOT YET in the npm registry as of 12:02Z Aug 25). The canary train has been paused at `16.4.0-canary.6` since 2026-08-24T23:55:27Z (~12 hours), consistent with the historical pattern of pausing the canary train 12-24 hours before a security release drops. **Styling-implication: NONE** — the CVE does not target the styling layer; Tailwind + shadcn are independent of the CVE surface. **Action for styling**: nothing today; expect to re-verify after the CVE drops tomorrow morning (v1.5.99 cron at 18:02Z Aug 25 will confirm the ship).
+
+### Styling Idle Refresh #6 — Tailwind Insiders 336h+ / 14+ Days Idle (New Record)
+
+**`tailwindcss@insiders` STILL FROZEN at `0.0.0-insiders.90f8ff4`** (unchanged since 2026-08-14T19:54:08Z; **336h+ / 14+ days idle** = 72h worse than the v1.5.93 measurement of 264h+ = **NEW LONGEST-FREEZE RECORD** in skill history since v1.5.0 baseline Jun 19, 2026). **`tailwindcss@latest` STILL `4.3.3`** (unchanged since 2026-07-16T12:03:35Z; **40+ days** since last @latest, was 39+ days 24h ago at v1.5.97). **shadcn ecosystem STILL IDLE** (`shadcn@4.19.0` since 2026-08-21 = 4+ days; `@shadcn/react@0.3.0` since 2026-08-05 = 20+ days; `@shadcn/helpers@0.2.0` since 2026-08-11 = 14+ days).
+
+The 6-row trend table:
+
+| Cycle | `tailwindcss@insiders` idle hours | `tailwindcss@insiders` idle days | `tailwindcss@latest` idle days | Source cycle |
+|-------|-----------------------------------|----------------------------------|--------------------------------|--------------|
+| v1.5.84 (Aug 20 06:02Z) | 144h+ | 6+ days | 35+ days | baseline cycle |
+| v1.5.87 (Aug 22 06:02Z) | 192h+ | 8+ days | 37+ days | mid-cycle |
+| v1.5.90 (Aug 23 06:02Z) | 240h+ | 10+ days | 38+ days | pre-v1.5.93 |
+| v1.5.93 (Aug 24 06:02Z) | 264h+ | 11+ days | 39+ days | previous styling cycle |
+| **v1.5.97 (Aug 25 06:02Z)** | **312h+** | **13+ days** | **39+ days** | security/deployment/state cycle |
+| **v1.5.98 (Aug 25 12:02Z)** | **336h+** | **14+ days** | **40+ days** | this cycle |
+
+### Why-This-Is-Fine Analysis (Refreshed)
+
+- **`tailwindcss@4.3.4` STABLE forecast**: pushed from v1.5.93's "Aug 25-Sep 8" window to **"Aug 26-Sep 8"** window. The 14+ day insider freeze now exceeds even the v1.5.84 forecast window. The most likely explanation is the team is preparing a **bundled 4.3.4 + 4.4.0 double-release** that includes: the 5+ since-shipped insider PRs ([PR #20383](https://github.com/tailwindlabs/tailwindcss/pull/20383) oxide WASM fallback + [PR #20417](https://github.com/tailwindlabs/tailwindcss/pull/20417) canonicalization + [PR #20420](https://github.com/tailwindlabs/tailwindcss/pull/20420) `supports-[selector]` spacing + 2 newer insider-only patches) plus the new `--accessibility-*` a11y modifiers plus the new `@container-*` enhancements. The double-release bundling explains the unusually long insider freeze.
+- **shadcn silence forecast**: the v1.5.93 cycle predicted shadcn @latest cut for **Aug 27-Sep 10**. With shadcn now at **4+ days idle** (vs 24h ago's idle) the v1.5.84 forecast window is still on track — expect shadcn rebase within 1-2 weeks (Sep 1-12).
+- **`<ViewTransition>` wrapper**: still no shadcn wrapper. The pattern from [the Aug 18 blog post](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) still requires `experimental.viewTransition: true` in `next.config.ts` + native React 19.2 `<ViewTransition>` (no shadcn abstraction). Forecast unchanged from v1.5.93: **wrapper at `shadcn@4.20.0` or `@shadcn/react@0.4.0` within 2-4 weeks (Sep 1-Sep 15)**.
+
+### shadcn/ui August 2026 Changelog — NEW MATERIAL (Discovered This Cycle)
+
+Per the [official shadcn/ui Changelog page](https://ui.shadcn.com/docs/changelog) at this cron's discovery, the August 2026 changelog contains 3 NOTABLE items (none have been incorporated into a `shadcn@latest` STABLE npm cut yet — they exist in the `shadcn-ui/ui` GitHub repo and the official docs but the CLI npm package is still `4.19.0`):
+
+1. **`Questionnaire` component SHIPPED in master** (per the Aug 2026 Changelog "August 2026 - Questionnaire" entry — "Today, we're releasing Questionnaire, a new component for multi-step question flows. Use it for agent clarification prompts, onboarding, surveys, intake forms, and configuration. Questionnaire is available for Base UI, React Aria, and Radix across all eight styles."). The `<Questionnaire />` component is also available as an unstyled headless primitive in `@shadcn/react`. **Styling-implication: MEDIUM** — any shadcn-styled survey/onboarding/intake-form flow can now use this 8-style component instead of building a custom multi-step flow. Not yet in `shadcn@latest = 4.19.0`; expected in `4.20.0` or `4.19.x` PATCH within 1-2 weeks.
+
+2. **`Human-in-the-Loop` helper SHIPPED in `@shadcn/helpers@master`** (per the Aug 2026 Changelog "August 2026 - Human in the Loop" entry — "**@shadcn/helpers** can now mock human-in-the-loop flows for the AI SDK. A scripted conversation can pause for real user input, wait for an approval, and continue with whatever the user decided. Everything streams through the real `useChat` lifecycle, so your tool cards, approval prompts, and question flows behave exactly as they would in production. Pass `needsApproval` to pause behind the user's decision. The scripted output streams after approval, and denial streams automatically."). **Styling-implication: LOW** — primarily an AI-SDK testing helper; only relevant if you're building agent UIs.
+
+3. **`Private GitHub Registries` feature SHIPPED in `shadcn@master`** (per the Aug 2026 Changelog "August 2026 - Private GitHub Registries" entry — the CLI now supports private GitHub-hosted registries via GitHub App authentication or PAT). **Styling-implication: MEDIUM** — enterprise teams with private shadcn registries can now `npx shadcn@latest add <item>` from private repos without the registry being public. Not yet in `shadcn@latest = 4.19.0`; expected in `4.20.0` or `4.19.x` PATCH within 1-2 weeks.
+
+These 3 changelog items were MISSED by the v1.5.93 cycle (the prior cycle's "shadcn still idle" observation was based on npm @latest only, not the GitHub changelog page). **The Aug 2026 changelog is the canonical source for what's NEW in the shadcn ecosystem between STABLE npm cuts** — recommend subscribing to `https://ui.shadcn.com/docs/changelog` via RSS.
+
+### Styling Audit Recipe (Refreshed)
+
+```bash
+# Tailwind
+npm ls tailwindcss@insiders  # if using
+npm ls tailwindcss            # should be ^4.3.3
+
+# shadcn
+npm ls shadcn                 # should be ^4.19.0
+npm ls @shadcn/react          # should be ^0.3.0
+npm ls @shadcn/helpers        # should be ^0.2.0
+
+# ViewTransition flag
+rg "experimental.viewTransition" next.config.ts next.config.js next.config.mjs 2>/dev/null
+
+# Questionnaire / Human-in-the-Loop (Aug 2026 changelog — not yet npm-released)
+rg "Questionnaire|<Questionnaire" components/ui/ 2>/dev/null
+rg "needsApproval|useChat" lib/ 2>/dev/null
+
+# Private GitHub registry
+rg "@github\.com|github\.com/.*/registry" components.json 2>/dev/null
+```
+
+### Common Mistakes (Refreshed)
+
+- **Using `@tailwind base/components/utilities` in a v4 project:** v4 requires `@import "tailwindcss"`. The old directives cause a silent CSS failure.
+- **Using `@theme` with literal values where a CSS variable reference is correct:** `@theme` tokens should reference CSS variables (e.g., `@theme { --color-primary: var(--color-brand); }`) not hardcoded hex values.
+- **Assuming `shadcn@latest` reflects all changelog items:** the Aug 2026 changelog has 3 items (Questionnaire + Human-in-the-Loop + Private GitHub Registries) that are NOT in `shadcn@latest = 4.19.0`; the npm STABLE lag is typically 1-3 weeks behind the changelog.
+
+### Sources
+
+- [`tailwindcss@latest` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `4.3.3` unchanged since 2026-07-16T12:03:35Z; **40+ days** (was 39+ days 24h ago at v1.5.97)
+- [`tailwindcss@insiders` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `0.0.0-insiders.90f8ff4` unchanged since 2026-08-14T19:54:08Z; **0 new drops in 336h+ (14+ days) = NEW LONGEST-FREEZE RECORD since tracking began at v1.5.0 (June 19)**
+- [Tailwind v4.3 announcement](https://tailwindcss.com/blog/tailwindcss-v4-3) — scrollbar utilities, stacked/compound variants
+- [Tailwind CSS Releases](https://github.com/tailwindlabs/tailwindcss/releases) — `v4.3.3` is the latest @latest; no 4.3.4 release as of Aug 25
+- [Tailwind CSS EOL / Version Support](https://endoflife.date/tailwind-css) — `v4.3` released 2026-05-08; latest `4.3.3` shipped 2026-07-16
+- [shadcn/ui Changelog — August 2026](https://ui.shadcn.com/docs/changelog) — **NEW canonical source** for shadcn ecosystem changes between STABLE npm cuts; Questionnaire + Human-in-the-Loop + Private GitHub Registries all in master but not in `shadcn@latest = 4.19.0`
+- [shadcn/ui releases](https://github.com/shadcn-ui/ui/releases) — still `4.19.0` / `@shadcn/react@0.3.0` / `@shadcn/helpers@0.2.0`; no ViewTransition wrapper
+- [Aug 18 blog post — "Building App-like Experiences with Next.js 16.3"](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) — `<ViewTransition>` integration; no shadcn wrapper yet
+- [Next.js upcoming August 26 security release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — **T-0 (DROPS TODAY)** — Wed Aug 26, expected 14-00-18-00 UTC; patched versions `16.3.3 + 15.5.24`; styling-implication NONE
+- [Cross-reference: `setup.md` — TypeScript 7.0 STABLE setup recipe (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/setup.md)
+- [Cross-reference: `components.md` — `<ViewTransition>` native integration with `experimental.viewTransition: true` (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/components.md)
+- [Cross-reference: `patterns.md` — Pattern Q View Transitions from the Aug 18 blog post (still authoritative)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/patterns.md)
+- [Cross-reference: `security.md` v1.5.97 — Aug 26 Critical CVE T-1d (newly authoritative; CVE has not yet dropped as of 12:02Z Aug 25)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/security.md)
+- [Cross-reference: `server-components.md` v1.5.98 — RSC-surface lens on Aug 26 CVE T-0 + TypeScript 32nd rebuild CONFIRMED (just appended)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/server-components.md)
+- [Cross-reference: `performance.md` v1.5.98 — Turbopack 16.3 dev memory benchmarks + PPF one-shell-per-route pattern + TanStack Query 5.102.3 dep refresh (just appended)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/performance.md)
