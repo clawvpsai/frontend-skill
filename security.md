@@ -2564,3 +2564,62 @@ The v1.5.92 cycle confirmed `next@16.3.2` as routine patch. This v1.5.93 cycle c
 - [npm `@clerk/nextjs@canary` dist-tags](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — `canary: 7.8.1-canary.v20260821144536`; 3 NEW drops since v1.5.89
 - [Kilat Labs — INCORRECTLY reports "16.3.2 and 15.5.24" as Aug 26 CVE patched versions](https://kilatlabs.com/journal/nextjs-august-2026-security-release-critical/) — WARNING: this is wrong; the official nextjs.org source says 16.3.3
 - [Cross-reference: `deployment.md` — Aug 26 T-2d deployment checklist + version pins
+
+## Aug 26 Critical CVE T-1d (TOMORROW — Aug 26 Drops `next@16.3.3` + `next@15.5.24`) + @clerk/nextjs 7.8.2 STABLE PATCH (No API Change — Dependency Bump Only) + @types/react-dom 19.2.5 PATCH (Missed by v1.5.95/v1.5.96) + @biomejs/biome 2.5.10 CORRECTION (The v1.5.93 "2.5.7" Misinformation Correction Was Itself Wrong) + jotai 2.20.3 PATCH (Missed by v1.5.94+) (Security Lens — Tested at v1.5.97 Cron)
+
+**Aug 26 Critical CVE: Now T-1d (TOMORROW)** — Confirmed via the official [Next.js Aug 26 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) (originally published Aug 20 by Josh Story + Karim Rahal + Sebastian Silbermann). **ONE critical severity CVE**; patched versions **`next@16.3.3` + `next@15.5.24`** (NOT 16.3.2). `next@latest` is currently `16.3.2` (routine PATCH from Aug 21). **At this cron's 06:02Z Aug 25 start, the CVE drops in ~24-30 hours** (Wednesday Aug 26, sometime in the 14:00-17:00 UTC window based on the Jul 21 16:00Z ship cadence). **Every App Router project must lock in their pre-upgrade baseline today** — pin your current `next@16.3.2` version in the lockfile, snapshot your `package.json` and `pnpm-lock.yaml`/`package-lock.json`, and stage the upgrade window for Aug 26.
+
+**`@clerk/nextjs@7.8.2` STABLE SHIPPED** (npm-published **2026-08-25T00:26:03.329Z**; 5h 36min before this cron's 06:02Z start). **Pure PATCH** — only dependency bumps ([per the official `clerk/javascript` CHANGELOG](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md)): `@clerk/react@6.14.7` (from 6.14.6), `@clerk/shared@4.30.1` (from 4.30.0), `@clerk/backend@3.16.12` (from 3.16.11). **No API changes; no breaking changes; no auth-surface changes**. The 7.8.1 → 7.8.2 bump is mechanical — internal package version drift catch-up. Pin `@clerk/nextjs@^7.8.2`.
+
+**`@clerk/nextjs@canary` advanced to `7.8.3-canary.v20260825001932`** (npm-published **2026-08-25T00:25:12.295Z**; 47 seconds before the 7.8.2 STABLE cut). **26th canary drop since v1.5.50 baseline** (the v1.5.96 inline observation "26th drop" was premature — this is the actual 26th drop). The canary train crossed to the 7.8.3 prefix within 1 minute of the 7.8.2 STABLE promotion. No security-relevant changes confirmed in this canary drop (routine main-branch cherry-picks). Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260825001932` if using canary; STABLE users should migrate to `@clerk/nextjs@^7.8.2` (no behavior change from 7.8.0/7.8.1).
+
+**`@types/react-dom@19.2.5` PATCH SHIPPED** (npm-published **2026-08-23T21:05:23.671Z**). **MISSED by both v1.5.95 and v1.5.96** (the v1.5.95 cycle touched 2026-08-24T18:02Z, 21h after 19.2.5 was published; the v1.5.96 cycle touched 2026-08-25T00:02Z, 27h after). The v1.5.94 inline observation "@types/react-dom still 19.2.4" was the LAST CORRECT tracking before the 19.2.5 ship. Per the [DefinitelyTyped `@types/react-dom` PR history](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom), 19.2.5 is a routine TypeScript types patch for the `react-dom@19.2.x` server-side rendering edge cases (no React runtime changes). Pin `@types/react-dom@^19.2.5`.
+
+**`jotai@2.20.3` PATCH SHIPPED** (npm-published **2026-08-24T07:26:18.202Z**). **MISSED by v1.5.94, v1.5.95, AND v1.5.96** — the v1.5.94 inline observation "jotai@latest still 2.20.2" was the LAST CORRECT tracking before this PATCH shipped. Per the [jotai GitHub releases](https://github.com/pmndrs/jotai/releases), 2.20.3 is a routine bug-fix PATCH (40+ days since the 2.20.2 STABLE on 2026-07-14T13:52:11Z). Pin `jotai@^2.20.3`. **Security-impact: NONE** (jotai is purely a client-side atom state manager — no server-side execution surface that could be affected by the Aug 26 Next.js CVE; jotai does not depend on `next` in its peerDependency).
+
+**`@biomejs/biome@2.5.10` CORRECTION** — the v1.5.93 SKILL.md "misinformation correction" that downgraded the state.md v1.5.92 draft's `2.5.10` claim to `2.5.7` was **itself wrong**. **Live npm verification at this cron's 06:04Z Aug 25**: `curl -s https://registry.npmjs.org/@biomejs/biome/latest` returns `{"version": "2.5.10"}`. **Actual publish time: 2026-08-21T17:40:42.374Z** (per the npm registry time field, queried live). The full sequence is:
+- `2.5.7` — npm 2026-08-04T13:23:52Z (last version before the 2.5.10 ship)
+- `2.5.8` — npm 2026-08-11T08:57:57Z
+- `2.5.9` — npm 2026-08-17T23:02:19Z
+- `2.5.10` — npm **2026-08-21T17:40:42Z** ← actual @latest
+
+The v1.5.92 state.md draft table was correct (it listed `2.5.9 → 2.5.10`). The v1.5.93 SKILL.md correction that said "CORRECTED to `2.5.7`" was incorrect. The v1.5.94 → v1.5.96 cycles propagated this error by listing `@biomejs/biome@latest still 2.5.7`. **CORRECTING NOW**: `@biomejs/biome@latest` is **`2.5.10`**, not `2.5.7`. Pin `@biomejs/biome@^2.5.10`. **Security-impact: NONE** (biome is a linter/formatter — no runtime security surface).
+
+**`@clerk/nextjs@canary` cycle summary (v1.5.94 → v1.5.97 = 3 new canary drops)**:
+- `7.8.2-canary.v20260824165645` (npm 2026-08-24T17:01:25Z; v1.5.95 cycle miss)
+- `7.8.2-canary.v20260824210916` (npm 2026-08-24T21:13:03Z; v1.5.96 cycle miss)
+- `7.8.3-canary.v20260825001932` (npm 2026-08-25T00:25:12Z; v1.5.97 NEW; 26th since v1.5.50)
+
+All three drops are routine maintenance on the 7.8.x line (no security-relevant changes; no API changes). The STABLE line progressed 7.8.0 → 7.8.1 → 7.8.2 in the 5-day window 2026-08-20 → 2026-08-25.
+
+### Updated Security Audit Recipe (v1.5.97 — Aug 25 06:02Z)
+
+1. **Lock your `next` pin NOW**: `npm ls next`. You are on `16.3.2` — this is NOT the CVE patch. **At this cron's T-1d, the CVE patch drops TOMORROW**. Pre-flight `npm view next@latest version` at **14:00Z Aug 26**. As soon as `16.3.3` drops: `npm install next@latest && npm install next@15.5.24` for LTS pin.
+2. **Watch the [Next.js blog RSS](https://nextjs.org/blog) and [GitHub releases feed](https://github.com/vercel/next.js/releases)** on Aug 26 — the advisory will publish alongside the patch. The Jul 21 cycle published at 16:00Z; expect similar timing Aug 26.
+3. **Ignore 3rd-party blogs reporting "16.3.2" as the CVE patch** — this is INCORRECT. Only the official nextjs.org blog is authoritative. **Kilat Labs is STILL publishing the misinformation** as of Aug 22 ([kilatlabs.com](https://kilatlabs.com/journal/nextjs-august-2026-security-release-critical/)).
+4. **For Clerk users**: pin `@clerk/nextjs@^7.8.2` (the v1.5.97 NEW STABLE; pure PATCH dependency bump; no API change). The 7.8.0 → 7.8.1 → 7.8.2 sequence is mechanical; no auth-surface migration needed. If on canary, pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260825001932` (the v1.5.97 NEW canary; 26th since v1.5.50).
+5. **For `@types/react-dom` users**: pin `@types/react-dom@^19.2.5` (the v1.5.97 NEW PATCH missed by v1.5.95/v1.5.96). TypeScript types-only patch — no React runtime change. Run `tsc --noEmit` after upgrade to verify.
+6. **For `@biomejs/biome` users**: pin `@biomejs/biome@^2.5.10` (CORRECTION — the v1.5.93 SKILL.md downgrade to 2.5.7 was itself wrong; actual @latest is 2.5.10, shipped 2026-08-21T17:40:42Z). Linter PATCH — no behavior change beyond bug fixes.
+7. **For `jotai` users**: pin `jotai@^2.20.3` (the v1.5.97 NEW PATCH missed by v1.5.94/v1.5.95/v1.5.96). Client-only state manager — no Aug 26 CVE relevance.
+8. **For Turborepo monorepos with remote-cache**: verify `turbo.json` has `"remoteCache": { "signature": true, "authentication": "oidc" }` (PR #97603 OIDC hardening is in 16.3.2 — already deployed). The Aug 26 CVE patch may add further Turborepo/CI hardening — verify after upgrade.
+9. **Audit string-matched error codes**: PR #97687 in 16.4.0-canary.1 removes generated error codes — migrate to `instanceof ErrorClass` checks now. The Aug 26 CVE patch will ship on the 16.3.3 line and may have similar error-code surface changes — verify after upgrade.
+10. **For RHF users**: keep `react-hook-form@^7.86.0` — no 7.86.1 PATCH has shipped yet (still on 7.86.0 since Aug 21 22:58:40Z; PR #13671 MERGED to master; watch for 7.86.1 within days).
+
+### Why This Matters for `security.md`
+
+The v1.5.97 cycle is the **FINAL pre-CVE gap-fill** before tomorrow's Aug 26 critical patch release. The natural rotation to security.md + deployment.md + state.md (the 3 weakest-by-mtime, ~30h stale since v1.5.92) lines up exactly with the security surface pre-CVE checklist. The `@clerk/nextjs` 7.8.2 PATCH is the cleanest stable-line signal that nothing auth-relevant is broken pre-CVE. The 3 version-bump corrections (@types/react-dom 19.2.5 + jotai 2.20.3 + biome 2.5.10) are housekeeping — but they're MISSES that need to be tracked for skill accuracy. The biome 2.5.10 correction is the most consequential because the v1.5.93 SKILL.md "misinformation correction" was itself wrong — this is a documentation-bug-of-documentation-bug cycle that has been propagated across 4 cycles (v1.5.93 → v1.5.94 → v1.5.95 → v1.5.96). Pin `@biomejs/biome@^2.5.10` going forward.
+
+### Sources
+
+- [Official Upcoming Next.js August Security Release — nextjs.org](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — ONE critical CVE; `16.3.3 + 15.5.24`; full advisory publishes alongside Aug 26 release
+- [Next.js blog index](https://nextjs.org/blog) — Aug 26 CVE is the most recent pre-announced event (since Aug 20)
+- [npm `@clerk/nextjs@7.8.2` CHANGELOG](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — pure PATCH; only dependency bumps (@clerk/react@6.14.7 + @clerk/shared@4.30.1 + @clerk/backend@3.16.12); no API changes
+- [npm `@clerk/nextjs@7.8.2`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-25T00:26:03.329Z
+- [npm `@clerk/nextjs@canary` dist-tags](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — `canary: 7.8.3-canary.v20260825001932`; 26th since v1.5.50 baseline
+- [npm `@types/react-dom@19.2.5`](https://www.npmjs.com/package/@types/react-dom?activeTab=versions) — npm-published 2026-08-23T21:05:23.671Z; missed by v1.5.95 + v1.5.96
+- [npm `jotai@2.20.3`](https://www.npmjs.com/package/jotai?activeTab=versions) — npm-published 2026-08-24T07:26:18.202Z; missed by v1.5.94 + v1.5.95 + v1.5.96
+- [npm `@biomejs/biome@2.5.10`](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — npm-published 2026-08-21T17:40:42.374Z; the v1.5.93 SKILL.md "2.5.7" correction was itself wrong; actual @latest is 2.5.10
+- [Kilat Labs — STILL INCORRECTLY reports "16.3.2 and 15.5.24" as Aug 26 CVE patched versions](https://kilatlabs.com/journal/nextjs-august-2026-security-release-critical/) — WARNING: this is wrong; the official nextjs.org source says 16.3.3; misinformation persisting 5 days after the official pre-announce
+- [Cross-reference: `deployment.md` — Aug 26 T-1d deployment checklist + Clerk 7.8.2 + version pins
+- [Cross-reference: `state.md` — version-bump tracking table + Jotai/Biome/React-DOM corrections
+- [Cross-reference: v1.5.92 security.md — the prior T-2d baseline; this v1.5.97 entry is the T-1d gap-fill

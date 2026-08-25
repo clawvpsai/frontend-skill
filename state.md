@@ -2201,3 +2201,78 @@ This is relevant for state management patterns that use touch-state for conditio
 - [Cross-reference: v1.5.92 state.md — the TanStack Query 5.102.0/5.102.1 full breakdown
 - [Cross-reference: `forms.md` — RHF 7.86.0 `shouldTouch` form-state patterns
 - [Cross-reference: `performance.md` — TanStack Query 5.102.x performance implications
+
+## Aug 26 CVE T-1d (Drops TOMORROW) — Version-Bump Tracking Table v1.5.97 + @clerk/nextjs 7.8.1 → 7.8.2 STABLE PATCH + @clerk/nextjs@canary 7.8.3 Prefix Crossover (26th Since v1.5.50) + @types/react-dom 19.2.4 → 19.2.5 PATCH (Missed by v1.5.95/v1.5.96) + jotai 2.20.2 → 2.20.3 PATCH (Missed by v1.5.94+) + @biomejs/biome 2.5.7 → 2.5.10 CORRECTION (The v1.5.93 SKILL.md "2.5.7" Downgrade Was Itself Wrong) (State-Management Lens — Tested at v1.5.97 Cron)
+
+**Aug 26 Critical CVE: Now T-1d (Drops TOMORROW)** — Per the official [Next.js Aug 26 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026), the patched versions **`next@16.3.3` + `next@15.5.24`** will publish alongside the full advisory on **Wednesday Aug 26, 2026** (likely 14:00-17:00 UTC based on the Jul 21 16:00Z ship cadence). **`next@latest` is currently `16.3.2`** (routine PATCH from Aug 21, NOT the CVE patch). **At this cron's 06:02Z Aug 25 start, the CVE drops in ~24-30 hours**. This is the FINAL pre-CVE state-management cycle.
+
+**`@clerk/nextjs@7.8.1` → `7.8.2` STABLE** (npm-published **2026-08-25T00:26:03.329Z**; 5h 36min before this cron's 06:02Z start). **Pure PATCH — dependency bump only**. Per the [official CHANGELOG](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md), 7.8.2 only bumps internal dependencies (`@clerk/react@6.14.7` from 6.14.6 + `@clerk/shared@4.30.1` from 4.30.0 + `@clerk/backend@3.16.12` from 3.16.11). **State-management impact: NONE** — no API surface change; no breaking changes; no auth-flow behavior change. The 7.8.0 → 7.8.1 → 7.8.2 sequence (5 days Aug 20 → Aug 25) is mechanical dependency-catch-up. Pin `@clerk/nextjs@^7.8.2`.
+
+**`@clerk/nextjs@canary` `7.8.2-canary.v20260824210916` → `7.8.3-canary.v20260825001932`** (npm-published **2026-08-25T00:25:12.295Z**; 47 seconds before the 7.8.2 STABLE cut). **26th canary drop since v1.5.50 baseline**. The v1.5.96 inline observation "26th drop" was premature; this is the actual 26th. The canary train crossed to the 7.8.3 prefix within 1 minute of the 7.8.2 STABLE promotion. **State-management impact: NONE** — routine main-branch cherry-picks; no API changes; no breaking changes. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260825001932` if using canary.
+
+**`@types/react-dom@19.2.4` → `19.2.5` PATCH** (npm-published **2026-08-23T21:05:23.671Z**). **MISSED by v1.5.95 AND v1.5.96** (the v1.5.94 inline observation "@types/react-dom still 19.2.4" was the LAST CORRECT tracking before the 19.2.5 ship). Per the [DefinitelyTyped `@types/react-dom` PR history](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom), 19.2.5 is a routine TypeScript types patch for the `react-dom@19.2.x` server-side rendering edge cases (no React runtime changes). **State-management impact: NONE** — types-only PATCH. Pin `@types/react-dom@^19.2.5`.
+
+**`jotai@2.20.2` → `2.20.3` PATCH** (npm-published **2026-08-24T07:26:18.202Z**). **MISSED by v1.5.94, v1.5.95, AND v1.5.96** — the v1.5.94 inline observation "jotai@latest still 2.20.2" was the LAST CORRECT tracking before this PATCH shipped. Per the [jotai GitHub releases](https://github.com/pmndrs/jotai/releases), 2.20.3 is a routine bug-fix PATCH (40+ days since the 2.20.2 STABLE on 2026-07-14T13:52:11Z). **State-management impact: LOW** — client-only atom state manager PATCH; no API changes; no breaking changes; pure bug fixes. Pin `jotai@^2.20.3`.
+
+**`@biomejs/biome@2.5.7` → `2.5.10` CORRECTION** (npm-published **2026-08-21T17:40:42.374Z**). The v1.5.93 SKILL.md "misinformation correction" that downgraded the state.md v1.5.92 draft's `2.5.10` claim to `2.5.7` was **itself wrong**. **Live npm verification at this cron's 06:04Z Aug 25**: `curl -s https://registry.npmjs.org/@biomejs/biome/latest` returns `{"version": "2.5.10"}`. The full 2.5.x sequence per [npm registry time field](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions):
+- `2.5.7` — npm 2026-08-04T13:23:52Z
+- `2.5.8` — npm 2026-08-11T08:57:57Z
+- `2.5.9` — npm 2026-08-17T23:02:19Z
+- `2.5.10` — npm **2026-08-21T17:40:42Z** ← actual @latest
+
+The v1.5.92 state.md draft table was correct (it listed `2.5.9 → 2.5.10`). The v1.5.93 SKILL.md correction that said "CORRECTED to `2.5.7`" was incorrect. **The v1.5.94 → v1.5.96 cycles propagated this error** by listing `@biomejs/biome@latest still 2.5.7` in their "unchanged from v1.5.93" sections. **CORRECTING NOW**: `@biomejs/biome@latest` is **`2.5.10`**, not `2.5.7`. Pin `@biomejs/biome@^2.5.10`. **State-management impact: NONE** — biome is a linter/formatter; no runtime state management.
+
+### Version-Bump Tracking Table (v1.5.97 — August 25, 2026 06:02 UTC)
+
+| Package | Old Version (v1.5.96) | New Version | Change | Materiality |
+|---------|---------------------|-------------|--------|-------------|
+| `next@latest` | `16.3.2` | `16.3.2` (still) → `16.3.3` (Aug 26) | CVE patch drops TOMORROW | CRITICAL (T-1d) |
+| `next@canary` | `16.4.0-canary.6` | `16.4.0-canary.6` | Unchanged; no canary.7 yet | NONE |
+| `typescript@next` | `7.1.0-dev.20260824.1` | `7.1.0-dev.20260824.1` | Unchanged; 32nd rebuild PENDING ~08:25Z Aug 25 | NONE (verified live) |
+| `@clerk/nextjs@latest` | `7.8.1` | **`7.8.2`** | NEW STABLE PATCH; dependency-bump only | LOW |
+| `@clerk/nextjs@canary` | `7.8.2-canary.v20260824210916` | **`7.8.3-canary.v20260825001932`** | NEW canary; 26th since v1.5.50; 7.8.3 prefix crossover | NONE |
+| `@types/react-dom` | `19.2.4` | **`19.2.5`** | NEW PATCH (missed by v1.5.95/v1.5.96); types-only | NONE |
+| `jotai` | `2.20.2` | **`2.20.3`** | NEW PATCH (missed by v1.5.94/v1.5.95/v1.5.96); client-only | LOW |
+| `@biomejs/biome` | `2.5.7` (per v1.5.93 → v1.5.96 SKILL.md — WRONG) | **`2.5.10`** | CORRECTION; v1.5.93 "2.5.7" downgrade was itself wrong; actual @latest is 2.5.10 since 2026-08-21T17:40:42Z | LOW (linter) |
+| `@tanstack/react-query@latest` | `5.102.3` | `5.102.3` | Unchanged; no 5.102.4 yet | NONE |
+| `react-hook-form@latest` | `7.86.0` | `7.86.0` | Unchanged; no 7.86.1 PATCH yet | NONE |
+| `@tanstack/react-form@latest` | `1.33.5` | `1.33.5` | Unchanged; no new stable | NONE |
+| `zod@latest` | `4.4.3` | `4.4.3` | Unchanged; 4.5.0 STABLE forecast Sep 1-15 | NONE |
+| `tailwindcss@latest` | `4.3.3` | `4.3.3` | Unchanged; 50+ days idle | NONE |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` | `0.0.0-insiders.90f8ff4` | Unchanged; now 312h+ / 13+ days idle (longest freeze ever) | NONE |
+| `shadcn@latest` | `4.19.0` | `4.19.0` | Unchanged; 4+ days idle | NONE |
+| `vitest@latest` | `4.1.11` | `4.1.11` | Unchanged; STABLE 5 forecast Sep 1-8 | NONE |
+| `vitest@rc` | `5.0.0-rc.2` | `5.0.0-rc.2` | Unchanged; no rc.3 yet | NONE |
+| `vite@latest` | `8.2.2` | `8.2.2` | Unchanged | NONE |
+| `@playwright/test@latest` | `1.62.1` | `1.62.1` | Unchanged | NONE |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-24` | `1.63.0-alpha-2026-08-24` | Unchanged; STABLE 1.63.0 not announced | NONE |
+| `react@latest` | `19.2.8` | `19.2.8` | Unchanged | NONE |
+| `react@canary` | `19.3.0-canary-bd6ea412-20260824` | `19.3.0-canary-bd6ea412-20260824` | Unchanged | NONE |
+| `typescript@latest` | `7.0.2` | `7.0.2` | Unchanged | NONE |
+| `@types/react` | `19.2.18` | `19.2.18` | Unchanged | NONE |
+| `next-auth@latest` | `4.24.15` | `4.24.15` | Unchanged | NONE |
+| `next-auth@beta` | `5.0.0-beta.32` | `5.0.0-beta.32` | Unchanged | NONE |
+| `@auth/core` | `0.41.3` | `0.41.3` | Unchanged | NONE |
+| `better-auth@latest` | `1.7.1` | `1.7.1` | Unchanged | NONE |
+| `zustand@latest` | `5.0.15` | `5.0.15` | Unchanged | NONE |
+| `@tanstack/react-virtual@latest` | `3.14.10` | `3.14.10` | Unchanged | NONE |
+| `@tanstack/store@latest` | `0.11.1` | `0.11.1` | Unchanged | NONE |
+| `@shadcn/react@latest` | `0.3.0` | `0.3.0` | Unchanged | NONE |
+| `@shadcn/helpers@latest` | `0.2.0` | `0.2.0` | Unchanged | NONE |
+
+### Sources
+
+- [TanStack Query dist-tags](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — `latest: 5.102.3` since 2026-08-24T19:25:00Z (unchanged from v1.5.96)
+- [npm `@clerk/nextjs@7.8.2` CHANGELOG](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — pure PATCH; only dependency bumps (@clerk/react@6.14.7 + @clerk/shared@4.30.1 + @clerk/backend@3.16.12); no API changes
+- [npm `@clerk/nextjs@7.8.2`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-25T00:26:03.329Z
+- [npm `@clerk/nextjs@canary` dist-tags](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — `canary: 7.8.3-canary.v20260825001932`; 26th since v1.5.50
+- [npm `@types/react-dom@19.2.5`](https://www.npmjs.com/package/@types/react-dom?activeTab=versions) — npm-published 2026-08-23T21:05:23.671Z; missed by v1.5.95/v1.5.96
+- [DefinitelyTyped `@types/react-dom`](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/react-dom) — types-only PATCH for react-dom@19.2.x SSR edge cases
+- [npm `jotai@2.20.3`](https://www.npmjs.com/package/jotai?activeTab=versions) — npm-published 2026-08-24T07:26:18.202Z; missed by v1.5.94/v1.5.95/v1.5.96
+- [jotai releases](https://github.com/pmndrs/jotai/releases) — 2.20.3 = routine bug-fix PATCH (40+ days since 2.20.2)
+- [npm `@biomejs/biome@2.5.10`](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — npm-published 2026-08-21T17:40:42.374Z; CORRECTION from v1.5.93's mistaken `2.5.7` downgrade (the v1.5.93 SKILL.md misinformation correction was itself wrong)
+- [npm `next@latest` 16.3.2](https://www.npmjs.com/package/next?activeTab=versions) — routine PATCH from Aug 21; NOT the CVE patch
+- [npm `typescript@next`](https://www.npmjs.com/package/typescript?activeTab=versions) — `next: 7.1.0-dev.20260824.1`; 32nd rebuild PENDING ~08:25Z Aug 25 (will be confirmed in v1.5.98 cycle)
+- [Cross-reference: v1.5.93 state.md — the original `2.5.9 → 2.5.10` table entry that the SKILL.md "correction" wrongly downgraded
+- [Cross-reference: `security.md` — Aug 26 T-1d security checklist + 5 version-bump corrections (Clerk + @types/react-dom + jotai + biome)
+- [Cross-reference: `deployment.md` — Aug 26 T-1d deployment checklist + version-pin status table
