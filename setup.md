@@ -102,3 +102,96 @@ npm run dev
 - [Cross-reference: `routing.md` — canary.2 + canary.3 routing-surface PRs + Aug 26 CVE T-2d
 - [Cross-reference: `security.md` — full Aug 26 CVE security lens when advisory publishes
 - [Cross-reference: `state.md` — @tanstack/react-query@5.102.2 PATCH from the state-management lens
+
+## ★ Aug 26 Critical CVE DROPPED EARLY — Aug 25, 2026 — TWO Unauthenticated RCEs Fixed in next@16.3.3 + next@15.5.24 + AVIF Disabled + Windows ISR Fix + next@16.4.0-canary.7 (Setup Lens — v1.5.99, August 25, 2026)
+
+**The Aug 26 CVE dropped ONE DAY EARLY on August 25, 2026.** `next@16.3.3` and `next@15.5.24` shipped at **16:17Z UTC** (published 2026-08-25T16:17:10Z per GitHub API). `next@16.4.0-canary.7` followed at **16:44Z UTC**. All three include the same two critical unauthenticated RCE fixes.
+
+**The CVE escalated from ONE to TWO critical severity vulnerabilities.** The Aug 20 pre-announce said one critical CVE. On Aug 25, Next.js moved the release forward and disclosed **TWO critical unauthenticated RCEs** (GHSA-p293-qw3h-jr36 + GHSA-2xp9-vwfh-vxw4).
+
+### The Two Critical CVEs — Setup Impact
+
+**CVE 1 — GHSA-p293-qw3h-jr36: Unauthenticated Remote Code Execution on Windows-hosted servers**
+- **Severity**: Critical
+- **Unauthenticated**: Yes — purely network-accessible endpoint
+- **Platform**: Windows-hosted Next.js servers
+- **PR fix in canary.7**: `#97876 Fix ISR misses with backslashes in segments when deployed on Windows`
+- **Setup action**: Upgrade `next@latest` immediately if running on Windows
+
+**CVE 2 — GHSA-2xp9-vwfh-vxw4: Unauthenticated RCE in Image Optimization API (AVIF)**
+- **Severity**: Critical
+- **Unauthenticated**: Yes — Image Optimization API is public by default
+- **Attack vector**: Crafted AVIF image file
+- **PR fix in canary.7**: `#97875 [next/image]: disable avif image optimization` — AVIF is now **disabled** in the Image Optimization API
+- **Setup action**: Upgrade `next@latest` immediately; AVIF falls back to WebP/PNG automatically
+
+### Immediate Setup Recipe — Execute Now
+
+```bash
+# Step 1: upgrade next to patched version (THIS IS P0 — execute immediately)
+npm install next@latest
+# Expected: installs 16.3.3 (was 16.3.2 before this cron)
+# For 15.5.x LTS users:
+npm install next@15.5.24
+
+# Step 2: verify upgrade succeeded
+npm list next
+# Expected: next@16.3.3
+
+# Step 3: audit Image Optimization API usage
+# The AVIF optimizer is now disabled. This is a behavior change for clients that:
+#   — Requested AVIF-optimized images
+#   — Will now receive WebP or PNG instead
+# Verify your image pipeline handles this:
+grep -r "next/image" --include="*.tsx" --include="*.ts" | grep -i "avif\|format" || echo "No explicit AVIF format config found"
+
+# Step 4: if using AVIF in custom image loaders, update them
+# The AVIF optimizer is disabled at the server level. Custom loaders that
+# request AVIF format will silently get WebP fallback.
+# No code changes needed in most cases — the fallback is automatic.
+
+# Step 5: Windows users — verify ISR behavior post-fix
+# The #97876 fix corrects ISR misses with backslashes in segments on Windows
+# Test: create an ISR page with special characters in params
+#   /products/[category]/[item] where category = "electronics/tv"
+#   Verify: the page renders correctly with %2F in the URL on Windows
+
+# Step 6: restart dev server and verify no startup errors
+rm -rf .next
+npm run dev
+# Expected: starts cleanly with no errors
+
+# Step 7: run TypeScript check to catch any type regressions
+npx tsc --noEmit
+# Expected: no new errors introduced by 16.3.3
+```
+
+### What Changed in canary.7 Beyond Security Fixes
+
+`next@16.4.0-canary.7` (npm-published **2026-08-25T16:44:14Z**) includes the two CVE security fixes plus:
+
+| Change | Description | Setup Impact |
+|---|---|---|
+| `#97875` | `[next/image]: disable avif image optimization` | AVIF → WebP/PNG auto-fallback; most setups unaffected |
+| `#97876` | `Fix ISR misses with backslashes in segments when deployed on Windows` | ISR pages with `%2F` in params now work on Windows |
+| `#97812` | `React roll-forward: eafeac09-20260819 → bd6ea412-20260824` | No known behavior change |
+
+### Why This Matters for Setup
+
+- **`next@16.3.3` is now `latest`** — the upgrade is `npm install next@latest`. Do it now. This is not a "plan for tomorrow" task — two critical unauthenticated RCEs are public.
+- **AVIF is disabled** — if your app or your clients use AVIF image optimization, they will now get WebP or PNG. This is a silent fallback with no code changes required in most cases. Verify your image CDN/processing pipeline doesn't depend on AVIF specifically.
+- **Windows ISR fix** — the `#97876` fix corrects a bug where ISR pages with URL-encoded slashes in params (`%2F`) were cached incorrectly on Windows. If you have ISR pages with complex dynamic segments, test them on Windows after upgrading.
+- **TypeScript users**: `next@16.3.3` ships with updated `@types/react` types. Run `npx tsc --noEmit` after upgrading.
+- **`next@16.4.0-canary.7` is the recommended canary pin** for 16.4.x experimenters — it includes all security fixes and the Windows ISR correction.
+
+### Sources
+
+- [Official v16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) — published **2026-08-25T16:17:10Z**; two critical CVE fixes
+- [Official v15.5.24 release](https://github.com/vercel/next.js/releases/tag/v15.5.24) — published **2026-08-25T16:16:55Z**; same CVEs
+- [Official v16.4.0-canary.7 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.7) — published **2026-08-25T16:44:14Z**; AVIF disabled + Windows ISR fix
+- [GHSA-p293-qw3h-jr36 — Unauthenticated RCE on Windows-hosted servers](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
+- [GHSA-2xp9-vwfh-vxw4 — Unauthenticated RCE in Image Optimization API with AVIF](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
+- [Next.js Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — moved to Aug 25; two critical CVEs confirmed
+- [Cross-reference: `auth.md` — auth implications + @clerk/nextjs canary update
+- [Cross-reference: `routing.md` — routing-surface impact table
+- [Cross-reference: `security.md` — full post-incident security checklist

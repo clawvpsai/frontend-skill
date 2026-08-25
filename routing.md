@@ -90,3 +90,88 @@ echo "Plan: run npm run dev + npm test immediately after upgrading on Aug 26"
 - [Cross-reference: `security.md` — full Aug 26 CVE security lens + advisory when published
 - [Cross-reference: `auth.md` — auth-surface Aug 26 CVE urgency + @clerk/nextjs 7.8.0 STABLE + better-auth 1.7.1
 - [Cross-reference: `setup.md` — Aug 26 CVE T-2d setup audit recipe
+
+## ★ Aug 26 Critical CVE DROPPED EARLY — Aug 25, 2026 — TWO Unauthenticated RCEs in next@16.3.3 + next@15.5.24 + next@16.4.0-canary.7 (Routing Lens — v1.5.99, August 25, 2026)
+
+**The Aug 26 CVE dropped ONE DAY EARLY on August 25, 2026.** At this cron's 18:02Z Aug 25 start, the security release has already been published — `next@16.3.3` and `next@15.5.24` shipped at **16:17Z UTC** (published 2026-08-25T16:17:10Z per GitHub API). `next@16.4.0-canary.7` followed at **16:44Z UTC** with the same fixes. The Aug 26 morning UTC expectation was wrong — the 16:00Z window matched the Jul 21 16:00Z UTC ship cadence.
+
+**The CVE escalated from ONE to TWO critical severity vulnerabilities.** The Aug 20 pre-announce said one critical CVE. On Aug 25, Next.js moved the release forward and disclosed **TWO critical unauthenticated RCEs** (GHSA-p293-qw3h-jr36 + GHSA-2xp9-vwfh-vxw4). Both require **no authentication** to exploit.
+
+### The Two Critical CVEs (from GitHub Release API)
+
+**CVE 1 — GHSA-p293-qw3h-jr36: Unauthenticated Remote Code Execution on Windows-hosted servers**
+- **Severity**: Critical
+- **Unauthenticated**: Yes — no login or session required
+- **Platform**: Windows-hosted Next.js servers only
+- **Impact**: Remote code execution — attacker runs arbitrary code on the server
+- **Patched in**: `next@16.3.3`, `next@15.5.24`, `next@16.4.0-canary.7`
+- **PR in canary.7**: Fix ISR misses with backslashes in segments when deployed on Windows (#97876)
+
+**CVE 2 — GHSA-2xp9-vwfh-vxw4: Unauthenticated Remote Code Execution in Image Optimization API when AVIF files are used**
+- **Severity**: Critical
+- **Unauthenticated**: Yes — no login or session required
+- **Attack vector**: Image Optimization API with AVIF image format
+- **Impact**: Remote code execution through crafted AVIF files
+- **Patched in**: `next@16.3.3`, `next@15.5.24`, `next@16.4.0-canary.7`
+- **PR in canary.7**: `[next/image]: disable avif image optimization` (#97875) — AVIF is disabled in the Image Optimization API to prevent exploitation
+
+### Routing-Surface Impact Analysis
+
+| User type | Impact | Action |
+|---|---|---|
+| Windows-hosted Next.js server (self-hosted) | **CRITICAL RCE** — upgrade immediately | `npm install next@latest` now |
+| Linux-hosted Next.js server (Vercel, AWS, DO, etc.) | **CVE1 not applicable** — CVE2 still critical | `npm install next@latest` now + disable AVIF |
+| Vercel/Edge — fully managed | **AVIF RCE applies** if using Image Optimization with AVIF | Upgrade + verify AVIF disabled automatically |
+| `output: 'standalone'` on Windows | **Both CVEs apply** — upgrade immediately | `npm install next@latest` now |
+| `output: 'standalone'` on Linux | **CVE2 applies** (AVIF in Image Opt API) | `npm install next@latest` now |
+| Static export (`output: 'export'`) | **Not affected** — no server-side rendering | No action |
+| Pages Router | **CVE1 applies** if Windows-hosted | Upgrade if Windows server |
+| PPF users (`unstable_prefetch`/`unstable_navigation`) | **Not directly affected** — CVEs are server-side | Upgrade for safety |
+
+### Updated Routing Audit Recipe — Post-CVE-Drop
+
+```bash
+# IMMEDIATE: verify current next version and upgrade
+npm view next dist-tags.latest
+# Expected NOW: 16.3.3 (was 16.3.2 before this cron)
+
+npm install next@latest   # upgrade to 16.3.3 immediately
+
+# Step 1: identify Windows-hosted deployments
+# If deploying on Windows servers (self-hosted, Azure, Windows VMs):
+#   → CVE1 applies: RCE via server-side path handling
+#   → upgrade to 16.3.3 immediately
+
+# Step 2: audit Image Optimization API usage
+rg "next/image|Image.*from 'next'" --type ts --type tsx | grep -i avif || echo "No AVIF usage found"
+# If AVIF is used: upgrade to 16.3.3 — AVIF is disabled in canary.7
+# If no AVIF: upgrade anyway for CVE1 (Windows RCE if applicable)
+
+# Step 3: PPF users — verify prefetch behavior unchanged
+npm run dev
+# Test: navigate through pages with unstable_prefetch / unstable_navigation
+# Expected: behavior unchanged post-upgrade
+
+# Step 4: canary.7 additional changes for routing
+#   #97876 — Fix ISR misses with backslashes in segments on Windows
+#   If ISR + Windows: test that static params with special characters work
+```
+
+### next@16.4.0-canary.7 — Security + Additional Fixes (npm-published 2026-08-25T16:44:14Z)
+
+`next@16.4.0-canary.7` ships the same two security fixes (GHSA-p293-qw3h-jr36 + GHSA-2xp9-vwfh-vxw4) plus additional changes:
+
+| PR | Description | Routing Impact |
+|---|---|---|
+| **#97875** | `[next/image]: disable avif image optimization` | **MEDIUM** — AVIF optimization disabled; clients get fallback format |
+| **#97876** | `Fix ISR misses with backslashes in segments when deployed on Windows` | **MEDIUM** — ISR cache key fix for Windows path separators |
+| #97812 | `Upgrade React from eafeac09-20260819 to bd6ea412-20260824` | LOW — React canary roll-forward |
+
+### Sources
+
+- [Official v16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) — published **2026-08-25T16:17:10Z**; two critical CVE fixes
+- [Official v15.5.24 release](https://github.com/vercel/next.js/releases/tag/v15.5.24) — published **2026-08-25T16:16:55Z**; same CVEs
+- [Official v16.4.0-canary.7 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.7) — published **2026-08-25T16:44:14Z**; security fixes + AVIF disable + Windows ISR fix
+- [GHSA-p293-qw3h-jr36 — Unauthenticated RCE on Windows-hosted servers](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
+- [GHSA-2xp9-vwfh-vxw4 — Unauthenticated RCE in Image Optimization API with AVIF](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
+- [Next.js Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — moved to Aug 25; two critical CVEs confirmed

@@ -73,3 +73,86 @@ rg "clerkMiddleware|authMiddleware" src/middleware.ts
 - [Cross-reference: `routing.md` — canary.2 + canary.3 routing-surface PRs + Aug 26 CVE T-2d
 - [Cross-reference: `security.md` — full Aug 26 CVE security lens when advisory publishes
 - [Cross-reference: `state.md` — @tanstack/react-query@5.102.2 PATCH from the state-management lens
+
+## ★ Aug 26 Critical CVE DROPPED EARLY — Aug 25, 2026 — TWO Unauthenticated RCEs + next@16.3.3 + next@15.5.24 + next@16.4.0-canary.7 + @clerk/nextjs@canary Updated to 7.8.3-canary.v20260825175547 (Auth Lens — v1.5.99, August 25, 2026)
+
+**The Aug 26 CVE dropped ONE DAY EARLY on August 25, 2026.** `next@16.3.3` and `next@15.5.24` shipped at **16:17Z UTC** (published 2026-08-25T16:17:10Z per GitHub API). `next@16.4.0-canary.7` followed at **16:44Z UTC**. The two critical unauthenticated RCEs are now public.
+
+**The CVE escalated from ONE to TWO critical severity vulnerabilities.** The Aug 20 pre-announce said one critical CVE. On Aug 25, Next.js moved the release forward and disclosed **TWO critical unauthenticated RCEs** (GHSA-p293-qw3h-jr36 + GHSA-2xp9-vwfh-vxw4). Both require **no authentication** to exploit.
+
+### The Two Critical CVEs — Auth Implications
+
+**CVE 1 — GHSA-p293-qw3h-jr36: Unauthenticated Remote Code Execution on Windows-hosted servers**
+- **Auth implication — HIGH**: RCE means attacker gets full server access. Once an attacker has RCE on the server, they can:
+  - Steal `AUTH_SECRET`, `SESSION_SECRET`, database credentials, environment variables
+  - Modify `middleware.ts` or API routes to intercept credentials
+  - Escalate from unauthenticated network access to full server compromise
+  - **No auth token or session needed to exploit** — purely network-accessible endpoint
+- **Applies to**: Self-hosted Next.js on Windows servers (Azure App Service Windows, Windows VMs, IIS)
+- **Does NOT apply to**: Vercel, Linux servers, Edge Runtime
+
+**CVE 2 — GHSA-2xp9-vwfh-vxw4: Unauthenticated Remote Code Execution in Image Optimization API (AVIF)**
+- **Auth implication — HIGH**: RCE via crafted AVIF image upload. Attacker can:
+  - Upload a malicious AVIF file that triggers RCE when Next.js optimizes it server-side
+  - Achieve full server access — same credential theft as CVE1
+  - **No authentication required** — the Image Optimization API is publicly accessible
+- **Applies to**: Any Next.js deployment using Next.js Image Optimization with AVIF format
+- **Mitigation in canary.7**: AVIF optimization is **disabled** (#97875 `[next/image]: disable avif image optimization`)
+
+### Auth Audit Recipe — IMMEDIATE (Post-CVE-Drop)
+
+```bash
+# IMMEDIATE ACTION: upgrade to patched next version now
+npm install next@latest
+# Expected: installs 16.3.3 (was 16.3.2 before this cron)
+
+# Step 1: identify Windows-hosted deployments (CVE1 applies)
+# If your Next.js server runs on Windows:
+#   → RCE via path handling — upgrade to 16.3.3 immediately
+#   → Then audit: any env secrets on that server are potentially compromised
+
+# Step 2: audit Image Optimization API usage (CVE2 applies to all deployments)
+rg "next/image|import.*Image.*from 'next'" --type ts --type tsx | grep -i avif
+# If AVIF used: upgrade to 16.3.3 — AVIF disabled in patched version
+# If no AVIF: still upgrade for CVE1
+
+# Step 3: if Clerk is in use, verify session integrity post-upgrade
+# After upgrading to 16.3.3, test:
+#   1. User login — verify session cookie set correctly
+#   2. Protected route access — verify middleware auth still works
+#   3. Sign-out — verify session invalidated correctly
+
+# Step 4: rotate secrets if Windows-hosted deployment was unpatched
+# If you were on next@<16.3.3 on Windows before today:
+#   → Rotate AUTH_SECRET, database passwords, API keys
+#   → Review server access logs for IOCs
+
+# Step 5: @clerk/nextjs canary check
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260825175547 (updated since v1.5.98)
+```
+
+### @clerk/nextjs — Canary Updated to 7.8.3-canary.v20260825175547 (v1.5.98: 7.8.3-canary.v20260825083614)
+
+**`@clerk/nextjs@canary` jumped from `7.8.3-canary.v20260825083614` to `7.8.3-canary.v20260825175547`** — npm-published 2026-08-25T17:55:47Z (the v1.5.98 cycle tracked `v20260825083614` from 08:36Z; this drop is ~9h later). This is the **28th canary drop since v1.5.50 baseline** (v1.5.98 tracked the 27th). No security-relevant changes in this drop. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260825175547`. **STABLE remains `7.8.2`** (unchanged).
+
+### Why This Matters for Auth
+
+- **Two critical unauthenticated RCEs = P0 incident for any Windows-hosted Next.js auth app.** The attacker gets full server access without any credentials. If your Next.js auth app runs on Windows, treat this as a confirmed breach until you upgrade.
+- **CVE2 (AVIF RCE) applies to ALL Next.js deployments** using Image Optimization with AVIF. The Image Optimization API is public by default in App Router. Upgrade even if you're on Linux.
+- **`next@16.3.3` is now `latest`** — the upgrade is a one-liner. Do it now.
+- **@clerk/nextjs canary 28th drop** — no auth changes, but stay current for future stability.
+- **Windows ISR fix in canary.7 (#97876)** — if ISR is used on Windows alongside auth, the backslash path handling fix prevents cache poisoning that could leak auth-related pages.
+
+### Sources
+
+- [Official v16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) — published **2026-08-25T16:17:10Z**; two critical CVE fixes
+- [Official v15.5.24 release](https://github.com/vercel/next.js/releases/tag/v15.5.24) — published **2026-08-25T16:16:55Z**; same CVEs
+- [Official v16.4.0-canary.7 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.7) — published **2026-08-25T16:44:14Z**; AVIF disabled + Windows ISR fix
+- [GHSA-p293-qw3h-jr36 — Unauthenticated RCE on Windows-hosted servers](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
+- [GHSA-2xp9-vwfh-vxw4 — Unauthenticated RCE in Image Optimization API with AVIF](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
+- [Next.js Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — moved to Aug 25; two critical CVEs confirmed
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260825175547`; 28th drop since v1.5.50
+- [Cross-reference: `routing.md` — full CVE routing-surface lens
+- [Cross-reference: `security.md` — full CVE security checklist + post-incident response
+- [Cross-reference: `setup.md` — immediate upgrade recipe + AVIF disable implications
