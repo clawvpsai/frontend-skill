@@ -3713,3 +3713,73 @@ trigger(undefined, { shouldTouch: true });
 - [GitHub — RHF Discussion #9830 — shouldTouch on trigger()](https://github.com/orgs/react-hook-form/discussions/9830)
 - [GitHub — RHF Issue #11370 — trigger needs shouldTouch option](https://github.com/react-hook-form/react-hook-form/issues/11370)
 - [npm — react-hook-form@latest](https://www.npmjs.com/package/react-hook-form)
+
+---
+
+## Aug 26 Critical CVE T-1d Refresh + RHF shouldTouch on trigger() PR #13671 MERGED + TanStack Query 5.102.3 + Zod 4.5.0 Canary Watch (August 25, 2026 — v1.5.96 Cycle)
+
+**Aug 26 Critical CVE: T-1d** (Wed Aug 26 = exactly 1 day from this cron's 00:02Z Aug 25 start; confirmed via https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026). The official pre-announce states ONE critical CVE; patched versions will be **`16.3.3` + `15.5.24`**. **`next@16.3.2` is NOT the CVE patch** — it shipped Aug 21 as a routine backport. Every form-heavy Next.js App Router project must plan the Aug 26 upgrade window today/tomorrow. The Aug 26 security advisory will include the full vulnerability description, affected versions, and upgrade instructions.
+
+**RHF `shouldTouch` on `trigger()` — PR #13671 MERGED to master** (Aug 23 09:28Z). The v1.5.92 forecast confirmed: `trigger(name, { shouldTouch: true })` landed in master, awaiting the next stable release. The option marks fields as touched **without** triggering re-validation — the inverse of the default `shouldTouch: false` (which marks AND re-validates). Use case: form-exit guard that records which fields were visited without punishing partial attempts.
+
+```tsx
+// After PR #13671 merged to master
+const { trigger, formState: { touchedFields } } = useForm({
+  defaultValues: { email: '', name: '' }
+})
+
+// Mark field as touched — NO re-validation
+await trigger('email', { shouldTouch: true })
+// formState.touchedFields.email === true; no validate() called
+
+// Default: mark AND re-validate
+await trigger('email') // or { shouldTouch: false }
+// formState.touchedFields.email === true; validate() IS called
+```
+
+Additional RHF fixes since 7.86.0: **#13673** (fix), **#13674** (fix), **#13678** (fix) — minor bug fixes on master. These are candidate patches for `7.86.x` or the next minor release. Pin `react-hook-form@^7.86.0` for production; watch for `7.86.1` patch in the next 3-7 days.
+
+**`@tanstack/react-query@5.102.3` SHIPPED** (npm-published **2026-08-24T19:25:00.000Z** — the Aug 24 npm `@latest` confirmed in this cycle). 4th consecutive TanStack Query release in 72h (5.102.0 → 5.102.1 → 5.102.2 → 5.102.3). This is a **pure dependency refresh**: all packages updated `@tanstack/query-core` to `5.102.3` with no API or behavioral changes. TanStack Query for React is at its fastest release cadence ever — a new patch or minor every 18-24h since Aug 22. The `@tanstack/react-form` + `@tanstack/react-query` stack should audit `queryKey` scoping when both are used together in RHF `setError` callbacks. Pin `@tanstack/react-query@^5.102.3`.
+
+**Zod 4.5.0 STABLE — STILL NOT SHIPPED.** The Zod canary train continued with 6 drops on Aug 24 (202608241948 → 202608242049UTC), including a **BREAKING datetime fix** (PR #6457) that resolves a long-standing `z.date()` deserialization edge case. 4.5.0 STABLE remains forecast **Sep 1-15** based on the canary cadence. The Aug 24 BREAKING change means canary.20260824 or later is required for the fix; projects on older canaries should not auto-update without reading the PR #6457 migration notes. Track https://github.com/colinhacks/zod/releases for the STABLE cut. The Zod + RHF integration (`@hookform/resolvers`) ecosystem should prepare for the 4.5.0 STABLE drop within 2-3 weeks.
+
+### Aug 26 CVE — Form-State Impact Table (Pre-Upgrade Audit Recipe)
+
+Before upgrading to `16.3.3`/`15.5.24` on Aug 26, audit your form integration:
+
+| Check | Action |
+|---|---|
+| Next.js version | Confirm `next@16.3.2` or earlier → plan upgrade window to `16.3.3` |
+| Form action handlers | Check `app/**/action.ts` and `route.ts` for request-body parsing |
+| RHF `trigger()` calls | PR #13671 is in master; confirm no regression in your `shouldTouch` usage after upgrade |
+| `@hookform/resolvers` version | Re-test schema validation after Next.js upgrade |
+| `use server` directive on forms | Confirm `export async function action(...)` still receives correctly parsed `FormData` |
+| Edge runtime forms | If using `runtime: 'edge'` on form routes, test after upgrade |
+| CI smoke tests | Run form-related E2E tests now to establish baseline before upgrade |
+
+### Migration actions
+
+```bash
+# Pin RHF for the shouldTouch fix
+npm install react-hook-form@latest
+# → confirm 7.86.0+ (watch for 7.86.1 patch within days)
+
+# Pin TanStack Query dep refresh
+npm install @tanstack/react-query@latest
+# → 5.102.3 (dependency refresh; no API change)
+
+# Audit Zod canary before next stable
+npm install zod@canary
+# → check if 4.5.0 STABLE is out; if not, pin zod@canary@latest
+```
+
+### Sources
+
+- [GitHub — RHF PR #13671 shouldTouch on trigger() MERGED](https://github.com/react-hook-form/react-hook-form/pull/13671)
+- [GitHub — RHF Issue #9830 shouldTouch discussion](https://github.com/orgs/react-hook-form/discussions/9830)
+- [GitHub — Zod PR #6457 datetime fix BREAKING](https://github.com/colinhacks/zod/pull/6457)
+- [TanStack Query releases — v5.102.3](https://github.com/tanstack/query/releases)
+- [npm — react-hook-form@latest](https://www.npmjs.com/package/react-hook-form)
+- [npm — @tanstack/react-query@latest](https://www.npmjs.com/package/@tanstack/react-query)
+- [npm — zod@latest](https://www.npmjs.com/package/zod)
+- [nextjs.org — Upcoming August 2026 Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)

@@ -3254,3 +3254,62 @@ The 2 Vitest CVEs (CVE-2026-53633 + CVE-2026-73653) are both fixed in `4.1.11`. 
 - [GitHub — user-event v14.6.6 compare](https://github.com/testing-library/user-event/compare/v14.6.5...v14.6.6)
 - [GitHub — Vitest 5 discussion — 2-3 week RC period](https://github.com/vitest-dev/vitest/discussions/9664)
 - [npm — vitest versions](https://www.npmjs.com/package/vitest?activeTab=versions)
+
+---
+
+## Aug 26 Critical CVE T-1d + next@16.4.0-canary.5/6 Testing Impact + Playwright 1.63.0-alpha-2026-08-24 + Vitest 5 STABLE Forecast Sep 1–8 (August 25, 2026 — v1.5.96 Cycle)
+
+**Aug 26 Critical CVE: T-1d** (Wed Aug 26 = exactly 1 day from this cron's 00:02Z Aug 25 start; official https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026: ONE critical CVE, patched versions `16.3.3` + `15.5.24`). The CVE patch will land during the **next cron cycle** (Aug 25 06:02Z or 12:02Z). Every testing setup that covers Next.js App Router forms, Server Actions, or RSC data fetching must establish a **pre-upgrade baseline** now and plan a **post-upgrade smoke run** for Aug 26.
+
+**Pre-CVE testing audit recipe (do today, Aug 25):**
+```bash
+# 1. Snapshot your current Next.js version
+npx next --version
+# → should be 16.3.2 (NOT 16.3.3 which doesn't exist yet)
+
+# 2. Run your full form/action E2E suite — establish baseline
+npx playwright test --grep "form|action|submit"
+
+# 3. Run RSC/fetch integration tests
+npx playwright test --grep "RSC|server-component|cache"
+
+# 4. Audit Server Action form parsing (test a multi-field FormData submission)
+# POST to your action with FormData and verify field parsing is correct
+
+# 5. Check CI matrix — confirm all tested Node.js versions still pass
+
+# 6. Document current pass/fail counts for post-upgrade comparison
+```
+
+**`next@16.4.0-canary.5` + `next@16.4.0-canary.6` SHIPPED** (Aug 24 12:07Z + 19:48Z; 15 PRs cumulative ahead of canary.4). From the testing lens:
+
+| PR | Impact | Testing relevance |
+|---|---|---|
+| PR #97729 Fix metadata prefetch cache key for search params | MEDIUM | PPF pages with `searchParams` in metadata need re-testing; prefetch cache key fix may change what metadata is served on subsequent navigations |
+| PR #96808 turbo-tasks execute scheduled tasks inline when read | LOW | Internal perf; unlikely to affect test behavior |
+| PR #96631 Turbopack emit/collect | LOW | Build-time perf; no runtime test impact |
+| PR #97821→#97835 revert (fallback cache for blocking PPR) | LOW | Revert of an experimental PPR change; no test action needed |
+
+**`@playwright/test@next` jumped to `1.63.0-alpha-2026-08-24`** (npm-published Aug 24; was `1.63.0-alpha-2026-08-17` in v1.5.92). New alpha drops in the 7-day window since v1.5.92. The `@playwright/test@next` alpha train has shipped `1.63.0-alpha-2026-08-08` → `1.63.0-alpha-2026-08-17` → `1.63.0-alpha-2026-08-21` → `1.63.0-alpha-2026-08-22` → `1.63.0-alpha-2026-08-24` in this window — 5 alpha drops in 2 weeks. Stable `playwright` package is `1.62.1`. The STABLE `1.63.0` is not yet announced. Do NOT pin `next` to `@playwright/test@next` for production CI — use stable `1.62.1`. For bleeding-edge testing of Next.js PPF features, test against the alpha in a separate canary-CI job.
+
+**Vitest 5 STABLE forecast Sep 1–8** (unchanged from v1.5.92; tightened from Aug 22-Sep 1 to Sep 1-Sep 8 per the Aug 14 maintainer comment "2-3 week RC period"). `vitest@rc` is `5.0.0-rc.2` (Aug 17). The STABLE cut is 10-18 days away from this cron's 00:02Z Aug 25. The Vitest 5 upgrade is the most impactful testing change coming in the next 2-3 weeks — it includes the full Vite 8 integration, breaking changes to `workspace` config, and the new `vi.hoisted()` behavior. **Audit your test suite now** for Vitest 5 compatibility before the stable drops. Run:
+```bash
+# Check which vitest APIs your tests use that may break in v5
+npx vitest --version
+# → if 4.x, pin in package.json and plan upgrade window
+
+# Test against RC in a canary job
+npm install -D vitest@5.0.0-rc.2
+npx vitest run
+# → fix failures before STABLE drops
+```
+
+### Sources
+
+- [nextjs.org — Upcoming August 2026 Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)
+- [GitHub — next@16.4.0-canary.5 compare to canary.4](https://github.com/vercel/next.js/compare/v16.4.0-canary.4...v16.4.0-canary.5)
+- [GitHub — next@16.4.0-canary.6 compare to canary.5](https://github.com/vercel/next.js/compare/v16.4.0-canary.5...v16.4.0-canary.6)
+- [npm — @playwright/test@next versions](https://www.npmjs.com/package/@playwright/test?activeTab=versions)
+- [npm — @playwright/test@latest](https://www.npmjs.com/package/@playwright/test)
+- [GitHub — Vitest Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664)
+- [GitHub — Vitest v5.0.0-rc.2](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.2)

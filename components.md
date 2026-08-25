@@ -4265,3 +4265,52 @@ No component breaking changes. The `migrate base-color` is additive CLI function
 - [GitHub — PR #11582 — private repository support for GitHub registries](https://github.com/shadcn-ui/ui/pull/11582)
 - [GitHub — compare shadcn@4.18.0...shadcn@4.19.0](https://github.com/shadcn-ui/ui/compare/shadcn@4.18.0...shadcn@4.19.0)
 - [npm — shadcn@4.19.0](https://www.npmjs.com/package/shadcn)
+
+---
+
+## Aug 26 Critical CVE T-1d + next@16.4.0-canary.5/6 (PR #97729 Metadata Prefetch Cache Key Fix) + React 19.3.0-Canary-bd6ea412-20260824 (August 25, 2026 — v1.5.96 Cycle)
+
+**Aug 26 Critical CVE: T-1d** (Wed Aug 26 = exactly 1 day from this cron's 00:02Z Aug 25 start; confirmed via https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026). This is the highest-stakes App Router component impact since the RSC CVE patches in June 2025. **`next@16.3.2` is NOT the CVE patch** — it shipped Aug 21 as routine backport. The CVE patch (`16.3.3` + `15.5.24`) will land during the next cron cycle.
+
+**Components to audit before Aug 26 upgrade:**
+
+| Component pattern | Audit action |
+|---|---|
+| `<Link>` + PPF + `generateMetadata` with `searchParams` | Re-test prefetch behavior after upgrading to `16.3.3` |
+| Custom `<CacheProvider>` wrapping RSC | Test after upgrade — CVE may touch RSC cache layer |
+| `unstable_prefetch()` + `searchParams` | Re-verify prefetch cache key after upgrading |
+| Middleware auth checks on form submissions | Verify auth context is still correct after CVE patch |
+| `output: 'standalone'` deployments | Test standalone manifest parsing after upgrade |
+
+**`next@16.4.0-canary.5` + `next@16.4.0-canary.6` SHIPPED** (Aug 24 12:07Z + 19:48Z; 15 PRs ahead of canary.4). From the components lens:
+
+**[PR #97729](https://github.com/vercel/next.js/pull/97729) "Fix metadata prefetch cache key for search params"** — **★ COMPONENT-SURFACE IMPACT ★** — The headline component fix in canary.5. When a `<Link>` prefetches a route that uses `searchParams` in `generateMetadata()` or page rendering, the cache key now correctly includes the resolved search params. Before this fix: metadata prefetch cache keys were incorrectly scoped — `generateMetadata({ searchParams })` reads on a route like `/search?q=foo` would share the same cached metadata as `/search?q=bar`. After this fix: each unique `searchParams` combination gets its own correct metadata prefetch cache entry. **Impact**: Any `<Link>` component that points to a route with dynamic `searchParams`-dependent metadata is affected. In practice: search pages, filter pages, paginated routes with `<Link prefetch={true}>`.
+
+```tsx
+// Before PR #97729 — shared prefetch cache entry across searchParams
+// /search → metadata for "q=all" was incorrectly served for "q=specific"
+
+// After PR #97729 — correct per-searchParams cache key
+// Each unique ?q= value gets its own metadata prefetch
+<Link href="/search?q=${query}">
+  Search {query}
+</Link>
+```
+
+**[PR #96808](https://github.com/vercel/next.js/pull/96808) "turbo-tasks: execute scheduled tasks inline when they are read"** — turbo-tasks now inlines scheduled task execution at read time, reducing task dispatch overhead for incremental computation in large projects. LOW component impact — internal build optimization.
+
+**[PR #96631](https://github.com/vercel/next.js/pull/96631) "Turbopack: emit/collect"** — refactors Turbopack's output emission to use a collect phase, enabling better memory management for large output sets. LOW component impact — build-time perf only.
+
+**[PR #96874](https://github.com/vercel/next.js/pull/96874) "Write traces with buffered synchronous IO"** — changes trace file writing to use buffered sync IO, improving trace write performance in CI. LOW component impact.
+
+**React 19.3.0-canary-bd6ea412-20260824 SHIPPED** (npm-published Aug 24; the new canary hash since v1.5.95's tracked `19.3.0-canary-eafeac09-20260819`). React canary train resumed with a new hash after the 5-day freeze. **No new React 19.3 API surface in this hash** — the bump is a React canary roll-forward. Apps that pin `react@canary` separately from Next.js canaries should update to stay in sync with the Next.js 16.4.x canary line. Pin `react@canary@19.3.0-canary-bd6ea412-20260824` or let Next.js canary pull the correct react version automatically.
+
+**shadcn ecosystem: STILL IDLE** (shadcn@4.19.0 since Aug 21 = 4+ days; `@shadcn/react@0.3.0` since Aug 5 = 20+ days; `@shadcn/helpers@0.2.0` since Aug 11 = 14+ days). No `<ViewTransition>` wrapper added to shadcn. No component-level PR activity. The ecosystem is in a holding pattern ahead of a potential `shadcn@4.20.0` or `@shadcn/react@0.4.0` release aligned with the PPF stable launch.
+
+### Sources
+
+- [GitHub — PR #97729 Fix metadata prefetch cache key for search params](https://github.com/vercel/next.js/pull/97729)
+- [GitHub — next@16.4.0-canary.5 compare to canary.4](https://github.com/vercel/next.js/compare/v16.4.0-canary.4...v16.4.0-canary.5)
+- [GitHub — next@16.4.0-canary.6 compare to canary.5](https://github.com/vercel/next.js/compare/v16.4.0-canary.5...v16.4.0-canary.6)
+- [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions)
+- [nextjs.org — Upcoming August 2026 Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)
