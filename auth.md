@@ -156,3 +156,112 @@ npm view @clerk/nextjs dist-tags.canary
 - [Cross-reference: `routing.md` — full CVE routing-surface lens
 - [Cross-reference: `security.md` — full CVE security checklist + post-incident response
 - [Cross-reference: `setup.md` — immediate upgrade recipe + AVIF disable implications
+
+---
+
+## ★ next@16.4.0-canary.8 SHIPPED + @clerk/nextjs@canary 29th Drop + @tanstack/react-query@5.102.4 PATCH + Aug 26 CVE Post-Incident T+0h (Auth Lens — v1.6.01, August 26, 2026)
+
+**`next@16.4.0-canary.8` SHIPPED** npm-published 2026-08-25T23:46:22Z (~6h before this cron's 06:02Z Aug 26 start). This is the first post-CVE 16.4.x canary. Auth consumers on `next@canary` should pin to `canary.8` for the chained symlink fix + root-anchored import fix.
+
+### @clerk/nextjs — Canary Updated to 7.8.3-canary.v20260825235807 (v1.5.99: 7.8.3-canary.v20260825175547)
+
+**`@clerk/nextjs@canary` jumped from `7.8.3-canary.v20260825175547` to `7.8.3-canary.v20260825235807`** — npm-published 2026-08-25T23:58:07Z (the v1.5.99 cycle tracked `v20260825175547` from 17:55Z; this drop is ~6h later). This is the **29th canary drop since v1.5.50 baseline** (v1.5.99 tracked the 28th). **STABLE remains `7.8.2`** (unchanged). No security-relevant changes in this drop. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260825235807`.
+
+### @tanstack/react-query@5.102.4 — PATCH (5th in 7 Days; v1.5.99 Was at 5.102.3)
+
+**`@tanstack/react-query@5.102.4`** (npm `latest` confirmed at this cron) is a **PATCH upgrade** with one targeted fix:
+
+> PR #11293 (`a05df6a`) — "Avoid scheduling stale timeouts for disabled query observers."
+
+This fixes a bug where a query observer that had been disabled could still have a stale timeout scheduled against it, causing unnecessary timer overhead and potential memory retention. The fix ensures disabled observers don't schedule stale timeouts. Auth apps that use React Query for session state, permission queries, or `broadcastQueryClient` for cross-tab sync benefit from this patch.
+
+```bash
+# Step 1: upgrade to 5.102.4 (PATCH since 5.102.3)
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.4
+npm install @tanstack/react-query@^5.102.4
+
+# Step 2: verify TypeScript compatibility
+npx tsc --noEmit
+# Expected: no new errors
+
+# Step 3: for Clerk + React Query apps — verify session sync
+# If using broadcastQueryClient for cross-tab auth:
+# Test: open app in two tabs; sign out in one; verify other tab detects signout
+```
+
+### Aug 26 CVE Post-Incident — T+0h (Auth Lens)
+
+**Aug 26 00:00Z UTC is now T+0h** — the two CVEs shipped Aug 25 at 16:17Z UTC. The auth-surface incident is resolved.
+
+**Post-incident auth audit checklist**:
+
+1. **If on `next@16.3.3` (recommended)**: auth middleware is CVE-patched. Session integrity is preserved. No auth-specific regression expected.
+2. **If on `next@canary` (pinning canary)**: upgrade to `canary.8` now — it includes CVE fixes from `canary.7`.
+3. **Windows-hosted Clerk apps**: the Windows ISR fix (#97876) in `canary.7` corrects backslash path handling for ISR pages with special characters. If your ISR pages include auth-protected content with `%2F` in params, test after upgrading.
+4. **AVIF Image Optimization in Clerk**: the AVIF optimizer is disabled in all CVE-patched versions. Clerk's default image handling (which uses `next/image`) will fall back to WebP/PNG. No session/auth impact — just image format change.
+
+### Official CVE Identifiers — Now Confirmed
+
+The Aug 25 security blog post confirms the exact CVE identifiers:
+
+| CVE ID | GHSA | Description | Affected |
+|---|---|---|---|
+| **CVE-2026-75604** | GHSA-p293-qw3h-jr36 | Unauthenticated RCE on Windows-hosted servers | Pages Router + App Router **without Cache Components** on Windows filesystem |
+| (no separate CVE) | GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497 | Unauthenticated RCE in Image Optimization API with AVIF | All Next.js deployments using AVIF image optimization |
+
+**Key clarification for auth consumers**: CVE1 explicitly affects "applications using both the Pages Router and App Router **without Cache Components**". Apps using `experimental.cacheLayers` or `use cache` are NOT affected by CVE1. Auth apps on the App Router that have adopted React's cache component patterns are protected by architecture.
+
+### Auth Audit Recipe — Post-CVE + canary.8 + react-query@5.102.4
+
+```bash
+# Step 1: confirm next@latest is 16.3.3 (CVE-patched)
+npm view next dist-tags.latest
+# Expected: 16.3.3
+
+# Step 2: upgrade @clerk/nextjs@canary to 29th drop
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260825235807
+npm install @clerk/nextjs@canary
+
+# Step 3: upgrade @tanstack/react-query to 5.102.4
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.4
+npm install @tanstack/react-query@^5.102.4
+
+# Step 4: if on next@canary, upgrade to canary.8
+npm install next@16.4.0-canary.8
+
+# Step 5: verify auth middleware resolves post-upgrade
+rg "clerkMiddleware|authMiddleware" src/middleware.ts
+# Expected: clerkMiddleware() on @clerk/nextjs 7.8.x = safe
+
+# Step 6: test session integrity
+# 1. Sign in — verify session cookie set
+# 2. Navigate protected route — verify middleware allows
+# 3. Sign out — verify session invalidated in all tabs (if using broadcastQueryClient)
+
+# Step 7: Windows + ISR + Clerk — verify ISR auth pages with special chars
+# If ISR pages use dynamic segments with %2F or special characters:
+# Test on canary.8: create ISR page with params containing /
+# Expected: page renders correctly with backslash fix from canary.7
+```
+
+### Why This Matters for Auth
+
+- **canary.8 is the recommended canary pin for auth apps** — it includes all CVE fixes + the chained symlink fix + root-anchored import fix. No auth-specific regressions.
+- **@clerk/nextjs@canary 29th drop** — no auth API changes, but staying current with the canary train reduces the gap to the next STABLE release.
+- **react-query@5.102.4** — the stale timeout fix for disabled observers is operationally meaningful for auth apps that conditionally enable/disable session queries based on auth state. No auth API change, but a correctness improvement.
+- **CVE1 scope clarified: "without Cache Components"** — auth apps on App Router using `use cache` or `experimental.cacheLayers` are architecturally protected from CVE1 (Windows RCE). This is a significant clarification not available at v1.5.99.
+
+### Sources
+
+- [Official v16.4.0-canary.8 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.8) — npm-published **2026-08-25T23:46:22Z**
+- [Official August 2026 Security Release — full advisory](https://nextjs.org/blog/august-2026-security-release) — CVE-2026-75604 / GHSA-p293-qw3h-jr36 confirmed; "without Cache Components" scope clarification
+- [GHSA-p293-qw3h-jr36 — Unauthenticated RCE on Windows](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36) — CVE-2026-75604
+- [GHSA-2xp9-vwfh-vxw4 — AVIF RCE](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260825235807`; 29th drop since v1.5.50
+- [`@tanstack/react-query@5.102.4` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — PR #11293 stale timeout fix
+- [TanStack/query PR #11293 — Avoid scheduling stale timeouts for disabled query observers](https://github.com/TanStack/query/pull/11293) — `a05df6a`
+- [Cross-reference: `routing.md` — canary.8 routing-surface PRs
+- [Cross-reference: `setup.md` — canary.8 + react-query@5.102.4 setup recipe

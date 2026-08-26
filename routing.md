@@ -175,3 +175,84 @@ npm run dev
 - [GHSA-p293-qw3h-jr36 — Unauthenticated RCE on Windows-hosted servers](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36)
 - [GHSA-2xp9-vwfh-vxw4 — Unauthenticated RCE in Image Optimization API with AVIF](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4)
 - [Next.js Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — moved to Aug 25; two critical CVEs confirmed
+
+---
+
+## ★ next@16.4.0-canary.8 SHIPPED — Aug 25 23:46Z + Aug 26 CVE Post-Incident T+0h + TypeScript 34th Rebuild Pending ~08:25Z Aug 26 (Routing Lens — v1.6.01, August 26, 2026)
+
+**`next@16.4.0-canary.8` SHIPPED** npm-published 2026-08-25T23:46:22Z (~6h before this cron's 06:02Z Aug 26 start). This is the 4th canary in the 16.4.x train and the first since the Aug 25 CVE drop. The canary train has now crossed the CVE-patch point (`canary.7` = CVE-patch canary) and resumed active development. Two of the 9 PRs in canary.8 have **routing-surface impact**.
+
+### canary.8 PRs — Routing-Surface Relevant
+
+| PR | Description | Routing Impact |
+|---|---|---|
+| **#97825** | `Fix Turbopack resolution through chained symlinks` — classifies symlinks by final target chain, preserves non-directory behavior for dangling/invalid/cyclic chains; fixes #97786 | **MEDIUM** — resolves Turbopack build failures in monorepos and CI environments with chained `node_modules` symlinks; `next build` with Turbopack now works in environments that previously required webpack fallback |
+| **#97799** | `feat(turbopack): resolve /-rooted imports from the project directory` — `import '/content/where'` and `require('/foo.js')` now resolve from project root (where `next.config` lives); previously resolved from filesystem root with "server relative imports are not implemented yet" | **MEDIUM** — absolute-path imports (`/`-prefixed) now work correctly in Next.js; consumer impact: any app using `import '/some-file'` or `require('/foo.js')` in API routes or server code will now resolve correctly from project directory instead of failing |
+
+### TypeScript 34th No-Content Daily Rebuild — Pending ~08:25Z Aug 26
+
+**The 34th TypeScript `next` rebuild is still PENDING** at this cron's 06:02Z Aug 26 start. The current tip is `7.1.0-dev.20260825.1` (npm-published 2026-08-25T08:53:06Z = 28 min early on the v1.5.99 forecast of ~08:25Z). The 34th rebuild was forecast for ~08:25Z Aug 26. If this cron runs after that window, the 34th rebuild will be `7.1.0-dev.20260826.1`. The TS main branch remains idle (30+ days = longest stretch since 7.0.0 baseline). **No TS-surface breaking changes in this cycle.**
+
+**TypeScript Impact on Routing**: NONE for this cycle. The 34th rebuild is a no-content daily rebuild — no new language features, only the daily `tsc --noEmit` smoke test against main. Routing consumers using `next@canary` + `typescript@next` can expect zero TS-related routing changes.
+
+### Aug 26 CVE Post-Incident — T+0h (Routing Lens)
+
+**Aug 26 00:00Z UTC is now T+0h** — the two CVEs shipped Aug 25 at 16:17Z UTC as `next@16.3.3` + `next@15.5.24`. The routing-surface incident state is now resolved. For **post-incident routing audit** purposes:
+
+- **If you upgraded to `16.3.3` before Aug 26**: no further action needed for CVE1 (Windows RCE) or CVE2 (AVIF RCE). Routing behavior is back to normal.
+- **If you are on `16.4.0-canary.7`**: you have the CVE patches. `canary.8` on top of `canary.7` does NOT remove the CVE fixes — they're baked into the base.
+- **`output: 'standalone'` on Windows users**: test that the Windows ISR backslash fix (#97876) from `canary.7` is working — params with `%2F` should render correctly.
+- **PPF users** (`unstable_prefetch` / `unstable_navigation`): confirmed unaffected by the CVEs. Navigation behavior post-patch is identical.
+
+### Updated Routing Audit Recipe — Post-CVE + canary.8
+
+```bash
+# Step 1: confirm next@latest is 16.3.3 (CVE-patched)
+npm view next dist-tags.latest
+# Expected: 16.3.3
+
+# Step 2: canary.8 — verify if you're on canary
+npm view next dist-tags.canary
+# Expected: 16.4.0-canary.8 (if pinning canary)
+
+# Step 3: Turbopack chained symlinks fix (#97825) — verify in monorepo/CI
+# If you had Turbopack build failures with symlinked node_modules:
+npm install next@16.4.0-canary.8
+pnpm next build --turbo
+# Expected: build completes without symlink errors
+# If still failing: check if the symlink chain depth exceeds expected patterns
+
+# Step 4: absolute-path imports fix (#97799) — verify in API routes
+# If you use import '/file' or require('/file') in API routes:
+# These now resolve from project root instead of filesystem root
+# Test: create an API route that imports a file by absolute path
+# Expected: resolves correctly
+
+# Step 5: TypeScript 34th rebuild — check if it shipped during this cron window
+npm view typescript dist-tags.next
+# If 7.1.0-dev.20260826.1: the 34th rebuild shipped
+# If 7.1.0-dev.20260825.1: still pending (check back in ~2h)
+
+# Step 6: canary.8 recommended pin for 16.4.x experimenters
+# canary.8 = canary.7 (CVE fixes) + chained symlink fix + root-anchored imports
+npm install next@16.4.0-canary.8
+```
+
+### Why This Matters for Routing
+
+- **canary.8 is the first post-CVE 16.4.x release** — the canary train crossed the CVE patch point (`canary.7`) and resumed active development. The train is healthy: 4 canaries in ~3 days.
+- **Chained symlink fix (#97825) is a Turbopack monorepo fix** — environments using `npm link`, `pnpm workspaces`, or CI that copies `node_modules` via symlinks will now get clean `next build --turbo` instead of `TurbopackInternalError`. This was a known pain point in monorepos.
+- **`/-rooted import fix (#97799) is a correctness fix** — apps using `import '/foo'` or `require('/bar')` in server-side code were getting "server relative imports are not implemented yet" errors. This is now resolved. The project-directory root is enforced as the boundary — no filesystem escape.
+- **TypeScript 34th rebuild PENDING** — this is the normal daily no-content rebuild cadence. No routing-surface TS changes.
+- **Aug 26 CVE T+0h** — the incident is over for routing consumers. The two CVEs (Windows RCE + AVIF RCE) are patched in `16.3.3` / `15.5.24` / `16.4.0-canary.7+`. Routing behavior is normal.
+
+### Sources
+
+- [Official v16.4.0-canary.8 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.8) — npm-published **2026-08-25T23:46:22Z**; 9 PRs
+- [PR #97825 — Fix Turbopack resolution through chained symlinks](https://github.com/vercel/next.js/pull/97825) — fixes #97786; 8 files; +148/-14
+- [PR #97799 — feat(turbopack): resolve /-rooted imports from the project directory](https://github.com/vercel/next.js/pull/97799) — 24 files; +227/-22; project-directory root enforcement
+- [PR #97697 — Turbopack: correctly trace through TypeScript `__importStar`](https://github.com/vercel/next.js/pull/97697) — 4 files; +18/-37; no perf impact
+- [Official August 2026 Security Release — full advisory](https://nextjs.org/blog/august-2026-security-release) — CVE-2026-75604 / GHSA-p293-qw3h-jr36 + GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497
+- [TypeScript 34th rebuild pending — `7.1.0-dev.20260825.1`](https://registry.npmjs.org/typescript/next) — forecast ~08:25Z Aug 26; main branch 30+ days idle
+- [Cross-reference: `auth.md` — @clerk/nextjs@canary 29th drop + auth post-incident
+- [Cross-reference: `setup.md` — canary.8 + react-query@5.102.4 + AVIF disable post-incident setup

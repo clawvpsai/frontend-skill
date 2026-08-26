@@ -195,3 +195,118 @@ npx tsc --noEmit
 - [Cross-reference: `auth.md` — auth implications + @clerk/nextjs canary update
 - [Cross-reference: `routing.md` — routing-surface impact table
 - [Cross-reference: `security.md` — full post-incident security checklist
+
+---
+
+## ★ next@16.4.0-canary.8 SHIPPED + @tanstack/react-query@5.102.4 PATCH + @clerk/nextjs@canary 29th Drop + Aug 26 CVE Post-Incident T+0h (Setup Lens — v1.6.01, August 26, 2026)
+
+**`next@16.4.0-canary.8` SHIPPED** npm-published 2026-08-25T23:46:22Z (~6h before this cron's 06:02Z Aug 26 start). This is the first post-CVE 16.4.x canary. The canary train crossed the CVE patch point (`canary.7`) and resumed active development with 9 PRs.
+
+### next@16.4.0-canary.8 — 9 PRs (Setup-Relevant Findings)
+
+| PR | Description | Setup Impact |
+|---|---|---|
+| **#97825** | `Fix Turbopack resolution through chained symlinks` — fixes #97786; +148/-14; 8 files | **HIGH** for monorepos / CI with symlinked `node_modules` — `next build --turbo` now works where it previously failed |
+| **#97799** | `feat(turbopack): resolve /-rooted imports from the project directory` — `import '/foo'` now resolves from project root; +227/-22; 24 files | **MEDIUM** — apps using absolute-path imports (`/`) in API routes or server code will now resolve correctly; no more "server relative imports are not implemented yet" |
+| **#97697** | `Turbopack: correctly trace through TypeScript __importStar` — +18/-37; no perf impact | **LOW** — TypeScript correctness fix for `import * as` star imports; no setup changes needed |
+| **#97634** | `Update default Create Next App favicon` — replaces Vercel triangle with Next.js logo in default templates | **LOW** — affects `create-next-app` generated projects only |
+
+### @tanstack/react-query@5.102.4 — PATCH (5th in 7 Days; v1.5.99 Was at 5.102.3)
+
+**`@tanstack/react-query@5.102.4`** (npm `latest` confirmed: `curl -s "https://registry.npmjs.org/@tanstack/react-query/latest" | python3 -c "..."` → `{"version": "5.102.4"}`) is a **PATCH upgrade** with one targeted fix:
+
+> PR #11293 (`a05df6a`) — "Avoid scheduling stale timeouts for disabled query observers."
+
+This fixes a bug where disabled query observers could retain a stale timeout in the scheduler, causing unnecessary timer overhead and potential memory retention. The fix is in `query-core`. Auth apps using React Query for session state, permission checks, or cross-tab sync (`broadcastQueryClient`) benefit from this patch.
+
+```bash
+# Step 1: verify current version
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.4
+
+# Step 2: upgrade if on <5.102.4
+npm install @tanstack/react-query@^5.102.4
+
+# Step 3: verify TypeScript compatibility
+npx tsc --noEmit
+# Expected: no new errors
+
+# Step 4: for auth apps using broadcastQueryClient
+# Test cross-tab session sync: open two tabs, sign out in one,
+# verify the other tab detects the signout within ~10 seconds
+```
+
+### @clerk/nextjs@canary — 29th Drop to 7.8.3-canary.v20260825235807
+
+**`@clerk/nextjs@canary` jumped to `7.8.3-canary.v20260825235807`** — npm-published 2026-08-25T23:58:07Z. This is the **29th canary drop since v1.5.50 baseline**. STABLE remains `7.8.2`. No security-relevant changes. Pin canary at `7.8.3-canary.v20260825235807`.
+
+### Aug 26 CVE Post-Incident — T+0h (Setup Lens)
+
+**Aug 26 00:00Z UTC is now T+0h** — the two critical CVEs shipped Aug 25 at 16:17Z UTC as `next@16.3.3` + `next@15.5.24`. The incident is resolved. The full official CVE identifiers are now confirmed:
+
+- **CVE-2026-75604 / GHSA-p293-qw3h-jr36**: Unauthenticated RCE on Windows-hosted servers — affects Pages Router + App Router **without Cache Components** on Windows. Linux/macOS: NOT affected. No workaround for Windows-hosted apps.
+- **GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497**: Unauthenticated RCE in Image Optimization API with AVIF — AVIF optimization **disabled** in all patched versions. Auto-fallback to WebP/PNG.
+
+**Key setup clarification**: Apps using App Router with React's Cache Components (`use cache`, `experimental.cacheLayers`) are NOT affected by CVE1. This is a significant architectural protection.
+
+### Updated Setup Recipe — Post-CVE + canary.8 + react-query@5.102.4
+
+```bash
+# IMMEDIATE: verify next@latest is 16.3.3 (CVE-patched)
+npm view next dist-tags.latest
+# Expected: 16.3.3 (not 16.3.2)
+
+# Step 1: upgrade next to canary.8 if pinning canary
+npm install next@16.4.0-canary.8
+# canary.8 = canary.7 (CVE fixes) + chained symlink fix + root-anchored import fix
+
+# Step 2: verify upgrade
+npm list next
+# Expected: next@16.4.0-canary.8 (or 16.3.3 if on stable)
+
+# Step 3: upgrade @tanstack/react-query to 5.102.4
+npm install @tanstack/react-query@^5.102.4
+
+# Step 4: upgrade @clerk/nextjs@canary to 29th drop
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260825235807
+
+# Step 5: for monorepo / CI with symlinked node_modules — verify Turbopack build
+pnpm next build --turbo
+# Expected: completes without TurbopackInternalError for chained symlinks
+
+# Step 6: for apps using /-rooted imports — verify resolution
+# Create a test API route:
+# import '/data/config.json'  // now resolves from project root
+# Expected: resolves correctly on canary.8
+
+# Step 7: TypeScript check
+npx tsc --noEmit
+# Expected: no new errors
+
+# Step 8: clean dev server
+rm -rf .next
+npm run dev
+# Expected: starts cleanly
+```
+
+### Why This Matters for Setup
+
+- **canary.8 is the recommended canary pin** for 16.4.x experimenters — it includes all CVE fixes from `canary.7` plus the chained symlink fix and root-anchored import fix. This is the cleanest canary to pin after the CVE incident.
+- **Chained symlink fix (#97825)** is a setup win for monorepos — `pnpm workspaces` and CI environments that create symlinked `node_modules` directories now get clean Turbopack builds without the webpack fallback.
+- **`/-rooted import fix (#97799)** resolves a long-standing limitation — `import '/foo'` in server-side code was silently failing. Now it resolves from project root. Consumer impact: any setup that uses absolute-path imports in API routes will now work correctly.
+- **react-query@5.102.4 is the new recommended pin** — the stale timeout fix for disabled observers is a correctness + memory improvement. Safe drop-in upgrade for all React Query consumers.
+- **CVE1 scope clarified: "without Cache Components"** — the official advisory confirms that App Router apps using Cache Components (`use cache`) are not affected by CVE1. This means the architectural pattern of using React's cache primitives provides CVE1 protection on top of the version patch.
+
+### Sources
+
+- [Official v16.4.0-canary.8 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.8) — npm-published **2026-08-25T23:46:22Z**; 9 PRs
+- [Official August 2026 Security Release — full advisory](https://nextjs.org/blog/august-2026-security-release) — CVE-2026-75604 / GHSA-p293-qw3h-jr36 confirmed; "without Cache Components" scope clarification
+- [PR #97825 — Fix Turbopack resolution through chained symlinks](https://github.com/vercel/next.js/pull/97825) — fixes #97786; +148/-14; 8 files
+- [PR #97799 — feat(turbopack): resolve /-rooted imports from the project directory](https://github.com/vercel/next.js/pull/97799) — project-directory root enforcement; +227/-22; 24 files
+- [`@tanstack/react-query@5.102.4` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — `{"version": "5.102.4"}`; PR #11293 stale timeout fix
+- [TanStack/query PR #11293 — Avoid scheduling stale timeouts for disabled query observers](https://github.com/TanStack/query/pull/11293) — `a05df6a`
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260825235807`; 29th drop since v1.5.50
+- [Cross-reference: `routing.md` — canary.8 routing-surface PRs
+- [Cross-reference: `auth.md` — @clerk/nextjs 29th drop + auth post-incident
