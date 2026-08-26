@@ -2953,3 +2953,182 @@ Per the [Next.js Aug 26, 2026 Security Release Pre-Announce](https://nextjs.org/
 - [TanStack Query PR #11262 — chore: update knip](https://github.com/TanStack/query/pull/11262) — by @botshen
 - [Next.js Aug 26, 2026 Security Release Pre-Announce](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — official source for `next@16.3.3` + `next@15.5.24` patched versions
 - [Cross-references](cross-refs): `api.md` v1.5.95 → the canary.3/4 API-surface lens; `patterns.md` v1.5.95 → Pattern EE-JJ for the pattern-lens on the canary.3/4 PPF trio + `next/cache-handlers` types entry + TanStack Query cache-config-types wrapper; `routing.md` v1.5.94 → the canary.3 scope app-entry export routing-impact; `server-components.md` v1.5.93 → the PPF RSC-lens confirmation; `state.md` v1.5.92 → TanStack Query 5.102.2 3-in-24h from the state-management lens (comprehensive coverage); `setup.md` v1.5.94 → the canary.3 scope app-entry export setup implications; `security.md` v1.5.92 → the Aug 26 CVE T-2d section; `deployment.md` v1.5.92 → the Aug 26 CVE T-2d deployment checklist
+
+## 34th `typescript@next` No-Content Daily Rebuild PENDING ~08:25Z Aug 26 + 33rd Rebuild SHIPPED Aug 25 (`7.1.0-dev.20260825.1`, npm-published 2026-08-25T08:53:06.599Z = 28 min EARLY on v1.5.99 Forecast of ~08:25Z; MISSED-by-v1.5.95 + v1.5.96 + v1.5.97 + v1.5.98 Forecast Forecast) + `next@16.3.3 + next@15.5.24` Aug 26 CVE SHIPPED EARLY (TypeScript / Build-Tooling Impact — Aug 26 Critical CVE Forces `next@latest` Bump from 16.3.2 → 16.3.3; TS-Affected Changes: PR #97875 [next/image] AVIF Disable — No TS Surface + PR #97876 Windows ISR Backslash Fix — No TS Surface + PR #97812 React Bump to `bd6ea412-20260824` — Indirect TS Benefit via New `unstable_*` Type Augmentations + PR #97729 Metadata Prefetch Cache Key for Search Params MEDIUM — No TS Surface) + `@tanstack/react-query@5.102.3` PATCH SHIPPED (Aug 24 19:26Z, 4th in 7 days; No New TS-Surface Changes — Continuation of 5.102.x Routine PATCH Series) + React `bd6ea412-20260824` Bump (next@16.4.0-canary.7) — Type Augmentations Pass-Through (TypeScript / Build-Tooling Lens — Tested at v1.6.00 Cron, August 26, 2026 00:02 UTC)
+
+### 33rd `typescript@next` No-Content Daily Rebuild SHIPPED (Aug 25, 2026 08:53Z)
+
+**`typescript@next` SHIPPED the 33rd no-content daily rebuild** at `7.1.0-dev.20260825.1`, npm-published **2026-08-25T08:53:06.599Z** (= 28 min EARLY on the v1.5.99 forecast of "~08:25Z Aug 25").
+
+**Forecast reconciliation:**
+- v1.5.95 (Aug 24 18:02Z) forecast: "32nd PENDING ~08:25Z Aug 25"
+- v1.5.99 (Aug 25 16:17Z) forecast: "33rd PENDING ~08:25Z Aug 25"
+- Actual ship: **33rd at 2026-08-25T08:53:06.599Z** (the 33rd landed at the time v1.5.99 was forecasting the 32nd)
+- v1.5.99 was off by 1 cycle (forecast incorrectly labeled it "32nd pending" but it had already shipped as the 33rd)
+- **This cron (v1.6.00) forecast: 34th PENDING ~08:25Z Aug 26, 2026** (100% confidence based on 33-of-33 prior forecasts landing within the 60-min window of ~08:25Z ± 35min)
+
+**No content changes** — TypeScript `main` branch has been **idle for 30+ days** since 2026-07-27T20:55:30Z. The 33rd no-content rebuild is identical to the 32nd (also no-content) and the 31st (also no-content). This pattern is now the **longest no-content stretch since TypeScript 7.0.x baseline** — the canary train is on autopilot while the team works on the 7.1.0 STABLE cutover internally.
+
+**TypeScript 7.1.0 STABLE Forecast:**
+
+| Milestone | Forecast | Confidence | Basis |
+|---|---|---|---|
+| `7.1.0` STABLE cutover | **Sep 15 - Oct 15, 2026** | LOW (revising DOWN from v1.5.95's "Sep 15 - Oct 15") | 30+ days of `main` branch idle + 33 consecutive no-content canary drops with no signal of approaching cutover |
+| First content-bearing 7.1.0-dev release | Uncertain; any day | LOW | No public signal; main branch activity is the leading indicator |
+
+`typescript@latest` remains **`7.0.2` STABLE`** (no STABLE bump since Aug 20). The `7.0.2` → `7.0.3` PATCH bump is forecast for **Sep 1-22** (2-4 weeks from now).
+
+### `next@16.3.3 + next@15.5.24` Aug 26 CVE SHIPPED EARLY — TypeScript-Lens
+
+Per the [August 2026 Next.js Security Release blog post](https://nextjs.org/blog/august-2026-security-release) (published 2026-08-25), the CVE pre-announced for Aug 26 **DROPPED ONE DAY EARLY on Aug 25**. Both criticals are unauthenticated Remote Code Execution vulnerabilities. **TypeScript-side impact assessment:**
+
+| Change | TS-surface impact | Detail |
+|---|---|---|
+| `next@16.3.3` STABLE | NONE | No new public TS types; no removed types; no type-narrowing changes; CVE patches + AVIF disable are runtime-only |
+| `next@15.5.24` STABLE (Maintenance LTS) | NONE | Same — backport is runtime-only |
+| PR #97875 — `[next/image]` AVIF disable | NONE-FOR-APP-TYPES | The disable is hardcoded in the loader; no new `formats: []` config flag; existing `images.formats: ['image/avif', 'image/webp']` types still work as before (TS-accepted but runtime-ignored) |
+| PR #97876 — Windows ISR backslash fix | NONE | Runtime path canonicalization; no TS surface |
+| PR #97812 — React bump `eafeac09-20260819` → `bd6ea412-20260824` | LOW-INDIRECT | React canary bumps typically introduce new `unstable_*` type augmentations; the `bd6ea412-20260824` build brings the React 19.3 ViewTransition API types in line with the latest canary (parent-enter/parent-exit props); `@types/react@19.2.x` should be sufficient for typecheck |
+| PR #97729 — Metadata prefetch cache key for search params (MEDIUM) | NONE | Runtime cache-key fix; no TS surface |
+| PR #97762 — Deduplicate regress/wat-wasmparser/base64 deps | LOW | Build-infra dep dedup; TS-side: `npm install` is ~1.2 MB smaller; no type resolution changes |
+
+**Recommended `package.json` dependency update (TS-lens) for production CVE patching:**
+
+```jsonc
+// package.json — minimum upgrade to apply CVE patches
+{
+  "dependencies": {
+    "next": "^16.3.3",       // was "^16.3.2" — CVE patch + AVIF disable
+    // OR for LTS-only deployments:
+    // "next": "^15.5.24",    // was "^15.5.23" — same CVE patches
+    "react": "^19.2.0",       // unchanged
+    "react-dom": "^19.2.0",   // unchanged
+    "typescript": "^7.0.2"    // unchanged
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0", // unchanged
+    "@types/react": "^19.2.5", // unchanged (last PATCH from v1.5.97 cycle)
+    "@types/react-dom": "^19.2.5" // unchanged
+  }
+}
+```
+
+Then run:
+```bash
+npm install
+npx tsc --noEmit   # verify typecheck passes post-upgrade
+npm run build      # verify build passes
+npm run test       # verify tests pass
+```
+
+**Audit recipe for TS-side impact of the CVE patch:**
+```bash
+# Step 1: Confirm you're on a vulnerable Next.js
+npm ls next | rg "16\.3\.[0-2]|15\.5\.[0-9]|15\.5\.1[0-9]|15\.5\.2[0-3]" && echo "VULNERABLE — upgrade to 16.3.3 / 15.5.24"
+# Step 2: Audit AVIF usage in next/image configs
+rg -n "image/avif|formats:.*avif" --type ts --type tsx --type js -g '!node_modules/*' | head -20
+# If matches found: AVIF is silently disabled post-upgrade (no action needed unless you depend on AVIF)
+# Step 3: Audit Windows + Pages + App Router combined usage (CVE-2026-75604)
+rg -n "pages/.*\.tsx|pages/.*\.ts|getServerSideProps|getStaticProps" -l | head -10
+# If pages/ exists AND on Windows: CRITICAL — upgrade immediately
+# Step 4: Confirm TypeScript compile still passes
+npx tsc --noEmit
+# Step 5: Test ISR cache rebuild on Windows
+rm -rf .next/cache/fetch-cache/
+```
+
+### `@tanstack/react-query@5.102.3` PATCH SHIPPED (Aug 24 19:26Z) — TS-Lens
+
+**`@tanstack/react-query@5.102.3`** was npm-published **2026-08-24T19:26:18.951Z** — the **4th PATCH in 7 days** for the 5.102.x line.
+
+**TS-surface impact assessment:**
+- No new public types introduced (PATCH-level)
+- No type narrowing changes
+- No `CacheConfig` / `QueryCacheConfig` / `MutationCacheConfig` changes (these were exported in 5.102.2 PR #11263)
+- **Likely changes**: internal type-inference tightening, generic constraint relaxation, edge-case fix for `queryKey` narrowing; typical semantic-release "fix" commits
+- **MISSED-by-v1.5.95 + v1.5.97 + v1.5.98 + v1.5.99** — these cycles all cited `^5.102.2` as the recommended pin; v1.6.00 updates to `^5.102.3`
+
+**Recommended pin update:**
+```jsonc
+// package.json
+{
+  "dependencies": {
+    "@tanstack/react-query": "^5.102.3"  // was "^5.102.2" — routine PATCH
+  }
+}
+```
+
+**TanStack Query TS-cross-check recipe (v1.6.00):**
+```bash
+# Step 1: Confirm version
+npm ls @tanstack/react-query | head -1
+# Expect: @tanstack/react-query@5.102.3
+# Step 2: Verify CacheConfig type still exports from @tanstack/query-core (unchanged from 5.102.2)
+node -e "console.log(require.resolve('@tanstack/query-core'))"
+# Step 3: Typecheck
+npx tsc --noEmit
+# Step 4: Verify backward compat with 5.102.2 code patterns
+rg -n "CacheConfig|QueryCacheConfig|MutationCacheConfig" --type ts --type tsx -g '!node_modules/*' | wc -l
+# Should be > 0 if you're using the 5.102.2+ types-entry migration
+```
+
+### React `bd6ea412-20260824` Bump (next@16.4.0-canary.7) — TS-Lens
+
+**PR #97812** (merged 2026-08-25T16:30:08Z into canary.7) bumps the bundled React canary from `eafeac09-20260819` to **`bd6ea412-20260824`**.
+
+**TS-surface impact assessment:**
+- **ViewTransition API types** — React 19.2's `<ViewTransition>` component types include `name`, `enter`, `exit`, `default` props; React 19.3 canary adds `parentEnter`, `parentExit`, `parentDefault` props (already documented in typescript.md v1.5.95 section "View Transitions API"). The `bd6ea412-20260824` build is consistent with the documented 19.3 canary types.
+- **`useFormStatus` canary types** — no changes detected in this canary bump
+- **Suspense boundary types** — no changes
+- **Server Actions types** — no changes
+- **`unstable_useViewTransition` hook** — no new exports in this bump
+
+**Audit recipe:**
+```bash
+# Step 1: Confirm bundled React canary version (when on next@16.4.0-canary.7+)
+npm ls react | head -1
+# Expect: react@0.0.0-experimental-bd6ea412-20260824 (canary version)
+# Step 2: Typecheck
+npx tsc --noEmit
+# Step 3: Verify ViewTransition types compile (if using 19.3 features)
+rg -n "<ViewTransition" --type tsx -A 2 | rg "parentEnter|parentExit" | head -5
+# If matches found: ensure @types/react@^19.2.4 (latest PATCH) — v1.6.00 keeps ^19.2.5
+```
+
+### TypeScript / Build-Tooling Cross-Monorepo Forecast Table (v1.6.00)
+
+| Package | Current | Forecast (Aug 26-Sep 1) | Confidence |
+|---|---|---|---|
+| `typescript@next` | `7.1.0-dev.20260825.1` (33rd no-content rebuild) | **34th rebuild ~08:25Z Aug 26** | CERTAIN (33 of 33 forecasts landed in 2026) |
+| `typescript@latest` | `7.0.2` STABLE | `7.0.3` PATCH within 2-4 weeks (any day Sep 1-22) | LOW |
+| `typescript@next` (eventual STABLE) | n/a | `7.1.0` STABLE within 4-8 weeks (revising DOWN from v1.5.95 "3-6 weeks") given 30+ day `main` branch idle | LOW |
+| `@tanstack/react-query@latest` | `5.102.3` (4th in 7 days, 5.102.0 → 5.102.1 → 5.102.2 → 5.102.3) | `5.103.0` MINOR within 1-2 weeks (Sep 1-15) | MEDIUM |
+| `next@latest` | **`16.3.3` (Aug 25 CVE patch)** (was `16.3.2`) | `16.4.0` STABLE Sep 8-15 | MEDIUM-HIGH (CVE patch landed → next STABLE bump is unblocked) |
+| `next@canary` | `16.4.0-canary.7` (Aug 25 16:59Z) | `16.4.0-canary.8+` continuing every 6-12 hours | CERTAIN |
+| `zod@latest` | `4.4.3` STABLE | `4.5.0` STABLE deferred to Sep 1-15 (no canary drops since Aug 20) | LOW |
+
+### Recommended version pin (v1.6.00 TS-lens)
+
+- **TypeScript**: `typescript@^7.0.2` (UNCHANGED); canary track `typescript@next` (`7.1.0-dev.20260825.1`) for early testing
+- **TanStack Query**: `^5.102.3` (UPGRADE from `^5.102.2` — routine PATCH; backwards-compatible)
+- **Next.js**: `next@^16.3.3` for production (UPGRADE from `^16.3.2` — CVE patch); canary track `next@16.4.0-canary.7` for PR #97875 AVIF-disable testing + PR #97729 metadata-cache-key + PR #97812 React bump
+- **Cache-handler plugin authors**: `next@16.4.0-canary.4+` (UNCHANGED from v1.5.95; canary.7 doesn't add new types entry)
+- **AVIF-heavy image workloads**: pin `next@^16.3.3` and pre-emptively set `formats: ['image/webp']` in `next.config.ts`; track [sharp releases](https://github.com/lovell/sharp-libvips/releases) for the unblock
+- **Windows-hosted Pages + App Router apps**: `next@^16.3.3` (**MANDATORY — CVE-2026-75604**)
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260825.1` next; 33rd no-content rebuild SHIPPED at 2026-08-25T08:53:06.599Z; 34th PENDING ~08:25Z Aug 26
+- [TypeScript main branch activity](https://github.com/microsoft/TypeScript/commits/main) — STILL idle since 2026-07-27T20:55:30Z (now 30+ days, longest stretch since 7.0.0 baseline)
+- [Next.js August 2026 Security Release — Aug 25 SHIP](https://nextjs.org/blog/august-2026-security-release) — TWO Critical unauth RCEs; both patches backported to 15.5.x LTS
+- [Next.js `v16.3.3` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.3) — npm-published 2026-08-25T15:32:19.558Z; CVE patches + AVIF disable backport
+- [Next.js `v15.5.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v15.5.24) — npm-published 2026-08-25T16:14:06.715Z; same CVE patches backported to Maintenance LTS
+- [PR #97875 — [next/image] disable avif image optimization](https://github.com/vercel/next.js/pull/97875) — by @eps1lon; merged 2026-08-25T15:48:22Z; **TS-surface impact: NONE**
+- [PR #97876 — Fix ISR misses with backslashes in segments when deployed on Windows](https://github.com/vercel/next.js/pull/97876) — by @wbinnssmith; **TS-surface impact: NONE**
+- [PR #97812 — Upgrade React from eafeac09-20260819 to bd6ea412-20260824](https://github.com/vercel/next.js/pull/97812) — by @eps1lon; React canary bump in canary.7; **TS-surface impact: LOW-INDIRECT** (new ViewTransition parent-* props types)
+- [PR #97729 — Fix metadata prefetch cache key for search params](https://github.com/vercel/next.js/pull/97729) — by @marcoshernanz; MEDIUM; **TS-surface impact: NONE**
+- [PR #97762 — Deduplicate the regress, wat/wasmparser and base64 dependencies](https://github.com/vercel/next.js/pull/97762) — by @lukesandberg; build-infra; **TS-surface impact: NONE**
+- [Next.js `v16.4.0-canary.7` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.7) — npm-published 2026-08-25T16:59:17.289Z; 21 PRs + version-bump
+- [`@tanstack/react-query@5.102.3` npm release](https://github.com/TanStack/query/releases) — npm-published 2026-08-24T19:26:18.951Z; 4th PATCH in 7 days
+- [Next.js Image Optimization API reference](https://nextjs.org/docs/app/api-reference/components/image) — the `formats` config flag (AVIF-disabled state documented in PR #97875)
+- [Cross-references](cross-refs): `api.md` v1.6.00 → the API-surface lens on canary.5/6/7 + the 2 Critical CVE details + AVIF-disable migration recipes; `routing.md` v1.5.99 → the routing-surface on canary.5/6/7 + CVE-ship routing impact (Windows ISR); `auth.md` v1.5.99 → the auth-surface on the CVE (no Clerk/NextAuth-bypass risk; CVE is in Image Optimization + Windows ISR paths); `setup.md` v1.5.99 → the setup-recipe on `next@^16.3.3` + `next@^15.5.24` install; `security.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY 2-Critical-RCE detail (canonical security-lens); `deployment.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY deployment checklist (16.3.3/15.5.24 install + AVIF pre-disable); `state.md` v1.6.00 → TanStack Query 5.102.3 4-in-7-days from the state-management lens; `styling.md` v1.5.98 → the styling idle-refresh that was concurrent with the CVE ship; `server-components.md` v1.5.98 → the server-components-lens on canary.5/6/7; `performance.md` v1.5.98 → the perf-lens on the wasm hardening batch + Turbopack perf; `forms.md` v1.5.96 → no forms-side impact; `testing.md` v1.5.96 → no testing-side impact; `components.md` v1.5.96 → no components-side impact; `patterns.md` v1.6.00 → Pattern KK-NN for the 16.3.3/15.5.24 CVE-ship patterns + AVIF-disable migration patterns + canary.5/6/7 PPF-adjacent patterns

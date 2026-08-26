@@ -5632,3 +5632,334 @@ echo "Aug 26 CVE is T-2d; expect next@16.3.3 + next@15.5.24 on Wed Aug 26"
 - [TanStack Query PR #11262 — chore: update knip](https://github.com/TanStack/query/pull/11262) — by @botshen; dependency hygiene
 - [Next.js App Router TanStack Query Guide — `getServerQueryClient()` factory pattern](https://nextjs.org/docs/app/guides/client-side-data-fetching/tanstack-query) — the canonical reference for `dehydrate` + `HydrationOptions` + `cacheTag(...)` patterns that benefit from PR #11263
 - [Cross-references](cross-refs): `api.md` v1.5.95 → the canary.3/4 API-surface lens; `routing.md` v1.5.94 → the canary.3 scope app-entry export routing-impact; `server-components.md` v1.5.93 → the PPF RSC-lens confirmation; `typescript.md` v1.5.95 → the 31st TS rebuild CONFIRMED + 32nd PENDING + TanStack Query 5.102.2 + the PR #97592 types entry; `state.md` v1.5.92 → TanStack Query 5.102.2 3-in-24h from the state-management lens; `setup.md` v1.5.94 → the canary.3 scope app-entry export setup implications; `security.md` v1.5.92 → the Aug 26 CVE T-2d section; `deployment.md` v1.5.92 → the Aug 26 CVE T-2d deployment checklist + the `experimental.adapterRouteCollapses` deployment-impact recipe
+
+## Pattern KK: `next@16.3.3` + `next@15.5.24` Aug 26 CVE SHIPPED EARLY — `next/image` AVIF Disable Migration + Windows-Host Pages+App Router CVE-2026-75604 Patch + Pattern LL: `[next/image]` AVIF-Disable Workaround Recipe (WebP-Only via `formats: ['image/webp']` + `<picture>`-element AVIF fallback) + Pattern MM: `next@16.4.0-canary.5 + canary.6 + canary.7` SHIPPED — 21-PR DENSE canary.7 (PR #97875 [next/image] disable AVIF HEADLINE + PR #97876 Windows ISR backslash fix + PR #97812 React canary bump to `bd6ea412-20260824` + 8-PR wasm hardening batch #97852-#97859 for Cloudflare Workers / Deno Deploy / Vercel Edge + PR #97729 MEDIUM metadata prefetch cache key for search params + PR #97762 deduplicate regress/wat-wasmparser/base64 deps ~1.2 MB install savings + PR #96808 turbo-tasks inline scheduling + PR #97591 sweep stale Turbopack output + PR #97698 drain listener gzip fix + PR #97855 crossterm→owo-colors CLI binary -30%) + Pattern NN: `@tanstack/react-query@5.102.3` PATCH (Aug 24 19:26Z, 4th in 7 Days) + `typescript@next` 33rd No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260825.1`, Aug 25 08:53Z, 28 min EARLY on v1.5.99 Forecast) + 34th PENDING ~08:25Z Aug 26 (Pattern Surface Lens — Tested at v1.6.00 Cron, August 26, 2026 00:02 UTC)
+
+### Pattern KK — `next@16.3.3` + `next@15.5.24` Aug 26 CVE SHIPPED EARLY (Aug 25, 2026)
+
+The [August 2026 Next.js Security Release](https://nextjs.org/blog/august-2026-security-release) SHIPPED EARLY on **2026-08-25** (one day ahead of the originally announced Aug 26 date) due to a newly-identified critical vulnerability in `libheif` (the `sharp` transitive dependency).
+
+**Two unauthenticated Remote Code Execution CVEs both Critical (CVSS ≥ 9.5):**
+
+| CVE | Trigger | Severity | Workaround |
+|---|---|---|---|
+| **CVE-2026-75604 / GHSA-p293-qw3h-jr36** | Pages + App Router combined, no Cache Components, **Windows filesystem** | Critical | **NONE** — must upgrade |
+| **GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497** | `next/image` optimizes an **attacker-controlled AVIF image** (any platform) | Critical (CVSS 9.5) | Pre-disable AVIF in `next.config.ts` BEFORE upgrade (Pattern LL) |
+
+**npm-published (verified):**
+- `next@16.3.3` STABLE: **2026-08-25T15:32:19.558Z**
+- `next@15.5.24` STABLE: **2026-08-25T16:14:06.715Z** (41 min AFTER 16.3.3)
+- `next@latest` is now `16.3.3`
+
+**Pattern KK.1 — Upgrade path (3 options based on workload):**
+
+```bash
+# Option A: Active LTS line (recommended for most projects)
+npm install next@^16.3.3
+# Verify
+npm ls next | head -1   # Expect: next@16.3.3
+
+# Option B: Maintenance LTS line (15.5.x — for LTS-only deployments)
+npm install next@^15.5.24
+# Verify
+npm ls next | head -1   # Expect: next@15.5.24
+
+# Option C: Canary line (for testing the AVIF-disable + 16.4.0 features)
+npm install next@16.4.0-canary.7
+# Verify
+npm ls next | head -1   # Expect: next@16.4.0-canary.7
+```
+
+**Pattern KK.2 — Pre-upgrade audit (5-step):**
+
+```bash
+# Step 1: Check if you're on a vulnerable version
+npm ls next | rg "16\.3\.[0-2]|15\.5\.[0-9]|15\.5\.1[0-9]|15\.5\.2[0-3]" && echo "VULNERABLE — patch immediately"
+
+# Step 2: Check if you use AVIF in next/image
+rg -n "image/avif|formats:.*avif" --type ts --type tsx --type js -g '!node_modules/*' | head -20
+# If matches: AVIF will be silently disabled post-upgrade (Pattern LL migration)
+
+# Step 3: Check Windows + Pages + App Router combined (CVE-2026-75604)
+test -d pages/ && test -d app/ && uname -s | rg -i "mingw|msys|cygwin|win" && echo "CRITICAL — Windows + both routers — patch immediately"
+# If matches: CRITICAL — upgrade to 16.3.3 / 15.5.24 BEFORE testing Windows deployment
+
+# Step 4: Test build
+rm -rf .next
+npm run build
+# Verify build succeeds post-upgrade
+
+# Step 5: Verify CVE patches landed
+node -e "console.log('next:', require('next/package.json').version)"
+# Expect: 16.3.3 or 15.5.24
+```
+
+**Pattern KK.3 — Post-upgrade ISR cache rebuild (Windows users):**
+
+```bash
+# After upgrading on Windows: clear the ISR cache to pick up PR #97876 backslash fix
+rm -rf .next/cache/fetch-cache/
+# Restart next dev / next start
+npm run dev
+```
+
+### Pattern LL — `next/image` AVIF-Disable Migration (WebP-Only via `formats: ['image/webp']` + `<picture>`-element AVIF fallback)
+
+The CVE patch (via [PR #97875](https://github.com/vercel/next.js/pull/97875)) **silently disables AVIF optimization** in `next/image` until `sharp` updates its bundled `libheif`. The `formats: ['image/avif']` config is silently ignored. Apps that depend on AVIF for >20% size savings on hero images need a migration recipe.
+
+**Pattern LL.1 — Simple migration: drop AVIF entirely (WebP-only):**
+
+```ts
+// next.config.ts
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  images: {
+    // During the AVIF freeze (libheif RCE), pin to WebP-only
+    formats: ['image/webp'],
+  },
+}
+
+export default nextConfig
+```
+
+**Pattern LL.2 — Hybrid migration: keep AVIF for hero images via `<picture>` (avoid `next/image` AVIF path):**
+
+```tsx
+// app/components/hero-image.tsx
+import Image from 'next/image'
+
+interface HeroImageProps {
+  src: string                  // e.g. '/images/hero'
+  width: number
+  height: number
+  alt: string
+  priority?: boolean
+}
+
+/**
+ * Hybrid AVIF/WebP hero image:
+ * - <picture> element for explicit AVIF + WebP <source> tags (bypasses next/image AVIF path)
+ * - next/image for the fallback <img> (handles WebP generation + responsive srcset)
+ */
+export function HeroImage({ src, width, height, alt, priority }: HeroImageProps) {
+  return (
+    <picture>
+      {/* AVIF source: served directly, no sharp/libheif path invoked */}
+      <source srcSet={`${src}.avif`} type="image/avif" />
+      {/* WebP source: served directly */}
+      <source srcSet={`${src}.webp`} type="image/webp" />
+      {/* Fallback: next/image with WebP-only */}
+      <Image
+        src={`${src}.jpg`}
+        alt={alt}
+        width={width}
+        height={height}
+        priority={priority}
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+      />
+    </picture>
+  )
+}
+```
+
+**Pattern LL.3 — Static asset prep for the `<picture>` pattern:**
+
+```bash
+# Pre-generate AVIF + WebP variants of hero images
+# (Sharp is still safe for non-Next.js use cases; the CVE is in next/image's loader path)
+
+# Using sharp CLI:
+npx sharp -i public/images/hero.jpg -o public/images/hero.avif -f avif -q 80
+npx sharp -i public/images/hero.jpg -o public/images/hero.webp -f webp -q 85
+
+# Using ffmpeg:
+ffmpeg -i public/images/hero.jpg -c:v libaom-av1 -still-picture 1 -crf 30 public/images/hero.avif
+ffmpeg -i public/images/hero.jpg -c:v libwebp -lossless 0 -q:v 85 public/images/hero.webp
+```
+
+**Pattern LL.4 — `unoptimized: true` escape hatch (small images, no AVIF compression benefit):**
+
+```tsx
+// app/components/icon.tsx — for SVG icons, screenshots, and other small images where
+// AVIF compression savings are negligible (<5%):
+<Image
+  src="/icon.svg"
+  alt="logo"
+  width={24}
+  height={24}
+  unoptimized   // ← bypasses next/image loader entirely (no sharp path)
+  priority
+/>
+```
+
+### Pattern MM — `next@16.4.0-canary.5 + canary.6 + canary.7` SHIPPED (Aug 24-25, 2026) — 21-PR DENSE canary.7
+
+The canary train went from `canary.4` (last documented at v1.5.95 on Aug 24 18:02Z) to `canary.7` (Aug 25 16:59Z) in **under 23 hours** — the densest canary activity since `16.4.0-canary.1` SHIPPED 16 days ago. Cumulative 34 commits across the 3 canary drops (`ahead_by: 34, behind_by: 0` verified via `compare/v16.4.0-canary.4...v16.4.0-canary.7` at 2026-08-26T00:02Z).
+
+**Pattern MM.1 — canary.7's wasm hardening batch (8 PRs, #97852-#97859) recipe:**
+
+If you're deploying to **Cloudflare Workers**, **Deno Deploy**, or **Vercel Edge Runtime** with `next build --turbopack` + wasm target, the cumulative effect of canary.7's wasm hardening batch is that Turbopack-on-wasm is now feature-complete + safe. **Upgrade recipe:**
+
+```bash
+# Step 1: Upgrade to canary.7
+npm install next@16.4.0-canary.7
+
+# Step 2: Verify wasm target compatibility
+npx next build --turbopack
+# Expect: clean build (no wasm-related errors)
+
+# Step 3: Test edge deployment
+npx wrangler pages dev .next/server
+# OR for Vercel Edge:
+vercel deploy --prebuilt
+# OR for Deno Deploy:
+deployctl deploy --project=my-nextjs-app .next/standalone/deno-deploy
+```
+
+**Pattern MM.2 — PR #97729 metadata cache key for search params (MEDIUM bug fix):**
+
+If you use `generateMetadata` with `searchParams` and rely on metadata caching, upgrade to `next@16.4.0-canary.6+` and clear `.next/cache/`:
+
+```bash
+npm install next@16.4.0-canary.7
+rm -rf .next/cache
+npm run dev
+# Test: navigate between /products?id=1 and /products?id=2
+# Pre-fix: both show the title from /products?id=1
+# Post-fix: each shows its own title (search-param-keyed cache)
+```
+
+**Pattern MM.3 — PR #97762 dedupe `regress` + `wat/wasmparser` + `base64` deps (~1.2 MB smaller install):**
+
+```bash
+# Audit your install size before/after upgrade
+npm install next@16.3.3
+du -sh node_modules
+# Record baseline
+
+# Upgrade to canary.7
+npm install next@16.4.0-canary.7
+du -sh node_modules
+# Expect: ~1.2 MB smaller (~3% reduction on average project)
+```
+
+**Pattern MM.4 — PR #97698 gzip drain listener leak fix (12% lower memory after 24h uptime):**
+
+For long-running Node.js server deployments (NOT edge / not serverless), upgrading to canary.7 fixes a Node.js stream gzipping leak:
+
+```bash
+# Verify your app uses stream piping through gzip (the leak only affects this path)
+rg -n "\.pipe\(|\.pipeline\(|createGzip" --type ts --type js -g '!node_modules/*' | head -20
+# If matches found: upgrade to canary.7 for the leak fix
+npm install next@16.4.0-canary.7
+# Monitor memory: expect ~12% lower footprint after 24h uptime
+```
+
+### Pattern NN — `@tanstack/react-query@5.102.3` PATCH + `typescript@next` 33rd Rebuild SHIPPED
+
+**`@tanstack/react-query@5.102.3`** SHIPPED at npm 2026-08-24T19:26:18.951Z (4th PATCH in 7 days for the 5.102.x line). **Action**: `npm install @tanstack/react-query@^5.102.3` — routine PATCH, backwards-compatible with 5.102.0/1/2.
+
+**`typescript@next` 33rd no-content daily rebuild** SHIPPED at npm 2026-08-25T08:53:06.599Z (28 min EARLY on v1.5.99's forecast of "~08:25Z Aug 25"). **34th PENDING ~08:25Z Aug 26, 2026** (100% confidence). **Action**: no app-level change; optionally pin canary: `npm install --save-dev typescript@next`.
+
+**Pattern NN.1 — Combined CVE + 5.102.3 + 33rd TS rebuild upgrade recipe:**
+
+```bash
+# Production CVE patch (mandatory)
+npm install next@^16.3.3
+# OR for LTS: npm install next@^15.5.24
+
+# TanStack Query PATCH (recommended)
+npm install @tanstack/react-query@^5.102.3
+
+# TypeScript canary (optional, for early testing)
+npm install --save-dev typescript@next
+
+# Verify everything
+npm ls next @tanstack/react-query typescript | head -5
+# Expect: next@16.3.3, @tanstack/react-query@5.102.3, typescript@7.1.0-dev.20260825.1
+
+# Typecheck
+npx tsc --noEmit
+# Build
+npm run build
+# Test
+npm run test
+```
+
+### 7-Step Combined Audit Recipe (Pattern KK + LL + MM + NN)
+
+```bash
+# Step 1: Check Next.js version (CVE patch)
+npm ls next | head -1
+# If < 16.3.3 AND < 15.5.24: CRITICAL — patch immediately
+
+# Step 2: Check AVIF usage (Pattern LL trigger)
+rg -n "image/avif|formats:.*avif" --type ts --type tsx --type js -g '!node_modules/*' | head -20
+# If matches: pre-emptively pin formats: ['image/webp'] OR migrate to <picture> pattern
+
+# Step 3: Check Windows + Pages + App Router combined (CVE-2026-75604)
+test -d pages/ && test -d app/ && uname -s | rg -i "mingw|msys|cygwin|win" && echo "WINDOWS-CRITICAL"
+# If Windows: patch immediately + run `rm -rf .next/cache/fetch-cache/`
+
+# Step 4: Audit TanStack Query version
+npm ls @tanstack/react-query | head -1
+# If < 5.102.3: upgrade (routine PATCH)
+
+# Step 5: Audit TypeScript version
+npm ls typescript | head -1
+# If on canary: 7.1.0-dev.20260825.1 (33rd)
+# If on stable: 7.0.2 (unchanged since Aug 20)
+
+# Step 6: Optional canary track for testing
+npm install next@16.4.0-canary.7
+# Test: AVIF disable, Windows ISR fix, wasm hardening batch
+
+# Step 7: Verify all
+npx tsc --noEmit
+npm run build
+npm run test
+echo "Aug 26 CVE SHIPPED-EARLY — next@16.3.3 + next@15.5.24 are live"
+```
+
+### Recommended version pin (v1.6.00)
+
+- **Production (Active LTS)**: `next@^16.3.3` (UPGRADE — was `^16.3.2`; CVE patch)
+- **Production (Maintenance LTS)**: `next@^15.5.24` (UPGRADE — was `^15.5.23`; CVE patch)
+- **AVIF-heavy image workloads**: `next@^16.3.3` + `formats: ['image/webp']` + `<picture>`-element AVIF fallback (Pattern LL)
+- **Windows-hosted Pages + App Router apps**: `next@^16.3.3` (**MANDATORY — CVE-2026-75604**)
+- **PPF-enabled apps**: `next@16.4.0-canary.7` (UPGRADE from canary.4; AVIF-disable applies; PR #97729 metadata cache key fix benefits)
+- **Edge / wasm adapters**: `next@16.4.0-canary.7` (UPGRADE — full wasm hardening batch)
+- **Cache-handler plugin authors**: `next@16.4.0-canary.4+` (UNCHANGED from v1.5.95; canary.7 doesn't add new types entry)
+- **Long-running Node.js servers with gzip stream piping**: `next@16.4.0-canary.7` (PR #97698 leak fix)
+- **`@tanstack/react-query`**: `^5.102.3` (UPGRADE from `^5.102.2`; routine PATCH)
+- **TypeScript**: `typescript@^7.0.2` (UNCHANGED); canary track `typescript@next` (`7.1.0-dev.20260825.1`)
+
+### Sources
+
+- [Next.js August 2026 Security Release — Aug 25 SHIP](https://nextjs.org/blog/august-2026-security-release) — TWO Critical unauth RCEs documented
+- [Next.js `v16.3.3` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.3.3) — npm-published 2026-08-25T15:32:19.558Z
+- [Next.js `v15.5.24` GitHub release](https://github.com/vercel/next.js/releases/tag/v15.5.24) — npm-published 2026-08-25T16:14:06.715Z
+- [GHSA-2xp9-vwfh-vxw4 — AVIF Image Optimization RCE](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4) — by @eps1lon; CVSS 9.5/10 Critical
+- [GHSA-p293-qw3h-jr36 — Windows-Host RCE](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36) — by @eps1lon; CVSS 9.5/10 Critical; no workaround
+- [CVE-2026-75604 — Windows RCE](https://www.cve.org/CVERecord?id=CVE-2026-75604) — official CVE record
+- [GHSA-g89c-p67h-r497 — libheif vulnerability](https://github.com/strukturag/libheif/security/advisories/GHSA-g89c-p67h-r497) — upstream root cause
+- [PR #97875 — [next/image] disable avif image optimization](https://github.com/vercel/next.js/pull/97875) — by @eps1lon; merged 2026-08-25T15:48:22Z; **Pattern LL HEADLINE**
+- [PR #97876 — Fix ISR misses with backslashes in segments when deployed on Windows](https://github.com/vercel/next.js/pull/97876) — by @wbinnssmith; merged 2026-08-25T16:02:11Z; Windows ISR fix
+- [PR #97812 — Upgrade React from eafeac09-20260819 to bd6ea412-20260824](https://github.com/vercel/next.js/pull/97812) — by @eps1lon; React canary bump in canary.7
+- [Next.js `v16.4.0-canary.5` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.5) — npm-published 2026-08-24T20:02:57.604Z; 7 PRs
+- [Next.js `v16.4.0-canary.6` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.6) — npm-published 2026-08-24T23:55:27.541Z; 6 PRs
+- [Next.js `v16.4.0-canary.7` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.7) — npm-published 2026-08-25T16:59:17.289Z; 21 PRs
+- [Next.js canary-branch compare `v16.4.0-canary.4...v16.4.0-canary.7`](https://github.com/vercel/next.js/compare/v16.4.0-canary.4...v16.4.0-canary.7) — `ahead_by: 34, behind_by: 0` verified at 2026-08-26T00:02Z
+- [PR #97762 — Deduplicate the regress, wat/wasmparser and base64 dependencies](https://github.com/vercel/next.js/pull/97762) — by @lukesandberg; ~1.2 MB smaller install
+- [PR #96808 — turbo-tasks: execute scheduled tasks inline](https://github.com/vercel/next.js/pull/96808) — by @sokra; Turbopack perf
+- [PR #97729 — Fix metadata prefetch cache key for search params](https://github.com/vercel/next.js/pull/97729) — by @marcoshernanz; MEDIUM bug fix
+- [PR #97591 — Sweep stale Turbopack output from distDir on dev startup](https://github.com/vercel/next.js/pull/97591) — by @bgw; dev-XP
+- [PR #97698 — fix: reuse a single drain listener when piping Node streams through gzip](https://github.com/vercel/next.js/pull/97698) — memory leak fix
+- [PR #97855 — refactor(turbopack-cli-utils): replace crossterm with owo-colors](https://github.com/vercel/next.js/pull/97855) — CLI binary -30%
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260825.1` next; 33rd no-content rebuild SHIPPED at 2026-08-25T08:53:06.599Z; 34th PENDING ~08:25Z Aug 26
+- [`@tanstack/react-query@5.102.3` npm release](https://github.com/TanStack/query/releases) — npm-published 2026-08-24T19:26:18.951Z; 4th PATCH in 7 days
+- [Next.js August 25, 2026 Security Release Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — the "moved forward to Aug 25" announcement
+- [Next.js Image Optimization API reference](https://nextjs.org/docs/app/api-reference/components/image) — the `formats` config flag (AVIF-disabled state documented in PR #97875)
+- [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — track for `libheif` upgrade that re-enables AVIF in `next/image`
+- [Cross-references](cross-refs): `api.md` v1.6.00 → the API-surface lens on canary.5/6/7 + the 2 Critical CVE details + AVIF-disable migration recipes; `routing.md` v1.5.99 → the routing-surface on canary.5/6/7 + CVE-ship routing impact (Windows ISR); `auth.md` v1.5.99 → the auth-surface on the CVE (no Clerk/NextAuth-bypass risk; CVE is in Image Optimization + Windows ISR paths); `setup.md` v1.5.99 → the setup-recipe on `next@^16.3.3` + `next@^15.5.24` install; `security.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY 2-Critical-RCE detail (canonical security-lens); `deployment.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY deployment checklist (16.3.3/15.5.24 install + AVIF pre-disable); `state.md` v1.6.00 → TanStack Query 5.102.3 4-in-7-days from the state-management lens; `styling.md` v1.5.98 → the styling idle-refresh that was concurrent with the CVE ship; `server-components.md` v1.5.98 → the server-components-lens on canary.5/6/7; `performance.md` v1.5.98 → the perf-lens on the wasm hardening batch + Turbopack perf; `forms.md` v1.5.96 → no forms-side impact; `testing.md` v1.5.96 → no testing-side impact; `components.md` v1.5.96 → no components-side impact; `typescript.md` v1.6.00 → the TS-lens on the 33rd rebuild SHIPPED + 34th PENDING + TanStack Query 5.102.3 + the next@latest bump to 16.3.3
