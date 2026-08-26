@@ -4314,3 +4314,37 @@ No component breaking changes. The `migrate base-color` is additive CLI function
 - [GitHub — next@16.4.0-canary.6 compare to canary.5](https://github.com/vercel/next.js/compare/v16.4.0-canary.5...v16.4.0-canary.6)
 - [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions)
 - [nextjs.org — Upcoming August 2026 Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)
+
+## Aug 26 Critical CVE POST-INCIDENT T+18h + TypeScript 34th CONFIRMED + next@canary Still 16.4.0-canary.8 + Clerk Canary 30th + React 19.3-Canary-f789f203-20260825 (August 26, 2026 — v1.6.02 Cycle)
+
+**Aug 26 Critical CVE: POST-INCIDENT T+18h** — the two critical unauthenticated RCEs dropped Aug 25 16:17Z UTC as `next@16.3.3` + `next@15.5.24` + `next@16.4.0-canary.7`. The incident is 18 hours old as of this cron's 12:02Z Aug 26. **Component surface impact: LOW** — CVE1 (Windows RCE) affects App Router on Windows without cache primitives; CVE2 (AVIF RCE) affects `next/image` AVIF processing. **AVIF is now silently disabled** — `next/image` returns WebP or PNG to clients that requested AVIF. No shadcn component code changes needed. If you have custom `<Image>` wrappers with AVIF-specific logic, test that the fallback works correctly.
+
+**Aug 26 Critical CVE — Post-Incident Component Audit Recipe (T+18h):**
+
+| Check | Action |
+|---|---|
+| Custom `next/image` AVIF wrappers | Test that AVIF → WebP/PNG fallback works |
+| PPF `<Link>` + `generateMetadata` + `searchParams` | Re-verify prefetch cache key fix works correctly after upgrade to `16.3.3` |
+| shadcn `<Image>` usage | Confirm no AVIF-specific behavior is broken |
+| Windows App Router + Cache Components | Confirmed architecturally protected from CVE1 |
+| Standalone output (`output: 'standalone'`) | Test manifest parsing post-upgrade |
+
+**TypeScript 34th No-Content Daily Rebuild CONFIRMED** — `typescript@next` is now `7.1.0-dev.20260826.1` (npm-published Aug 26 ~08:25Z; on-schedule daily rebuild; **30+ days main branch idle unchanged**). No TypeScript component-surface impact. Continue pinning `typescript@next` at `7.1.0-dev.20260826.1` in experimental component projects.
+
+**`next@canary` still `16.4.0-canary.8`** (npm-published 2026-08-25T23:46Z; ~12h since last canary; the post-CVE canary train may be resuming). **No new canary since canary.8** — the train paused briefly after shipping the CVE-patch canary.7 and the post-CVE canary.8. Watch for canary.9 in the next 6-18h. PPF users with `<Link prefetch>` + `searchParams` in `generateMetadata` should verify the PR #97729 fix is working correctly in the deployed `16.3.3` stable version.
+
+**`@clerk/nextjs@canary` advanced to `7.8.3-canary.v20260826094932`** (npm-published **2026-08-26T09:49:32Z**; **30th canary drop since v1.5.50 baseline**; no security-relevant changes). Auth-component integration (Clerk `<SignIn>`, `<UserButton>`, `<ClerkProvider>`) should be tested post-incident. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260826094932` in auth-exposed Next.js apps.
+
+**React 19.3.0-canary-f789f203-20260825** (unchanged from v1.6.01; npm-published Aug 25 16:35Z). The `<ViewTransition>` component remains **Canary-only** — `import { unstable_ViewTransition as ViewTransition } from 'react'` is NOT in stable React 19.2.8. The shadcn ecosystem has NOT added a `<ViewTransition>` wrapper (confirmed via ecosystem idle status). No shadcn component changes are expected from this React canary roll-forward. Continue using shadcn `<AnimatePresence>` / Framer Motion for transitions in stable React; use `unstable_ViewTransition` only in experimental Next.js canary projects with proper feature flags.
+
+**shadcn ecosystem: STILL IDLE** (shadcn@4.19.0 since Aug 21 = 5+ days; `@shadcn/react@0.3.0` since Aug 5 = 21+ days; `@shadcn/helpers@0.2.0` since Aug 11 = 15+ days). The ecosystem remains in a holding pattern. The canonical source for what's coming next is the [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) master branch (Questionnaire + Human-in-the-Loop + Private GitHub Registries are still in master but not yet in `shadcn@latest = 4.19.0`).
+
+### Sources
+
+- [nextjs.org — Next.js Security Release Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update)
+- [GitHub — PR #97729 Fix metadata prefetch cache key for search params](https://github.com/vercel/next.js/pull/97729)
+- [npm — next@canary](https://www.npmjs.com/package/next?activeTab=versions)
+- [npm — @clerk/nextjs@canary](https://www.npmjs.com/package/@clerk/nextjs)
+- [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions)
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)
+- [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog)

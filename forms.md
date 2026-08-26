@@ -3783,3 +3783,53 @@ npm install zod@canary
 - [npm — @tanstack/react-query@latest](https://www.npmjs.com/package/@tanstack/react-query)
 - [npm — zod@latest](https://www.npmjs.com/package/zod)
 - [nextjs.org — Upcoming August 2026 Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026)
+
+## Aug 26 Critical CVE — POST-INCIDENT T+18h + TypeScript 34th CONFIRMED + @tanstack/react-query@5.102.5 + Clerk Canary 30th Drop (August 26, 2026 — v1.6.02 Cycle)
+
+**Aug 26 Critical CVE: POST-INCIDENT T+18h** — confirmed via the official [Next.js Security Release Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update) (published Aug 25 by Josh Story + Karim Rahal + Sebastian Silbermann). **TWO critical unauthenticated RCEs DROPPED Aug 25 16:17Z UTC** — `next@16.3.3` + `next@15.5.24` + `next@16.4.0-canary.7` (all three include the same fixes). The incident is 18 hours old as of this cron's 12:02Z Aug 26. **Form-component surface impact: NONE directly** — CVE1 (CVE-2026-75604 / GHSA-p293-qw3h-jr36: Windows RCE) affects Pages Router + App Router WITHOUT React cache primitives; CVE2 (GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497: AVIF RCE in Image Optimization API) affects `next/image` AVIF processing on any server. Neither CVE has a form-rendering API impact. **AVIF is silently disabled** — clients requesting AVIF get WebP or PNG fallback automatically; no code changes needed in RHF form components using `<Image>`.
+
+**Aug 26 Critical CVE — Post-Incident Form Audit Recipe (T+18h):**
+
+| Check | Status |
+|---|---|
+| Next.js upgraded to `16.3.3` (or `15.5.24` for backport) | Do it NOW if not done — incident is live |
+| `next/image` AVIF usage | Confirmed silent WebP/PNG fallback — no action needed |
+| Form `action` handlers | Confirm `export async function action(...)` still receives correctly parsed `FormData` after upgrade |
+| RHF `trigger()` with `shouldTouch` | PR #13671 still in master; test `shouldTouch` behavior post-upgrade |
+| `@hookform/resolvers` schema validation | Re-run validation test suite post-upgrade |
+| CI smoke tests | Run form-related tests now to establish post-incident baseline |
+| Windows-hosted App Router apps | CRITICAL: upgrade to `16.3.3` immediately — CVE1 scope includes App Router on Windows |
+
+**TypeScript 34th No-Content Daily Rebuild CONFIRMED** — `typescript@next` is now `7.1.0-dev.20260826.1` (npm-published Aug 26 ~08:25Z; on-schedule daily rebuild; **30+ days main branch idle unchanged**). No TypeScript surface impact for forms. Continue pinning `typescript@next` at `7.1.0-dev.20260826.1` in experimental projects.
+
+**`@tanstack/react-query@5.102.5` SHIPPED** (npm-published **2026-08-26T09:00:09Z** — 6th PATCH in 8 days: 5.102.0 → 5.102.1 → 5.102.2 → 5.102.3 → 5.102.4 → 5.102.5). This cycle's patch: `query-devtools`: remove `solid-js` import from declarations (PR #11300). No API or behavioral changes — the query-core, query-persist-client-core, and query-sync-storage-core packages are unchanged. **TanStack Query for React is at its fastest release cadence ever.** The RHF + TanStack Query stack (`useForm` + `useQuery` / `useMutation` in the same component tree) should continue using `queryKey` scoping patterns documented in v1.5.96. Pin `@tanstack/react-query@^5.102.5`.
+
+**`@clerk/nextjs@canary` advanced to `7.8.3-canary.v20260826094932`** (npm-published **2026-08-26T09:49:32Z**; **30th canary drop since v1.5.50 baseline**; no security-relevant changes in this drop). The canary train is healthy — 30 drops tracked since the v1.5.50 baseline. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260826094932` for auth-exposed Next.js apps.
+
+### Migration actions (updated)
+
+```bash
+# Confirm Next.js upgraded post-incident
+node -e "const p=require('next/package.json'); console.log('next:', p.version)"
+# → should be 16.3.3 (or 15.5.24 for backport)
+
+# Pin RHF (watch for 7.86.1 patch in next 7 days)
+npm install react-hook-form@latest
+# → confirm 7.86.0+ (PR #13671 still in master)
+
+# Pin TanStack Query — 6th PATCH in 8 days
+npm install @tanstack/react-query@latest
+# → 5.102.5 (devtools solid-js import fix; no API change)
+
+# Pin Clerk canary — 30th drop since v1.5.50
+npm install @clerk/nextjs@canary
+# → pin to 7.8.3-canary.v20260826094932 in package.json
+```
+
+### Sources
+
+- [nextjs.org — Next.js Security Release Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update)
+- [GitHub — TanStack Query release-2026-08-26-0900](https://github.com/tanstack/query/releases)
+- [npm — @tanstack/react-query@latest](https://www.npmjs.com/package/@tanstack/react-query)
+- [npm — @clerk/nextjs@canary](https://www.npmjs.com/package/@clerk/nextjs)
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)

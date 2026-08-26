@@ -3313,3 +3313,56 @@ npx vitest run
 - [npm — @playwright/test@latest](https://www.npmjs.com/package/@playwright/test)
 - [GitHub — Vitest Discussion #9664](https://github.com/vitest-dev/vitest/discussions/9664)
 - [GitHub — Vitest v5.0.0-rc.2](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.2)
+
+## Aug 26 Critical CVE POST-INCIDENT T+18h + TypeScript 34th CONFIRMED + @tanstack/react-query@5.102.5 + Clerk Canary 30th Drop + Playwright Alpha Advanced (August 26, 2026 — v1.6.02 Cycle)
+
+**Aug 26 Critical CVE: POST-INCIDENT T+18h** — the two critical unauthenticated RCEs dropped Aug 25 16:17Z UTC as `next@16.3.3` + `next@15.5.24` + `next@16.4.0-canary.7`. The incident is 18 hours old as of this cron's 12:02Z Aug 26. **Testing surface impact: MINIMAL** — CVE1 affects Windows-hosted servers; CVE2 affects `next/image` AVIF processing. Neither changes test infra APIs. Run your post-incident test suite to confirm forms, API routes, and server actions still pass after upgrade.
+
+**Aug 26 Critical CVE — Post-Incident Testing Recipe (T+18h):**
+
+| Step | Command | Verify |
+|---|---|---|
+| Confirm Next.js version | `node -e "console.log(require('next/package.json').version)"` | `16.3.3` or `15.5.24` |
+| Run form E2E tests | `npx playwright test tests/forms/` | All pass |
+| Run server action tests | `npx playwright test tests/actions/` | All pass |
+| Check AVIF image tests | Inspect network tab for AVIF → WebP/PNG fallback | Fallback confirmed |
+| Windows CI matrix | Run Playwright on Windows VM | Pass if Windows App Router |
+| Baseline comparison | Compare pass/fail counts vs pre-upgrade snapshot | No regressions |
+
+**TypeScript 34th No-Content Daily Rebuild CONFIRMED** — `typescript@next` is now `7.1.0-dev.20260826.1` (npm-published Aug 26 ~08:25Z; on-schedule daily rebuild; **30+ days main branch idle unchanged**). No TypeScript surface impact for tests. Continue pinning `typescript@next` at `7.1.0-dev.20260826.1` in experimental test projects.
+
+**`@tanstack/react-query@5.102.5` SHIPPED** (npm-published **2026-08-26T09:00:09Z** — 6th PATCH in 8 days). This cycle's patch: `query-devtools`: remove `solid-js` import from declarations (PR #11300). No API or behavioral changes. If your tests use `@tanstack/react-query` (common in RHF + query stacks), this patch is a safe drop-in. Pin `@tanstack/react-query@^5.102.5`.
+
+**`@clerk/nextjs@canary` advanced to `7.8.3-canary.v20260826094932`** (npm-published **2026-08-26T09:49:32Z**; **30th canary drop since v1.5.50 baseline**; no security-relevant changes). Tests using Clerk auth should pin canary at `7.8.3-canary.v20260826094932` and re-run auth integration tests post-incident.
+
+**`@playwright/test@next` advanced to `1.63.0-alpha-2026-08-26`** (npm-published Aug 26; was `1.63.0-alpha-2026-08-24` in v1.5.96). The alpha train continues advancing toward STABLE `1.63.0`. 1.63.0 STABLE is **imminent** — likely within the next 7-14 days based on the 6-alpha-in-2-weeks cadence. Production CI should still pin `@playwright/test@latest` = `1.62.1`. Set up a parallel canary-CI job to test against `1.63.0-alpha-2026-08-26` for early compatibility signal.
+
+**`next@canary` still `16.4.0-canary.8`** (npm-published 2026-08-25T23:46Z; no new canary in the ~12h since — the post-CVE canary train appears to be resuming; watch for canary.9 in the next 6-18h). Pin `next@16.4.0-canary.8` for 16.4.x experimenters; test against canary in a separate CI job.
+
+**Vitest 5 STABLE forecast Sep 1–8 UNCHANGED** (Vitest 5 is 6-14 days away from this cron's 12:02Z Aug 26). `vitest@rc` is `5.0.0-rc.2` (Aug 17). No new RC since v1.5.96. The STABLE cut remains on track. Run your Vitest 5 compatibility audit now — the window is closing.
+
+```bash
+# Pin Playwright stable for production CI
+npm install -D @playwright/test@latest
+# → 1.62.1
+
+# Test against Playwright alpha for early signal (canary CI job)
+npm install -D @playwright/test@next
+# → 1.63.0-alpha-2026-08-26
+
+# Audit Vitest 5 compatibility
+npx vitest --version
+# → if 4.x, run: npx vitest install --browser
+#   then: npm install -D vitest@5.0.0-rc.2
+#   then: npx vitest run
+#   fix failures before STABLE drops
+```
+
+### Sources
+
+- [nextjs.org — Next.js Security Release Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update)
+- [GitHub — TanStack Query release-2026-08-26-0900](https://github.com/tanstack/query/releases)
+- [npm — @tanstack/react-query@latest](https://www.npmjs.com/package/@tanstack/react-query)
+- [npm — @playwright/test@next versions](https://www.npmjs.com/package/@playwright/test?activeTab=versions)
+- [npm — @playwright/test@latest](https://www.npmjs.com/package/@playwright/test)
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)
