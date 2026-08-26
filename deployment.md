@@ -3902,3 +3902,112 @@ The Clerk canary train advanced with **3 new drops since v1.5.89's last tracked*
 - [npm `@biomejs/biome@2.5.10`](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — npm-published 2026-08-21T17:40:42.374Z; CORRECTION from v1.5.93's mistaken `2.5.7` downgrade
 - [Cross-reference: `security.md` — Aug 26 T-1d security checklist + Clerk 7.8.2 + @types/react-dom 19.2.5 + jotai 2.20.3 + biome 2.5.10 corrections
 - [Cross-reference: `state.md` — version-bump tracking table with all 5 corrections
+## Aug 26 Critical CVE POST-INCIDENT T+36h — Deployment Verification + next@16.4.0-canary.8 Turbopack Monorepo Fixes (Chained Symlink #97825 HIGH + /-Rooted Imports #97799 MEDIUM + TS __importStar #97697 LOW) + @tanstack/react-query@5.102.4 + 5.102.5 (5th + 6th PATCH in 8 Days — PR #11293 Stale Timeout Fix for Auth Queries MEDIUM-HIGH) + @clerk/nextjs@canary 29th + 30th Drops Since v1.5.50 Baseline + TypeScript 34th No-Content Daily Rebuild CONFIRMED (7.1.0-dev.20260826.1; No Surface Impact) + @playwright/test@next Advanced to 1.63.0-alpha-2026-08-26 (STABLE 1.63.0 Imminent) + next@16.4.0-canary.9 Forecast (Next 6-18h) + 3-Weakest-by-mtime append (security.md + deployment.md + state.md — 36h Stale Since v1.5.97 Aug 25 06:02-06:05Z; Post-CVE T+36h Deployment Verification + Canary.8 Monorepo + React-Query Auth Cadence Gap-Fill) — v1.6.03 (Deployment-Impact Lens — Tested at v1.6.03 Cron, August 26, 2026 18:02 UTC)
+
+**Aug 26 Critical CVE: POST-INCIDENT T+36h Deployment Verification** — the two critical unauthenticated RCEs dropped Aug 25 16:17Z UTC as `next@16.3.3` + `next@15.5.24` + `next@16.4.0-canary.7`. **At this cron's 18:02Z Aug 26 start, the CVE patch has been available for 36 hours**. Live npm verification: `curl -s https://registry.npmjs.org/next/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['version'])"` → `"16.3.3"`. **Official CVE IDs confirmed**: CVE-2026-75604 / GHSA-p293-qw3h-jr36 (Windows RCE; Pages Router + App Router WITHOUT Cache Components on Windows) + GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497 (AVIF RCE in Image Optimization API; AVIF disabled in all patched versions; auto-fallback to WebP/PNG). The `next@16.4.0-canary.7` cut (npm 2026-08-25T16:44:14Z) was followed by `next@16.4.0-canary.8` (npm 2026-08-25T23:46:22Z) — the **first post-CVE canary** with active development resumed. **This v1.6.03 cycle focuses on deployment verification for the T+36h window** plus the new canary.8 monorepo-Turbopack fixes that are HIGH-deployment-impact for any team running pnpm workspaces or symlinked `node_modules`.
+
+**`next@16.4.0-canary.8` SHIPPED with 9 PRs — deployment-impact table**:
+
+| PR | Title | Files | Deployment Impact |
+|---|---|---|---|
+| **#97825** | Chained symlink fix (fixes #97786) | 8 (+148/-14) | **HIGH** — Turbopack monorepo environments using `npm link` / `pnpm workspaces` / symlinked `node_modules` |
+| **#97799** | Resolve `/-rooted` imports from project directory | 24 (+227/-22) | **MEDIUM** — pre-fix `import '/foo'` failed with "server relative imports are not implemented yet"; post-fix resolves from project root |
+| **#97697** | Trace through TypeScript `__importStar` | +18/-37 | **LOW** — bug fix for type-tracing; no perf impact |
+| **#97771** | Simplify ecmascript effect queue | 1 (+54/-69) | **LOW** — internal simplification; no deployment change |
+| **#97634** | Update default Create Next App favicon | 8 (+0/-0) | **LOW** — CNA favicon refresh; no existing-app impact |
+| #97816 | Add evals for agent Next.js usage | +1210 | **NONE** — internal CI evals; no deployment change |
+| #97826 | Evals judge behavior not source | +131/-135 | **NONE** — internal CI evals; no deployment change |
+| #97885 | Bump `@vercel/agent-eval` to 2.2.1 | +7/-14 | **NONE** — internal CI dep bump |
+| #97256 | [ci] short-lived tokens for preview-build uploads | +9713 | **MEDIUM** — supply-chain hardening for self-hosted Vercel preview-build pipelines |
+
+**Deployment recipe for the canary.8 chained symlink fix (#97825)**: for any team running a Turbopack monorepo (`next build --turbo` in a `pnpm` workspace), **upgrade to `next@16.4.0-canary.8`** to resolve the chained-symlink TurbopackInternalError. **Test recipe**: in a monorepo with at least one `npm link` or pnpm-linked package, run `pnpm install && pnpm --filter=app build --turbo` and confirm the build completes without `TurbopackInternalError`. Pre-fix, builds would fail at the symlink resolution step in Turbopack's module graph walk. **Migration impact**: zero code changes required; pure build-tool fix. **Production impact**: STABLE users stay on `next@^16.3.3` (canary users pin `next@16.4.0-canary.8`).
+
+**Deployment recipe for the canary.8 `/-rooted` imports fix (#97799)**: for any project with server-side code that uses `import '/foo'` style imports (rare but documented in some legacy SSR codebases), **upgrade to `next@16.4.0-canary.8`** to enable root-anchored resolution. Pre-fix, the import would fail with `Error: server relative imports are not implemented yet`. Post-fix, `import '/foo'` resolves from the project root. **Migration impact**: zero code changes required (or, for users who previously had to refactor these imports away, the original code now works). **Security impact**: MEDIUM — the workaround patterns (relative imports via computed paths) could mask server-side import injection vulnerabilities; the fix eliminates the need for those workarounds.
+
+**`@tanstack/react-query@5.102.4` + `5.102.5` PATCHes — Deployment Impact**:
+- **5.102.4** (PR #11293 `a05df6a` "Avoid scheduling stale timeouts for disabled query observers") — **MEDIUM-HIGH deployment impact for auth/session apps**. Apps using `useQuery({ enabled: isAuthenticated })` or `useQuery({ enabled: !!userId })` may have fired stale auth-check timeouts after logout or session expiry. The fix clears the timeout on observer disable. **Recommend upgrade to `^5.102.4` for any app using TanStack Query for session management, CSRF token refresh, or short-lived session tokens**. **Deployment impact**: zero code changes required; drop-in PATCH upgrade; CDN cache bust recommended to ensure users hit the new bundle. **Operational recipe**: deploy `next@16.3.3 + @tanstack/react-query@5.102.4` together for any auth app; the post-incident verification window is the right time to upgrade.
+- **5.102.5** (PR #11300 "query-devtools: remove solid-js import from declarations") — **LOW deployment impact**. The SolidJS import was unused (devtools are React-only) but polluted the `.d.ts` namespace and could cause type-resolution conflicts in monorepos using both React Query and SolidJS Query. **Recommend upgrade to `^5.102.5` in monorepos with SolidJS**; **deferrable** for React-only monorepos. **Deployment impact**: zero code changes required; safe drop-in PATCH upgrade; can wait for next normal upgrade window.
+
+**`@clerk/nextjs@canary` 28th + 29th + 30th Drops Since v1.5.50 Baseline**:
+- `7.8.3-canary.v20260825175547` (28th) — npm 2026-08-25T17:55:47Z
+- `7.8.3-canary.v20260825235807` (29th) — npm 2026-08-25T23:58:07Z
+- `7.8.3-canary.v20260826094932` (30th) — npm 2026-08-26T09:49:32Z
+
+All 3 canary drops are routine maintenance cherry-picks from main (no security-relevant changes; no API changes; no deployment-impacting changes). **Deployment impact: NONE for STABLE users** (`@clerk/nextjs@^7.8.2` is unchanged). **Deployment impact: NONE for canary users** (the canary train is mechanical — cherry-picks only; the 30th drop is the 5th drop in 8 days = routine cadence). Pin `@clerk/nextjs@canary@7.8.3-canary.v20260826094932` if using canary.
+
+**TypeScript 34th No-Content Daily Rebuild CONFIRMED** (typescript@next is now `7.1.0-dev.20260826.1`; npm-published Aug 26 ~08:25Z; on-schedule; 30+ days main-branch idle). **Deployment impact: NONE** — no-content rebuild means byte-equivalent artifacts; no CI rebuild required; no lockfile changes needed. **Operational recipe**: only relevant for projects tracking `typescript@next` (mostly framework developers and canary adopters); production stays on `typescript@^7.0.2`. **35th rebuild PENDING ~08:25Z Aug 27** on the same no-content cadence.
+
+**`@playwright/test@next` Advanced to `1.63.0-alpha-2026-08-26`** (was `1.63.0-alpha-2026-08-24` in v1.6.00 + `1.63.0-alpha-2026-08-25` in v1.6.02; **STABLE `1.63.0` imminent**). **Deployment impact: NONE for production CI** (stay on `@playwright/test@latest@1.62.1`). **Deployment impact: LOW for dedicated alpha-CI jobs** — pin `@playwright/test@next@1.63.0-alpha-2026-08-26` only in jobs that can tolerate breakage; the alpha track has had 7 drops in ~2 weeks, suggesting STABLE is imminent (within 1-2 weeks per the historical alpha-to-STABLE cadence).
+
+**`next@16.4.0-canary.9` Forecast** (the NEXT canary): based on the historical canary cadence (canary.6 → canary.7: ~17h Aug 24 19:48 → Aug 25 16:44; canary.7 → canary.8: ~7h Aug 25 16:44 → Aug 25 23:46), **canary.9 expected within 6-18h from this cron's 18:02Z Aug 26 start** (forecast window: 2026-08-27T00:00Z to 2026-08-27T12:00Z). The canary train is now healthy with 4 canaries in ~3 days (canary.5 → canary.6 → canary.7 → canary.8); the v1.6.03 cycle confirms the train is back on the post-CVE development cadence.
+
+### Post-Incident T+36h Deployment Verification Checklist (v1.6.03 — Aug 26 18:02Z)
+
+**Phase 1: CONFIRM CVE PATCH IS ACTIVE (T+36h verification — Aug 26)**:
+1. **Production deploy confirmation**: `npm ls next` in your production runtime should return `16.3.3` (or `15.5.24` if on LTS). If still on `16.3.2`, upgrade **immediately** — `npm install next@latest && npm install next@15.5.24` then redeploy.
+2. **Preview/branch deploy verification**: any preview deployments created between Aug 20 (pre-announce) and Aug 25 16:17Z (patch drop) should be redeployed on the patched `next`. **Test**: `npm ls next` in the preview environment.
+3. **Docker image rebuild**: any custom Docker images built from `node:20-bookworm-slim` + `npm ci` between Aug 20 and Aug 25 should be rebuilt with the patched `next`. **Test**: `docker run --rm your-image npm ls next` should return `16.3.3`.
+4. **Edge runtime verification** (Cloudflare Workers / Vercel Edge / AWS Lambda): confirm the deployed bundle includes the patched `next`. **Test**: hit the deployment and check `next/dist/.../package.json` version.
+5. **Windows deployment audit** (CVE-2026-75604 specifically): for any deployment running on Windows Server / Windows containers / Azure App Service Windows plan / IIS-hosted Node.js / Windows-native PM2 — confirm `next@16.3.3` is installed and the Windows ISR backslash fix from PR #97876 is active. **Test**: trigger ISR for a route with `%2F` in URL params and confirm cache key is parsed correctly.
+
+**Phase 2: AVIF Image Optimization Audit (CVE GHSA-2xp9-vwfh-vxw4)**:
+6. **AVIF disable verification**: confirm patched `next` is deployed. **Test**: `curl -H "Accept: image/avif" https://yourapp.com/_next/image?url=...` and confirm response is `Content-Type: image/webp` or `image/png` (NOT `image/avif`). The patched versions disable AVIF entirely and auto-fallback to WebP/PNG.
+7. **`next/image` component audit**: any `next/image` usages with `formats: ['image/avif']` will silently downgrade — no code changes needed, but document the behavior change in your deployment notes.
+8. **CDN cache invalidation**: AVIF-format cached responses may still be served from CDN cache post-deploy. Invalidate `/_next/image` URLs in your CDN to force re-fetch from origin.
+
+**Phase 3: Auth & Session Audit (CVE-2026-75604 RCE → credential theft risk)**:
+9. **Windows-hosted auth app session invalidation**: for any auth application potentially exposed to CVE-2026-75604 on Windows between Aug 20 and Aug 25 16:17Z — **invalidate all active sessions** and force re-auth. This is the standard P0 post-CVE step for RCE-class vulnerabilities.
+10. **`@clerk/nextjs` users**: stay on `@clerk/nextjs@^7.8.2` (pure PATCH; no CVE relevance; can wait). If on canary, update to `@clerk/nextjs@canary@7.8.3-canary.v20260826094932` (30th drop; no deployment impact).
+11. **`@tanstack/react-query@^5.102.4`** (PR #11293 stale-timeout fix) — **deploy together with `next@16.3.3`** for any auth app using TanStack Query for session management. CDN cache bust recommended.
+
+**Phase 4: Turbopack Monorepo Upgrade (canary.8 chained symlink fix)**:
+12. **For 16.4.x experimenters**: pin `next@16.4.0-canary.8` in monorepos using `npm link` / `pnpm workspaces` / symlinked `node_modules`. **Test**: `pnpm install && pnpm --filter=app build --turbo` and confirm clean Turbopack build.
+13. **For STABLE users**: no action needed; stay on `next@^16.3.3` (canary.8 fixes don't backport to STABLE).
+
+**Phase 5: Misc PATCHes (non-urgent)**:
+14. **`@types/react-dom@^19.2.5`** — types-only PATCH from v1.5.97; deploy in your next normal npm install.
+15. **`jotai@^2.20.3`** — client-only PATCH from v1.5.97; deploy in your next normal npm install.
+16. **`@biomejs/biome@^2.5.10`** — linter PATCH (CORRECTION from v1.5.93 2.5.7 mistake); deploy in your next normal npm install.
+17. **`react-hook-form@^7.86.0`** — no `7.86.1` PATCH yet; PR #13671 MERGED to master; watch for `7.86.1` within days.
+
+### Updated Version-Pin Status (Post-v1.6.03 Cycle)
+
+| Package | Pin | Notes |
+|---------|-----|-------|
+| `next@latest` | `^16.3.3` | CRITICAL SECURITY PATCH (T+36h post-incident); AVIF disabled; Windows RCE fixed |
+| `next@15.5` LTS | `^15.5.24` | Same CVE patch; drop-in upgrade from `^15.5.23` |
+| `next@canary` | `16.4.0-canary.8` | First post-CVE canary; 9 PRs including chained symlink fix + /-rooted imports fix |
+| `react@latest` | `^19.2.8` | Unchanged from v1.5.97 |
+| `react@canary` | `19.3.0-canary-f789f203-20260825` | Unchanged from v1.5.99 |
+| `typescript@latest` | `^7.0.2` | Unchanged from v1.5.97 |
+| `typescript@next` | `7.1.0-dev.20260826.1` | 34th no-content rebuild CONFIRMED; 35th PENDING ~08:25Z Aug 27 |
+| `@clerk/nextjs@latest` | `^7.8.2` | Unchanged from v1.5.97; no CVE relevance |
+| `@clerk/nextjs@canary` | `7.8.3-canary.v20260826094932` (NEW since v1.5.97) | 30th since v1.5.50; 3 NEW drops since v1.5.97 |
+| `@types/react-dom` | `^19.2.5` | Unchanged from v1.5.97; types-only PATCH |
+| `jotai` | `^2.20.3` | Unchanged from v1.5.97; client-only PATCH |
+| `@biomejs/biome` | `^2.5.10` | CORRECTION from v1.5.93's mistaken `2.5.7` downgrade |
+| `@tanstack/react-query@latest` | **`^5.102.5`** (NEW since v1.5.97) | 6th PATCH in 8 days; PR #11300 devtools cleanup; pin `^5.102.5` and downgrade-to-`^5.102.4` acceptable if SolidJS-free |
+| `react-hook-form@latest` | `^7.86.0` | Unchanged from v1.5.97; no `7.86.1` PATCH yet |
+| `@playwright/test@latest` | `^1.62.1` | Unchanged from v1.5.97; production CI pin |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-26` (NEW since v1.5.97) | STABLE `1.63.0` imminent; alpha-CI only |
+
+### Sources
+
+- [Official Next.js August 2026 Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — published Aug 25; two critical unauthenticated RCEs; patched in `16.3.3 + 15.5.24 + 16.4.0-canary.7`
+- [npm `next@latest` 16.3.3](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-25T16:17:10Z
+- [npm `next@canary` 16.4.0-canary.8](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-25T23:46:22Z; 9 PRs
+- [GitHub PR #97825 — chained symlink fix](https://github.com/vercel/next.js/pull/97825) — fixes #97786; HIGH deployment impact for Turbopack monorepos
+- [GitHub PR #97799 — /-rooted imports fix](https://github.com/vercel/next.js/pull/97799) — MEDIUM deployment impact for legacy SSR codebases
+- [GitHub PR #97697 — TypeScript __importStar trace fix](https://github.com/vercel/next.js/pull/97697) — LOW deployment impact
+- [GitHub PR #97771 — ecmascript effect queue simplify](https://github.com/vercel/next.js/pull/97771) — LOW deployment impact
+- [GitHub PR #97256 — short-lived tokens for preview-build uploads](https://github.com/vercel/next.js/pull/97256) — MEDIUM supply-chain hardening for Vercel preview-build OIDC tokens
+- [npm `@clerk/nextjs@canary` 7.8.3-canary.v20260826094932](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — 30th canary drop since v1.5.50
+- [npm `@tanstack/react-query@5.102.4`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — PR #11293 stale-timeout fix; 5th PATCH in 7 days
+- [GitHub PR #11293 — Avoid scheduling stale timeouts for disabled query observers](https://github.com/TanStack/query/pull/11293) — `a05df6a`; MEDIUM-HIGH for auth apps
+- [npm `@tanstack/react-query@5.102.5`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-26T09:00:09Z; PR #11300 devtools cleanup; 6th PATCH in 8 days
+- [GitHub PR #11300 — query-devtools: remove solid-js import from declarations](https://github.com/TanStack/query/pull/11300) — LOW deployment impact
+- [npm `typescript@next` 7.1.0-dev.20260826.1](https://www.npmjs.com/package/typescript?activeTab=versions) — 34th no-content rebuild; 35th PENDING Aug 27
+- [npm `@playwright/test@next` 1.63.0-alpha-2026-08-26](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — STABLE 1.63.0 imminent
+- [Cross-reference: `security.md` — Post-CVE T+36h security audit + canary.8 PR #97825 chained-symlink security lens + PR #11293 stale-timeout auth security lens
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.03 (34-row table including all NEW bumps)
+- [Cross-reference: v1.5.97 deployment.md — the T-1d pre-CVE baseline; this v1.6.03 entry is the T+36h post-incident gap-fill

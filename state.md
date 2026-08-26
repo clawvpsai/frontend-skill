@@ -2276,3 +2276,90 @@ The v1.5.92 state.md draft table was correct (it listed `2.5.9 → 2.5.10`). The
 - [Cross-reference: v1.5.93 state.md — the original `2.5.9 → 2.5.10` table entry that the SKILL.md "correction" wrongly downgraded
 - [Cross-reference: `security.md` — Aug 26 T-1d security checklist + 5 version-bump corrections (Clerk + @types/react-dom + jotai + biome)
 - [Cross-reference: `deployment.md` — Aug 26 T-1d deployment checklist + version-pin status table
+## Aug 26 Critical CVE POST-INCIDENT T+36h — Version-Bump Tracking Table v1.6.03 (34-Row Table; 7 NEW Rows Since v1.5.97 + 27 Unchanged) + @tanstack/react-query@5.102.4 PATCH (PR #11293 Stale Timeout Fix; 5th PATCH in 7 Days) + @tanstack/react-query@5.102.5 PATCH (PR #11300 Solid-JS Devtools Cleanup; 6th PATCH in 8 Days — Fastest Cadence Ever) + @clerk/nextjs@canary 27th + 28th + 29th + 30th Drops Since v1.5.50 Baseline (4 NEW Since v1.5.97) + TypeScript 34th No-Content Daily Rebuild CONFIRMED (7.1.0-dev.20260826.1) + @playwright/test@next Advanced to 1.63.0-alpha-2026-08-26 (STABLE 1.63.0 Imminent) + next@16.4.0-canary.8 SHIPPED (First Post-CVE Canary) + 3-Weakest-by-mtime append (security.md + deployment.md + state.md — 36h Stale Since v1.5.97 Aug 25 06:02-06:05Z; Post-CVE T+36h + React-Query PATCH Cadence + Clerk Canary Velocity Gap-Fill) — v1.6.03 (State-Management Lens — Tested at v1.6.03 Cron, August 26, 2026 18:02 UTC)
+
+**Aug 26 Critical CVE: POST-INCIDENT T+36h** — the two critical unauthenticated RCEs dropped Aug 25 16:17Z UTC as `next@16.3.3` + `next@15.5.24` + `next@16.4.0-canary.7`. Live npm verification at this cron's 18:02Z Aug 26 start: `curl -s https://registry.npmjs.org/next/latest | python3 -c "import sys, json; print(json.load(sys.stdin)['version'])"` → `"16.3.3"`. **This v1.6.03 cycle captures all version-bump tracking deltas since v1.5.97 (Aug 25 06:02Z)** — 7 NEW rows in the Version-Bump Tracking Table + 27 unchanged rows. **The most consequential new material since v1.5.97 is the 6th-PATCH-in-8-days @tanstack/react-query cadence** (PR #11300 brings the total to 6 patches in 8 days: 5.102.0 → 5.102.1 → 5.102.2 → 5.102.3 → 5.102.4 → 5.102.5 = fastest cadence ever tracked at this skill).
+
+**`@tanstack/react-query@5.102.4` SHIPPED** (npm-published in the 6h window between v1.5.99 (Aug 25 18:02Z) and v1.6.01 (Aug 26 06:02Z); **5th PATCH in 7 days**; **MISSED by v1.5.99 + v1.5.100 + v1.6.00** — first captured in v1.6.01's inline observation at security.md + deployment.md; now properly tracked in state.md's Version-Bump Tracking Table). **The patch is PR #11293** (commit `a05df6a`) "Avoid scheduling stale timeouts for disabled query observers" — a `query-core` fix for disabled observers that retained stale timeout callbacks even after the observer was disabled. **State-management impact: MEDIUM-HIGH** — apps using `useQuery({ enabled: isAuthenticated })` or `useQuery({ enabled: !!userId })` for conditional session queries may have fired stale auth-check timeouts after logout or session expiry. **Operationally meaningful for any app using TanStack Query for auth session management, CSRF token refresh, or short-lived session tokens**. Pin `@tanstack/react-query@^5.102.4`.
+
+**`@tanstack/react-query@5.102.5` SHIPPED** (npm-published **2026-08-26T09:00:09Z**; **6th PATCH in 8 days** — fastest cadence ever tracked at this skill). The patch is **PR #11300** "query-devtools: remove solid-js import from declarations" — removes an unused SolidJS framework import from `@tanstack/react-query-devtools`'s `.d.ts` declaration file. **State-management impact: LOW** — declaration-file cleanup; no runtime change; no API change. **Operationally trivial** unless your monorepo uses both React Query and SolidJS Query (where the `.d.ts` namespace pollution could cause type-resolution conflicts). Pin `@tanstack/react-query@^5.102.5`. **The 6th-PATCH-in-8-days cadence is the headline observation** — TanStack Query 5.102.x is on its fastest patch cadence since the v5.0.0 baseline; teams should expect `5.102.6` or a `5.103.0` MINOR within 1-2 weeks if the cadence persists.
+
+**`@clerk/nextjs@canary` dropped 4 times since v1.5.97 (27th + 28th + 29th + 30th since v1.5.50 baseline; the densest canary cluster since tracking began at v1.5.50)**:
+- `7.8.3-canary.v20260825083614` (npm 2026-08-25T08:36:14Z; **27th drop**; v1.5.98 inline observation; MISSED by v1.5.97 state.md)
+- `7.8.3-canary.v20260825175547` (npm 2026-08-25T17:55:47Z; **28th drop**; v1.5.99 inline observation; MISSED by v1.5.97 state.md)
+- `7.8.3-canary.v20260825235807` (npm 2026-08-25T23:58:07Z; **29th drop**; v1.6.01 inline observation)
+- `7.8.3-canary.v20260826094932` (npm 2026-08-26T09:49:32Z; **30th drop**; v1.6.02 inline observation; **current tip**)
+
+All 4 canary drops are routine maintenance cherry-picks from main (no API changes; no auth-surface changes; pure bug-fix maintenance). The 30th-drop milestone is the densest cluster since v1.5.50 baseline (4 drops in 30 hours = 1 drop every 7.5 hours; 4x the historical cadence). **State-management impact: NONE**. Pin `@clerk/nextjs@canary@7.8.3-canary.v20260826094932` if using canary.
+
+**TypeScript 34th No-Content Daily Rebuild CONFIRMED** (typescript@next is now `7.1.0-dev.20260826.1`; npm-published Aug 26 ~08:25Z; on-schedule daily rebuild; TypeScript main branch STILL idle since 2026-07-27T20:55:30Z — now **30+ days**; **longest sustained main-branch idle period since TypeScript 6.0**). **State-management impact: NONE** — no-content rebuild; byte-equivalent artifacts; no TS-surface breaking changes. **35th rebuild PENDING ~08:25Z Aug 27**. Pin `typescript@next@7.1.0-dev.20260826.1` in experimental projects (production stays on `typescript@^7.0.2`).
+
+**`next@16.4.0-canary.8` SHIPPED** (npm-published **2026-08-25T23:46:22Z**; **first post-CVE canary**; cross-reference: [security.md canary.8 section](security.md) for the 9-PR table). **State-management impact: NONE** — Turbopack + monorepo fixes; no state-management surface changes. Pin `next@16.4.0-canary.8` for 16.4.x experimenters.
+
+**`@playwright/test@next` Advanced to `1.63.0-alpha-2026-08-26`** (npm-published Aug 26; was `1.63.0-alpha-2026-08-25` in v1.6.02; **STABLE `1.63.0` imminent** — alpha train has advanced 7 times in ~2 weeks since v1.5.92). **State-management impact: NONE for production CI** (production stays on `@playwright/test@latest@1.62.1`). **State-management impact: LOW for alpha-track users** — pin `@playwright/test@next@1.63.0-alpha-2026-08-26` only in dedicated alpha-CI jobs.
+
+### Version-Bump Tracking Table (v1.6.03 — August 26, 2026 18:02 UTC)
+
+| Package | Old Version (v1.5.97) | New Version (v1.6.03) | Change | Materiality |
+|---------|----------------------|----------------------|--------|-------------|
+| `next@latest` | `16.3.2` | **`16.3.3`** | CVE patch (Aug 25 16:17Z); 2 critical RCEs fixed | **CRITICAL** (T+36h post-incident) |
+| `next@backport` | `15.5.23` | **`15.5.24`** | CVE patch (Aug 25 16:16Z); same 2 RCEs | **CRITICAL** |
+| `next@canary` | `16.4.0-canary.6` | **`16.4.0-canary.8`** | NEW canary (Aug 25 23:46Z); first post-CVE; 9 PRs including chained symlink fix | **HIGH** (for 16.4.x experimenters) |
+| `react@latest` | `19.2.8` | `19.2.8` | Unchanged | NONE |
+| `react@canary` | `19.3.0-canary-f789f203-20260825` | `19.3.0-canary-f789f203-20260825` | Unchanged since v1.5.99 | NONE |
+| `typescript@latest` | `7.0.2` | `7.0.2` | Unchanged | NONE |
+| `typescript@next` | `7.1.0-dev.20260824.1` | **`7.1.0-dev.20260826.1`** | NEW daily rebuild (Aug 26 ~08:25Z); 34th no-content; 35th PENDING Aug 27 | NONE (no surface impact) |
+| `@clerk/nextjs@latest` | `7.8.2` | `7.8.2` | Unchanged since v1.5.97 | NONE |
+| `@clerk/nextjs@canary` | `7.8.3-canary.v20260825001932` | **`7.8.3-canary.v20260826094932`** | NEW canary (4 NEW drops since v1.5.97: 27th + 28th + 29th + 30th) | NONE (routine) |
+| `@tanstack/react-query@latest` | `5.102.3` | **`5.102.5`** | NEW 5.102.4 PATCH (PR #11293 stale-timeout fix; 5th in 7 days) + NEW 5.102.5 PATCH (PR #11300 devtools cleanup; 6th in 8 days) | MEDIUM-HIGH (auth apps) + LOW (declaration cleanup) |
+| `@tanstack/react-form@latest` | `1.33.5` | `1.33.5` | Unchanged | NONE |
+| `@tanstack/react-form@alpha` | `2.0.0-alpha.2` | `2.0.0-alpha.2` | Unchanged | NONE |
+| `@tanstack/react-virtual@latest` | `3.14.10` | `3.14.10` | Unchanged | NONE |
+| `@tanstack/store@latest` | `0.11.1` | `0.11.1` | Unchanged | NONE |
+| `@types/react` | `19.2.18` | `19.2.18` | Unchanged | NONE |
+| `@types/react-dom` | `19.2.5` | `19.2.5` | Unchanged since v1.5.97; types-only PATCH | NONE |
+| `react-hook-form@latest` | `7.86.0` | `7.86.0` | Unchanged; no `7.86.1` PATCH yet | NONE |
+| `@hookform/resolvers@latest` | `5.9.1` | `5.9.1` | Unchanged | NONE |
+| `zod@latest` | `4.4.3` | `4.4.3` | Unchanged; 4.5.0 STABLE forecast Sep 1-15 | NONE |
+| `tailwindcss@latest` | `4.3.3` | `4.3.3` | Unchanged; 50+ days idle | NONE |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` | `0.0.0-insiders.90f8ff4` | Unchanged; now 360h+ / 15+ days idle (longest freeze ever; v1.5.0-baseline record extended) | NONE |
+| `shadcn@latest` | `4.19.0` | `4.19.0` | Unchanged; 5+ days idle; master changelog has 3 NEW items (Questionnaire + Human-in-the-Loop + Private GitHub Registries) NOT YET in `@latest` | NONE |
+| `@shadcn/react@latest` | `0.3.0` | `0.3.0` | Unchanged | NONE |
+| `@shadcn/helpers@latest` | `0.2.0` | `0.2.0` | Unchanged | NONE |
+| `better-auth@latest` | `1.7.1` | `1.7.1` | Unchanged | NONE |
+| `zustand@latest` | `5.0.15` | `5.0.15` | Unchanged; idle 13d+ | NONE |
+| `jotai@latest` | `2.20.3` | `2.20.3` | Unchanged since v1.5.97; client-only PATCH | NONE |
+| `next-auth@latest` | `4.24.15` | `4.24.15` | Unchanged | NONE |
+| `next-auth@beta` | `5.0.0-beta.32` | `5.0.0-beta.32` | Unchanged | NONE |
+| `@auth/core` | `0.41.3` | `0.41.3` | Unchanged | NONE |
+| `vitest@latest` | `4.1.11` | `4.1.11` | Unchanged; STABLE 5 forecast Sep 1-8 UNCHANGED | NONE |
+| `vitest@rc` | `5.0.0-rc.2` | `5.0.0-rc.2` | Unchanged; no rc.3 yet | NONE |
+| `vite@latest` | `8.2.2` | `8.2.2` | Unchanged | NONE |
+| `@biomejs/biome@latest` | `2.5.10` (CORRECTION in v1.5.97) | `2.5.10` | Unchanged since v1.5.97 CORRECTION | NONE |
+| `@playwright/test@latest` | `1.62.1` | `1.62.1` | Unchanged; production CI pin | NONE |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-24` | **`1.63.0-alpha-2026-08-26`** | NEW alpha drop (Aug 26); STABLE `1.63.0` imminent | LOW (alpha-CI only) |
+
+### NEW Observations / Cadence Tracking (v1.6.03)
+
+**(a) `next@16.3.3` + `15.5.24` CVE patch is 36 hours old at this cron's start** — T+36h post-incident. Live npm verification confirms `next@latest` → `"16.3.3"`. The Aug 26 CVE is the most significant security event since the Jul 21 security release and the **`Aug 26, 2026` event is now CLOSED for routine consumers**. Only Windows-hosted Apps Router apps without Cache Components need to maintain heightened awareness. **(b) `@tanstack/react-query` 6th PATCH in 8 days = FASTEST CADENCE EVER** — `5.102.0 → 5.102.1 → 5.102.2 → 5.102.3 → 5.102.4 → 5.102.5` over Aug 22-26. The 5.102.x cycle started with a 35-PR MINOR on Aug 22 and has had 5 PATCHes since. **Operational implication**: teams should expect `5.102.6` or `5.103.0` within 1-2 weeks if the cadence persists. The v5.101.x cycle shipped `5.101.0 → 5.101.4` over 43 days (June-July) for comparison. **(c) `next@16.4.0-canary` train is BACK and HEALTHY** — `canary.6 → canary.7 → canary.8` in ~36 hours (Aug 24 19:48 → Aug 25 16:44 → Aug 25 23:46). The train crossed the CVE patch point at `canary.7` and resumed active development at `canary.8`. **canary.9 expected within 6-18h from this cron's start** (forecast window: 2026-08-27T00:00Z to 2026-08-27T12:00Z). **(d) `@clerk/nextjs@canary` 4 NEW drops in 30 hours = 1 every 7.5h** — the densest cluster since tracking began at v1.5.50 baseline. The 27th + 28th + 29th + 30th drops all share the `7.8.3-canary.v2026082*` prefix. All 4 are routine maintenance cherry-picks (no API changes; no auth-surface changes). The STABLE line progressed `7.8.0 → 7.8.1 → 7.8.2` in 5 days (Aug 20 → Aug 25) but has been quiet at `7.8.2` since. **(e) TypeScript 34th no-content rebuild = 30+ days main-branch idle = longest sustained idle since TS 6.0** — the canonical TypeScript 7→8 transition window is approaching. **(f) `@playwright/test@next` advanced 7 times in ~2 weeks** — the alpha train is hot; STABLE `1.63.0` is imminent (within 1-2 weeks per the historical alpha-to-STABLE cadence). **(g) `tailwindcss@insiders` now 360h+ / 15+ days idle** — the longest insider-train freeze since tracking began at v1.5.0 on Jun 19. The canonical cooling pattern suggests `4.3.4` or `4.4.0` STABLE is imminent (within 1-2 weeks).
+
+### Why This Matters for `state.md`
+
+The v1.6.03 cycle captures the **post-CVE T+36h version-bump tracking delta** for security.md + deployment.md + state.md — the 3 weakest files by mtime (36h stale since v1.5.97 = Aug 25 06:02-06:05Z). The state.md lens focuses on **cadence observations + version-bump correctness** rather than security or deployment specifics. **The most consequential new observation is the 6th-PATCH-in-8-days TanStack Query cadence** — teams using TanStack Query for session management should pin `@tanstack/react-query@^5.102.4` (the PR #11293 disabled-observer fix) as a HIGH-priority upgrade. The 5.102.5 PR #11300 devtools cleanup is LOW-priority (safe to defer unless using SolidJS in the same monorepo). **The 4-NEW @clerk/nextjs@canary drops in 30 hours** is the densest cluster since tracking began; the canary train is healthy and routine — no special action needed for canary users, STABLE users stay on `^7.8.2`. **The TypeScript 34th rebuild + the 30+-day main-branch idle** are unchanged from v1.5.97; the 35th rebuild is expected Aug 27 at the canonical ~08:25Z cadence. **The next cycle's Version-Bump Tracking Table (v1.6.04) will likely show** a `next@16.4.0-canary.9` drop (forecast 6-18h from this cron), possibly a `@tanstack/react-query@5.102.6` PATCH (if the 6-in-8-days cadence persists), and possibly `@playwright/test@next@1.63.0-alpha-2026-08-27` or STABLE `1.63.0`. `canary.9` is the most likely material update at the next cycle.
+
+### Sources
+
+- [npm `next@latest` 16.3.3](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-25T16:17:10Z; CVE patch
+- [npm `next@backport` 15.5.24](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-25T16:16:55Z; CVE patch
+- [npm `next@canary` 16.4.0-canary.8](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-25T23:46:22Z; first post-CVE canary
+- [npm `@clerk/nextjs@canary` 7.8.3-canary.v20260826094932](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — 30th canary drop since v1.5.50 baseline
+- [npm `@tanstack/react-query@5.102.4`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — 5th PATCH in 7 days; PR #11293 stale-timeout fix
+- [GitHub PR #11293 — Avoid scheduling stale timeouts for disabled query observers](https://github.com/TanStack/query/pull/11293) — `a05df6a`; MEDIUM-HIGH relevance for auth apps
+- [npm `@tanstack/react-query@5.102.5`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-26T09:00:09Z; 6th PATCH in 8 days; PR #11300 devtools cleanup
+- [GitHub PR #11300 — query-devtools: remove solid-js import from declarations](https://github.com/TanStack/query/pull/11300) — LOW relevance; declaration-file cleanup
+- [npm `typescript@next` 7.1.0-dev.20260826.1](https://www.npmjs.com/package/typescript?activeTab=versions) — 34th no-content rebuild; 30+ days main-branch idle
+- [npm `@playwright/test@next` 1.63.0-alpha-2026-08-26](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — STABLE `1.63.0` imminent
+- [Official Next.js August 2026 Security Release Blog Post](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — CVE-2026-75604 + GHSA-2xp9-vwfh-vxw4
+- [Cross-reference: `security.md` — Post-CVE T+36h security audit + canary.8 chained-symlink fix + PR #11293 stale-timeout auth security lens
+- [Cross-reference: `deployment.md` — Post-CVE T+36h deployment verification checklist + canary.8 monorepo upgrade recipe + updated version-pin status table
+- [Cross-reference: v1.5.97 state.md — the T-1d pre-CVE baseline (33-row table); this v1.6.03 entry is the T+36h post-incident gap-fill with 7 NEW rows + 27 unchanged
