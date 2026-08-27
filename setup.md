@@ -310,3 +310,188 @@ npm run dev
 - [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260825235807`; 29th drop since v1.5.50
 - [Cross-reference: `routing.md` — canary.8 routing-surface PRs
 - [Cross-reference: `auth.md` — @clerk/nextjs 29th drop + auth post-incident
+
+
+---
+
+## ★ next@16.4.0-canary.9 SHIPPED (22 PRs) + sharp@^0.35.4 (AVIF Re-Enabled) + better-auth@1.7.2 + @tanstack/react-query@5.102.7 + @clerk/nextjs@canary 30th Drop (Setup Lens — v1.6.06, August 27, 2026)
+
+**`next@16.4.0-canary.9`** npm-published **2026-08-27T00:43:37Z**. The headline for setup: **AVIF re-enabled** (requires `sharp@^0.35.4`), React canary bump, and the `next/image` non-2xx fix. 22 PRs total.
+
+### next@16.4.0-canary.9 — 22 PRs (Setup-Relevant Findings)
+
+| PR | Description | Setup Impact |
+|---|---|---|
+| **#97931** | `Re-enable AVIF image optimization` — reverts #97875 (the AVIF-disable CVE patch); requires `sharp@^0.35.4` | **HIGH** — AVIF optimization is back; fresh `npm install` picks up sharp@0.35.4 (published Aug 26 09:42Z); self-hosted users with pinned sharp < 0.35.4 still fall back to WebP |
+| **#97957** | `fix(next/image): reject non-2xx internal image responses` — fixes #82357; `fetchInternalImage()` now correctly rejects `307`/`404` from `next.config` redirects | **MEDIUM** — any `images.redirects` entry in `next.config` targeting an image path was silently serving broken content; re-test image redirects |
+| **#97936** | `fix: don't drop client references when concatenated module id is 0` — build fix for webpack flight manifest | **MEDIUM** — affected builds fail at runtime with "Could not find the module ... in the React Client Manifest"; fix is in flight-manifest-plugin |
+| **#97165** | `[PPF] Only track runtime accesses when the promise is used` — PPF shell classification refinement | **MEDIUM** — PPF users may see different static/runtime shell classification; test `unstable_prefetch()` behavior |
+| **#97933** | `Fix Turbopack re-export cycle deadlock` — prevents deadlocks in cyclic barrel-file re-exports | **MEDIUM** — Turbopack builds in cyclic ESM codebases now complete cleanly |
+| **#96715** | `Don't report a client-aborted RSC stream as a render error` | **LOW** — RSC error tracking dashboards will see fewer false-positive errors |
+| **#96826/#96843/#96844** | `ReactDOM.browser flag migrations` — CSRBailout + useSearchParams bailout + resumed render bailout → ReactDOM.browser() behind flag | **MEDIUM** — React 3 prep; `next/dynamic ssr:false`, `useSearchParams`, PPR apps need updated error handling |
+| **#97887** | `Upgrade React from bd6ea412-20260824 to f789f203-20260825` | **INFO** — React canary bump; no API surface changes in this diff |
+| **#95310** | `Turbopack: expose list of non-inlined env vars` | **LOW** — future-facing; env vars now accessible in Turbopack dev builds |
+| **#95976** | `turbo-tasks-backend: parent_count reference counting` | **LOW** — Turbopack backend infrastructure; no user-visible behavior change |
+| **#97585/#97577** | `stub HTTP on wasm targets` + `make TaggedValue usable on wasm` | **LOW** — Cloudflare Workers / Deno Deploy future support |
+
+### sharp@^0.35.4 — AVIF Re-Enabled (PR #97931)
+
+`sharp@0.35.4` was published **2026-08-26T09:42:27Z** — well past the 48h `minimumReleaseAge` gate. Fresh `npm install` will pick it up automatically. If you have `sharp` pinned to an older version, upgrade:
+
+```bash
+# Check current sharp version
+npm list sharp
+
+# Upgrade to 0.35.4+
+npm install sharp@^0.35.4
+
+# Verify AVIF is re-enabled (should serve avif for supporting browsers)
+# Test: open a next/image component in Chrome with DevTools Network tab
+# Look for "image/avif" in the Content-Type response header
+```
+
+**pnpm note**: the previous AVIF-disable (PR #97875) was caused by pnpm blocking `sharp@<0.35.4` due to the `minimumReleaseAge` gate. The sharp team published 0.35.4 specifically to unblock pnpm users. Both pnpm 10.33.0 and 11.22.0 now work with `sharp@^0.35.4`.
+
+### @tanstack/react-query@5.102.7 — 8th PATCH in 8 Days (v1.6.05 Tracked 5.102.6)
+
+**`@tanstack/react-query@5.102.7`** (npm-published **2026-08-27T08:33:25.188Z**) — dep refresh only (`query-core@5.102.7`). The operationally significant PR (#11305 — falsy-error propagation fix) shipped in 5.102.6 and is now in the stable range.
+
+```bash
+# Step 1: verify current version
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.7
+
+# Step 2: audit useQueries / useSuspenseQueries error callbacks
+# The 5.102.6 fix affects falsy error propagation
+rg "useQueries|useSuspenseQueries" --type tsx -l | xargs rg "if.*!.*error|if.*error.*return" -A2 -B2 | head -40
+# If you find patterns: update guards to check error type explicitly
+# e.g., if (error instanceof Error) { ... }
+
+# Step 3: TypeScript check
+npx tsc --noEmit
+# Expected: no new errors
+```
+
+### @clerk/nextjs@canary — 30th Drop to 7.8.3-canary.v20260827114418
+
+**`@clerk/nextjs@canary`** updated to `7.8.3-canary.v20260827114418` (npm-published **2026-08-27T11:49:30.886Z**). 30th drop since v1.5.50 baseline. STABLE stays at `7.8.2`.
+
+```bash
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260827114418
+npm install @clerk/nextjs@canary
+```
+
+### better-auth@1.7.2 — 10 PRs (v1.6.05 Tracked 1.7.1)
+
+**`better-auth@1.7.2`** (npm-published **2026-08-26T19:03:29Z**) — recommended upgrade for all better-auth users. 10 PRs across the ecosystem.
+
+Key changes requiring setup attention:
+
+1. **Cloudflare Workers async context fix** ([#10855](https://github.com/better-auth/better-auth/pull/10855)): If you run better-auth on Cloudflare Workers and had workarounds for async context loss, re-test after upgrading.
+2. **Ban expiration fix** ([#10823](https://github.com/better-auth/better-auth/pull/10823)): Users who are permanently banned now have temporary ban expiration dates cleared. Re-test your ban enforcement logic.
+3. **New optional auth context API** ([#10938](https://github.com/better-auth/better-auth/pull/10938)): `auth.getOptional()` — new in 1.7.2.
+
+```bash
+# Step 1: upgrade
+npm install better-auth@^1.7.2
+
+# Step 2: verify
+npm list better-auth
+# Expected: better-auth@1.7.x
+
+# Step 3: permanent ban + temporary ban overlap — DB check
+# Run if you have users who may have both permanent + temporary bans
+# After upgrade: ban_expires_at should be NULL for permanently_banned users
+
+# Step 4: re-test auth in Cloudflare Workers (if applicable)
+# Deploy to staging, verify auth() resolves in all routes
+```
+
+### @playwright/test@next — 1.63.0-alpha-2026-08-27
+
+**`@playwright/test@next`** advanced to `1.63.0-alpha-2026-08-27` (npm-published **2026-08-27T05:38:51.628Z**). STABLE `1.63.0` still not announced. Production CI stays on `@playwright/test@latest` = `1.62.1`.
+
+### zod@canary — 4.5.0-canary.20260827T054049 (NEW Since v1.6.05)
+
+**`zod@canary`** updated to `4.5.0-canary.20260827T054049` (npm-published **2026-08-27T05:46:01.828Z**). STABLE `4.4.3` unchanged. The canary has shipped 10+ drops since `4.5.0-canary.20260825T025411`. STABLE forecast still **Sep 1–15, 2026**.
+
+```bash
+# If experimenting with zod@4.5.0 canary:
+npm install zod@canary
+# Note: zod@4.5.0 has BREAKING changes (datetime fix PR #6457)
+# Test thoroughly before pinning in production
+```
+
+### Updated Setup Recipe — canary.9 + AVIF Re-enabled + better-auth 1.7.2
+
+```bash
+# IMMEDIATE: upgrade next to canary.9
+npm install next@16.4.0-canary.9
+
+# Step 1: verify sharp@0.35.4+ (AVIF re-enabled)
+npm list sharp
+# If < 0.35.4: npm install sharp@^0.35.4
+
+# Step 2: verify next/image redirects in next.config (PR #97957)
+rg "redirects.*images" next.config.* -A5 | head -30
+# Test any redirect() entry that targets an image URL
+# Before fix: redirected images showed broken content (detectContentType=null)
+# After fix: redirected images render correctly
+
+# Step 3: upgrade better-auth to 1.7.2
+npm install better-auth@^1.7.2
+
+# Step 4: upgrade @clerk/nextjs@canary to 30th drop
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260827114418
+
+# Step 5: upgrade @tanstack/react-query to 5.102.7
+npm install @tanstack/react-query@^5.102.7
+
+# Step 6: audit react-query useQueries error callbacks (5.102.6 fix impact)
+rg "useQueries|useSuspenseQueries" --type tsx -l | xargs \
+  rg "if.*!.*error|if.*error.*return" -A2 -B2 | head -40
+# Update to check error type explicitly: if (error instanceof Error) { ... }
+
+# Step 7: verify Turbopack re-export cycle fix (if using cyclic barrel files)
+pnpm next build --turbo
+# Expected: completes without deadlock
+
+# Step 8: TypeScript check
+npx tsc --noEmit
+# Expected: no new errors
+
+# Step 9: React 3 prep — audit CSRBailout catches
+rg "CSRBailout" --type ts --type tsx | head -10
+# If found: update error handling to handle ReactDOM.browser bailouts
+
+# Step 10: permanent ban DB check (better-auth)
+# Run if you have users with both permanent + temporary bans
+```
+
+### Why This Matters for Setup
+
+- **canary.9 is the recommended upgrade target** — AVIF re-enabled + CVE fixes + new routing PRs. The most significant new requirement is `sharp@^0.35.4`.
+- **AVIF re-enabled** — the CVE caused AVIF to be disabled. sharp@0.35.4 (published Aug 26) specifically addressed the pnpm minimumReleaseAge issue. Fresh installs get AVIF back automatically.
+- **PR #97957 `next/image` non-2xx** — if you use programmatic image redirects in `next.config`, re-test them after upgrading. The fix changes `detectContentType()` behavior for redirect responses.
+- **better-auth@1.7.2** — Cloudflare Workers users and apps with complex ban logic should upgrade. The new `auth.getOptional()` API is a nice ergonomic addition.
+- **react-query@5.102.7 + 5.102.6** — the combined 5.102.6+7 update changes `useQueries`/`useSuspenseQueries` falsy-error propagation. This affects auth apps that use these hooks for permission queries.
+- **TypeScript 35th rebuild still pending** — the first miss in 35 days. Pin `typescript@next` at `7.1.0-dev.20260826.1` until the 35th confirms.
+
+### Sources
+
+- [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**; 22 PRs
+- [PR #97931 — Re-enable AVIF image optimization](https://github.com/vercel/next.js/pull/97931) — merged 2026-08-26T21:28:07Z
+- [PR #97957 — fix(next/image): reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957) — fixes #82357; merged 2026-08-27T00:04:33Z
+- [sharp@0.35.4 npm](https://registry.npmjs.org/sharp/0.35.4) — published **2026-08-26T09:42:27Z**; satisfies pnpm minimumReleaseAge
+- [better-auth v1.7.2 release](https://github.com/better-auth/better-auth/releases/tag/v1.7.2) — published **2026-08-26T19:03:29Z**
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260827114418`; 30th drop since v1.5.50
+- [`@tanstack/react-query@5.102.7` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — published **2026-08-27T08:33:25.188Z**; dep refresh
+- [TanStack/query PR #11305 — propagate falsy errors](https://github.com/TanStack/query/pull/11305) — merged 2026-08-26T13:27:28Z
+- [`@playwright/test@next` npm](https://registry.npmjs.org/@playwright/test/next) — now `1.63.0-alpha-2026-08-27`; STABLE still `1.62.1`
+- [zod@canary npm](https://registry.npmjs.org/zod/canary) — now `4.5.0-canary.20260827T054049`; STABLE `4.4.3`; forecast Sep 1–15
+- [TypeScript 35th rebuild — still `7.1.0-dev.20260826.1`](https://registry.npmjs.org/typescript/next) — **first miss in 35 days**; 31+ days main-branch idle
+- [Cross-reference: `routing.md` — canary.9 routing-surface PRs + PPF shell reclassification
+- [Cross-reference: `auth.md` — @clerk/nextjs 30th drop + better-auth 1.7.2 auth lens

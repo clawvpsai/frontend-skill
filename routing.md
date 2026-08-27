@@ -256,3 +256,93 @@ npm install next@16.4.0-canary.8
 - [TypeScript 34th rebuild pending — `7.1.0-dev.20260825.1`](https://registry.npmjs.org/typescript/next) — forecast ~08:25Z Aug 26; main branch 30+ days idle
 - [Cross-reference: `auth.md` — @clerk/nextjs@canary 29th drop + auth post-incident
 - [Cross-reference: `setup.md` — canary.8 + react-query@5.102.4 + AVIF disable post-incident setup
+
+
+---
+
+## ★ next@16.4.0-canary.9 SHIPPED (22 PRs) + TypeScript 35th Rebuild PENDING ~08:25Z Aug 27 — First Miss in 35 Consecutive Days (Routing Lens — v1.6.06, August 27, 2026)
+
+**`next@16.4.0-canary.9` SHIPPED** npm-published **2026-08-27T00:43:37Z** — the first canary drop in ~25h (vs the ~6h cadence in the Aug 24-25 window). The canary train resumes with 22 PRs. The most routing-surface-relevant PRs are AVIF re-enablement, `next/image` non-2xx hardening, PPF TrackedPromise refinement, Turbopack cycle fix, and React 3 preparation migrations.
+
+### canary.9 PRs — Routing-Surface Relevant
+
+| PR | Description | Routing Impact |
+|---|---|---|
+| **#97931** | `Re-enable AVIF image optimization` — reverts #97875 (the AVIF-disable CVE patch); bumps `sharp` from `^0.35.3` to `^0.35.4`; `sharp@0.35.4` was published 2026-08-26T09:42:27Z and satisfies the `minimumReleaseAge` pnpm gate | **MEDIUM** — AVIF image optimization is back in all CVE-patched versions; self-hosted users on `sharp@<0.35.4` will still fall back to WebP; fresh installs now get AVIF automatically |
+| **#97957** | `fix(next/image): reject non-2xx internal image responses` — fixes #82357; `fetchInternalImage()` was only rejecting on falsy `statusCode`; `MockedResponse` defaults to 200, so `307` redirects and `404`s from `next.config` redirects were treated as valid images | **MEDIUM** — any custom `next.config` `images.redirects` entry that pointed to an image would silently serve broken content; audit all redirect rules that target image paths; `detectContentType()` now correctly returns `null` for non-image responses |
+| **#97936** | `fix: don't drop client references when the concatenated module id is 0` — fixes silent manifest failure when `ConcatenatedModule` gets id `0`; `getModuleId()` returns `string \| number \| null` but the guard used truthiness instead of null-check | **MEDIUM** — affected builds fail at runtime with "Could not find the module ... in the React Client Manifest"; the error message does not point at the cause (concatenated module id 0); fix is in the webpack flight-manifest plugin |
+| **#97165** | `[PPF] Only track runtime accesses when the promise is used` — changes PPF static prerender shell classification; tracks promise access only on `then/catch/finally` call (not on creation); fewer false-positive static shells getting runtime-annotated | **HIGH** — PPF users may see pages previously classified as "static" now classified as "runtime" (or vice versa); this directly affects `unstable_prefetch()` behavior and which shell is served on navigation |
+| **#97933** | `Fix Turbopack re-export cycle deadlock` — makes ECMAScript side-effect classification independent of full module analysis; prevents deadlocks in import cycles through re-export chains | **MEDIUM** — Turbopack dev/build in codebases with cyclic re-exports (e.g., barrel files re-exporting from each other) would deadlock; now resolves cleanly |
+| **#96715** | `Don't report a client-aborted RSC stream as a render error` — `pipeNodeReadableToNodeResponse` destroying the readable on client disconnect caused React to throw `"The destination stream closed early."` which ended up in `onRequestError` as a server render error | **LOW** — RSC error tracking dashboards will see fewer false-positive render errors; affected users with RSC error monitoring |
+| **#96826 / #96843 / #96844** | `Replace CSRBailout / useSearchParams bailout / resumed render bailout error with ReactDOM.browser behind a flag` — migrates three bailout-throw patterns to `ReactDOM.browser()` API behind `experimental.reactOwnerObjects: true` flag; React 3 preparation | **MEDIUM** — apps using `next/dynamic` with `ssr: false`, `useSearchParams`, or PPR resumed renders; error tracking tools that explicitly catch `CSRBailout` will see those errors stop firing; update dashboards + error boundary logic |
+
+### TypeScript 35th No-Content Daily Rebuild — PENDING (First Miss in 35 Consecutive Days)
+
+**TypeScript `next` is STILL `7.1.0-dev.20260826.1`** at this cron's 12:02Z Aug 27 start. The 35th rebuild was forecast for ~08:25Z Aug 27 (per the v1.6.05 inline observation). It has not yet published as of this cron's 12:02Z start — **~3h 37min late**. This is the **first miss in 35 consecutive daily rebuilds** since TypeScript started the no-content daily rebuild cadence. The TS main branch remains idle (31+ days = longest stretch since 7.0.0). **No TS-surface routing impact expected when it ships.**
+
+### Updated Routing Audit Recipe — canary.9 + AVIF Re-enabled + PPF Shell Reclassification
+
+```bash
+# Step 1: upgrade to canary.9 (AVIF re-enabled + all CVE fixes + new routing PRs)
+npm install next@16.4.0-canary.9
+
+# Step 2: confirm AVIF re-enabled (sharp@^0.35.4 required)
+npm list sharp
+# If sharp < 0.35.4: npm install sharp@^0.35.4
+# Expected: next/image serves AVIF for supporting browsers
+
+# Step 3: audit next/image redirects in next.config (PR #97957 non-2xx fix)
+rg "redirects.*images|images.*redirects" next.config.* | head -20
+# Any redirect() entry that targets an image path should be tested:
+# Create a test page that renders the redirected image URL
+# Expected: image renders correctly (not a broken detectContentType=null response)
+
+# Step 4: PPF users — verify shell classification (PR #97165)
+# Pages previously showing "static" in PPF devtools may now show "runtime"
+# Test navigation with unstable_prefetch() to verify prefetch behavior unchanged
+# If pages reclassified as runtime: no action needed, this is expected
+
+# Step 5: Turbopack re-export cycle fix (PR #97933)
+# If you have cyclic barrel-file re-exports in your codebase:
+pnpm next build --turbo
+# Expected: completes without deadlock
+# If still hanging: the cycle involves a non-ESM side-effect import
+
+# Step 6: RSC error tracking cleanup (PR #96715)
+# Check your error tracking dashboard for "destination stream closed early" errors
+# These should stop appearing after upgrading to canary.9
+
+# Step 7: TypeScript 35th rebuild check (unusually delayed)
+npm view typescript dist-tags.next
+# If still 7.1.0-dev.20260826.1: 35th rebuild is late (first miss in 35 days)
+# If new version: the 35th rebuild shipped during this cycle window
+# Pin typescript@next at the confirmed version
+
+# Step 8: React 3 preparation — audit error boundaries catching CSRBailout
+rg "CSRBailout" --type ts --type tsx | head -20
+# If you have explicit CSRBailout catches in error handling:
+# Update to handle the new ReactDOM.browser() bailouts
+# These bailouts will stop throwing errors in React 3 (behind experimental flag)
+```
+
+### Why This Matters for Routing
+
+- **AVIF re-enabled is the most user-visible canary.9 change** — all CVE-patched versions now serve AVIF again for supporting browsers. `sharp@^0.35.4` is the minimum. Fresh `npm install` picks it up automatically.
+- **PR #97957 `next/image` non-2xx is a correctness + potential security fix** — any `next.config` redirect pointing to an image was silently serving broken content. This affects a narrow but real class of Next.js apps that use programmatic image redirects. Audit your `next.config`.
+- **PPF shell reclassification (PR #97165) is the highest-impact canary.9 change for PPF users** — pages whose promise accesses were tracked at creation time (instead of at `.then()` call) may now be classified differently. This affects prefetch behavior. Re-test your PPF navigation flows.
+- **React 3 prep (3 PRs) — CSRBailout → ReactDOM.browser migration** — this is the most forward-looking routing change. Error tracking dashboards and any code explicitly catching `CSRBailout` needs updating before the React 3 flag flips.
+- **TypeScript 35th rebuild missing for first time in 35 days** — the TS main branch idle + no new rebuild is unusual. Monitor the TS next channel. Pin at `7.1.0-dev.20260826.1` until the 35th confirms.
+
+### Sources
+
+- [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**; 22 PRs
+- [PR #97931 — Re-enable AVIF image optimization](https://github.com/vercel/next.js/pull/97931) — merged 2026-08-26T21:28:07Z; bumps sharp to ^0.35.4
+- [PR #97957 — fix(next/image): reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957) — fixes #82357; merged 2026-08-27T00:04:33Z
+- [PR #97936 — don't drop client references when concatenated module id is 0](https://github.com/vercel/next.js/pull/97936) — merged 2026-08-27T00:20:34Z
+- [PR #97165 — [PPF] Only track runtime accesses when the promise is used](https://github.com/vercel/next.js/pull/97165) — merged 2026-08-26T16:05:45Z
+- [PR #97933 — Fix Turbopack re-export cycle deadlock](https://github.com/vercel/next.js/pull/97933) — merged 2026-08-26T16:03:28Z
+- [PR #96826 / #96843 / #96844 — ReactDOM.browser flag migrations](https://github.com/vercel/next.js/pull/96826) — merged 2026-08-27T00:07:28-31Z; React 3 preparation
+- [sharp@0.35.4 npm](https://registry.npmjs.org/sharp/0.35.4) — published **2026-08-26T09:42:27Z**; satisfies pnpm minimumReleaseAge gate
+- [TypeScript 35th rebuild — `7.1.0-dev.20260826.1` still at next](https://registry.npmjs.org/typescript/next) — **first miss in 35 consecutive daily rebuilds**; 31+ days main-branch idle
+- [Cross-reference: `auth.md` — @clerk/nextjs@canary 30th drop + better-auth 1.7.2 + react-query@5.102.7
+- [Cross-reference: `setup.md` — canary.9 upgrade + AVIF re-enabled + sharp@^0.35.4 + zod@canary 4.5.0-canary update

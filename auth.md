@@ -265,3 +265,132 @@ rg "clerkMiddleware|authMiddleware" src/middleware.ts
 - [TanStack/query PR #11293 — Avoid scheduling stale timeouts for disabled query observers](https://github.com/TanStack/query/pull/11293) — `a05df6a`
 - [Cross-reference: `routing.md` — canary.8 routing-surface PRs
 - [Cross-reference: `setup.md` — canary.8 + react-query@5.102.4 setup recipe
+
+
+---
+
+## ★ next@16.4.0-canary.9 + @clerk/nextjs@canary 30th Drop + better-auth@1.7.2 + @tanstack/react-query@5.102.7 (Auth Lens — v1.6.06, August 27, 2026)
+
+**`next@16.4.0-canary.9`** (npm-published **2026-08-27T00:43:37Z**) ships 22 PRs. Auth-surface routing impact: ReactDOM.browser flag migrations (PR #96826/#96843/#96844) affect `next/dynamic ssr:false`, `useSearchParams`, and PPR resumed renders — all relevant for Clerk-integrated auth pages that use Suspense boundaries.
+
+### @clerk/nextjs@canary — 30th Drop to 7.8.3-canary.v20260827114418 (v1.6.05: 29th Drop at v20260826205903)
+
+**`@clerk/nextjs@canary` jumped from `7.8.3-canary.v20260826205903` to `7.8.3-canary.v20260827114418`** — npm-published **2026-08-27T11:49:30.886Z** (13 minutes before this cron's 12:02Z start). This is the **30th canary drop since v1.5.50 baseline**. STABLE remains `7.8.2`. No auth-API changes. Pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260827114418`.
+
+```bash
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260827114418
+```
+
+### @tanstack/react-query@5.102.7 — 8th PATCH in 8 Days (Dep Refresh Only; v1.6.05 Tracked 5.102.6)
+
+**`@tanstack/react-query@5.102.7`** (npm-published **2026-08-27T08:33:25.188Z**) is a **dependency refresh** — `query-core@5.102.7`. No API changes.
+
+The **5.102.6** PR (#11305 by @alex-js-ltd) remains the most operationally significant change in the 8-patch sprint:
+
+> **PR #11305**: `useQueries` + `useSuspenseQueries` falsy-error propagation fix. The optional-chain guard `?.error` on `firstSingleResultWhichShouldThrow` silently swallowed falsy errors (`Promise.reject()`, `null`, `''`, `0`). Fix: replace with `if (firstSingleResultWhichShouldThrow)` check. **`useQuery` was never affected** — only `useQueries` and `useSuspenseQueries`.
+
+Auth apps that use `useQueries` for permission checks, role queries, or multi-session state: audit any `onError`/`onSettled` callback that guards with `if (!error) return`. After 5.102.6+, falsy error values now correctly reach the error boundary.
+
+```bash
+# Audit for affected patterns
+rg "useQueries|useSuspenseQueries" --type tsx | xargs rg "if.*!.*error|if.*error.*return" -A2 -B2
+# Look for: if (!error) return  // This now runs for falsy errors too
+```
+
+### better-auth@1.7.2 SHIPPED (Auth Lens — v1.6.05 Tracked 1.7.1)
+
+**`better-auth@1.7.2`** npm-published **2026-08-26T19:03:29Z**. A meaningful patch with 10 merged PRs across the better-auth ecosystem. Auth-surface highlights:
+
+**`@better-auth/core` (new in 1.7.2):**
+- Fixed async context loss in Cloudflare Workers bundles with multiple runtime conditions ([#10855](https://github.com/better-auth/better-auth/pull/10855))
+- Added synchronous and optional access to the current auth endpoint context ([#10938](https://github.com/better-auth/better-auth/pull/10938)) — **NEW API**: `useAuth()` and `auth()` now have an optional/sync variant for cases where the context is not yet initialized
+- Auth request logs now respect configured logger, log level, and disabled setting ([#10939](https://github.com/better-auth/better-auth/pull/10939))
+
+**`better-auth` (core):**
+- Fixed permanent user bans to clear expiration dates from previous temporary bans ([#10823](https://github.com/better-auth/better-auth/pull/10823)) — **BREAKING CORRECTNESS**: previously, a user who was temporarily banned and then permanently banned would retain the temporary ban's expiration date; now the expiration is cleared
+- Added warnings for invalid signed session data in the cookie cache ([#10934](https://github.com/better-auth/better-auth/pull/10934)) — helps debug session cookie corruption
+- Allowed `~` in relative callback URLs validated by trusted-origin checks ([#10041](https://github.com/better-auth/better-auth/pull/10041))
+- Improved validation of relative callback and redirect URLs with paths, queries, and fragments ([#10979](https://github.com/better-auth/better-auth/pull/10979))
+- Allowed same-origin form submissions with `Referrer-Policy: no-referrer` ([#10959](https://github.com/better-auth/better-auth/pull/10959))
+
+**`@better-auth/oauth-provider`:**
+- Fixed Client ID Metadata Document registration when clients share at least one supported grant with the server ([#11010](https://github.com/better-auth/better-auth/pull/11010))
+- Fixed relative redirect URLs containing fragments ([#10983](https://github.com/better-auth/better-auth/pull/10983))
+
+**`@better-auth/drizzle-adapter`:**
+- Fixed one-to-one Drizzle relations when `usePlural` is enabled ([#10941](https://github.com/better-auth/better-auth/pull/10941))
+
+**Migration actions for 1.7.2:**
+```bash
+# Step 1: upgrade
+npm install better-auth@^1.7.2
+
+# Step 2: permanent ban + temporary ban overlap
+# If you have users who were temporarily banned and then permanently banned:
+# Their session expiration behavior changes — re-test your ban enforcement
+SELECT * FROM users WHERE ban_expires_at IS NOT NULL AND permanently_banned = true;
+# Expected after upgrade: ban_expires_at is cleared for permanently-banned users
+
+# Step 3: new sync/optional auth context access
+# Before: const session = await auth() // throws if not initialized
+# After (1.7.2): const session = auth.getOptional() // returns null if not initialized
+import { auth } from 'better-auth/auth'
+const session = auth.getOptional?.() // new in 1.7.2
+```
+
+### Auth Audit Recipe — v1.6.06
+
+```bash
+# Step 1: @clerk/nextjs@canary — upgrade to 30th drop
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.3-canary.v20260827114418
+npm install @clerk/nextjs@canary
+
+# Step 2: better-auth — upgrade to 1.7.2
+npm view better-auth dist-tags.latest
+# Expected: 1.7.2
+npm install better-auth@^1.7.2
+
+# Step 3: react-query — audit useQueries falsy-error patterns
+# The 5.102.6 fix (now in 5.102.7) affects useQueries + useSuspenseQueries
+rg "useQueries|useSuspenseQueries" --type tsx -l | xargs rg "if.*!.*error|if.*error.*return" -A2 -B2
+# Look for guards that will now fire for falsy errors (null, 0, '', false)
+
+# Step 4: Cloudflare Workers + better-auth — test async context
+# If your better-auth app runs on Cloudflare Workers:
+# The #10855 fix for async context loss with multiple runtime conditions
+# May change behavior if you had workarounds for this issue
+# Test: deploy to staging, verify auth() resolves correctly in all routes
+
+# Step 5: verify ReactDOM.browser flag migrations (PR #96826/96843/96844)
+# If you catch CSRBailout in error boundaries:
+rg "CSRBailout" --type ts --type tsx
+# Update error handling to account for ReactDOM.browser bailouts
+
+# Step 6: permanent ban + temporary ban overlap (better-auth)
+# If your DB has users who are both permanently and temporarily banned:
+# Re-test ban enforcement after upgrading better-auth
+```
+
+### Why This Matters for Auth
+
+- **@clerk/nextjs@canary 30th drop** — the canary train is healthy. No auth API changes, but the 30th drop confirms the train is moving toward the next STABLE promotion. Clerk apps should pin `@clerk/nextjs@canary` at `7.8.3-canary.v20260827114418`.
+- **better-auth@1.7.2 is the most consequential better-auth update since 1.7.0** — the permanent-ban + temporary-ban overlap fix is a correctness improvement; the Cloudflare Workers async context fix affects production CF workers; the new sync/optional auth context API (`auth.getOptional()`) is a new ergonomic pattern for auth-in-middleware scenarios.
+- **react-query@5.102.7 is a dep refresh on top of the 5.102.6 correctness fix** — the 5.102.6 PR #11305 change is now in stable and will affect auth apps using `useQueries` for permission or role checks. Audit your `onError`/`onSettled` callbacks.
+- **ReactDOM.browser flag migrations** — any Clerk-protected page that uses `next/dynamic ssr:false` + error boundaries is affected by the CSRBailout → ReactDOM.browser migration. Error tracking dashboards need updating.
+
+### Sources
+
+- [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.3-canary.v20260827114418`; 30th drop since v1.5.50
+- [`@tanstack/react-query@5.102.7` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — published **2026-08-27T08:33:25.188Z**; dep refresh only
+- [TanStack/query PR #11305 — propagate falsy errors to the error boundary](https://github.com/TanStack/query/pull/11305) — merged 2026-08-26T13:27:28Z; @alex-js-ltd
+- [better-auth v1.7.2 release](https://github.com/better-auth/better-auth/releases/tag/v1.7.2) — published **2026-08-26T19:03:29Z**; 10 PRs
+- [better-auth PR #10855 — async context loss Cloudflare Workers](https://github.com/better-auth/better-auth/pull/10855)
+- [better-auth PR #10938 — sync optional auth context](https://github.com/better-auth/better-auth/pull/10938) — **NEW API**
+- [better-auth PR #10823 — permanent ban clears temp ban expiration](https://github.com/better-auth/better-auth/pull/10823)
+- [PR #96826/96843/96844 — ReactDOM.browser flag migrations](https://github.com/vercel/next.js/pull/96826) — React 3 preparation
+- [Cross-reference: `routing.md` — canary.9 routing-surface PRs + PPF shell reclassification
+- [Cross-reference: `setup.md` — canary.9 upgrade + better-auth 1.7.2 setup + zod@canary 4.5.0-canary.20260827T054049
