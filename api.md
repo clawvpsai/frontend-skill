@@ -2831,3 +2831,49 @@ For the API-surface lens, the canary.5/6/7 + 16.3.3/15.5.24 STABLE + 5.102.3 bat
 - [Next.js Image Optimization API reference](https://nextjs.org/docs/app/api-reference/components/image) — the `formats` config flag (AVIF-disabled state documented in PR #97875)
 - [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — track for `libheif` upgrade that re-enables AVIF in `next/image`
 - [Cross-references](cross-refs): `routing.md` v1.5.99 → the routing-surface on canary.5/6/7 + CVE-ship routing impact (Windows ISR); `auth.md` v1.5.99 → the auth-surface on the CVE (no Clerk/NextAuth-bypass risk; CVE is in Image Optimization + Windows ISR paths); `setup.md` v1.5.99 → the setup-recipe on `next@^16.3.3` + `next@^15.5.24` install; `security.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY 2-Critical-RCE detail (canonical security-lens); `deployment.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY deployment checklist (16.3.3/15.5.24 install + AVIF pre-disable); `state.md` v1.6.00 → TanStack Query 5.102.3 4-in-7-days from the state-management lens; `styling.md` v1.5.98 → the styling idle-refresh that was concurrent with the CVE ship; `server-components.md` v1.5.98 → the server-components-lens on canary.5/6/7; `performance.md` v1.5.98 → the perf-lens on the wasm hardening batch + Turbopack perf; `forms.md` v1.5.96 → no forms-side impact; `testing.md` v1.5.96 → no testing-side impact; `components.md` v1.5.96 → no components-side impact; `patterns.md` v1.6.00 → Pattern KK-NN for the 16.3.3/15.5.24 CVE-ship patterns + AVIF-disable migration patterns + canary.5/6/7 PPF-adjacent patterns; `typescript.md` v1.6.00 → the TS-lens on the 33rd rebuild SHIPPED + 34th PENDING + TanStack Query 5.102.3 + the next@latest bump to 16.3.3
+
+## next@16.4.0-canary.9 SHIPPED + @tanstack/react-query@5.102.6 (7th PATCH in 9 days; PR #11305 critical falsy-error propagation) + AVIF Re-Enabled + Next.js 16 `next/image` non-2xx Security Fix (PR #97957) + ReactDOM.browser Flag Migrations (PR #96826 + #96843 + #96844) + Turbopack Env Vars Exposure Fix (PR #95310) + PPF TrackedPromise + RSC Stream Fix — v1.6.05
+
+**`next@16.4.0-canary.9` SHIPPED** (npm-published 2026-08-27T00:43:37Z; 22 PRs; first canary since canary.8 Aug 25 23:46Z = ~25h gap). Notable PRs by API-surface impact:
+
+**API-surface HIGH/MEDIUM PRs:**
+- [PR #97957](https://github.com/vercel/next.js/pull/97957) — `fix(next/image): reject non-2xx internal image responses` (by @eps1lon): The CVE emergency disabled AVIF. This is the complementary hardening — `next/image` now validates that internal image responses return 2xx; non-2xx throws a `NEXT_IMAGE_RESPONSE_NON_2XX` error instead of silently serving a broken image. Affects: custom image loaders, `next.config.ts` `images.loader: 'custom'` implementations, any `/_next/image` proxy. **Action**: audit custom image loaders; ensure upstream returns 2xx for valid images. This is a security-in-depth fix that goes beyond the CVE patch.
+- [PR #97931](https://github.com/vercel/next.js/pull/97931) — `Re-enable AVIF image optimization` (merged 2026-08-26T21:28:00Z): Reverses the temporary AVIF disable from the Aug 25 CVE patch. Requires `sharp@^0.35.4`. Run `npm install sharp@latest` to restore AVIF support in `next/image`. The `formats` array no longer needs `['image/webp']` workaround; AVIF is re-eligible.
+
+**React 3 / ReactDOM.browser flag migrations (3 PRs — HIGH for RSC/error handling):**
+- [PR #96826](https://github.com/vercel/next.js/pull/96826) — Replace `CSRBailout` error with `ReactDOM.browser` behind a flag
+- [PR #96843](https://github.com/vercel/next.js/pull/96843) — Replace `useSearchParams` bailout error with `ReactDOM.browser` behind a flag
+- [PR #96844](https://github.com/vercel/next.js/pull/96844) — Replace resumed render bailout error with `ReactDOM.browser` behind a flag
+- These three PRs replace hard `Error` throws (which surface as render errors in error tracking tools) with a `ReactDOM.browser` flag-based mechanism. This is a React 3 preparation — error tracking dashboards will see fewer false-positive render errors for intentional client-abort / navigation-bailout scenarios. **Action**: verify error tracking dashboards; expected change: fewer `CSRBailout` / `useSearchParams` / `resumed render` errors in production.
+
+**Turbopack env vars (HIGH for dev ops / monorepo):**
+- [PR #95310](https://github.com/vercel/next.js/pull/95310) — `Turbopack: expose list of non-inlined env vars` (by @mischnic): Previously, non-`NEXT_PUBLIC_` env vars were fully excluded from Turbopack bundles. This PR exposes a list of non-inlined env vars so Turbopack can surface them correctly in `next build --turbo`. Fixes: environments where `process.env.MY_VAR` was `undefined` in Turbopack dev even when set. **Action**: test env var access in Turbopack dev mode; if using `dotenv` or custom env-loading in `next.config.ts`, verify the pattern still works.
+
+**Other notable canary.9 PRs:**
+- [PR #97165](https://github.com/vercel/next.js/pull/97165) — `[PPF] Only track runtime accesses when the promise is used` (by @acdlite): PPF now counts `.then/.catch/finally` accesses at access time rather than creation time, reducing false-positive prefetches. RSC-implication: MEDIUM.
+- [PR #96715](https://github.com/vercel/next.js/pull/96715) — `Don't report a client-aborted RSC stream as a render error` (by @acdlite): RSC streams aborted by the client (e.g., user navigated away) are no longer reported as render errors. Error tracking tools: fewer false positives. RSC-implication: MEDIUM.
+- [PR #97936](https://github.com/vercel/next.js/pull/97936) — `fix: don't drop client references when the concatenated module id is 0` (by @jgruica): Module ID 0 edge case causing client reference drops — fixed.
+- [PR #97933](https://github.com/vercel/next.js/pull/97933) — `Fix Turbopack re-export cycle deadlock` (by @sokra): Turbopack could deadlock on circular re-exports; fixed.
+- [PR #97887](https://github.com/vercel/next.js/pull/97887) — React roll-forward: `bd6ea412-20260824` → `f789f203-20260825`; no RSC surface changes.
+
+**`@tanstack/react-query@5.102.6` SHIPPED** (npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days: 5.102.0 → 5.102.1 → 5.102.2 → 5.102.3 → 5.102.4 → 5.102.5 → 5.102.6). This cycle's patch: [PR #11305](https://github.com/TanStack/query/pull/11305) `propagate falsy errors to the error boundary` (by @alex-js-ltd) — **OPERationally MEDIUM-HIGH**: falsy error values (e.g., `false`, `0`, `''`) that were silently swallowed are now properly propagated to error boundaries. Any component using `useQuery` / `useMutation` error state that expected falsy errors to be ignored may need updating. **Action**: audit error-handling in TanStack Query consumers; test that `onError` / `onSettled` callbacks handle falsy error values correctly.
+
+**`next@latest`**: still `16.3.3` (CVE-patched; no change from v1.6.04).
+**`next@canary`**: now `16.4.0-canary.9` (per above; 22 PRs; pin at `16.4.0-canary.9` for 16.4.x experimenters).
+**`@tanstack/react-query`**: `^5.102.6` (UPGRADE from `^5.102.3`; **MANDATORY for error-boundary consumers**; backwards-compatible for most callers).
+
+### Sources
+
+- [Next.js `v16.4.0-canary.9` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z; 22 PRs; Snyk confirms `16.4.0-canary.9` = latest non-vulnerable version
+- [PR #97957 — fix(next/image): reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957) — by @eps1lon; security-in-depth fix; custom image loader audit needed
+- [PR #97931 — Re-enable AVIF image optimization](https://github.com/vercel/next.js/pull/97931) — by @eps1lon; merged 2026-08-26T21:28:00Z; requires `sharp@^0.35.4`; AVIF re-eligible in `next/image`
+- [PR #96826 — Replace CSRBailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96826) — React 3 preparation; fewer false-positive render errors
+- [PR #96843 — Replace useSearchParams bailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96843) — React 3 preparation
+- [PR #96844 — Replace resumed render bailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96844) — React 3 preparation
+- [PR #95310 — Turbopack: expose list of non-inlined env vars](https://github.com/vercel/next.js/pull/95310) — by @mischnic; env vars now accessible in Turbopack dev builds
+- [PR #97165 — [PPF] Only track runtime accesses when the promise is used](https://github.com/vercel/next.js/pull/97165) — by @acdlite; PPF accuracy improvement
+- [PR #96715 — Don't report a client-aborted RSC stream as a render error](https://github.com/vercel/next.js/pull/96715) — by @acdlite; RSC error tracking fix
+- [PR #97936 — fix: don't drop client references when the concatenated module id is 0](https://github.com/vercel/next.js/pull/97936) — by @jgruica; module ID edge case fix
+- [PR #97933 — Fix Turbopack re-export cycle deadlock](https://github.com/vercel/next.js/pull/97933) — by @sokra; Turbopack circular re-export fix
+- [TanStack Query `release-2026-08-26-1836` — `propagate falsy errors to error boundary` (PR #11305)](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **operationally MEDIUM-HIGH**
+- [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — `sharp@^0.35.4` confirmed for AVIF re-enablement

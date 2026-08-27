@@ -3132,3 +3132,36 @@ rg -n "<ViewTransition" --type tsx -A 2 | rg "parentEnter|parentExit" | head -5
 - [`@tanstack/react-query@5.102.3` npm release](https://github.com/TanStack/query/releases) — npm-published 2026-08-24T19:26:18.951Z; 4th PATCH in 7 days
 - [Next.js Image Optimization API reference](https://nextjs.org/docs/app/api-reference/components/image) — the `formats` config flag (AVIF-disabled state documented in PR #97875)
 - [Cross-references](cross-refs): `api.md` v1.6.00 → the API-surface lens on canary.5/6/7 + the 2 Critical CVE details + AVIF-disable migration recipes; `routing.md` v1.5.99 → the routing-surface on canary.5/6/7 + CVE-ship routing impact (Windows ISR); `auth.md` v1.5.99 → the auth-surface on the CVE (no Clerk/NextAuth-bypass risk; CVE is in Image Optimization + Windows ISR paths); `setup.md` v1.5.99 → the setup-recipe on `next@^16.3.3` + `next@^15.5.24` install; `security.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY 2-Critical-RCE detail (canonical security-lens); `deployment.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY deployment checklist (16.3.3/15.5.24 install + AVIF pre-disable); `state.md` v1.6.00 → TanStack Query 5.102.3 4-in-7-days from the state-management lens; `styling.md` v1.5.98 → the styling idle-refresh that was concurrent with the CVE ship; `server-components.md` v1.5.98 → the server-components-lens on canary.5/6/7; `performance.md` v1.5.98 → the perf-lens on the wasm hardening batch + Turbopack perf; `forms.md` v1.5.96 → no forms-side impact; `testing.md` v1.5.96 → no testing-side impact; `components.md` v1.5.96 → no components-side impact; `patterns.md` v1.6.00 → Pattern KK-NN for the 16.3.3/15.5.24 CVE-ship patterns + AVIF-disable migration patterns + canary.5/6/7 PPF-adjacent patterns
+
+## TypeScript 35th No-Content Rebuild PENDING ~08:25Z Aug 27 (7.1.0-dev.20260827.1 expected) + next@16.4.0-canary.9 SHIPPED (22 PRs; minimal TS-surface impact) + @tanstack/react-query@5.102.6 (7th PATCH in 9 days; PR #11305 falsy-error propagation; TS-surface: NONE) + AVIF Re-Enabled (sharp@^0.35.4; TS-surface: NONE) + ReactDOM.browser Flag Migrations (PR #96826/#96843/#96844; TS-surface: NONE) + Turbopack Env Vars Fix (PR #95310; TS-surface: NONE) — v1.6.05
+
+**TypeScript 35th No-Content Daily Rebuild PENDING ~08:25Z Aug 27:**  
+typescript@next is currently `7.1.0-dev.20260826.1` (34th rebuild, npm Aug 26 ~08:25Z; 31+ days main-branch idle = longest sustained idle since TS 6.0). The 35th rebuild is expected to produce `7.1.0-dev.20260827.1` at ~08:25Z Aug 27. **No TS-surface breaking changes anticipated.** Pin `typescript@7.1.0-dev.20260826.1` in experimental projects until 35th rebuild is confirmed.
+
+**next@16.4.0-canary.9 TS-surface assessment** (22 PRs; npm-published 2026-08-27T00:43:37Z):
+- [PR #97936](https://github.com/vercel/next.js/pull/97936) — `fix: don't drop client references when the concatenated module id is 0` (by @jgruica): JS/RSC bug fix; **TS-surface impact: NONE** (no type changes).
+- [PR #97887](https://github.com/vercel/next.js/pull/97887) — React roll-forward `bd6ea412-20260824` → `f789f203-20260825`; **TS-surface impact: NONE** (no new React types beyond what was in canary.7/8).
+- [PR #96826/#96843/#96844](https://github.com/vercel/next.js/pull/96826) — React 3 `ReactDOM.browser` flag migrations; **TS-surface impact: NONE** (flag is internal; no new public types).
+- [PR #95310](https://github.com/vercel/next.js/pull/95310) — Turbopack non-inlined env vars; **TS-surface impact: NONE** (runtime behavior, no type changes).
+- [PR #97957](https://github.com/vercel/next.js/pull/97957) — `next/image` non-2xx fix; **TS-surface impact: NONE** (error type not exposed in types).
+- [PR #97931](https://github.com/vercel/next.js/pull/97931) — AVIF re-enabled; **TS-surface impact: NONE** (sharp upgrade, no type changes).
+- [PR #97165](https://github.com/vercel/next.js/pull/97165) — PPF TrackedPromise; **TS-surface impact: NONE** (internal runtime change).
+- [PR #96715](https://github.com/vercel/next.js/pull/96715) — RSC client-abort fix; **TS-surface impact: NONE** (behavior change, no new types).
+- Rust/swc upgrade: [PR #97665](https://github.com/vercel/next.js/pull/97665) — `rustc to nightly-2026-08-20`; **TS-surface impact: NONE**.
+
+**@tanstack/react-query@5.102.6 TS-surface assessment:**  
+[PR #11305](https://github.com/TanStack/query/pull/11305) `propagate falsy errors to the error boundary` — behavioral change, not a type change. The `error` field in `UseQueryResult` is typed as `TError | null` in the types; falsy propagation doesn't change the type signature. **TS-surface impact: NONE.** However, the behavioral change means TypeScript-compiled apps that used `if (error)` guards may now encounter falsy values at runtime — audit `onError` callbacks in TanStack Query usage.
+
+**TypeScript 31+ days main-branch idle observation (UNCHANGED):**  
+TypeScript main branch has been idle since 2026-07-27T20:55:30Z (now 31+ days). This is the longest sustained idle period since TypeScript 6.0. All activity is in the `main` branch rebuilds producing `7.1.0-dev.*` nightlies. No feature work is visible. This suggests the TypeScript team is in a quiet pre-7.1 period. The `7.1.0-dev` nightlies have been no-content daily rebuilds since the last feature commit (type system work ~July 27).
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260826.1` next; 34th rebuild confirmed; 35th PENDING ~08:25Z Aug 27; no TS-surface impact expected
+- [TypeScript main branch activity](https://github.com/microsoft/TypeScript/commits/main) — STILL idle since 2026-07-27T20:55:30Z (now 31+ days; longest idle since TS 6.0)
+- [Next.js `v16.4.0-canary.9` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z; 22 PRs; **TS-surface impact: NONE across all PRs**
+- [PR #97936 — fix: don't drop client references when the concatenated module id is 0](https://github.com/vercel/next.js/pull/97936) — by @jgruica; **TS-surface impact: NONE**
+- [PR #96826 — Replace CSRBailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96826) — React 3 prep; **TS-surface impact: NONE**
+- [PR #95310 — Turbopack: expose list of non-inlined env vars](https://github.com/vercel/next.js/pull/95310) — by @mischnic; **TS-surface impact: NONE**
+- [TanStack Query `release-2026-08-26-1836` — PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **TS-surface impact: NONE** (behavioral change; types unchanged)
+- [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — `sharp@^0.35.4` for AVIF re-enablement; **TS-surface impact: NONE**

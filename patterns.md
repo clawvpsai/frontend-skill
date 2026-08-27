@@ -5963,3 +5963,97 @@ echo "Aug 26 CVE SHIPPED-EARLY — next@16.3.3 + next@15.5.24 are live"
 - [Next.js Image Optimization API reference](https://nextjs.org/docs/app/api-reference/components/image) — the `formats` config flag (AVIF-disabled state documented in PR #97875)
 - [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — track for `libheif` upgrade that re-enables AVIF in `next/image`
 - [Cross-references](cross-refs): `api.md` v1.6.00 → the API-surface lens on canary.5/6/7 + the 2 Critical CVE details + AVIF-disable migration recipes; `routing.md` v1.5.99 → the routing-surface on canary.5/6/7 + CVE-ship routing impact (Windows ISR); `auth.md` v1.5.99 → the auth-surface on the CVE (no Clerk/NextAuth-bypass risk; CVE is in Image Optimization + Windows ISR paths); `setup.md` v1.5.99 → the setup-recipe on `next@^16.3.3` + `next@^15.5.24` install; `security.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY 2-Critical-RCE detail (canonical security-lens); `deployment.md` v1.6.00 → the Aug 26 CVE SHIPPED-EARLY deployment checklist (16.3.3/15.5.24 install + AVIF pre-disable); `state.md` v1.6.00 → TanStack Query 5.102.3 4-in-7-days from the state-management lens; `styling.md` v1.5.98 → the styling idle-refresh that was concurrent with the CVE ship; `server-components.md` v1.5.98 → the server-components-lens on canary.5/6/7; `performance.md` v1.5.98 → the perf-lens on the wasm hardening batch + Turbopack perf; `forms.md` v1.5.96 → no forms-side impact; `testing.md` v1.5.96 → no testing-side impact; `components.md` v1.5.96 → no components-side impact; `typescript.md` v1.6.00 → the TS-lens on the 33rd rebuild SHIPPED + 34th PENDING + TanStack Query 5.102.3 + the next@latest bump to 16.3.3
+
+## next@16.4.0-canary.9 SHIPPED (22 PRs) + AVIF Re-Enabled + Next.js 16 `next/image` non-2xx Fix (PR #97957) + ReactDOM.browser Flag Migrations (PR #96826/#96843/#96844) + Turbopack Env Vars (PR #95310) + PPF TrackedPromise + RSC Client-Abort Fix + @tanstack/react-query@5.102.6 (7th PATCH in 9 days; PR #11305 falsy-error propagation) — v1.6.05
+
+**Canary.9 highlights for pattern authors** (npm-published 2026-08-27T00:43:37Z; 22 PRs):
+
+**Pattern AA-NN — `next/image` non-2xx response hardening (NEW — PR #97957):**  
+Canary.9 introduces explicit non-2xx validation in `next/image`. Previously, non-2xx responses from the image loader could result in silent failures or broken images. Now, non-2xx throws `NEXT_IMAGE_RESPONSE_NON_2XX`. **Migration pattern for custom loaders:**
+```ts
+// next.config.ts — custom loader must return 2xx + valid image body
+const nextConfig = {
+  images: {
+    loader: 'custom',
+    loaderFile: './image-loader.ts',
+  },
+}
+// image-loader.ts — ensure upstream returns 200, not 404/500/etc.
+export default function imageLoader({ src, width, quality }) {
+  const url = resolveImageUrl(src) // must return 200 with image body
+  return `${url}?w=${width}&q=${quality || 75}`
+}
+```
+
+**Pattern AB-NN — AVIF Re-Enabled (PR #97931 — UPDATE to Pattern LL-MM):**  
+The temporary `formats: ['image/webp']` workaround from the Aug 25 CVE is no longer needed. AVIF optimization is re-enabled with `sharp@^0.35.4`. Remove the workaround only after confirming `sharp@latest`:
+```bash
+npm install sharp@latest
+# Verify: next build should log "sharp" with version >= 0.35.4
+```
+**Keep** `formats: ['image/webp']` if: (a) users are on older `next` versions, (b) AVIF decode compatibility with very old browsers matters.
+
+**Pattern AC-NN — ReactDOM.browser Flag Migrations (NEW — PR #96826/#96843/#96844):**  
+Three error-throwing patterns have been replaced with `ReactDOM.browser` flag-based bailouts:
+- `CSRBailout` error → `ReactDOM.browser` flag
+- `useSearchParams` bailout error → `ReactDOM.browser` flag
+- Resumed render bailout error → `ReactDOM.browser` flag
+
+This is React 3 preparation. **Pattern for error tracking tools**: If you catch `CSRBailout` in an error boundary, that error type will no longer fire for intentional navigation aborts. Update error dashboards to expect fewer of these. **Pattern for library authors**: If your error-handling middleware explicitly checks for `CSRBailout`, `Error`, or `useSearchParams` bailout errors, update to handle the new flag-based mechanism.
+
+**Pattern AD-NN — Turbopack Non-Inlined Env Vars (NEW — PR #95310):**  
+Previously, non-`NEXT_PUBLIC_` env vars were opaque in Turbopack dev. Canary.9 exposes them. **Updated pattern for env var access in Turbopack:**
+```ts
+// ✅ Now works in Turbopack dev (canary.9+)
+const API_SECRET = process.env.API_SECRET // string | undefined, as expected
+
+// ⚠️ NEXT_PUBLIC_ vars are still inlined at build time (unchanged)
+const PUBLIC_KEY = process.env.NEXT_PUBLIC_PUBLIC_KEY // hard-coded at build
+```
+If using `dotenv` or custom env loading in `next.config.ts`, verify the pattern still works after canary.9.
+
+**Pattern AE-NN — PPF TrackedPromise Runtime Access Tracking (UPDATE — PR #97165):**  
+PPF now counts `.then/.catch/finally` at access time rather than creation time. Fewer false-positive prefetches means **RSC streaming patterns are more accurate** — the PPF cache is less likely to eagerly materialize unused async routes. No code changes needed; this is a runtime behavior improvement.
+
+**Pattern AF-NN — RSC Client-Abort No Longer an Error (UPDATE — PR #96715):**  
+RSC streams aborted by the client are no longer reported as render errors. **Updated pattern for RSC error boundaries:**
+```tsx
+// ErrorBoundary.tsx
+class RSCErrorBoundary extends Component<Props, State> {
+  static getDerivedStateFromError(error) {
+    // canary.9+: client-abort (user navigated away) will NOT reach here
+    // Only actual render errors reach here
+    return { hasError: true, error }
+  }
+}
+```
+
+**@tanstack/react-query@5.102.6 — 7th PATCH in 9 days (PR #11305):**  
+`propagate falsy errors to error boundary` — falsy error values (`false`, `0`, `''`, `null`) are now properly propagated instead of being silently swallowed. **Updated pattern for TanStack Query error consumers:**
+```ts
+// ✅ canary.9+/TanStack Query 5.102.6+: falsy errors now reach onError
+const { data, error } = useQuery({
+  queryKey: ['item', id],
+  queryFn: async () => {
+    const result = await fetchItem(id)
+    if (!result.ok) return false // was: swallowed; now: propagates to error
+    return result.json()
+  },
+  // onError will now be called with `false` — audit your error handlers
+})
+// ⚠️ If onError does `if (!error) return` — falsy errors will now incorrectly bypass it
+```
+**Action**: audit all `onError` / `onSettled` callbacks in TanStack Query consumers. Add explicit falsy checks if you previously relied on "no error = no falsy".
+
+### Sources
+
+- [Next.js `v16.4.0-canary.9` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z; 22 PRs
+- [PR #97957 — fix(next/image): reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957) — by @eps1lon; security-in-depth; custom loader audit needed
+- [PR #97931 — Re-enable AVIF image optimization](https://github.com/vercel/next.js/pull/97931) — by @eps1lon; merged 2026-08-26T21:28:00Z; `sharp@^0.35.4` required
+- [PR #96826 — Replace CSRBailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96826) — React 3 prep
+- [PR #96843 — Replace useSearchParams bailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96843) — React 3 prep
+- [PR #96844 — Replace resumed render bailout error with ReactDOM.browser behind a flag](https://github.com/vercel/next.js/pull/96844) — React 3 prep
+- [PR #95310 — Turbopack: expose list of non-inlined env vars](https://github.com/vercel/next.js/pull/95310) — by @mischnic; env vars now accessible in Turbopack dev
+- [PR #97165 — [PPF] Only track runtime accesses when the promise is used](https://github.com/vercel/next.js/pull/97165) — by @acdlite; PPF accuracy improvement
+- [PR #96715 — Don't report a client-aborted RSC stream as a render error](https://github.com/vercel/next.js/pull/96715) — by @acdlite; RSC error tracking fix
+- [TanStack Query `release-2026-08-26-1836` — PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **operationally MEDIUM-HIGH**
