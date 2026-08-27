@@ -2946,6 +2946,66 @@ export function LiveQuery({ initial, children }: { initial: any; children: any }
 
 `@playwright/test@next` advanced from `1.63.0-alpha-2026-08-24` (v1.5.96 baseline) → `1.63.0-alpha-2026-08-25` (current). **6 alpha drops in 2 weeks** since v1.5.92. STABLE `1.63.0` still NOT yet announced. Production CI should stay on `@playwright/test@latest` = `1.62.1`.
 
+
+## [27 Aug 2026 00:02Z] Next.js canary 16.4.0-canary.8 — AVIF Re-Enabled + PPF TrackedPromise Runtime + RSC Stream Client-Abort Fix (3-Weakest Gap-Fill)
+
+Three material changes in `next@canary` (16.4.0-canary.8, since Aug 25 23:46Z) that have shipped since the last update to this file (v1.5.98 baseline, Aug 25 12:05Z). All three are RSC-impacting. **RSC-implication: MEDIUM**.
+
+### AVIF Re-Enabled — `sharp@^0.35.4` Bump (PR #97931, Merged Aug 26 21:28Z)
+
+Next.js **re-enabled AVIF image support** after the Aug 25 CVE patch temporarily disabled it. PR #97931 re-enabled AVIF encoding/decoding and bumps the bundled `sharp` dependency to `^0.35.4`:
+
+```json
+// The sharp bump ensures AVIF support is re-established post-CVE
+"sharp": "^0.35.4"
+```
+
+**What this means for `next/image`:**
+- AVIF images that were broken since the CVE patch (Aug 25 16:17Z) now work again.
+- The `sharp` version bump is a direct dependency update; run `npm install` to get `sharp@^0.35.4`.
+- No config changes needed — AVIF was always supported via `next/image`; this restores it post-temporary-disable.
+- If you use a custom image optimization loader, ensure it also uses `sharp@^0.35.4`.
+
+**RSC-implication:** AVIF images served via `next/image` in Server Components are now fully functional again. No RSC-specific changes required.
+
+### PPF Runtime Access Tracking — `TrackedPromise` Subclass (PR #97165, canary)
+
+PR #97165 improves how PPF (Partial Prefetching) tracks promise accesses at runtime. The change introduces a `TrackedPromise` subclass that tracks `.then`/`.catch`/`.finally` calls **at access time** rather than at promise creation time. This is a pure internal implementation improvement with no user-facing API change.
+
+**Why this matters for RSC:** Previously, PPF's promise tracking was coarse-grained — it would flag a promise as "accessed" when it was created if that promise was likely to be used. With `TrackedPromise`, the tracking is precise — the promise is only marked as accessed when `.then/.catch/.finally` is called on it. This means:
+
+- **Fewer false-positive prefetches:** If a promise is created but never actually awaited in a rendering pass, PPF no longer counts it as a prefetch trigger.
+- **Better memory efficiency:** Unused promises don't trigger PPF infrastructure overhead.
+- **More accurate PPF cache behavior:** The cache only stores the result of promises that were actually `.then()`-ed in a render, not promises that were merely constructed.
+
+**RSC-implication: MEDIUM** — if your RSC tree creates promises that aren't always consumed (e.g., conditional data fetching), PPF is now more precise about which routes to prefetch.
+
+### RSC Stream Client-Abort Fix — No Longer Reports Client-Aborted RSC Stream as Render Error (PR #96715, canary)
+
+PR #96715 fixes a bug where **client-aborted RSC streams** (user navigated away before the stream completed) were being reported as render errors. This was a false-positive error that appeared in error tracking tools (Sentry, LogRocket, etc.) whenever a user aborted a navigation before the RSC payload finished streaming.
+
+**Before PR #96715:**
+```ts
+// User navigates from /feed to /profile
+// /feed's RSC stream is aborted mid-stream
+// Next.js incorrectly reported this as:
+// Error: RSC stream failed to render
+// ❌ This is NOT a real error — it's expected behavior
+```
+
+**After PR #96715:**
+- Client-aborted RSC streams are **silently ignored** — they are recognized as expected aborts, not render failures.
+- Error tracking tools will no longer receive false "RSC render error" events for in-flight navigations that users aborted.
+- The `onError` callback in RSC stream handlers is only called for **genuine render errors**, not for client-initiated aborts.
+
+**RSC-implication: MEDIUM** — if you log or monitor RSC render errors, you'll now see fewer false positives. This is a correctness fix for error boundary logic.
+
+**Migration:** No code changes needed. Update to `next@canary` (or the next stable release after this PR lands). The fix is transparent.
+
+**Sources:**
+- [Next.js PR #97931 — AVIF re-enabled + sharp 0.35.4 bump](https://github.com/vercel/next.js/pull/97931) — merged 2026-08-26T21:28:00Z
+- [Next.js PR #97165 — PPF TrackedPromise runtime access tracking](https://github.com/vercel/next.js/pull/97165) — canary; improved PPF accuracy
+- [Next.js PR #96715 — RSC stream client-abort fix](https://github.com/vercel/next.js/pull/96715) — no longer reports client-aborted RSC stream as render error
 ### Sources
 
 - [Next.js Adopting Partial Prefetching guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) — stable PPF adoption guide, lastUpdated 2026-08-10

@@ -148,6 +148,90 @@ const nextConfig: NextConfig = {
 
 **When to change it:** If your images change frequently (e.g., user-generated content with new uploads), set `minimumCacheTTL: 60` to revert to 1-minute caching. For most sites, the 4-hour default is ideal.
 
+
+### Next.js 16 `next/image` Defaults — 4 Breaking Changes (Oct 21, 2026)
+
+Next.js 16 changed four `next/image` defaults that silently affect image quality, cache behavior, and security. All four are **breaking changes** — audit your `next.config.ts` if you rely on implicit defaults.
+
+#### 1. `minimumCacheTTL`: 60s → 4 hours (14400s)
+
+**Already documented above** — this is the only Next.js 16 image change the skill had previously captured. Reminder: the new default dramatically reduces origin requests for sites without upstream `cache-control` headers. Set `minimumCacheTTL: 60` to restore the v15 behavior for frequently-changing UGC images.
+
+#### 2. `imageSizes`: removed `16` from default array
+
+The value `16` has been removed from the default `images.imageSizes` array (it was used by only 4.2% of projects). The new default:
+
+```js
+// next.config.ts — new Next.js 16 default
+images: {
+  imageSizes: [32, 48, 64, 96, 128, 256, 384], // 16 is gone
+}
+```
+
+**Impact:** The `srcset` attribute shipped to the browser is now smaller (one fewer size variant). If your layout relies on a `16px` wide image variant, add it explicitly:
+```ts
+images: { imageSizes: [16, 32, 48, 64, 96, 128, 256, 384] }
+```
+
+#### 3. `qualities`: all values → `[75]` (security hardening)
+
+**This is the most likely to cause visual surprise.** Previously, any `quality` prop value (1–100) was accepted. Now the default allowlist is `[75]` only:
+
+```js
+// next.config.ts — new Next.js 16 default
+images: {
+  qualities: [75], // only 75 is allowed by default
+}
+```
+
+**Impact:** `<Image src={x} quality={50} />` now renders at quality `75` (closest allowed value). `<Image src={x} quality={90} />` also renders at `75`. To restore multi-quality behavior:
+```ts
+images: { qualities: [25, 50, 75, 100] }
+```
+
+> **Good to know (Next.js 16 docs):** This field is required starting with Next.js 16 because unrestricted quality access could allow malicious actors to optimize more qualities than intended (a bandwidth/DoS vector).
+
+#### 4. `maximumRedirects`: unlimited → 3
+
+Previously, `next/image` followed unlimited redirects when fetching remote images. Now it follows a maximum of 3 by default:
+
+```js
+// next.config.ts — new Next.js 16 default
+images: { maximumRedirects: 3 }
+```
+
+Set `maximumRedirects: 0` to disable redirects entirely, or increase if your image CDN uses more than 3 redirects.
+
+#### 5. `dangerouslyAllowLocalIP`: new security restriction
+
+**Blocks private IP optimization by default.** Previously, `next/image` would optimize images served from local/private IPs (e.g., `http://192.168.x.x`). This is now blocked by default:
+
+```js
+// next.config.ts
+images: {
+  // Next.js 16: must explicitly allow private network access
+  dangerouslyAllowLocalIP: true, // required for private network images
+}
+```
+
+> **Why:** An attacker who could influence the image URL could trigger SSRF attacks against internal services (databases, admin panels, etc.) by pointing `next/image` at internal IPs. Set `dangerouslyAllowLocalIP: true` only for trusted private network images.
+
+**Migration audit recipe:**
+```bash
+# Find any quality props that aren't 75
+grep -rn 'quality={' src/ --include='*.tsx' | grep -v 'quality={75}'
+
+# Find any minimumCacheTTL configs that rely on the old 60s default
+grep -rn 'minimumCacheTTL' next.config.ts
+
+# Check if any image src points to a private IP range
+grep -rnE '192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.' src/
+```
+
+**Sources:**
+- [Next.js 16 blog — `next/image` defaults](https://nextjs.org/blog/next-16) — `imageSizes`, `qualities`, `minimumCacheTTL`, `maximumRedirects`, `dangerouslyAllowLocalIP` breaking changes
+- [Next.js Image Component docs — qualities](https://nextjs.org/docs/app/api-reference/components/image#qualities) — v16 requires explicit allowlist
+- [Next.js Upgrading: Version 16 — `next/image` changes](https://nextjs.org/docs/app/guides/upgrading/version-16#nextimage-changes) — full upgrade guide for all 5 defaults
 ## Caching Strategies
 
 ### `use cache` + `cacheTag` (Next.js 16)

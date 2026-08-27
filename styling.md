@@ -2638,6 +2638,32 @@ rg "@github\.com|github\.com/.*/registry" components.json 2>/dev/null
 - **Using `@theme` with literal values where a CSS variable reference is correct:** `@theme` tokens should reference CSS variables (e.g., `@theme { --color-primary: var(--color-brand); }`) not hardcoded hex values.
 - **Assuming `shadcn@latest` reflects all changelog items:** the Aug 2026 changelog has 3 items (Questionnaire + Human-in-the-Loop + Private GitHub Registries) that are NOT in `shadcn@latest = 4.19.0`; the npm STABLE lag is typically 1-3 weeks behind the changelog.
 
+
+## [27 Aug 2026 00:02Z] AVIF Re-Enabled + Next.js 16 `next/image` Defaults (3-Weakest Gap-Fill)
+
+**RSC-implication: NONE** (AVIF is a Next.js canary image feature; no RSC surface impact). **Styling-implication: LOW** (image quality changes are config-level, not CSS-level).
+
+### AVIF Re-Enabled — `sharp@^0.35.4` (PR #97931, Merged Aug 26 21:28Z)
+
+The Aug 25 CVE patch temporarily disabled AVIF image support. PR #97931 **re-enabled AVIF** in `next/image` and bumps `sharp` to `^0.35.4`. Run `npm install` to get the updated sharp:
+
+```bash
+npm install sharp@latest
+# → sharp@^0.35.4 (bundled with next@canary)
+```
+
+**What changed:** `next/image` now serves AVIF images again. If you use `<Image src={x} />` with AVIF-format source images, they work as before. No config changes needed.
+
+**Styling implication:** AVIF produces 50% smaller files than WebP at equivalent quality. If your image pipeline relies on `next/image` for automatic format optimization, the AVIF re-enable restores the smallest output format for modern browsers.
+
+### Next.js 16 `next/image` Defaults — Migration Note (styling.md gap-fill)
+
+The Next.js 16 four-breaking-changes defaults (`qualities: [75]`, `imageSizes: [32..384]`, `minimumCacheTTL: 14400`, `maximumRedirects: 3`) are documented in **performance.md** (this cycle's primary insertion). The `qualities: [75]` default is the most likely to cause visual surprise in styled apps — `<Image quality={90} />` now renders at 75 (closest allowed). See **performance.md** → "Next.js 16 `next/image` Defaults — 4 Breaking Changes" for the full audit recipe and migration steps.
+
+**Sources:**
+- [Next.js PR #97931 — AVIF re-enabled + sharp 0.35.4 bump](https://github.com/vercel/next.js/pull/97931) — merged 2026-08-26T21:28:00Z
+- [Next.js 16 blog — `next/image` defaults](https://nextjs.org/blog/next-16) — qualities, imageSizes, minimumCacheTTL, maximumRedirects, dangerouslyAllowLocalIP
+- [Next.js Upgrading: Version 16 — `next/image` changes](https://nextjs.org/docs/app/guides/upgrading/version-16#nextimage-changes) — full upgrade guide
 ### Sources
 
 - [`tailwindcss@latest` npm](https://www.npmjs.com/package/tailwindcss?activeTab=versions) — confirmed `4.3.3` unchanged since 2026-07-16T12:03:35Z; **40+ days** (was 39+ days 24h ago at v1.5.97)
