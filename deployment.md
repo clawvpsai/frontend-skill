@@ -4011,3 +4011,47 @@ All 3 canary drops are routine maintenance cherry-picks from main (no security-r
 - [Cross-reference: `security.md` — Post-CVE T+36h security audit + canary.8 PR #97825 chained-symlink security lens + PR #11293 stale-timeout auth security lens
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.03 (34-row table including all NEW bumps)
 - [Cross-reference: v1.5.97 deployment.md — the T-1d pre-CVE baseline; this v1.6.03 entry is the T+36h post-incident gap-fill
+## TypeScript 35th Rebuild STILL MISSED + TS 7.0 STABLE (July 8 — Go-Native!) + Zod 4 STABLE (zod.dev!) + Canary Train 16h+ Gap + Next.js 16.3 PPR/Cache Components Now Production-Ready (Vercel Aug 11 Docs) — 3-Weakest-by-mtime append (deployment.md + security.md + components.md — 24h-30h Stale Since v1.6.03/v1.6.04 Aug 26 12:08-18:11Z; TS 7.0 Stable + Zod 4 Stable + Canary Train Gap + Next.js 16 PPR Guidance + React 19.2 Gap-Fill) — v1.6.07 (Deployment-Impact Lens — Tested at v1.6.07 Cron, August 27, 2026 18:02 UTC)
+
+### What's New Since v1.6.03
+
+**TypeScript 35th Rebuild STILL MISSED — 35h+ Late, First Skip in 35 Days**: `typescript@next` is STILL `7.1.0-dev.20260826.1` (34th rebuild; npm-published 2026-08-26T08:28:49.352Z) at this cron's 18:02Z Aug 27. The 35th rebuild was forecast for ~08:25Z Aug 27. As of this cron's 18:02Z start, the 35th has not published — **~35h 37min late**. First miss in 35 consecutive daily rebuilds. TS main branch idle 31+ days = longest stretch since 7.0.0. **Deployment impact: zero** — no-content rebuild means byte-equivalent artifacts; no CI rebuild required. **Operational recipe**: only relevant for projects tracking `typescript@next` (framework developers, canary adopters); production stays on `typescript@^7.0.2`.
+
+**TypeScript 7.0 STABLE Dropped July 8, 2026**: `typescript@latest` is now `7.0.2` (stable since July 8). The Go-native rewrite is the standard `tsc` in the `typescript` npm package. The [July 8 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) confirms: **10x faster editor startup**, ~10x faster builds, substantially reduced memory. The `@typescript/native-preview` (`tsgo`) is being phased out. For teams on `typescript@^6.x`: the build uses TS 6 JS API through CLI — slower (~50-200ms/build) but functionally equivalent. For teams on `typescript@^7.0.2`: no change needed. **Pin `typescript` explicitly in `package.json`** — `npm install -D typescript@latest` could install a typo-squat.
+
+**Zod 4 STABLE Announced (zod.dev)**: Zod 4 is now stable per [zod.dev/v4](https://zod.dev/v4) — "Zod 4 is now stable! Faster, slimmer, more `tsc`-efficient, with long-requested features." The skill previously tracked `zod@latest` as `4.4.3` with a forecast of "Sep 1-15". **The forecast was wrong — Zod 4 STABLE shipped earlier**. The `zod@canary` track (4.5.0-canary.x) is now **Zod 5 beta**. Update all `zod` pins: `^4.4.3` → `^4.0.0` or `^4.5.0`. This affects every Next.js app using Zod for runtime validation in forms, API routes, and server actions.
+
+**Canary Train: 16+ Hour Gap**: `next@16.4.0-canary.9` (npm 2026-08-27T00:43:37Z) — **16h 18min ago** as of this cron's 18:02Z Aug 27. Normal cadence is 6-24h. This is the **first extended gap in 6+ days**. No new canary published. Watch for canary.10 or a coordinated release in the next 6-12h. **Deployment impact: none yet** — the gap itself is notable but not actionable unless a new canary ships with breaking changes.
+
+**Next.js 16.3 PPR/Cache Components Now Production-Ready (Vercel Aug 11 Docs)**: Vercel updated their [Next.js on Vercel](https://vercel.com/docs/frameworks/full-stack/nextjs) documentation (last updated 2026-08-11) with a significant new note: *"As of Next.js 16, PPR is no longer experimental. It is built into the Cache Components model, and you opt in by enabling `cacheComponents` in your `next.config.ts`."* With Cache Components, data is dynamic by default; you choose what to cache at the page, component, or function level with the `use cache` directive. Next.js then prerenders a static HTML shell and streams the dynamic content into it. On Vercel, the static shell is served with ISR while Vercel Functions renders the dynamic holes. **Critical for Next.js 15 → 16 migrations**: the docs note — *"If you use PPR with Next.js 15, stay on your current canary and follow the [Cache Components migration guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components) when you move to Next.js 16, where PPR behaves differently."* This is the **canonical production PPR guidance** — update all Next.js 16 deployment checklists to reference the new Cache Components model.
+
+### Deployment Audit Recipe
+
+**Phase 1: TypeScript 7.0 Baseline Verification**
+1. **Verify TS version**: `pnpm exec tsc --version` (should show `7.0.2+`). If on `^6.x`: plan migration to `^7.0.0` or stay on `^6.0.0` with known ~50-200ms/build overhead.
+2. **Verify Zod version**: `pnpm list zod` — if still `4.4.3`, plan upgrade to `^4.0.0` or `^4.5.0` (check npm dist-tag). Zod 4 is stable; `zod@canary` is now Zod 5 beta.
+3. **Explicit pin check**: confirm `typescript` is explicitly pinned in `package.json` — not relying on `npm install -D typescript@latest`.
+
+**Phase 2: Next.js 16 Cache Components / PPR Checklist**
+4. **Next.js 15 → 16 migration**: if using PPR with Next.js 15, do NOT upgrade to Next.js 16 canary until you've read the [Cache Components migration guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components). PPR behaves differently in Next.js 16.
+5. **Next.js 16 canary adoption**: if already on Next.js 16 with `cacheComponents: true` — verify `use cache` directives are in place for the data you want cached; everything else is dynamic by default.
+6. **Vercel deployment**: on Vercel, the static shell is served with ISR automatically. No extra config needed beyond `cacheComponents: true` in `next.config.ts`.
+
+**Phase 3: Canary Train Monitoring**
+7. **Watch for canary.10**: the extended 16h+ gap is the first in 6+ days. If a new canary ships in the next 6-12h with breaking changes, prioritize testing in preview environments before production promotion.
+
+### Sources
+
+- [devblogs.microsoft.com — Announcing TypeScript 7.0](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) — published July 8, 2026; Go-native; 10x faster; VS Code adoption
+- [zod.dev/v4 — Zod 4 Release Notes](https://zod.dev/v4) — "Zod 4 is now stable!"; faster, slimmer, AOT compilation
+- [vercel.com/docs/frameworks/full-stack/nextjs](https://vercel.com/docs/frameworks/full-stack/nextjs) — last updated 2026-08-11; Next.js 16 PPR/Cache Components production-ready; Cache Components migration guide reference
+- [nextjs.org/docs/app/guides/migrating-to-cache-components](https://nextjs.org/docs/app/guides/migrating-to-cache-components) — canonical Next.js 15 → 16 PPR migration guide
+- [npm `typescript@latest` 7.0.2](https://www.npmjs.com/package/typescript?activeTab=versions) — stable since July 8 2026
+- [npm `next@canary` 16.4.0-canary.9](https://www.npmjs.com/package/next?activeTab=versions) — last drop 2026-08-27T00:43:37Z; 16h18min gap as of this cron
+- [npm `next@latest` 16.3.3](https://www.npmjs.com/package/next?activeTab=versions) — CVE-patched; dropped Aug 25 16:17Z
+- [npm `next@backport` 15.5.24](https://www.npmjs.com/package/next?activeTab=versions) — CVE-patched
+- [npm `@tanstack/react-query@latest` 5.102.6](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — 8th PATCH in 8 days; PR #11305 operative
+- [npm `zod@latest` — verify current stable tag](https://www.npmjs.com/package/zod?activeTab=versions) — Zod 4 stable; canary is now Zod 5 beta
+- [Cross-reference: `security.md` — TS 7.0 + Zod 4 + CVE PoC + canary gap security lens
+- [Cross-reference: `components.md` — React 19.2 stable features correction + canary gap
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07

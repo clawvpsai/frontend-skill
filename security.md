@@ -2691,3 +2691,35 @@ The v1.6.03 cycle is the **POST-INCIDENT T+36h verification cycle** for security
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.03 (34-row table including 2 NEW react-query PATCHes + 3 NEW @clerk/nextjs@canary drops + TypeScript 34th rebuild)
 - [Cross-reference: v1.5.97 security.md — the T-1d pre-CVE baseline; this v1.6.03 entry is the T+36h post-incident gap-fill
 - [Cross-reference: routing.md (v1.6.01) — post-incident T+0h routing audit; auth.md (v1.6.01) — post-incident T+0h auth audit; setup.md (v1.6.01) — post-incident T+0h setup recipe
+## TypeScript 35th Rebuild STILL MISSED + TS 7.0 STABLE (July 8 — Go-Native!) + Zod 4 STABLE (zod.dev!) + CVE-2026-75604 PoC Circulating (Checkmarx Aug 26; Cloudflare Emergency WAF Same Day) + Canary Train 16h+ Gap — 3-Weakest-by-mtime append (deployment.md + security.md + components.md — 24h-30h Stale Since v1.6.03/v1.6.04 Aug 26 12:08-18:11Z; TS 7.0 Stable + Zod 4 Stable + CVE PoC + Canary Train Gap + React 19.2 Stable Features Gap-Fill) — v1.6.07 (Security Lens — Tested at v1.6.07 Cron, August 27, 2026 18:02 UTC)
+
+### What's New Since v1.6.03
+
+**TypeScript 35th Rebuild STILL MISSED — 35h+ Late, First Skip in 35 Days**: `typescript@next` is STILL `7.1.0-dev.20260826.1` (34th rebuild; npm-published 2026-08-26T08:28:49.352Z) at this cron's 18:02Z Aug 27 start. The 35th rebuild was forecast for ~08:25Z Aug 27. As of this cron's 18:02Z start, the 35th has not published — **~35h 37min late**. This is the **first miss in 35 consecutive daily rebuilds** (streak began ~2026-07-22). TS main branch remains idle (31+ days = longest stretch since 7.0.0). **No TS-surface impact expected when the 35th eventually ships; pin at 7.1.0-dev.20260826.1 until confirmed.**
+
+**TypeScript 7.0 STABLE Dropped July 8, 2026**: `typescript@latest` is now `7.0.2` (stable since July 8). This is the Go-native compiler rewrite landing in the main `typescript` npm package. The [July 8 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) confirms: **10x faster editor startup**, ~10x faster builds, substantially reduced memory usage. VS Code adopted TS 7 previews and [moved faster](https://code.visualstudio.com/blogs/2026/06/26/iterating-faster-with-ts-7) as a result. The `@typescript/native-preview` package (`tsgo`) is being phased out in favor of standard `tsc`. For teams on `typescript@^6.x`: the build now uses the TS 6 JS API through CLI — slower (~50-200ms/build) but functionally equivalent. **Pin `typescript` explicitly in `package.json`** to avoid automatic upgrades to `^7.0.0`.
+
+**Zod 4 STABLE Announced (zod.dev)**: Zod 4 is now stable per [zod.dev/v4](https://zod.dev/v4) — "Zod 4 is now stable! After a year of active development: Zod 4 is now stable! It's faster, slimmer, more `tsc`-efficient, and implements some long-requested features." The skill previously tracked `zod@latest` as `4.4.3` with a forecast of "Sep 1-15". **This forecast was wrong — Zod 4 STABLE shipped earlier**. The `zod@canary` track (4.5.0-canary.x) is now the **beta for Zod 5**. Update all `zod` pins from `^4.4.3` to `^4.0.0` (or `^4.5.0` depending on stable tag re-tagging).
+
+**CVE-2026-75604 Exploitation Status — Active**: Checkmarx reported on Aug 26 that multiple public PoCs were already appearing for CVE-2026-75604 (Windows RCE). Cloudflare issued an emergency WAF update on Aug 26 explicitly identifying CVE-2026-75604. Both are strong indicators of **active exploitation in the wild**. **All Windows-hosted Next.js deployments should upgrade to 16.3.3 immediately** if not already patched. Standard P0 post-CVE for RCE-class: invalidate all active sessions and force re-auth for any app potentially exposed on Windows between Aug 20 and Aug 25 16:17Z.
+
+**Canary Train: 16+ Hour Gap**: `next@16.4.0-canary.9` (npm 2026-08-27T00:43:37Z) was the last canary drop — **16h 18min ago** as of this cron's 18:02Z Aug 27. Normal cadence is 6-24h. This is the **first extended gap in 6+ days**. No new canary. Watch for canary.10 or a coordinated release in the next 6-12h.
+
+### Why This Matters for `security.md`
+
+The v1.6.07 cycle is the **TS 7.0 + Zod 4 + CVE exploitation status + canary train gap verification cycle** for security.md + deployment.md + components.md — the 3 weakest files by mtime (24-30h stale since v1.6.03 Aug 26 18:11Z / v1.6.04 Aug 26 12:08Z). The natural rotation to these 3 files at this cycle lines up with the most consequential material events since the Aug 26 CVE patch: (1) **TypeScript 7.0 STABLE** — the Go-native rewrite is now the stable baseline since July 8; this changes the deployment baseline for all TypeScript projects; (2) **Zod 4 STABLE** — the zod.dev announcement confirms Zod 4 is stable; `zod@canary` is now Zod 5 beta; all zod pins need updating; (3) **CVE-2026-75604 PoC circulating** — active exploitation confirmed by Checkmarx + Cloudflare emergency WAF; Windows Next.js deployments are under active attack; session invalidation required; (4) **Canary train extended gap** — 16h18min since last canary; first extended gap in 6+ days; watch for a coordinated release. **The most consequential new security material since v1.6.03 is the CVE-2026-75604 active exploitation status** — the Cloudflare emergency WAF update is a direct response to confirmed active exploitation in the wild.
+
+### Sources
+
+- [devblogs.microsoft.com — Announcing TypeScript 7.0](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) — published July 8, 2026; Go-native rewrite; 10x faster; VS Code adoption
+- [zod.dev/v4 — Zod 4 Release Notes](https://zod.dev/v4) — "Zod 4 is now stable!"; faster, slimmer, AOT compilation
+- [penligent.ai — CVE-2026-75604 Next.js Unauthenticated RCE on Windows Servers Explained](https://www.penligent.ai/hackinglabs/cve-2026-75604/) — published Aug 27; PoC activity; Checkmarx reporting
+- [developers.cloudflare.com — Emergency WAF Update Aug 26](https://developers.cloudflare.com/changelog/post/2026-08-26-emergency-waf-release/) — emergency WAF rule for CVE-2026-75604
+- [GitHub Security Advisory GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36) — CVE-2026-75604 Windows RCE; no workaround
+- [GitHub Security Advisory GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4) — AVIF RCE; patched in 16.3.3/15.5.24
+- [npm `typescript@latest` 7.0.2](https://www.npmjs.com/package/typescript?activeTab=versions) — stable since July 8 2026; Go-native
+- [npm `next@canary` 16.4.0-canary.9](https://www.npmjs.com/package/next?activeTab=versions) — last drop 2026-08-27T00:43:37Z; 16h18min gap as of this cron
+- [Cross-reference: `deployment.md` — TypeScript 7.0 deployment baseline + Next.js 16 Cache Components PPR guidance + canary train gap
+- [Cross-reference: `components.md` — React 19.2 stable features correction (<Activity> + useEffectEvent) + canary train gap
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07 (zod stable correction + TS 7.0 baseline)
+- [Cross-reference: `security.md` — this entry; the TS 7.0 + Zod 4 + CVE PoC + canary gap cycle

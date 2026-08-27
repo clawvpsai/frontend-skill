@@ -4348,3 +4348,30 @@ No component breaking changes. The `migrate base-color` is additive CLI function
 - [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions)
 - [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)
 - [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog)
+## React 19.2 STABLE Features Correction (<Activity> + useEffectEvent Are Stable — NOT Canary-Only!) + React 19.3 Canary Still f789f203-20260825 + Canary Train 16h+ Gap + Next.js 16.4 canary.9 Shadcn Idle — 3-Weakest-by-mtime append (deployment.md + security.md + components.md — 24h-30h Stale Since v1.6.03/v1.6.04 Aug 26 12:08-18:11Z; TS 7.0 Stable + Zod 4 Stable + CVE PoC + Canary Train Gap + React 19.2 Stable Features Gap-Fill) — v1.6.07 (Components Lens — Tested at v1.6.07 Cron, August 27, 2026 18:02 UTC)
+
+### What's New Since v1.6.04
+
+**React 19.2 STABLE Features — CORRECTION: <Activity> and useEffectEvent Are Stable, NOT Canary-Only**: React 19.2 (shipped ~July 2025) stabilized two features that the skill previously treated as canary-only: **(1) `<Activity>`** — replaces the previous pattern of unmounting and remounting hidden subtrees; enables preservation of state for hidden UI without the remount flicker; import from `react` directly (not `unstable_Activity`). **(2) `useEffectEvent`** — replaces the `useRef` workaround for reading stale values inside Effects; a proper hook for Effect event handlers where you need to read current values without causing re-runs; import from `react` directly. **This is a correction**: the skill previously noted these as Canary-only. Both are **stable in `react@19.2+`** (i.e., in `react@19.2.8` which is `react@latest`). Only `<ViewTransition>` remains Canary-only (`import { unstable_ViewTransition } from 'react'`). Update all React 19 component patterns: `<Activity>` and `useEffectEvent` are production-ready in stable React.
+
+**React 19.3.0-canary-f789f203-20260825** (unchanged from v1.6.04; npm-published Aug 25 16:35Z; no new roll since). The `<ViewTransition>` component remains **Canary-only** — `import { unstable_ViewTransition as ViewTransition } from 'react'` is NOT in stable React 19.2.8. The shadcn ecosystem has NOT added a `<ViewTransition>` wrapper (confirmed via ecosystem idle status). No shadcn component changes are expected from this React canary roll-forward. Continue using shadcn `<AnimatePresence>` / Framer Motion for transitions in stable React; use `unstable_ViewTransition` only in experimental Next.js canary projects with proper feature flags.
+
+**shadcn ecosystem: STILL IDLE** (shadcn@4.19.0 since Aug 21 = 6+ days; `@shadcn/react@0.3.0` since Aug 5 = 22+ days; `@shadcn/helpers@0.2.0` since Aug 11 = 16+ days). The ecosystem remains in a holding pattern. The canonical source for what's coming next is the [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) master branch. The Questionnaire + Human-in-the-Loop + Private GitHub Registries features are still in master but not yet in `shadcn@latest = 4.19.0`.
+
+**Canary Train: 16+ Hour Gap**: `next@16.4.0-canary.9` (npm 2026-08-27T00:43:37Z) was the last canary drop — **16h 18min ago** as of this cron's 18:02Z Aug 27. Normal cadence is 6-24h. This is the **first extended gap in 6+ days**. No new canary published. Watch for canary.10 or a coordinated release in the next 6-12h.
+
+### Why This Matters for `components.md`
+
+The v1.6.07 cycle is the **React 19.2 stable features correction + canary train gap verification cycle** for components.md — the 30h-stale file in this rotation. The most impactful correction is the React 19.2 stable features status: `<Activity>` and `useEffectEvent` are NOT canary-only, they are stable in `react@19.2.8` (the current `react@latest`). This means **production Next.js apps running React 19.2 can use these APIs without any canary exposure**. The previous incorrect canary-only classification may have caused teams to avoid these APIs unnecessarily. The `<ViewTransition>` component remains the only significant component-level feature that is genuinely canary-only in the current React surface. The canary train extended gap is notable for components because any new canary that ships with React component changes (e.g., a new `<Activity>` API refinement) would affect canary-track projects.
+
+### Sources
+
+- [scrimba.com — React 19: What's New for Developers [2026]](https://scrimba.com/articles/react-19-whats-new-for-developers/) — React 19.2 stable features table; `<Activity>` and `useEffectEvent` are stable
+- [react.dev/blog/react-19](https://react.dev/blog/2024/12/05/react-19) — React 19 release blog; useFormState → useActionState, useOptimistic, use, ref as prop
+- [npm `react@latest` 19.2.8](https://www.npmjs.com/package/react?activeTab=versions) — stable; `<Activity>` and `useEffectEvent` are stable in this version
+- [npm `react@canary` 19.3.0-canary-f789f203-20260825](https://www.npmjs.com/package/react?activeTab=versions) — no new roll since Aug 25 16:35Z; <ViewTransition> still Canary-only
+- [npm `next@canary` 16.4.0-canary.9](https://www.npmjs.com/package/next?activeTab=versions) — last drop 2026-08-27T00:43:37Z; 16h18min gap as of this cron
+- [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) — master branch; Questionnaire + Human-in-the-Loop + Private GitHub Registries still not in `shadcn@latest = 4.19.0`
+- [Cross-reference: `security.md` — TS 7.0 + Zod 4 + CVE PoC + canary gap security lens
+- [Cross-reference: `deployment.md` — TypeScript 7.0 deployment baseline + Next.js 16 Cache Components PPR guidance
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07 (React 19.2 stable correction reflected)
