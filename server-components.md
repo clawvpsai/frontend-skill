@@ -3029,3 +3029,53 @@ PR #96715 fixes a bug where **client-aborted RSC streams** (user navigated away 
 - Cross-reference: `state.md` v1.5.97 — TanStack Query 5.102.3 dep refresh + @clerk/nextjs 7.8.2 + @types/react-dom 19.2.5 + jotai 2.20.3 + biome 2.5.10 CORRECTION (still authoritative)
 - Cross-reference: `api.md` v1.5.95 — `next@16.4.0-canary.4` API-surface deep dive (PR #97738 + PR #97774 + PR #97592 + 13 others; still authoritative)
 - Cross-reference: `patterns.md` v1.5.95 — Pattern EE/FF/GG/HH/II/JJ from canary.3 + canary.4 (still authoritative)
+
+---
+
+## [28 Aug 2026 06:02Z] Next.js canary.9 + canary.10 — RSC Core + Parallel Routes + Cache Components Cascade (Post-CVE Refresh; 30h Stale Since v1.6.08 Aug 27 00:02Z)
+
+### Why This Matters for `server-components.md`
+The v1.6.09 cycle is the **canary.9/canary.10 RSC core refresh** for `server-components.md` — the natural successor to the canary.8 AVIF + PPF TrackedPromise entry (v1.6.08). Canary.9 and canary.10 together contain 9 RSC-layer PRs including two major parallel route correctness improvements (strictRouteMatching + undeclared children slots), a Pages Router React 18 deprecation signal, the Cache Components CNA integration, and the durableUseCacheEntries config needed for the upcoming #95233 full rollout. Combined with shadcn 4.19.0 (private GitHub registries + Questionnaire + Human-in-the-Loop), this is a significant RSC ecosystem update.
+
+### New Material
+
+#### RSC Core (canary.9 + canary.10)
+
+- **[GitHub PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689)** — Warns during `next dev` and `next build` when React 18 is installed. React 18 remains supported in Next.js 16 but will be unsupported in Next.js 17. **Migration path: Pages Router apps → migrate to App Router with React 19.** This is the clearest deprecation signal yet for Pages Router. New projects should use App Router exclusively.
+- **[GitHub PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941)** — Fixes #97934. **Memory leak in the default `use cache` handler** — ReadableStream objects retained references to the request's async context and closed HTTP response. Causes memory growth proportional to cached entries. **Apps using `'use cache'` at scale (ISR-equivalent Cache Components patterns) should upgrade to next@16.4.0-canary.10+ immediately.** Symptom: memory usage grows over time even with stable traffic.
+- **[GitHub PR #97926 — Expose durableUseCacheEntries config in workStore](https://github.com/vercel/next.js/pull/97926)** — Exposes `durableUseCacheEntries` in the workStore. Required for [PR #95233](https://github.com/vercel/next.js/pull/95233) which needs to decide whether to perform the server-reference-manifest lookup. **This is infrastructure for the durable `use cache` caching layer** — upcoming full `use cache` persistence beyond in-memory.
+- **[GitHub PR #286fcc3 — Turbopack: call loadActionManifest for app-route](https://github.com/vercel/next.js/pull/286fcc3)** — For PR #95233, server-reference-manifest.json now includes entries for App Routes that weren't previously emitted (because it was unnecessary before durable `use cache`). **Enables server action manifest tracking for App Router route actions.**
+
+#### Parallel Routes + Interception (canary.10)
+
+- **[GitHub PR #97242 — Retain interception route host slots](https://github.com/vercel/next.js/pull/97242)** — Interception routes represent a partial update to the layout that hosts them. Today modeled for `children` by synthesizing a `__DEFAULT__` route backed by `default-null`, but named siblings still use normal routing. **Fixes incorrect host slot resolution for named parallel routes in interception patterns** — e.g., `@modal` slot in `/@[username]/photo/[id]` interception routes.
+- **[GitHub PR #97184 — Omit undeclared children slots from app routes](https://github.com/vercel/next.js/pull/97184)** — Parallel route layouts composed entirely from named slots were synthesizing a `children` fallback whenever any named slot exists. This made `children` semantically incorrect. **Apps with all-named-slot parallel route layouts (e.g., `@a/@b/@c` with no `children`) now get correct loader tree construction.**
+- **[GitHub PR #97108 — Prune incomplete parallel route matchers](https://github.com/vercel/next.js/pull/97108)** — Adds `experimental.strictRouteMatching` flag. Incomplete parallel route matchers that will always call `notFound()` for a slot are pruned from the route table. **Reduces route table size and eliminates phantom notFound() waterfall requests** in complex parallel route configurations.
+
+#### Static Export + Cache Components (canary.10)
+
+- **[GitHub PR #97711 — Support immutable static assets with `output: 'export'`](https://github.com/vercel/next.js/pull/97711)** — `output: 'export'` already uses the adapter, but immutable static assets weren't supported. Now they are. **Apps using `next export` (static HTML export) now get proper cache-control headers for static assets** — major DX improvement for fully-static Next.js deployments.
+- **[GitHub PR #97695 — Add Cache Components option to create-next-app](https://github.com/vercel/next.js/pull/97695)** — `create-next-app` now asks an interactive prompt: "Enable Cache Components?" Defaults to `off` for now. Will flip default to `on` once there's a flow that guides users to the right recommendation. **The CNA integration is the gateway DX feature for Next Beats adoption** — new projects will increasingly use Cache Components by default.
+
+#### shadcn/ui 4.19.0 — Private GitHub Registries + Questionnaire (Aug 21)
+
+- **[shadcn/ui Release — shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0)** — Published Aug 21 2026, 17:28Z. Two minor changes: (1) **Private GitHub repositories as registries** (PR #11582) — `npx shadcn@latest add acme/private-toolkit/auth-kit` works if you have `gh` credentials or `GH_TOKEN`. In CI, fine-grained PAT with Contents: Read-only. This is the feature teams asked for in June. (2) **`npx shadcn migrate base-color`** (PR #11248) — switch a project's base color programmatically.
+- **[shadcn/ui August 2026 — Private GitHub Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)** — Full changelog: public repos read anonymously (no credentials), private repos read via GitHub Contents API through `gh` CLI (token never enters shadcn process). Works with `list`, `search`, `view`, `registry validate` commands. In CI: `GH_TOKEN` or `GITHUB_TOKEN` env var.
+- **[shadcn/ui August 2026 — Human in the Loop](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)** — `@shadcn/helpers` now mocks human-in-the-loop flows for AI SDK. Scripted conversations can pause for real user input, wait for approval, continue with user decision. **RSC-relevant: human-in-the-loop patterns in AI SDK + RSC = the emerging "agentic RSC" pattern** where server components drive AI agentic workflows with human-in-the-loop checkpoints.
+- **[shadcn/ui August 2026 — Questionnaire](https://ui.shadcn.com/docs/changelog)** — New component for multi-step question flows. Used for agent clarification prompts, onboarding, surveys, intake forms. Available for Base UI, React Aria, and Radix across all 8 styles. **RSC pattern: Questionnaire as a server-renderable multi-step form with Suspense streaming between steps.**
+
+#### Version Tracking Update
+| Package | Last Tracked (v1.6.08) | Current (v1.6.09) | Change |
+|---------|------------------------|-------------------|--------|
+| `next` | `16.4.0-canary.8` | `16.4.0-canary.10` | +2 canary drops; +49 commits |
+| React (via Next.js) | `f789f203-20260825` | `29d9d318-20260826` | +1 React bump |
+| `shadcn` | Not tracked in this file | `4.19.0` (Aug 21) | First tracked; private registries |
+| `@clerk/nextjs@canary` | `7.8.3-canary.v20260825083614` | `7.8.3-canary.v20260827195249` | +1 drop |
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.09):** Cache handler memory leak fix (PR #97941), PPF runtime tracking fix (PR #97165), CSS module class name shortening (PR #97944). Performance layer of the same RSC changes.
+- **`security.md` (v1.6.07):** CVE-2026-75604 (AVIF RCE). AVIF was disabled in the CVE patch and re-enabled in canary.9. PR #1a7ccf4 is the re-enablement PR — confirms patched versions are safe for AVIF.
+- **`styling.md` (v1.6.09):** CSS module class naming changes (`[hash]_[local]` format). Parallel route layout changes. shadcn private registries.
+- **`patterns.md` (v1.5.95):** Pattern EE/FF/GG/HH/II/JJ from canary.3 + canary.4. This entry adds Pattern KK: "Agentic RSC + Human-in-the-Loop" from the shadcn @shadcn/helpers AI SDK integration.
+
+**Sources:** [GitHub PR #97689](https://github.com/vercel/next.js/pull/97689) | [PR #97941](https://github.com/vercel/next.js/pull/97941) | [PR #97926](https://github.com/vercel/next.js/pull/97926) | [PR #97242](https://github.com/vercel/next.js/pull/97242) | [PR #97184](https://github.com/vercel/next.js/pull/97184) | [PR #97108](https://github.com/vercel/next.js/pull/97108) | [PR #97711](https://github.com/vercel/next.js/pull/97711) | [PR #97695](https://github.com/vercel/next.js/pull/97695) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)

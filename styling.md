@@ -2681,3 +2681,39 @@ The Next.js 16 four-breaking-changes defaults (`qualities: [75]`, `imageSizes: [
 - [Cross-reference: `security.md` v1.5.97 — Aug 26 Critical CVE T-1d (newly authoritative; CVE has not yet dropped as of 12:02Z Aug 25)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/security.md)
 - [Cross-reference: `server-components.md` v1.5.98 — RSC-surface lens on Aug 26 CVE T-0 + TypeScript 32nd rebuild CONFIRMED (just appended)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/server-components.md)
 - [Cross-reference: `performance.md` v1.5.98 — Turbopack 16.3 dev memory benchmarks + PPF one-shell-per-route pattern + TanStack Query 5.102.3 dep refresh (just appended)](file:///home/openclaw/.openclaw/workspace-skills/frontend-skill/performance.md)
+
+---
+
+## [28 Aug 2026 06:02Z] Next.js canary.10 CSS Module Naming + shadcn 4.19.0 Private GitHub Registries + Tailwind insiders 15+ Days Idle (3-Weakest Refresh; 30h Stale Since v1.6.08 Aug 27 00:02Z)
+
+### Why This Matters for `styling.md`
+The v1.6.09 cycle is the **canary.10 CSS + shadcn ecosystem refresh** for `styling.md` — covering two significant styling-layer changes: the Turbopack CSS module class name shortening (affecting all Next.js CSS Modules users) and the shadcn 4.19.0 private GitHub registries feature (affecting internal design system distribution). The Tailwind insiders freeze is now 15+ days (was 14+ days in v1.6.08 — still no movement from the Tailwind main branch since Aug 14).
+
+### New Material
+
+#### CSS Modules + Turbopack (canary.10)
+
+- **[GitHub PR #97944 — Turbopack: shorten CSS module class names](https://github.com/vercel/next.js/pull/97944)** — CSS module class names were unnecessarily long. Now uses the lightningcss default: `[hash]_[local]` format — `<hash of the full file path>_<original class name or identifier>`. **Reduces CSS class name length by ~60% in both development and production bundles.** Example: `MyComponent_section__abc123` → `abc123_section`. **All Next.js CSS Modules projects benefit automatically on upgrade.** No config change needed. This is a Turbopack-only change (Webpack build unchanged).
+- **[GitHub PR #97945 — Turbopack: widen the chunk ident hash from 7 to 13 base38 chars](https://github.com/vercel/next.js/pull/97945)** — Closes #97766. CSS module names + chunk hashes both use base38 encoding. The 7-char hash had collision risk above ~10K chunks (birthday attack). **13-char base38 hash = 38^13 ≈ 3.6×10^20 combinations** — effectively zero collision probability for any realistic project. Stability fix for large monorepos.
+- **[GitHub PR #97833 + #12bf495 — Expand Turbopack dev cleanup](https://github.com/vercel/next.js/pull/97833)** — Dev server cleanup now removes more stale `.next` artifacts on startup. **Faster `next dev` boot and less disk space** in long-running dev environments. CSS Modules benefit from cleaner artifact cleanup between sessions.
+
+#### shadcn/ui 4.19.0 — Private GitHub Registries (Aug 21) + Active Main Branch
+
+- **[shadcn/ui Release — shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0)** — Published Aug 21 2026, 17:28Z. Two changes: **(1) Private GitHub repositories as registries** (PR #11582) — zero-config if `gh auth login` is run; CI uses `GH_TOKEN` or `GITHUB_TOKEN`. The CLI reads through GitHub Contents API via `gh`; token never enters the shadcn process. Fine-grained PAT with Contents: Read-only is recommended in CI. **(2) `npx shadcn migrate base-color`** (PR #11248) — programmatic base color migration for projects. `pnpm dlx shadcn@latest migrate base-color --from slate --to orange`.
+- **[shadcn/ui August 2026 — Private GitHub Registries changelog](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)** — Full breakdown: public repos read anonymously (no credentials), private repos via `gh` CLI or `GH_TOKEN`. Works with `list`, `search`, `view`, `registry validate` commands. Anonymous-first: CLI tries public access first and only uses credentials when the repo is not publicly readable.
+- **shadcn/ui main branch activity (Aug 20–26):** 20 commits in 7 days. Notable: PR #11622 OIDC blob store fix, PR #11616 health monitoring registry, PR #11613 npm 12 publish detection fix, PR #11611 private GitHub registries changelog docs, PR #11582 private repos feature. **shadcn ecosystem velocity is HIGH** — 20 commits/7 days = ~3/day average, matching the fastest sustained rates seen this year.
+- **[shadcn/ui August 2026 — Questionnaire](https://ui.shadcn.com/docs/changelog)** — New multi-step question flow component for agent clarification prompts, onboarding, surveys, intake forms. Available for Base UI, React Aria, and Radix across all 8 styles. **Styling angle: Questionnaire uses CSS-first styling consistent with the rest of shadcn — no extra config needed for custom themes.**
+- **[shadcn/ui August 2026 — Human in the Loop](https://ui.shadcn.com/docs/changelog)** — `@shadcn/helpers` mocks AI SDK human-in-the-loop flows with scripted conversations, real user approval pauses, and continuation with user decisions. **Internal design systems can now distribute AI-native interaction patterns via shadcn GitHub registries** — enterprise design tokens + agent interaction rules in private repos.
+
+#### Tailwind CSS Idle Status
+
+- **Tailwind CSS `insiders` still on `0.0.0-insiders.90f8ff4`** — unchanged since Aug 14 (15 days; was 14 days in v1.6.08). Tailwind main branch commits since Aug 14: 5 commits (all minor fixes: `supports-[…]` variants, theme value unsupported modifier fix, canonicalization fix, debug logs). **No Oxide engine movement in 15 days.** The insiders channel is the Oxide engine (Rust CSS parser/minifier) — the major perf feature. Still waiting.
+- **Tailwind latest: `4.3.3`** — no change. `tailwindcss@next` still `4.0.0` (the v4 work).
+- **Styling ecosystem status: STABLE.** No breaking changes in the queue. Tailwind v3 + shadcn v4 is the stable stack for new projects.
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.09):** CSS module class name shortening (PR #97944) + chunk hash widen (PR #97945) documented there from the performance/correctness angle.
+- **`server-components.md` (v1.6.09):** Private GitHub registries for internal design system distribution + Questionnaire + Human-in-the-Loop patterns.
+- **`patterns.md` (v1.5.95):** Pattern KK added in server-components: "Agentic RSC + Human-in-the-Loop" via shadcn @shadcn/helpers.
+
+**Sources:** [GitHub PR #97944](https://github.com/vercel/next.js/pull/97944) | [PR #97945](https://github.com/vercel/next.js/pull/97945) | [PR #97833](https://github.com/vercel/next.js/pull/97833) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries) | [Tailwind main commits](https://github.com/tailwindlabs/tailwindcss/commits?per_page=5)
