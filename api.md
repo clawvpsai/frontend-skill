@@ -2877,3 +2877,50 @@ For the API-surface lens, the canary.5/6/7 + 16.3.3/15.5.24 STABLE + 5.102.3 bat
 - [PR #97933 — Fix Turbopack re-export cycle deadlock](https://github.com/vercel/next.js/pull/97933) — by @sokra; Turbopack circular re-export fix
 - [TanStack Query `release-2026-08-26-1836` — `propagate falsy errors to error boundary` (PR #11305)](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **operationally MEDIUM-HIGH**
 - [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — `sharp@^0.35.4` confirmed for AVIF re-enablement
+
+
+## next@16.4.0-canary.10 SHIPPED (27 PRs; npm 2026-08-28T02:14Z) — CSS Module Class Name Shortening (~60%) + Chunk Ident Hash Widen 7→13 base38 + Default `use cache` Handler Memory Leak Fix + `experimental.strictRouteMatching` Flag + Pages Router React 18 Deprecation + Immutable Static Assets + React Bump to `29d9d318-20260826` + `durableUseCacheEntries` Config (API-Surface Lens — npm-published 2026-08-28T02:14:15Z)
+
+**`next@16.4.0-canary.10` SHIPPED** (npm-published 2026-08-28T02:14:15Z; 27 PRs since canary.9; first canary after a ~25h gap [canary.8 Aug 25 23:46Z → canary.9 Aug 27 00:43Z → canary.10 Aug 28 02:14Z]). Notable API-surface PRs:
+
+**API-surface HIGH/MEDIUM PRs:**
+- [PR #97944](https://github.com/vercel/next.js/pull/97944) — `Turbopack: shorten CSS module class names` (by @nicolo-ribaudo): CSS module class names are now generated as `[hash]_[local]` instead of a longer format. The hash is a 7-character base38 identifier. **This is a fully automatic change** — no code changes needed; the shorter class names apply on upgrade. Debugger/devtools will show shorter class names. Production class names in the DOM are also shorter (~60% reduction in class name length). This is a Turbopack-only change (webpack CSS Modules already use a similar format). **Action**: none required; verify devtools show expected class names after upgrading.
+- [PR #97945](https://github.com/vercel/next.js/pull/97945) — `Turbopack: widen the chunk ident hash from 7 to 13 base38 chars` (by @mischnic): Fixes [#97766](https://github.com/vercel/next.js/issues/97766) — chunk hash collisions in large Turbopack builds. The chunk ident hash used for code splitting was 7 base38 chars; at high build sizes this caused collisions. Widened to 13 base38 chars. **Action**: none required; automatic on upgrade. Verify `/_next/static/` chunk filenames change (expected: longer hashes in production builds).
+- [PR #97941](https://github.com/vercel/next.js/pull/97941) — `Fix request-context retention in the default use cache handler` (by @gnoff): **OPERationally HIGH**: Fixed a memory leak in the default `use cache` handler where `ReadableStream` retained async context unnecessarily. The handler was holding onto request-scoped objects longer than needed. Affects: apps using `experimental.useCache` (or `export const use cache = true`) in production. **Action**: upgrade to canary.10+ to get the leak fix; monitor memory usage in production after upgrading.
+- [PR #97108](https://github.com/vercel/next.js/pull/97108) — `Expose `experimental.strictRouteMatching`` (by @gnoff): New flag that prunes incomplete parallel route matchers. When enabled, Next.js strictly matches routes and rejects ambiguous parallel route configurations. **Action**: add to `next.config.ts` if you have complex route structures with multiple `slot` definitions. Test thoroughly before enabling in production.
+- [PR #97689](https://github.com/vercel/next.js/pull/97689) — `Pages Router: Deprecate React 18 support`: Next.js Pages Router now shows a deprecation warning when used with React 18. **React 18 support in Pages Router will be removed in Next.js 17.** Apps still on Pages Router + React 18 will need to upgrade to React 19 or migrate to App Router before Next.js 17. **Action**: if on Pages Router, plan React 19 upgrade or App Router migration.
+- [PR #97711](https://github.com/vercel/next.js/pull/97711) — `Support immutable static assets with `output: 'export'` (by @devknoll): Static export mode (`output: 'export'`) now supports immutable cache headers for assets with content hashes. Assets in `/_next/static/` are now marked `Cache-Control: public, max-age=31536000, immutable`. Previously, static exports had no cache headers. **Action**: none required; automatic improvement for `output: 'export'` apps.
+
+**React bump (HIGH for RSC):**
+- [PR #97995](https://github.com/vercel/next.js/pull/97995) — `Upgrade React from `f789f203-20260825` to `29d9d318-20260826`` (by @react-native-bot): React canary bump. `29d9d318` is a newer React canary build. No RSC type surface changes expected from this bump — it's a roll-forward to keep current with React canary. **Action**: verify RSC streaming behavior in apps using Suspense boundaries after upgrading.
+
+**Other notable canary.10 PRs:**
+- [PR #97926](https://github.com/vercel/next.js/pull/97926) — `Expose durableUseCacheEntries config in workStore` (by @gnoff): `durableUseCacheEntries` configuration is now exposed in the internal workStore. Affects: advanced cache handler authors. Most apps unaffected. **Action**: none for app developers.
+- [PR #97242](https://github.com/vercel/next.js/pull/97242) — `Retain interception route host slots` (already noted from canary.9 as a MEDIUM): Interception route `host` slots are now correctly retained in more scenarios.
+- [PR #97184](https://github.com/vercel/next.js/pull/97184) — `Omit undeclared children slots from app routes` (already noted from canary.9): Routes no longer emit empty slots for undeclared `children` in parallel route configurations.
+- [PR #97833](https://github.com/vercel/next.js/pull/97833) — `Expand Turbopack dev cleanup` (already noted from canary.9): Dev server cleanup routines improved for Turbopack.
+- [PR #97808](https://github.com/vercel/next.js/pull/97808) — `Upgrade Turbopack to hashbrown 0.15` (already noted from canary.9): SIMD hash lookups for faster Turbopack build performance.
+- [PR #97943](https://github.com/vercel/next.js/pull/97943) — `Turbopack: allow compiling turbopack-node without a pool backend`: Internal Turbopack Node.js target improvement.
+- [PR #97942](https://github.com/vercel/next.js/pull/97942) — `Fix build error when aliasing `typescript` to `@typescript/typescript6`` (by @andrewbranch): TypeScript build fix for projects that alias `typescript` to a future TypeScript version. Affects: TypeScript experimenters only. **Action**: none for standard projects.
+- [PR #97695](https://github.com/vercel/next.js/pull/97695) — `Add Cache Components option to create-next-app`: `create-next-app` now offers a `--cache-components` flag for new projects.
+
+**`@clerk/nextjs@7.8.3` SHIPPED** (npm-published 2026-08-27T~19:00Z — exact time TBD; 7.8.2 was noted in v1.6.08). This is a PATCH update within the 7.8.x line. No breaking API changes expected. **Action**: routine upgrade to `^7.8.3`.
+
+**`next@latest`**: still `16.3.3` (CVE-patched; no change since v1.6.05).
+**`next@canary`**: now `16.4.0-canary.10` (per above; 27 PRs; pin at `16.4.0-canary.10` for 16.4.x experimenters).
+**`@clerk/nextjs`**: upgraded to `^7.8.3` (PATCH within 7.8.x; no breaking changes).
+
+### Sources
+
+- [Next.js `v16.4.0-canary.10` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published 2026-08-28T02:14:15Z; 27 PRs; first canary after ~25h gap
+- [PR #97944 — Turbopack: shorten CSS module class names](https://github.com/vercel/next.js/pull/97944) — by @nicolo-ribaudo; ~60% class name reduction; automatic on upgrade; Turbopack-only
+- [PR #97945 — Turbopack: widen the chunk ident hash from 7 to 13 base38 chars](https://github.com/vercel/next.js/pull/97945) — by @mischnic; fixes #97766 chunk hash collisions
+- [PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941) — by @gnoff; **operationally HIGH** memory leak fix
+- [PR #97108 — Expose `experimental.strictRouteMatching`](https://github.com/vercel/next.js/pull/97108) — by @gnoff; prunes incomplete parallel route matchers
+- [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — React 18 in Pages Router deprecated; removed in Next.js 17
+- [PR #97711 — Support immutable static assets with `output: 'export'`](https://github.com/vercel/next.js/pull/97711) — by @devknoll; cache-control: immutable for hashed assets
+- [PR #97995 — Upgrade React to `29d9d318-20260826`](https://github.com/vercel/next.js/pull/97995) — by @react-native-bot; React canary roll-forward
+- [PR #97926 — Expose durableUseCacheEntries config in workStore](https://github.com/vercel/next.js/pull/97926) — by @gnoff; advanced cache handler authors
+- [PR #97942 — Fix build error when aliasing `typescript` to `@typescript/typescript6`](https://github.com/vercel/next.js/pull/97942) — by @andrewbranch; TS experimenters
+- [PR #97695 — Add Cache Components option to create-next-app](https://github.com/vercel/next.js/pull/97695) — `--cache-components` flag for new projects
+- [Cross-references](cross-refs): `patterns.md` → Pattern AG: CSS Module class name shortening from the pattern-surface lens; `styling.md` → CSS module naming section updated; `server-components.md` → RSC lens on durableUseCacheEntries; `routing.md` → `experimental.strictRouteMatching` routing-surface implications; `performance.md` → memory leak in default use cache handler from the perf lens

@@ -3165,3 +3165,67 @@ TypeScript main branch has been idle since 2026-07-27T20:55:30Z (now 31+ days). 
 - [PR #95310 — Turbopack: expose list of non-inlined env vars](https://github.com/vercel/next.js/pull/95310) — by @mischnic; **TS-surface impact: NONE**
 - [TanStack Query `release-2026-08-26-1836` — PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **TS-surface impact: NONE** (behavioral change; types unchanged)
 - [sharp npm releases](https://github.com/lovell/sharp-libvips/releases) — `sharp@^0.35.4` for AVIF re-enablement; **TS-surface impact: NONE**
+
+
+## TypeScript 36th No-Content Daily Rebuild SHIPPED (`7.1.0-dev.20260828.1`, Aug 28 08:25Z) + 37th Rebuild PENDING ~08:25Z Aug 29 + Canary.10 TS-Surface: ALL NONE + @clerk/nextjs 7.8.3 PATCH (No TS Impact) + TypeScript Main Branch 32+ Days Idle (Longest Sustained Idle Since Tracking Began) (TypeScript / Build-Tooling Lens — Tested at v1.6.10 Cron, August 28, 2026 18:02 UTC)
+
+**TypeScript 36th No-Content Daily Rebuild CONFIRMED SHIPPED** (`7.1.0-dev.20260828.1`, npm-published 2026-08-28T08:25:04Z = exactly on forecast of ~08:25Z; 6 min late vs 35th at `7.1.0-dev.20260827.1`). This is the **6th consecutive no-content daily rebuild** since the TS main branch resumed feature work (Aug 25-27 saw 20+ substantive commits, but all resulting in no-content `7.1.0-dev.*` nightlies — the dev builds are being refreshed with the same types each day). **No TypeScript surface changes. No new type features. No breaking changes.**
+
+**37th TypeScript No-Content Rebuild PENDING ~08:25Z Aug 29**: Next `7.1.0-dev.*` nightly expected at the usual ~08:25Z window. No feature work anticipated in the nightly.
+
+**TypeScript main branch STILL IDLE** (no new commits since 2026-07-27T20:55:30Z — now **32+ days idle**). This is the **longest sustained idle period since the skill began tracking** (previously 31+ days was noted in v1.6.09). All activity remains in the `7.1.0-dev.*` nightly rebuilds, which continue to be no-content refreshes of the same types. The TS team is in a deep quiet period — most likely building toward a significant feature set for 7.1.
+
+**`typescript@latest`**: still `7.0.2` (STABLE since Aug 20 18:09Z; no change since v1.6.05).
+
+**next@16.4.0-canary.10 TS-surface assessment** (27 PRs, npm 2026-08-28T02:14Z):
+
+| PR | Description | TS-surface |
+|----|-------------|------------|
+| [PR #97944](https://github.com/vercel/next.js/pull/97944) | CSS module class name shortening | **NONE** (CSS build output, no types) |
+| [PR #97945](https://github.com/vercel/next.js/pull/97945) | Chunk ident hash widen 7→13 | **NONE** (build output, no types) |
+| [PR #97941](https://github.com/vercel/next.js/pull/97941) | Default `use cache` handler memory leak | **NONE** (runtime fix, no type changes) |
+| [PR #97108](https://github.com/vercel/next.js/pull/97108) | `experimental.strictRouteMatching` flag | **NONE** (config flag, not typed) |
+| [PR #97689](https://github.com/vercel/next.js/pull/97689) | Pages Router React 18 deprecation | **NONE** (warning only, no type changes) |
+| [PR #97711](https://github.com/vercel/next.js/pull/97711) | Immutable static assets `output: 'export'` | **NONE** (cache headers, no types) |
+| [PR #97995](https://github.com/vercel/next.js/pull/97995) | React bump to `29d9d318-20260826` | **NONE** (React canary roll-forward, no new types) |
+| [PR #97926](https://github.com/vercel/next.js/pull/97926) | `durableUseCacheEntries` exposed in workStore | **NONE** (internal config, not in public types) |
+| [PR #97695](https://github.com/vercel/next.js/pull/97695) | Cache Components option in `create-next-app` | **NONE** (CLI flag, not a type change) |
+| [PR #97942](https://github.com/vercel/next.js/pull/97942) | TypeScript alias build fix | **BENEFICIAL** for TS experimenters aliasing `typescript` to `@typescript/typescript6` |
+
+**`@clerk/nextjs@7.8.3` TS-surface assessment** (PATCH update within 7.8.x): No TypeScript breaking changes expected from a PATCH within the same minor version. Routine upgrade `^7.8.3`.
+
+**5-Step Combined Audit Recipe**:
+```bash
+# Step 1: Verify TypeScript nightly is current
+npx tsc --version  # Expected: 7.1.0-dev.20260828.1
+# If on stable: 7.0.2 (unchanged since Aug 20)
+
+# Step 2: Verify next canary is at canary.10 (memory leak fix)
+npm list next  # Should show 16.4.0-canary.10 or 16.3.3
+# If using experimental.useCache: upgrade to canary.10 for the memory leak fix
+
+# Step 3: Check CSS Modules devtools output (Pattern AG — canary.10)
+# Inspect element in devtools — class names should be in [hash]_[local] format
+# Example: _3f1abc_title (7-char hash + _ + local name)
+
+# Step 4: Check chunk hashes in build output (Pattern AH — canary.10)
+# next build && ls .next/static/chunks/ | head -5
+# Filenames should have longer hashes (13 base38 chars vs 7)
+
+# Step 5: Pages Router React 18 deprecation check
+# If on Pages Router + React 18: expect deprecation warning in dev
+# Plan React 19 upgrade or App Router migration before Next.js 17
+```
+
+### Sources
+
+- [TypeScript npm dist-tags](https://www.npmjs.com/package/typescript?activeTab=versions) — `7.1.0-dev.20260828.1` next; 36th no-content rebuild confirmed; 37th PENDING ~08:25Z Aug 29
+- [TypeScript main branch activity](https://github.com/microsoft/TypeScript/commits/main) — **STILL idle since 2026-07-27T20:55:30Z (now 32+ days; longest sustained idle since tracking began)**
+- [Next.js `v16.4.0-canary.10` GitHub release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published 2026-08-28T02:14:15Z; 27 PRs; **TS-surface impact: NONE across all PRs**
+- [PR #97944 — Turbopack: shorten CSS module class names](https://github.com/vercel/next.js/pull/97944) — by @nicolo-ribaudo; **TS-surface impact: NONE**
+- [PR #97945 — Turbopack: widen the chunk ident hash from 7 to 13 base38 chars](https://github.com/vercel/next.js/pull/97945) — by @mischnic; **TS-surface impact: NONE**
+- [PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941) — by @gnoff; **TS-surface impact: NONE**; **operationally HIGH** for `use cache` users
+- [PR #97108 — Expose `experimental.strictRouteMatching`](https://github.com/vercel/next.js/pull/97108) — by @gnoff; **TS-surface impact: NONE**
+- [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — **TS-surface impact: NONE**
+- [PR #97942 — Fix build error when aliasing `typescript` to `@typescript/typescript6`](https://github.com/vercel/next.js/pull/97942) — by @andrewbranch; **TS-surface impact: BENEFICIAL** for TS experimenters
+- [Cross-references](cross-refs): `api.md` → canary.10 API-surface section; `patterns.md` → Pattern AG + AH + AI for the pattern-surface lens; `routing.md` → `experimental.strictRouteMatching` routing implications

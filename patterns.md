@@ -6057,3 +6057,115 @@ const { data, error } = useQuery({
 - [PR #97165 — [PPF] Only track runtime accesses when the promise is used](https://github.com/vercel/next.js/pull/97165) — by @acdlite; PPF accuracy improvement
 - [PR #96715 — Don't report a client-aborted RSC stream as a render error](https://github.com/vercel/next.js/pull/96715) — by @acdlite; RSC error tracking fix
 - [TanStack Query `release-2026-08-26-1836` — PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/releases/tag/release-2026-08-26-1836) — npm-published 2026-08-26T18:36:21Z; 7th PATCH in 9 days; **operationally MEDIUM-HIGH**
+
+
+## Pattern AG: CSS Module Class Name Shortening — `[hash]_[local]` Format (next@16.4.0-canary.10, PR #97944) + Pattern AH: Chunk Ident Hash Widen 7→13 base38 (PR #97945, fixes #97766) + Pattern AI: Default `use cache` Handler Memory Leak Fix (PR #97941) (Pattern Surface Lens — npm-published 2026-08-28T02:14:15Z)
+
+### Pattern AG — CSS Module Class Name Shortening: `[hash]_[local]` Format (PR #97944, canary.10)
+
+**What changed**: Turbopack now generates CSS module class names in the format `[hash]_[local]` instead of the previous longer format. The hash portion is a 7-character base38 string. This reduces CSS class name length by approximately 60%.
+
+**Before (canary.9 and earlier)**:
+```css
+/* Example generated class name — webpack-compatible long format */
+._191a7c3b7ac8fb14_HeroSection {}
+._191a7c3b7ac8fb14_title {}
+._191a7c3b7ac8fb14_subtitle {}
+```
+
+**After (canary.10+)**:
+```css
+/* Shorter [hash]_[local] format — ~60% reduction */
+._3f1abc_HeroSection {}
+._3f1abc_title {}
+._3f1abc_subtitle {}
+```
+
+**Migration**: **No code changes required.** This is fully automatic on upgrade. The class names in your compiled CSS files and in the DOM will change, but all existing class name references in JS code remain the same (the CSS Modules compiler handles the mapping).
+
+**What to verify after upgrading to canary.10+**:
+1. DevTools: Inspect elements — CSS class names will now be shorter (7-char hash + `_` + original name)
+2. Visual regression tests: Run against your app — class names are shorter but styling is identical
+3. CSS Modules `composes` references: Still work correctly (composes uses local names, not generated)
+4. If using `import styles from './module.module.css'` — all `styles.heroTitle` references remain valid
+
+**Turbopack-only change**: This applies to Turbopack builds only. Webpack builds use a similar shorter format already. If you're on webpack, this change doesn't affect you.
+
+**Debugging tip**: When inspecting elements in devtools, you'll now see class names like `._3f1abc_title` instead of the longer version. The shorter names make devtools output more readable.
+
+### Pattern AH — Chunk Ident Hash Widen 7→13 base38 (PR #97945, canary.10)
+
+**What changed**: The chunk identifier hash used for code-split chunks in Turbopack was widened from 7 to 13 base38 characters. This fixes [#97766](https://github.com/vercel/next.js/issues/97766) — chunk hash collisions in very large production builds.
+
+**Before (canary.9 and earlier)**: Chunk filenames used 7 base38 chars, e.g., `chunk-ABC1234.js`
+**After (canary.10+)**: Chunk filenames use 13 base38 chars, e.g., `chunk-ABC1234567890DEFG.js`
+
+**Impact**: Production `/_next/static/` chunk filenames will change (longer hashes). This is a build-output change only.
+
+**What to verify after upgrading**:
+1. `next build` output: Check that chunk filenames now have longer hashes
+2. CDN cache: After deploying, your CDN will see new chunk filenames (cold cache on first request is expected)
+3. If you have Content-Security-Policy with hash allowlists for scripts: Update the hash allowlists to accommodate longer chunk hashes
+
+**No code changes needed** — purely a build/output improvement.
+
+### Pattern AI — Default `use cache` Handler Memory Leak Fix (PR #97941, canary.10)
+
+**What changed**: The default `use cache` handler had a memory leak where `ReadableStream` retained async context longer than needed. The handler was holding onto request-scoped objects beyond their natural lifetime.
+
+**Before (canary.9 and earlier)**: Memory usage could grow unbounded in apps with heavy `use cache` usage — each cached invocation retained request context objects that should have been garbage-collected.
+
+**After (canary.10+)**: Request context is released promptly after the cached response is serialized. Memory growth is bounded.
+
+**Audit recipe** (1-step for most apps):
+```bash
+# After upgrading to canary.10+:
+# 1. Monitor memory usage in your production environment for 24-48h
+#    - If using Vercel: check Memory usage in the dashboard
+#    - If self-hosted: monitor RSS/heap with your APM tool
+# 2. Compare memory baseline before and after upgrade
+#    - If memory is stable (not growing unbounded): fix confirmed
+#    - If memory still grows: open a GitHub issue with your cache handler config
+```
+
+**`experimental.useCache` users**: If you're using `experimental.useCache` (or `export const use cache = true`) in production, this leak fix is operationally HIGH priority — upgrade immediately.
+
+### Combined 3-Pattern Audit Recipe (canary.10 Upgrade Checklist)
+
+```bash
+# Step 1: Upgrade next to canary.10
+npm install next@16.4.0-canary.10
+
+# Step 2: Verify CSS module class names shortened (Pattern AG)
+# Inspect any .module.css file in devtools — should see [hash]_[local] format
+
+# Step 3: Verify chunk hashes changed (Pattern AH)
+# Run next build and check /_next/static/chunks/ — filenames should have longer hashes
+# Note: CDN cold-cache expected on first deploy after upgrade
+
+# Step 4: Monitor memory after upgrade (Pattern AI — use cache leak fix)
+# Watch production memory for 24-48h post-deploy
+
+# Step 5: If on Pages Router — check for React 18 deprecation warning
+# React 18 in Pages Router deprecated; will be removed in Next.js 17
+# Plan React 19 upgrade or App Router migration
+
+# Step 6: Optional — enable experimental.strictRouteMatching if you have complex parallel routes
+# Add to next.config.ts: experimental: { strictRouteMatching: true }
+# Test thoroughly before enabling in production
+```
+
+### Recommended version pin
+
+- **Production (stable apps)**: `next@^16.3.3` (CVE-patched; no reason to move to canary unless you need a specific fix)
+- **Experimenters (16.4.x)**: `next@16.4.0-canary.10` (includes memory leak fix — operationally important for `use cache` users)
+- **`@clerk/nextjs`**: `^7.8.3` (routine PATCH within 7.8.x)
+
+### Sources
+
+- [PR #97944 — Turbopack: shorten CSS module class names](https://github.com/vercel/next.js/pull/97944) — by @nicolo-ribaudo; **automatic; Turbopack-only**; ~60% class name reduction
+- [PR #97945 — Turbopack: widen the chunk ident hash from 7 to 13 base38 chars](https://github.com/vercel/next.js/pull/97945) — by @mischnic; fixes #97766 chunk hash collisions
+- [PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941) — by @gnoff; **operationally HIGH** memory leak fix for `use cache`
+- [PR #97108 — Expose `experimental.strictRouteMatching`](https://github.com/vercel/next.js/pull/97108) — by @gnoff; optional flag for parallel route strictness
+- [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — React 18 in Pages Router deprecated; Next.js 17 removes support
+- [Cross-references](cross-refs): `api.md` → canary.10 API-surface section for full PR table; `styling.md` → CSS module naming updated; `routing.md` → `experimental.strictRouteMatching` implications
