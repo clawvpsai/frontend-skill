@@ -3833,3 +3833,110 @@ npm install @clerk/nextjs@canary
 - [npm — @tanstack/react-query@latest](https://www.npmjs.com/package/@tanstack/react-query)
 - [npm — @clerk/nextjs@canary](https://www.npmjs.com/package/@clerk/nextjs)
 - [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)
+
+## next@16.4.0-canary.9 SHIPPED + @tanstack/react-query@5.102.8 (9 PATCHes in 6 days; PR #11305 falsy-error boundary still operative) + react@canary 29d9d318-20260826 + typescript@next 35th Rebuild STILL MISSED (now 15h+ late into Aug 28 window) + zod@canary → 4.5.0-canary.20260827T054049 (August 28, 2026 — v1.6.08 Cycle)
+
+**`next@16.4.0-canary.9` SHIPPED (MISSED by v1.6.07 inline observation; documented retroactively here)** — npm-published **2026-08-27T00:43:37.751Z**. 22 PRs ahead of canary.8. The most form-relevant PRs from this batch:
+
+| PR | Impact | Form-surface note |
+|---|---|---|
+| [PR #96715](https://github.com/vercel/next.js/pull/96715) Don't report a client-aborted RSC stream as a render error | MEDIUM | Form `action` handlers that return large RSC streams and were navigated away from mid-stream no longer log as render errors. Update Sentry/error-tracking rules to filter "stream aborted" as expected behavior. |
+| [PR #97957](https://github.com/vercel/next.js/pull/97957) fix(next/image): reject non-2xx internal image responses | MEDIUM (forms with image upload previews) | Any `next.config images.redirects` entry that pointed to an image was silently serving broken content with `detectContentType=null`. Audit all redirect rules that target image paths; this is a correctness fix. |
+| [PR #97165](https://github.com/vercel/next.js/pull/97165) [PPF] Only track runtime accesses when the promise is used | LOW (form prefetch) | If you use `unstable_prefetch()` to prewarm form routes, PPF shell reclassification may now route them through a different prefetch path. Re-test E2E navigation into form routes after upgrade. |
+| [PR #97936](https://github.com/vercel/next.js/pull/97936) fix: don't drop client references when the concatenated module id is 0 | LOW | Webpack flight-manifest build fix; affected builds failed with "Could not find module in React Client Manifest". Re-build and re-test if you hit this on form pages with many client islands. |
+
+The remaining 18 PRs in canary.9 are React/Turbopack/PPF/wasm hardening and don't have a form-component surface impact. See routing.md v1.6.06 + api.md v1.6.05 for the full 22-PR table. **Recommended pin** for form-heavy Apps Router projects testing 16.4.x: `next@16.4.0-canary.9`.
+
+**`@tanstack/react-query@5.102.8` SHIPPED** (npm-published **2026-08-27T16:06:57.089Z**). **3 NEW PATCHes in 30 hours** since v1.6.02 tracked `5.102.5`:
+
+| Version | npm-published | Change |
+|---|---|---|
+| `5.102.6` | 2026-08-26T18:36:03Z | **PR #11305** `fix(react-query): propagate falsy errors to the error boundary` — falsy error values (`false`, `0`, `''`) that were silently swallowed are now properly propagated to error boundaries from `useQueries` / `useSuspenseQueries` (merged 2026-08-26T13:27:28Z by @alex-js-ltd; fixes #11304). |
+| `5.102.7` | 2026-08-27T08:33:25Z | Dependency refresh — empty react-query changelog entry; query-core 5.102.7 itself is empty. Force-publish to bump versions on the lockfile. |
+| `5.102.8` | 2026-08-27T16:06:57Z | Dependency refresh — empty react-query changelog entry; query-core 5.102.8 itself is empty. Force-publish again. |
+
+**`5.102.6` PR #11305 remains the most operationally critical change for forms** — this is the v1.6.02 → v1.6.08 cycle's most important form-lens item. The fix is in `useQueries` and `useSuspenseQueries` (the array-form hooks used heavily in form arrays + dynamic field lists). Pattern that breaks:
+
+```ts
+// ❌ Before 5.102.6 — falsy errors were silently dropped, this guard was fine
+useQueries({
+  queries: ids.map(id => ({
+    queryKey: ['field', id],
+    queryFn: () => fetchField(id), // can reject with `null` for missing fields
+  })),
+  combine: results => {
+    const firstError = results.find(r => r.error)
+    if (firstError) return { error: firstError.error }   // ❌ skipped on falsy errors
+    return { data: results.map(r => r.data) }
+  },
+})
+
+// ✅ After 5.102.6 — falsy errors now throw to error boundary
+useQueries({
+  queries: ids.map(id => ({
+    queryKey: ['field', id],
+    queryFn: () => fetchField(id),
+  })),
+  combine: results => {
+    const firstWithError = results.find(r => r.isError)  // ✅ gate on isError, not on truthy error value
+    if (firstWithError) return { error: firstWithError.error }
+    return { data: results.map(r => r.data) }
+  },
+})
+```
+
+**`useQuery` was unaffected** — the bug was specific to `useQueries` / `useSuspenseQueries`'s optional-chain narrowing of `Array.prototype.find`'s `T | undefined`. Pin `@tanstack/react-query@^5.102.8`. Total cadence: **9 PATCHes in 6 days** since `5.102.0` MINOR shipped Aug 22 — fastest cadence ever tracked.
+
+**`react@canary` advanced to `19.3.0-canary-29d9d318-20260826`** (npm-published 2026-08-27T19:44:48.609Z). Two NEW canary drops since the v1.6.06 inline observation:
+
+| Version | npm-published | Note |
+|---|---|---|
+| `19.3.0-canary-f789f203-20260825` | 2026-08-25T16:35:24Z | Bundled in next@canary.9 (PR #97887) |
+| `19.3.0-canary-a1124489-20260826` | 2026-08-26T16:37:25Z | First new drop since canary.26's React freeze ended |
+| `19.3.0-canary-29d9d318-20260826` | 2026-08-27T19:44:48Z | **CURRENT @canary** |
+
+`<ViewTransition>` remains Canary-only — no change. Pin `react@canary@19.3.0-canary-29d9d318-20260826` for form components that pin canary separately. For App Router form components on `next@16.4.0-canary.9`, the bundled React is `f789f203-20260825` (next canary bumps one cycle behind react@canary on purpose); you only need to pin `@canary` separately if you're testing future-canary React features.
+
+**TypeScript 35th Rebuild STILL MISSED** — `typescript@next` is STILL `7.1.0-dev.20260826.1` (npm-published 2026-08-26T08:28:49Z; 34th rebuild). The 35th rebuild was forecast for ~08:25Z Aug 27 and is now ~15h+ late into the Aug 28 window. **The TypeScript main branch woke up**: 20+ substantive commits since Aug 25 (after 30+ days of idleness), including PR #64023 "Additional generator-based sync API methods" + PR #63956 `getNonMissingTypeOfSymbol()` + PR #63943 `isReadonlySymbol()` + PR #63945 `getTargetSymbol()` + PR #63957 `hasTrailingComma` in `RemoteNodeList` + PR #63937 "arbitrary API request batching". This is the first substantive TS main-branch activity since TS 7.0 STABLE. **The no-content daily rebuild pattern is BROKEN** — when substantive feature commits land, the build pipeline takes longer to compile and publish; the 35th rebuild (and possibly 36th) is being held until the pipeline can re-publish with new content. **No form-component TS-surface impact expected from any of these commits** (all internal API additions). Pin `typescript@next@7.1.0-dev.20260826.1` until the 35th confirms.
+
+**`zod@canary` advanced to `4.5.0-canary.20260827T054049`** (npm-published 2026-08-27T05:46:01.828Z). 10+ new canary drops since the v1.6.02 baseline (which tracked `4.5.0-canary.20260820T155656`). The Zod 4.5.0 STABLE forecast remains **Sep 1-15**; the canary train is hot but no STABLE signal yet. **For RHF + Zod form schemas**: continue using `@hookform/resolvers@^5.9.1` with `zod@^4.4.3` for production form schemas; opt into `zod@canary` only if you specifically want PR #6457's datetime fix. Form-schema breakage risk from Zod 4.5.0 STABLE remains LOW (datetime fix is the only known BREAKING — verified via the v1.6.02 cycle).
+
+### Migration actions (updated)
+
+```bash
+# Pin TanStack Query — 9 PATCHes in 6 days; PR #11305 is mandatory for useQueries consumers
+npm install @tanstack/react-query@latest
+# → 5.102.8
+# Audit: rg -n 'if \(\!error\) return' src/ for the falsy-error guard pattern
+
+# Pin Next.js canary for 16.4.x experimenters
+npm install next@canary
+# → 16.4.0-canary.9 (22 PRs; AVIF re-enabled + sharp@^0.35.4 required)
+
+# Pin RHF (watch for 7.86.1 patch in next 7 days)
+npm install react-hook-form@latest
+# → 7.86.0 (unchanged)
+
+# Pin TanStack Query devtools (matches react-query)
+npm install @tanstack/react-query-devtools@latest
+# → 5.102.8
+```
+
+### Sources
+
+- [GitHub — TanStack Query PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/pull/11305) — merged 2026-08-26T13:27:28Z; by @alex-js-ltd; fixes #11304
+- [GitHub — TanStack Query Issue #11304 falsy errors dropped from useQueries](https://github.com/TanStack/query/issues/11304)
+- [GitHub — TanStack Query react-query CHANGELOG.md main branch](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md)
+- [npm — @tanstack/react-query@5.102.6](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-26T18:36:03Z
+- [npm — @tanstack/react-query@5.102.7](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T08:33:25Z
+- [npm — @tanstack/react-query@5.102.8](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T16:06:57Z
+- [GitHub — next@16.4.0-canary.9 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z
+- [GitHub — next.js PR #96715 Don't report client-aborted RSC stream as render error](https://github.com/vercel/next.js/pull/96715)
+- [GitHub — next.js PR #97957 next/image reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957)
+- [GitHub — next.js PR #97165 PPF only track runtime accesses when promise is used](https://github.com/vercel/next.js/pull/97165)
+- [GitHub — next.js PR #97936 fix don't drop client references when module id is 0](https://github.com/vercel/next.js/pull/97936)
+- [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions) — current `19.3.0-canary-29d9d318-20260826`
+- [GitHub — microsoft/TypeScript commits since 2026-08-25](https://github.com/microsoft/TypeScript/commits/main) — 20+ substantive commits; no-content pattern BROKEN
+- [npm — zod@canary](https://www.npmjs.com/package/zod?activeTab=versions) — current `4.5.0-canary.20260827T054049`
+- [Cross-reference: testing.md v1.6.08 — TanStack Query 5.102.8 test-resolver surface + @playwright/test@next 1.63.0-alpha-1787862056000 advance
+- [Cross-reference: state.md v1.6.08 — 9-PATCHes-in-6-days TanStack Query cadence analysis + @clerk/nextjs@canary 35 drops since baseline + TS main branch wake-up

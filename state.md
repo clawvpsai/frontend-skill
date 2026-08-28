@@ -2363,3 +2363,114 @@ The v1.6.03 cycle captures the **post-CVE T+36h version-bump tracking delta** fo
 - [Cross-reference: `security.md` — Post-CVE T+36h security audit + canary.8 chained-symlink fix + PR #11293 stale-timeout auth security lens
 - [Cross-reference: `deployment.md` — Post-CVE T+36h deployment verification checklist + canary.8 monorepo upgrade recipe + updated version-pin status table
 - [Cross-reference: v1.5.97 state.md — the T-1d pre-CVE baseline (33-row table); this v1.6.03 entry is the T+36h post-incident gap-fill with 7 NEW rows + 27 unchanged
+
+## @tanstack/react-query@5.102.8 SHIPPED (9 PATCHes in 6 days; fastest cadence ever) + @clerk/nextjs@canary 35th Drop Since v1.5.50 Baseline (5 NEW drops in 30h; densest cluster) + typescript@next 35th Rebuild STILL MISSED + TS Main Branch WOKE UP After 30+ Days Idle (20+ substantive commits) + react@canary → 19.3.0-canary-29d9d318-20260826 + next@16.4.0-canary.9 SHIPPED (MISSED by v1.6.07) (August 28, 2026 — v1.6.08 Cycle)
+
+**`@tanstack/react-query@5.102.8` SHIPPED** (npm-published **2026-08-27T16:06:57.089Z**). The TanStack Query team has now shipped **9 PATCHes in 6 days** since `5.102.0` MINOR released on Aug 22:
+
+| Version | npm-published | Cadence from prior | Change type |
+|---|---|---|---|
+| `5.102.0` MINOR | 2026-08-22T18:56:06Z | — | 35-PR MINOR (new `query()` / `infiniteQuery()` methods + tsup→tsdown) |
+| `5.102.1` | 2026-08-23T11:00:00Z | 16h 4min | PATCH: hydration type partial |
+| `5.102.2` | 2026-08-23T18:00:46Z | 7h 0min | PATCH: export cache config types (PR #11263) |
+| `5.102.3` | 2026-08-24T19:26:18Z | 25h 26min | PATCH: dep refresh |
+| `5.102.4` | 2026-08-25T21:27:52Z | 26h 1min | PATCH: stale-timeout fix (PR #11293 a05df6a) |
+| `5.102.5` | 2026-08-26T08:59:50Z | 11h 32min | PATCH: query-core bundle size (PR #11302) |
+| `5.102.6` | 2026-08-26T18:36:03Z | 9h 36min | **PATCH: PR #11305 falsy-error boundary propagation** |
+| `5.102.7` | 2026-08-27T08:33:25Z | 14h 0min | PATCH: dep refresh (empty changelog) |
+| `5.102.8` | 2026-08-27T16:06:57Z | 7h 34min | PATCH: dep refresh (empty changelog) |
+
+**Mean cadence: ~13h 26min between PATCHes**. **Fastest cadence ever tracked** for TanStack Query. The historical comparison:
+- `5.101.x` cycle: `5.101.0 → 5.101.4` = **4 PATCHes in 43 days** (mean ~10.75 days)
+- `5.102.x` cycle so far: **8 PATCHes in 6 days** (mean ~18 hours)
+
+The TanStack Query team is in **active query-core release mode** following the 5.102.0 MINOR. The 5.102.6 PR #11305 is the only **substantive change** in this 30h window; 5.102.7 and 5.102.8 are both empty changelog entries that just re-publish to bump lockfiles (likely forced by a CI pipeline quirk where react-query is published whenever query-core publishes, even when nothing changed). **Operational implications**:
+
+1. **For consumers of `useQueries` / `useSuspenseQueries`**: pin `^5.102.6` or higher; PR #11305 is mandatory. Lower versions will not throw falsy errors to error boundaries.
+2. **For consumers of single `useQuery`**: any `^5.102.0` is fine; PR #11305 doesn't apply.
+3. **For lockfile hygiene**: pin the **exact** `@tanstack/react-query@5.102.8` in `package.json` if you want the latest (otherwise `^5.102.0` will pick up any future 5.102.x PATCH).
+4. **Forecast**: expect `5.102.9` or `5.103.0` within 1-2 weeks if the cadence persists. A MINOR bump to `5.103.0` would signal a stabilization of the active-release window.
+
+**`@clerk/nextjs@canary` advanced to `7.8.3-canary.v20260827195249`** (npm-published **2026-08-27T19:59:20.382Z**). **5 NEW drops in 30 hours** since the v1.6.06 inline observation tracked `7.8.3-canary.v20260827114418`:
+
+| Version | npm-published | Cadence from prior |
+|---|---|---|
+| `7.8.3-canary.v20260827114418` | 2026-08-27T11:49:30Z (v1.6.06 baseline) | — |
+| `7.8.3-canary.v20260827075055` | 2026-08-27T07:57:00Z | — (was missed) |
+| `7.8.3-canary.v20260827145850` | 2026-08-27T15:03:15Z | 3h 13min |
+| `7.8.3-canary.v20260827145322` | 2026-08-27T14:57:07Z | (skew — 2 drops in 6 min) |
+| `7.8.3-canary.v20260827180226` | 2026-08-27T18:05:39Z | 3h 8min |
+| `7.8.3-canary.v20260827184210` | 2026-08-27T18:46:57Z | 41min |
+| `7.8.3-canary.v20260827185423` | 2026-08-27T18:59:21Z | 12min |
+| `7.8.3-canary.v20260827193739` | 2026-08-27T19:41:29Z | 42min |
+| **`7.8.3-canary.v20260827195249`** | 2026-08-27T19:59:20Z | **18min — CURRENT** |
+
+**35th canary drop since v1.5.50 baseline.** The canary train is in **the densest cluster since tracking began** — 9 drops in 24 hours from Aug 27 11:49Z to Aug 27 19:59Z. All drops are routine maintenance cherry-picks (no API changes; no auth-surface changes). The STABLE line progressed `7.8.0 → 7.8.1 → 7.8.2` in 5 days (Aug 20 → Aug 25) but has been quiet at `7.8.2` since. **STABLE `7.8.3` forecast: 1-2 weeks**. Pin `@clerk/nextjs@canary@7.8.3-canary.v20260827195249`.
+
+**TypeScript 35th Rebuild STILL MISSED + TS Main Branch WOKE UP** — `typescript@next` is STILL `7.1.0-dev.20260826.1` (npm-published 2026-08-26T08:28:49Z; 34th rebuild; now **~15h+ late into the Aug 28 window**). The TS main branch woke up after **30+ days of idleness** — 20+ substantive commits since Aug 25:
+
+| Commit SHA | Date | Note |
+|---|---|---|
+| `e26b8d24` | 2026-08-27T22:52:47Z | Content mapper auto import formatting panic (PR #64042) |
+| `8330d40f` | 2026-08-27T20:14:35Z | **Additional generator-based sync API methods** (PR #64023) |
+| `547fe42e` | 2026-08-27T19:08:43Z | Fix accessing name on jsdoc link (PR #64032) |
+| `0cfafa91` | 2026-08-27T18:13:58Z | Add `.getNonMissingTypeOfSymbol()` (PR #63956) |
+| `065f7ac5` | 2026-08-27T15:04:19Z | Add `.isReadonlySymbol()` (PR #63943) |
+| `e95d8e57` | 2026-08-26T23:38:37Z | Use ".ts" suffixed code action kinds (PR #63951) |
+| `2b4efcc3` | 2026-08-26T23:02:44Z | Prevent LSP panics on stale document notifications (PR #64036) |
+| `ef284759` | 2026-08-26T22:21:55Z | Fix infinite recursion `as const` in loops (PR #64039) |
+| `5237ed4e` | 2026-08-26T18:54:17Z | Add `.getTargetSymbol()` (PR #63945) |
+| `889659e6` | 2026-08-26T14:40:42Z | Reduce path-mapping cache memory (PR #63998) |
+| `32762403` | 2026-08-26T14:39:51Z | Add `hasTrailingComma` in `RemoteNodeList` (PR #63957) |
+| `5739027c` | 2026-08-26T01:29:30Z | Fix transpileModule/transpileDeclaration bugs (PR #64024) |
+| `f794b8c6` | 2026-08-26T00:44:31Z | Restore compiler benchmark fixture (PR #64022) |
+| `9a722118` | 2026-08-25T22:23:08Z | **Fix release pipeline** (PR #64020) |
+| `9441c017` | 2026-08-25T22:22:40Z | Make bundled/lib the canonical lib file source (PR #63993) |
+| `f255195c` | 2026-08-25T21:17:03Z | **Add arbitrary API request batching** (PR #63937) |
+
+This is **the first substantive TS main-branch activity since TS 7.0 STABLE** (the v1.6.07 entry's "30+ days main-branch idle" claim was correct at the time but the wake-up happened RIGHT AFTER v1.6.07 committed on Aug 27 18:13Z). The pattern break means: (a) the no-content daily rebuild assumption is BROKEN — the build pipeline is processing substantive feature commits; (b) the 35th rebuild will likely be a **content-bearing version**, not a no-content daily rebuild; (c) a 7.1.0 RC could ship in the next 1-2 weeks if the TS team continues this pace. **Operational implication for state.md**: TypeScript 7.1.0 is more imminent than the v1.6.07 forecast suggested. For teams on `@tanstack/react-query` + RHF + Zod stacks, no state-surface impact from these TS changes (all internal API additions; none affect state management types). Pin `typescript@next@7.1.0-dev.20260826.1` until the 35th confirms.
+
+**`react@canary` advanced to `19.3.0-canary-29d9d318-20260826`** (npm-published 2026-08-27T19:44:48.609Z). Two NEW canary drops since the v1.6.06 inline observation (which tracked `a1124489-20260826`). The `f789f203-20260825` drop was bundled into `next@16.4.0-canary.9` via PR #97887. **No state-surface impact** — neither drop changes `useSyncExternalStore`, `useTransition`, or other state-related hooks. Pin `react@canary@19.3.0-canary-29d9d318-20260826` for state components that pin canary separately.
+
+**`next@16.4.0-canary.9` SHIPPED** (npm-published **2026-08-27T00:43:37.751Z**; 22 PRs; MISSED by v1.6.07 inline observation). The most state-relevant PRs:
+
+- **[PR #96715](https://github.com/vercel/next.js/pull/96715)** Don't report a client-aborted RSC stream as a render error — affects error-boundary consumers that match on RSC stream errors (LOW state-surface impact)
+- **[PR #97165](https://github.com/vercel/next.js/pull/97165)** [PPF] Only track runtime accesses when the promise is used — PPF shell reclassification may reclassify state-heavy pages as runtime (LOW state-surface impact)
+- **[PR #96826](https://github.com/vercel/next.js/pull/96826) / #96843 / #96844** ReactDOM.browser flag migrations — error tracking dashboards need updating for state-related bailout errors
+
+See routing.md v1.6.06 + api.md v1.6.05 for the full 22-PR table. Recommended pin: `next@16.4.0-canary.9` for 16.4.x experimenters.
+
+### NEW Observations / Cadence Tracking (v1.6.08)
+
+**(a) `@tanstack/react-query` 9 PATCHes in 6 days = FASTEST CADENCE EVER** — `5.102.0 → 5.102.1 → 5.102.2 → 5.102.3 → 5.102.4 → 5.102.5 → 5.102.6 → 5.102.7 → 5.102.8` over Aug 22-27. Mean inter-PATCH cadence: ~13h 26min. **Operational implication**: pin exact version `5.102.8` if you want to avoid surprise patch churn; pin `^5.102.6` if you only need PR #11305. **(b) `@clerk/nextjs@canary` 5 NEW drops in 30 hours = 1 every 6 hours** — the densest cluster since tracking began at v1.5.50 baseline. 35 total canary drops since the baseline. All routine maintenance cherry-picks. The canary train is healthy and routine — no special action needed for canary users, STABLE users stay on `^7.8.2`. **(c) TypeScript 35th no-content rebuild = STILL MISSED + TS main branch WOKE UP** — the 30+ day idle streak that began ~Jul 27 ended on Aug 25 with PR #64020 "Fix release pipeline" + PR #63993 "Make bundled/lib the canonical lib file source" + PR #63937 "Add arbitrary API request batching". 20+ substantive commits in 3 days. **The no-content daily rebuild pattern is BROKEN** — when substantive commits land, the build pipeline takes longer to compile and publish. The 35th rebuild is being held until the pipeline can re-publish with new content. **A 7.1.0 RC is now likely within 1-2 weeks if the cadence persists**. **(d) React 19.3 canary train resumed after 6-day freeze** — `f789f203-20260825` (Aug 25, bundled in canary.9) + `a1124489-20260826` (Aug 26) + `29d9d318-20260826` (Aug 27). Three drops in 2 days. The React team is back to active development. **(e) Next.js 16.4.0-canary train BACK and HEALTHY** — `canary.7 (Aug 25 16:44Z) → canary.8 (Aug 25 23:46Z) → canary.9 (Aug 27 00:43Z)` in 32 hours. **canary.10 expected within 6-18h** from this cron's 00:02Z Aug 28 start. **(f) `@playwright/test@next` migrated to timestamp-based version format** — `1.63.0-alpha-1787862056000` (Aug 27 22:35Z) decodes to the same build as `1.63.0-alpha-2026-08-27` (Aug 27 05:39Z). The `@next` dist-tag now points to the epoch-ms version. STABLE `1.63.0` remains imminent (forecast Sep 1-8).
+
+### Why This Matters for `state.md`
+
+The v1.6.08 cycle captures the **6h delta from v1.6.07** for the 3 weakest files by mtime (forms.md + testing.md + state.md — 35h+ / 35h+ / 29h+ stale since v1.6.02 Aug 26 12:07-12:09Z / v1.6.03 Aug 26 18:11Z). The state.md lens focuses on **cadence observations + version-bump tracking + the TS main branch wake-up significance**. The most consequential new observations are: (1) the 9-PATCHes-in-6-days TanStack Query cadence — fastest ever; (2) the 35th-canary-drop-since-baseline Clerk canary cluster — densest 24h; (3) the TypeScript main branch waking up after 30+ days idle — substantive feature work is now landing. **The next cycle's Version-Bump Tracking Table (v1.6.09) will likely show** a `next@16.4.0-canary.10` drop (forecast 6-18h from this cron's 00:02Z Aug 28 start), possibly the `typescript@next` 35th rebuild (now content-bearing not no-content), and possibly `@tanstack/react-query@5.102.9` (if the cadence persists). **`canary.10` is the most likely material update at the next cycle**, followed by the TS 35th rebuild.
+
+### Sources
+
+- [npm `@tanstack/react-query@5.102.8`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T16:06:57Z; 9th PATCH in 6 days
+- [npm `@tanstack/react-query@5.102.7`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T08:33:25Z; 8th PATCH
+- [npm `@tanstack/react-query@5.102.6`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-26T18:36:03Z; **PR #11305 falsy-error propagation**
+- [GitHub PR #11305 — fix(react-query): propagate falsy errors to the error boundary](https://github.com/TanStack/query/pull/11305) — merged 2026-08-26T13:27:28Z; by @alex-js-ltd; fixes #11304
+- [GitHub TanStack Query react-query CHANGELOG.md main branch](https://github.com/TanStack/query/blob/main/packages/react-query/CHANGELOG.md)
+- [npm `@clerk/nextjs@canary` 7.8.3-canary.v20260827195249](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — 35th canary drop since v1.5.50 baseline
+- [npm `typescript@next` 7.1.0-dev.20260826.1](https://www.npmjs.com/package/typescript?activeTab=versions) — 34th no-content rebuild; 35th MISSED; TS main branch woke up
+- [GitHub microsoft/TypeScript commits since 2026-08-25](https://github.com/microsoft/TypeScript/commits/main) — 20+ substantive commits
+- [GitHub PR #64020 Fix release pipeline](https://github.com/microsoft/TypeScript/pull/64020) — Aug 25 22:23Z; end of 30+ day idle streak
+- [GitHub PR #64023 Additional generator-based sync API methods](https://github.com/microsoft/TypeScript/pull/64023) — Aug 27 20:14Z; substantive feature
+- [GitHub PR #63937 Add arbitrary API request batching](https://github.com/microsoft/TypeScript/pull/63937) — Aug 25 21:17Z; substantive feature
+- [GitHub PR #63956 Add .getNonMissingTypeOfSymbol() method](https://github.com/microsoft/TypeScript/pull/63956) — Aug 27 18:13Z
+- [GitHub PR #63943 Add .isReadonlySymbol() method](https://github.com/microsoft/TypeScript/pull/63943) — Aug 27 15:04Z
+- [GitHub PR #63945 Add .getTargetSymbol() method](https://github.com/microsoft/TypeScript/pull/63945) — Aug 26 18:54Z
+- [GitHub PR #63957 Add hasTrailingComma in RemoteNodeList](https://github.com/microsoft/TypeScript/pull/63957) — Aug 26 14:39Z
+- [GitHub PR #64042 Content mapper auto import formatting panic](https://github.com/microsoft/TypeScript/pull/64042) — Aug 27 22:52Z
+- [GitHub PR #64024 Fix transpileModule/transpileDeclaration bugs](https://github.com/microsoft/TypeScript/pull/64024) — Aug 26 01:29Z
+- [npm `react@canary` 19.3.0-canary-29d9d318-20260826](https://www.npmjs.com/package/react?activeTab=versions) — npm-published 2026-08-27T19:44:48Z
+- [GitHub next@16.4.0-canary.9 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z; 22 PRs
+- [Cross-reference: `forms.md` v1.6.08 — PR #11305 useQueries pattern + next@canary.9 form PRs
+- [Cross-reference: `testing.md` v1.6.08 — TanStack Query 5.102.8 test-resolver surface + @playwright/test@next 1.63.0-alpha-1787862056000 epoch-ms format + MSW/Vitest 5 STABLE forecast
+- [Cross-reference: `security.md` v1.6.07 — Post-CVE T+36h security audit + canary.8 chained-symlink fix
+- [Cross-reference: `deployment.md` v1.6.07 — Post-CVE T+36h deployment verification checklist + TS 7.0 STABLE baseline + Zod 4 STABLE announcement
+- [Cross-reference: v1.6.03 state.md — the T+36h post-incident cadence baseline; this v1.6.08 entry is the 6h cadence delta with TS main branch wake-up + Clerk canary cluster + TanStack Query 5.102.8

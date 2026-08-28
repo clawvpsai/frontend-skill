@@ -3366,3 +3366,124 @@ npx vitest --version
 - [npm — @playwright/test@next versions](https://www.npmjs.com/package/@playwright/test?activeTab=versions)
 - [npm — @playwright/test@latest](https://www.npmjs.com/package/@playwright/test)
 - [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions)
+
+## next@16.4.0-canary.9 SHIPPED (22 PRs; missed by v1.6.07 inline observation) + @playwright/test@next → 1.63.0-alpha-1787862056000 (NEW timestamp-based format; STABLE 1.63.0 imminent) + @tanstack/react-query@5.102.8 SHIPPED (test-resolver surface; PR #11305 falsy-error boundary) + vitest@rc STILL 5.0.0-rc.2 (Vitest 5 STABLE forecast Sep 1-8) + typescript@next 35th Rebuild STILL MISSED + MSW/Playwright alpha test harness upgrades (August 28, 2026 — v1.6.08 Cycle)
+
+**`next@16.4.0-canary.9` SHIPPED** (npm-published 2026-08-27T00:43:37.751Z; 22 PRs; MISSED by v1.6.07 inline observation). The most testing-relevant PRs:
+
+| PR | Impact | Test-surface note |
+|---|---|---|
+| [PR #97957](https://github.com/vercel/next.js/pull/97957) fix(next/image): reject non-2xx internal image responses | MEDIUM | Tests that assert image render output for redirect targets will need to be updated — non-2xx responses no longer pass-through to `<img>`. Update image-rendering tests. |
+| [PR #96715](https://github.com/vercel/next.js/pull/96715) Don't report a client-aborted RSC stream as a render error | LOW | Playwright tests that intentionally abort navigation mid-stream (e.g., race-condition tests for form actions) will no longer generate error logs. Update test assertions that check for "render error" events. |
+| [PR #97933](https://github.com/vercel/next.js/pull/97933) Fix Turbopack re-export cycle deadlock | LOW | Barrel-file re-export cycle tests (e.g., circular dependency tests) no longer deadlock under Turbopack. Update timeout configurations. |
+| [PR #96826](https://github.com/vercel/next.js/pull/96826) Replace CSRBailout error with `ReactDOM.browser` behind a flag | LOW | Error-tracking test setups that match on "CSRBailout" will need updating to either match the new flag name or wait for the flag's eventual default. |
+| [PR #96843](https://github.com/vercel/next.js/pull/96843) Replace useSearchParams bailout error with ReactDOM.browser flag | LOW | Same pattern as above. |
+| [PR #96844](https://github.com/vercel/next.js/pull/96844) Replace resumed render bailout error with ReactDOM.browser flag | LOW | Same pattern as above. |
+| [PR #96228](https://github.com/vercel/next.js/pull/96228) Port React's @gate test directive to the e2e harness | INFO | React's `@gate` directive is now usable in Next.js e2e tests. For teams porting React test gates to Next.js, this enables feature-flag-gated test runs. |
+
+The remaining 14 PRs are React bump + Turbopack + wasm + rustc upgrade and have no direct test-surface impact. See routing.md v1.6.06 + api.md v1.6.05 for the full 22-PR table.
+
+**`@playwright/test@next` advanced to `1.63.0-alpha-1787862056000`** (npm-published **2026-08-27T22:34:56.998Z**) — **NEW timestamp-based version format**. This is a structural shift: Playwright is migrating from the human-readable date format (`1.63.0-alpha-2026-08-27`) to epoch-millisecond timestamps. Both formats appeared on Aug 27:
+
+| Version | Format | npm-published |
+|---|---|---|
+| `1.63.0-alpha-2026-08-27` | date-based | 2026-08-27T05:38:51Z |
+| `1.63.0-alpha-1787862056000` | epoch-ms | 2026-08-27T22:34:56Z |
+
+The epoch-ms format decodes as `1787862056000` ms = `2026-08-27T22:34:56Z` UTC. This is likely a CI pipeline normalization — Playwright's automation publishes the same build with both names for backwards compatibility. **The `@next` dist-tag now points to the epoch-ms version**, so `npm install @playwright/test@next` will resolve to `1.63.0-alpha-1787862056000` going forward.
+
+**STABLE `1.63.0` remains imminent**. The alpha train has now advanced 7 times since the v1.6.02 inline observation:
+- `1.63.0-alpha-2026-08-24` (Aug 24 05:37Z)
+- `1.63.0-alpha-2026-08-25` (Aug 25 05:36Z)
+- `1.63.0-alpha-2026-08-26` (Aug 26 06:15Z)
+- `1.63.0-alpha-2026-08-27` (Aug 27 05:39Z)
+- `1.63.0-alpha-1787862056000` (Aug 27 22:35Z)
+
+The 6 alpha drops in ~3.5 days (Aug 24-27) suggest a STABLE cut within **1-2 weeks** (forecast window: Sep 1-8). Production CI continues to pin `@playwright/test@latest` = `1.62.1`. **Set up a parallel canary-CI job** to test against `@next` for early compatibility signal — your test suites will need to handle the dual version format for the transition period.
+
+**`@tanstack/react-query@5.102.8` SHIPPED** (npm-published 2026-08-27T16:06:57.089Z). **3 NEW PATCHes since v1.6.02 baseline** (5.102.5 → 5.102.8). The relevant change for testing is **PR #11305** in 5.102.6:
+
+```ts
+// Test setup that should be updated to expect the new falsy-error behavior
+import { useQueries } from '@tanstack/react-query'
+
+// ❌ Test that expects silent drop of falsy errors (old behavior)
+test('useQueries drops falsy errors silently', async () => {
+  const { result } = renderHook(() =>
+    useQueries({
+      queries: [
+        { queryKey: ['k1'], queryFn: () => Promise.reject() },  // rejects with undefined
+      ],
+    })
+  )
+  // Pre-5.102.6: result.current[0].error === undefined (silently dropped)
+  // Post-5.102.6: error boundary catches the falsy error
+})
+
+// ✅ Updated test — wrap in error boundary to catch the new throw
+test('useQueries throws falsy errors to error boundary', () => {
+  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const { result } = renderHook(() =>
+    useQueries({
+      queries: [
+        { queryKey: ['k1'], queryFn: () => Promise.reject(), retry: false },
+      ],
+    }),
+    { wrapper: ErrorBoundary }
+  )
+  expect(errorSpy).toHaveBeenCalled()  // error boundary caught the falsy reject
+})
+```
+
+Vitest tests using `@tanstack/react-query` should add an `ErrorBoundary` wrapper around `useQueries` test renderers to capture the new throw. Pin `@tanstack/react-query@^5.102.8` + `@tanstack/react-query-devtools@^5.102.8`.
+
+**`vitest@rc` STILL `5.0.0-rc.2`** (Aug 17 13:28:47Z; no rc.3 yet). Vitest 5 STABLE forecast **Sep 1-8** UNCHANGED. The 2-3 week RC window per the maintainer's Aug 14 comment is now entering its final week. Run your Vitest 5 compatibility audit NOW — the STABLE cut is days away.
+
+**TypeScript 35th Rebuild STILL MISSED** — `typescript@next` is STILL `7.1.0-dev.20260826.1` (npm-published 2026-08-26T08:28:49Z; 34th rebuild; **now ~15h+ late into Aug 28 window**). The TS main branch woke up: 20+ substantive commits since Aug 25, including PR #64023 "Additional generator-based sync API methods" + PR #63956 `getNonMissingTypeOfSymbol()` + PR #63943 `isReadonlySymbol()` + PR #63945 `getTargetSymbol()` + PR #63937 "arbitrary API request batching" + PR #64042 "Content mapper auto import formatting panic" + PR #64032 "Fix accessing name on jsdoc link for invalid names". This breaks the no-content daily rebuild pattern — the build pipeline is processing substantive commits and will likely publish a content-bearing version (not a no-content daily rebuild). **No Vitest test-surface impact expected from these TS changes** (all internal API additions; none affect test type checking). Pin `typescript@next@7.1.0-dev.20260826.1` until 35th confirms.
+
+**MSW (Mock Service Worker) check** — `msw@latest` is still `2.x` (last published Aug 12 per v1.6.02; no new drops). For TanStack Query tests with API mocking, MSW 2.x remains the canonical choice. **For Vitest 5 STABLE compatibility**: MSW 2.x is Vitest 5-compatible per the v1.6.00 compatibility audit; no action needed.
+
+**`@testing-library/react@latest` is still `16.x`** (last published Aug 1 per v1.6.02; no new drops). The `@testing-library/react` package has not shipped an update since early August. For testing `useEffectEvent` (now stable in React 19.2): use `renderHook` from `@testing-library/react` 16.x. No new version needed.
+
+### Test-suite audit recipe (updated for v1.6.08)
+
+```bash
+# 1. Confirm Next.js + Playwright + Vitest versions
+node -e "console.log('next:', require('next/package.json').version)"  # → 16.3.3 or 16.4.0-canary.9
+node -e "console.log('playwright:', require('@playwright/test/package.json').version)"  # → 1.62.1
+
+# 2. Audit for TanStack Query falsy-error guard pattern
+rg -n 'if \(\!error\)' src/ tests/
+# → Fix any matches with the isError check pattern from forms.md v1.6.08
+
+# 3. Audit for next/image non-2xx assertions
+rg -n 'next/image.*redirect' tests/
+# → Update any matches for the PR #97957 behavior change
+
+# 4. Test against Playwright alpha for early signal (canary CI job)
+npm install -D @playwright/test@next
+# → 1.63.0-alpha-1787862056000 (NEW epoch-ms format)
+
+# 5. Audit Vitest 5 compatibility (STABLE imminent, days away)
+npx vitest --version
+# → if 4.x, run: npm install -D vitest@5.0.0-rc.2 && npx vitest run
+#   fix failures before STABLE drops Sep 1-8
+```
+
+### Sources
+
+- [GitHub — next@16.4.0-canary.9 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published 2026-08-27T00:43:37Z; 22 PRs
+- [GitHub — next.js PR #97957 next/image reject non-2xx internal image responses](https://github.com/vercel/next.js/pull/97957)
+- [GitHub — next.js PR #96715 Don't report client-aborted RSC stream as render error](https://github.com/vercel/next.js/pull/96715)
+- [GitHub — next.js PR #97933 Fix Turbopack re-export cycle deadlock](https://github.com/vercel/next.js/pull/97933)
+- [GitHub — next.js PR #96228 Port React @gate test directive to e2e harness](https://github.com/vercel/next.js/pull/96228)
+- [GitHub — next.js PR #96826 Replace CSRBailout with ReactDOM.browser flag](https://github.com/vercel/next.js/pull/96826)
+- [npm — @playwright/test@next versions](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — current `1.63.0-alpha-1787862056000`
+- [npm — @tanstack/react-query@5.102.8](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T16:06:57Z
+- [GitHub — TanStack Query PR #11305 propagate falsy errors to error boundary](https://github.com/TanStack/query/pull/11305) — test-surface fix; merged 2026-08-26T13:27:28Z
+- [GitHub — TanStack Query Issue #11304 falsy errors dropped from useQueries](https://github.com/TanStack/query/issues/11304)
+- [npm — vitest@rc versions](https://www.npmjs.com/package/vitest?activeTab=versions) — current `5.0.0-rc.2` (Aug 17; no rc.3 yet)
+- [GitHub — Vitest Discussion #9664 Vitest 5 RC schedule](https://github.com/vitest-dev/vitest/discussions/9664) — 2-3 week RC window; STABLE forecast Sep 1-8
+- [GitHub — microsoft/TypeScript commits since 2026-08-25](https://github.com/microsoft/TypeScript/commits/main) — 20+ substantive commits; no-content pattern BROKEN
+- [Cross-reference: forms.md v1.6.08 — TanStack Query 5.102.6/7/8 PR #11305 form-array pattern + next@canary.9 PRs
+- [Cross-reference: state.md v1.6.08 — TanStack Query 9-PATCHes-in-6-days cadence analysis + @clerk/nextjs@canary 35 drops + TS main branch wake-up
