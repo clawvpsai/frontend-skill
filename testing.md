@@ -3487,3 +3487,110 @@ npx vitest --version
 - [GitHub — microsoft/TypeScript commits since 2026-08-25](https://github.com/microsoft/TypeScript/commits/main) — 20+ substantive commits; no-content pattern BROKEN
 - [Cross-reference: forms.md v1.6.08 — TanStack Query 5.102.6/7/8 PR #11305 form-array pattern + next@canary.9 PRs
 - [Cross-reference: state.md v1.6.08 — TanStack Query 9-PATCHes-in-6-days cadence analysis + @clerk/nextjs@canary 35 drops + TS main branch wake-up
+
+---
+
+## next@16.4.0-canary.10/.11 SHIPPED (49 PRs) + Vitest 5.0.0-rc.3 SHIPPED (STABLE IMMINENT) + @playwright/test@next → 1.63.0-alpha-2026-08-29 + TypeScript 38th Rebuild Confirmed (August 29, 2026 — v1.6.13 Cycle)
+
+### Vitest 5.0.0-rc.3 SHIPPED — STABLE IMMINENT
+
+`vitest@5.0.0-rc.3` SHIPPED (npm-published **2026-08-28** — **NEW since v1.6.08's "no rc.3 yet"**). This is the **3rd RC** — the standard signal that STABLE is 1-2 weeks away. The forecast of **Sep 1-8** from the Aug 14 maintainer comment is **on track**. The RC-3 changelog highlights:
+
+| Change | Type | Impact |
+|---|---|---|
+| `parseSpecifications` promoted out of experimental | **Feature** | Test config `parseSpecifications` is now stable API |
+| Coverage switched to `@vitarea/istanbuljs` packages | **Breaking** | Istanbul coverage reporters in `vitest.config.ts` need updating |
+| UI: highlight editor source locations | **DX** | Clickable stack traces in browser UI |
+| UI: keyboard navigation in trace steps | **DX** | `↑↓` arrows navigate trace steps |
+| UI: persist trace view selection in URL | **DX** | Trace state survives page reload |
+| `recordArtifact` location fix with `vi.defineHelper` | Bug Fix | CI artifact collection works correctly with custom helpers |
+| Multiple `--project` filters combined correctly | Bug Fix | Running `vitest --project A --project B` now correctly unions projects |
+
+**Action: Run your Vitest 5 compatibility audit NOW.** With rc.3 shipping, STABLE is days away. If you're on Vitest 4.x, the migration guide at https://vitest.dev/guide/migration.html has the full list of breaking changes. Test locally with `npm install -D vitest@5.0.0-rc.3` before STABLE drops.
+
+### @playwright/test@next — 1.63.0-alpha-2026-08-29
+
+`@playwright/test@next` advanced to **`1.63.0-alpha-2026-08-29`** (npm-published 2026-08-29T05:34:03Z = **T-28min before this cron** — confirmed fresh at this cycle). The **epoch-ms format** variant `1.63.0-alpha-1787862056000` (from v1.6.08) and the **date-stamped format** `1.63.0-alpha-2026-08-29` now coexist in the `@next` track. STABLE `1.63.0` is **imminent** (forecast Sep 1-8 from the alpha velocity pattern).
+
+**CI scripts that grep the Playwright version MUST be updated:**
+
+```bash
+# ❌ Old regex — misses epoch-ms variants
+grep "1.63.0-alpha-2026"
+
+# ✅ New regex — matches both formats
+grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"
+
+# Or pin exact version in CI:
+npm install -D @playwright/test@next@1.63.0-alpha-2026-08-29
+```
+
+### next@16.4.0-canary.10/.11 — Test-Relevant PRs (49 PRs Since canary.9)
+
+| PR | Title | Test Impact |
+|---|---|---|
+| [PR #97947](https://github.com/vercel/next.js/pull/97947) | [test] Drain build output before start | Test infrastructure — build output drain timing fix |
+| [PR #97986](https://github.com/vercel/next.js/pull/97986) | [test] Disable flaky sync-io-blocks-root.test.ts | **Test fix** — flaky test disabled; if you backported this fix, re-enable after upgrade |
+| [PR #98050](https://github.com/vercel/next.js/pull/98050) | Revert "test: re-enable sync IO root coverage" | **Test fix** — sync IO root coverage re-enabled then immediately reverted; the revert means the test is still disabled in canary.11 |
+| [PR #97921](https://github.com/vercel/next.js/pull/97921) | Turbopack: call loadActionManifest for app-route | App Router action manifest loading fix — test `action()` calls in Turbopack dev |
+| [PR #97689](https://github.com/vercel/next.js/pull/97689) | Pages Router: Deprecate React 18 support | Pages Router E2E tests need React 19; update `react` + `react-dom` in test `package.json` |
+
+### TypeScript 35th/36th/37th/38th Rebuilds — ALL CONFIRMED
+
+`typescript@next` is now **`7.1.0-dev.20260829.1`** — the **38th rebuild**. The 35th, 36th, 37th, and 38th all shipped since v1.6.08 (which tracked the 34th). The TS main branch is **fully active** with substantive feature commits. The no-content daily rebuild pattern is **permanently broken** — every rebuild since Aug 25 carries content. **No test-surface TypeScript impact** (all changes are internal API additions). Pin `typescript@next@7.1.0-dev.20260829.1` until a 7.1.0 RC confirms.
+
+### Version-Bump Tracking (v1.6.13 — August 29, 2026 12:02 UTC)
+
+| Package | Previous (v1.6.08) | Current | Status |
+|---|---|---|---|
+| `@playwright/test@next` | `1.63.0-alpha-1787862056000` | `1.63.0-alpha-2026-08-29` | **Both epoch-ms + date-stamped coexist** |
+| `@playwright/test@latest` | `1.62.1` | `1.62.1` | Unchanged; STABLE 1.63.0 imminent |
+| `vitest@rc` | `5.0.0-rc.2` | `5.0.0-rc.3` | **SHIPPED Aug 28; STABLE imminent (Sep 1-8)** |
+| `vitest@latest` | `4.1.11` | `4.1.11` | Unchanged |
+| `next@canary` | `16.4.0-canary.9` | `16.4.0-canary.11` | **2 new drops; 49 PRs** |
+| `typescript@next` | `7.1.0-dev.20260826.1` (34th) | `7.1.0-dev.20260829.1` (38th) | **35th-38th all confirmed; no-content pattern BROKEN** |
+| `react@canary` | `19.3.0-canary-29d9d318-20260826` | `19.3.0-canary-2dc7da79-20260828` | **NEW** |
+| `msw@latest` | `2.x` | `2.x` | Unchanged (Aug 12; no new drops) |
+| `@testing-library/react@latest` | `16.x` | `16.x` | Unchanged (Aug 1; no new drops) |
+
+### Test-suite audit recipe (updated for v1.6.13)
+
+```bash
+# 1. Confirm Next.js + Playwright + Vitest versions
+node -e "console.log('next:', require('next/package.json').version)"  # → 16.3.3 or 16.4.0-canary.11
+node -e "console.log('playwright:', require('@playwright/test/package.json').version)"  # → 1.62.1 or 1.63.0-alpha-2026-08-29
+
+# 2. Audit for TanStack Query falsy-error guard pattern (still relevant post-5.102.8)
+rg -n 'if \(\!error\)' src/ tests/
+# → Fix any matches with the isError check pattern from forms.md v1.6.08
+
+# 3. Test against Playwright alpha — pin exact version to avoid epoch-ms mismatch
+npm install -D @playwright/test@next@1.63.0-alpha-2026-08-29
+# → Verify CI regex updated for epoch-ms format: grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"
+
+# 4. Audit Vitest 5 RC-3 compatibility (STABLE drops Sep 1-8 — run NOW)
+npx vitest --version
+# → if 4.x: npm install -D vitest@5.0.0-rc.3 && npx vitest run
+#   Fix coverage reporter config (Istanbul → @vitest/istanbuljs)
+#   Verify parseSpecifications usage (now stable, remove experimental: flag)
+#   Check vi.defineHelper artifact recording
+
+# 5. Audit Pages Router form tests for React 18 deprecation (PR #97689)
+rg -n 'react.*18' package.json
+# → If found: upgrade react + react-dom to ^19.2.0 for Pages Router test environments
+```
+
+### Sources
+
+- [GitHub — Vitest v5.0.0-rc.3 release](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.3) — npm-published 2026-08-28; 3rd RC; STABLE imminent
+- [GitHub — Vitest Discussion #9664 Vitest 5 RC schedule](https://github.com/vitest-dev/vitest/discussions/9664) — STABLE forecast Sep 1-8
+- [Vitest Migration Guide](https://vitest.dev/guide/migration.html) — full 4.x → 5.x breaking changes
+- [npm — @playwright/test@next](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — current `1.63.0-alpha-2026-08-29`
+- [GitHub — next@16.4.0-canary.10 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published 2026-08-28T02:48:27Z
+- [GitHub — next@16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11) — npm-published 2026-08-28T23:48:47Z
+- [GitHub — next.js PR #97986 Disable flaky sync-io-blocks-root.test.ts](https://github.com/vercel/next.js/pull/97986) — flaky test disabled
+- [GitHub — next.js PR #98050 Revert "test: re-enable sync IO root coverage"](https://github.com/vercel/next.js/pull/98050) — test remains disabled
+- [GitHub — next.js PR #97689 Pages Router Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — HIGH for Pages Router test envs
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260829.1` (38th rebuild)
+- [Cross-reference: forms.md v1.6.13 — RHF 7.86.0 getErrors() + canary.10/.11 forms-relevant PRs + zod@4.5.2
+- [Cross-reference: state.md v1.6.13 — jotai@3.0.0-alpha.1 + @clerk/nextjs@7.8.4-canary line advance + canary.10/.11 state-relevant PRs

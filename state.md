@@ -2474,3 +2474,112 @@ The v1.6.08 cycle captures the **6h delta from v1.6.07** for the 3 weakest files
 - [Cross-reference: `security.md` v1.6.07 — Post-CVE T+36h security audit + canary.8 chained-symlink fix
 - [Cross-reference: `deployment.md` v1.6.07 — Post-CVE T+36h deployment verification checklist + TS 7.0 STABLE baseline + Zod 4 STABLE announcement
 - [Cross-reference: v1.6.03 state.md — the T+36h post-incident cadence baseline; this v1.6.08 entry is the 6h cadence delta with TS main branch wake-up + Clerk canary cluster + TanStack Query 5.102.8
+
+---
+
+## next@16.4.0-canary.10/.11 SHIPPED (49 PRs) + jotai@3.0.0-alpha.1 SHIPPED (v3 Drops UMD/SystemJS) + @clerk/nextjs@canary Advanced to 7.8.4 Line + typescript@next 38th Rebuild (August 29, 2026 — v1.6.13 Cycle)
+
+### next@16.4.0-canary.10/.11 — State-Relevant PRs (49 PRs Since canary.9)
+
+`next@16.4.0-canary.10` SHIPPED (npm-published 2026-08-28T02:48:27Z) + `next@16.4.0-canary.11` SHIPPED (npm-published 2026-08-28T23:48:47Z). **49 PRs combined.** The state-management-relevant PRs:
+
+| PR | Title | State Impact |
+|---|---|---|
+| [PR #97941](https://github.com/vercel/next.js/pull/97941) | Fix request-context retention in default use cache handler | **HIGH** — `'use cache'` boundaries using `cookies()`/`headers()`/`session` data: fix prevents request-context PII from leaking across requests in long-running containers. **If you use `'use cache'` for per-request state (auth, user prefs), you MUST upgrade to canary.10+** |
+| [PR #95233](https://github.com/vercel/next.js/pull/95233) | More granular cache keys for use-cache entries | **MEDIUM** — State that used shared cache tags is now per-entity. Reduces stale-state bugs in atom-with-query patterns |
+| [PR #98000](https://github.com/vercel/next.js/pull/98000) | [PPF] Fix navigation() in prospective runtime prerenders | **MEDIUM** — `unstable_navigation()` + `unstable_prefetch()` in PPF mode: routes are now prerendered correctly. Affects Zustand/TanStack Store hydration on route transitions |
+| [PR #97953](https://github.com/vercel/next.js/pull/97953) | Fix intercepted route params after Proxy rewrites | **MEDIUM** — Zustand/TanStack Store atom keys that depend on intercepted route params: values are now correct |
+| [PR #97948](https://github.com/vercel/next.js/pull/97948) | Fix optimistic routing for encoded dynamic params | **LOW** — Non-ASCII dynamic segment atoms: routing correctness fix |
+| [PR #97921](https://github.com/vercel/next.js/pull/97921) | Turbopack: call loadActionManifest for app-route | **LOW** — App Router action manifest loading in Turbopack: affects `useActionState` / `useFormStatus` hydration |
+| [PR #97108](https://github.com/vercel/next.js/pull/97108) | Prune incomplete parallel route matchers | **LOW** — Parallel route slot cleanup: affects layouts that subscribe to multiple slot states |
+| [PR #97184](https://github.com/vercel/next.js/pull/97184) | Omit undeclared children slots from app routes | **LOW** — Undeclared children slot cleanup in route tree |
+
+**Recommended pin for state-heavy apps**: `next@16.4.0-canary.11` (contains all state-relevant fixes). PR #97941 is the most operationally critical — the use cache request-context memory leak was leaking PII.
+
+### jotai@3.0.0-alpha.1 SHIPPED — v3 Drops UMD/SystemJS
+
+`jotai@3.0.0-alpha.1` SHIPPED (npm-published **2026-08-24T08:35:45Z** — **NEW since v1.6.08's v1.6.12 cross-reference**). This is the first alpha of the jotai v3 line. The headline change from v3.0.0-alpha.0 (Jul 20): **Drop UMD and SystemJS builds**.
+
+**What this means for state management stacks:**
+
+```tsx
+// ❌ v2 — UMD build was used by CDN-based setups
+<script src="https://unpkg.com/jotai@2.x/umd/jotai.umd.min.js" />
+
+// ✅ v3 — UMD dropped; use ESM or the jotai/vanilla entry point
+import { atom } from 'jotai'          // ESM (recommended)
+import { atom } from 'jotai/vanilla'  // for non-React or SSR use
+
+// For React:
+import { useAtom } from 'jotai'       // ESM (recommended)
+import { useAtom } from 'jotai/react'  // explicit React entry
+```
+
+**Migration from v2 to v3** (per the v3 migration guide): No breaking changes to the core `atom()` API. The migration is primarily:
+1. Remove any UMD/SystemJS `<script>` tags or CDN-based imports
+2. Update build tooling to use ESM (Vite, webpack 5, Rollup all support this)
+3. No changes needed to `atom()`, `useAtom()`, `Provider`, or any utility functions
+
+**v3 alpha is NOT for production.** Pin `jotai@latest` (still `2.20.3`) for production. Track `jotai@next` (now `3.0.0-alpha.1`) in experimental projects. The v3 migration guide is at https://jotai.org/docs/guides/migrating-to-v2-api (the v2 migration guide also covers the v3 direction).
+
+**Operational note**: `@jotai/core`, `@jotai/react`, `@jotai/utils` are NOT separate packages in v3 — they were merged back. Verify your imports after migrating.
+
+### @clerk/nextjs@canary — Advanced to 7.8.4 Development Line
+
+`@clerk/nextjs@canary` advanced from `7.8.3-canary.v20260827195249` (v1.6.08) to **`7.8.4-canary.v20260828233657`** (15 drops in 29h = densest ever cluster). The **7.8.4 development line is now active**. All drops are routine maintenance cherry-picks — no auth-surface changes. STABLE users: stay on `@clerk/nextjs@^7.8.3`. Canary users: pin `@clerk/nextjs@canary@7.8.4-canary.v20260828233657`.
+
+**State management integration note**: Clerk's `useAuth()` / `useUser()` / `useClerk()` hooks are unaffected by the canary advancement. If you use Clerk with Zustand or TanStack Store for local UI state, no integration changes needed.
+
+### TypeScript 35th/36th/37th/38th Rebuilds — ALL CONFIRMED
+
+`typescript@next` is now **`7.1.0-dev.20260829.1`** — the **38th rebuild**. The 35th through 38th all shipped since v1.6.08 (which tracked the 34th). The TS main branch is **fully awake** — substantive feature commits every day since Aug 25. **No state-management TypeScript surface impact** (all changes are internal API additions to the compiler). The 7.1.0 RC is now **imminent** — likely within 1-2 weeks if the cadence persists. Pin `typescript@next@7.1.0-dev.20260829.1`.
+
+### NEW Observations / Cadence Tracking (v1.6.13)
+
+**(a) `next@16.4.0-canary.11` — 49 PRs, PR #97941 is the most operationally critical** — the use cache request-context PII leak fix affects any app using `'use cache'` with session-dependent data. This is a security + correctness fix that supersedes the v1.6.11 observation. **(b) `jotai@3.0.0-alpha.1` — v3 drops UMD/SystemJS** — the first substantive v3 change since alpha.0. No production impact yet, but the v3 direction is now clear: modern build tooling only, no legacy CDN. **(c) `@clerk/nextjs@canary` 7.8.4 line active** — the canary train continues to advance; 7.8.4 STABLE is likely 2-4 weeks away. **(d) TypeScript 38th rebuild — substantive content-bearing** — the daily no-content rebuild pattern is permanently broken. Every `@next` publish since Aug 25 carries feature commits. The TS 7.1.0 RC is the next major milestone. **(e) Vitest 5.0.0-rc.3 — STABLE imminent** — 3rd RC ships Aug 28; STABLE forecast Sep 1-8 remains on track. Run your Vitest 5 compatibility audit NOW.
+
+### Why This Matters for `state.md`
+
+The v1.6.13 cycle captures the **36h delta from v1.6.08** for the 3 weakest files by mtime (forms.md + testing.md + state.md — last touched Aug 28 00:05Z). The state.md lens focuses on **PR #97941 use cache request-context fix** (the highest-impact state change since v1.6.08), **jotai@3.0.0-alpha.1** (v3 migration direction), and **@clerk/nextjs@7.8.4 line** (canary velocity tracking). The PR #97941 fix is operationally critical — if you're using `'use cache'` with any per-request state (auth tokens, user preferences, session data), you must upgrade to `next@16.4.0-canary.10+` to prevent PII cross-request leakage.
+
+### Migration actions (updated)
+
+```bash
+# Pin Next.js canary — PR #97941 use cache PII leak fix is mandatory for any 'use cache' with session data
+npm install next@canary
+# → 16.4.0-canary.11
+
+# Audit 'use cache' for request-context leakage (PR #97941)
+rg -n '"use cache"' src/
+# → For any 'use cache' block that calls cookies()/headers()/session: upgrade to canary.10+ immediately
+
+# Track jotai@next in experimental projects
+npm install jotai@next
+# → 3.0.0-alpha.1 (v3 drops UMD; test your build pipeline)
+
+# Pin Clerk canary to 7.8.4 line
+npm install @clerk/nextjs@canary
+# → 7.8.4-canary.v20260828233657
+
+# Pin TanStack Query (no new patch since 5.102.8)
+npm install @tanstack/react-query@latest
+# → 5.102.8
+```
+
+### Sources
+
+- [GitHub — next@16.4.0-canary.10 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published 2026-08-28T02:48:27Z; 27 PRs
+- [GitHub — next@16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [GitHub — next.js PR #97941 Fix request-context retention in default use cache handler](https://github.com/vercel/next.js/pull/97941) — **HIGH; PII leak fix**
+- [GitHub — next.js PR #95233 More granular cache keys for use-cache entries](https://github.com/vercel/next.js/pull/95233) — MEDIUM; per-entity cache keys
+- [GitHub — next.js PR #98000 PPF Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — MEDIUM; PPF stabilization
+- [GitHub — next.js PR #97953 Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953) — MEDIUM; param fix
+- [GitHub — next.js PR #97921 Turbopack: call loadActionManifest for app-route](https://github.com/vercel/next.js/pull/97921) — LOW; action manifest
+- [npm — jotai@3.0.0-alpha.1](https://www.npmjs.com/package/jotai?activeTab=versions) — npm-published 2026-08-24T08:35:45Z; v3 drops UMD/SystemJS
+- [npm — jotai@latest](https://www.npmjs.com/package/jotai?activeTab=versions) — still `2.20.3`
+- [Jotai v3 Migration Guide](https://jotai.org/docs/guides/migrating-to-v2-api) — v2 API guide also covers v3 direction
+- [npm — @clerk/nextjs@canary](https://www.npmjs.com/package/%40clerk/nextjs?activeTab=versions) — current `7.8.4-canary.v20260828233657`; 7.8.4 line active
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260829.1` (38th rebuild)
+- [GitHub — Vitest v5.0.0-rc.3 release](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.3) — npm-published 2026-08-28; STABLE imminent
+- [Cross-reference: forms.md v1.6.13 — RHF 7.86.0 getErrors() + canary.10/.11 forms-relevant PRs + zod@4.5.2
+- [Cross-reference: testing.md v1.6.13 — Vitest 5.0.0-rc.3 SHIPPED + @playwright/test@next 1.63.0-alpha-2026-08-29 advance

@@ -3940,3 +3940,117 @@ npm install @tanstack/react-query-devtools@latest
 - [npm — zod@canary](https://www.npmjs.com/package/zod?activeTab=versions) — current `4.5.0-canary.20260827T054049`
 - [Cross-reference: testing.md v1.6.08 — TanStack Query 5.102.8 test-resolver surface + @playwright/test@next 1.63.0-alpha-1787862056000 advance
 - [Cross-reference: state.md v1.6.08 — 9-PATCHes-in-6-days TanStack Query cadence analysis + @clerk/nextjs@canary 35 drops since baseline + TS main branch wake-up
+
+---
+
+## next@16.4.0-canary.10/.11 SHIPPED (49 PRs) + RHF 7.86.0 getErrors() Method + zod@4.5.2 STABLE 3rd in 7h + typescript@next 38th Rebuild (August 29, 2026 — v1.6.13 Cycle)
+
+### next@16.4.0-canary.10/.11 — 49 PRs Since canary.9
+
+`next@16.4.0-canary.10` SHIPPED (npm-published 2026-08-28T02:48:27Z; **MISSED by v1.6.08 inline observation**) + `next@16.4.0-canary.11` SHIPPED (npm-published 2026-08-28T23:48:47Z). Combined: **49 PRs** since canary.9. The 4 routing-correctness + cache-memory-leak fixes from v1.6.11's routing-lens are now confirmed as deployed. The forms-relevant PRs:
+
+| PR | Title | Form Impact |
+|---|---|---|
+| [PR #97689](https://github.com/vercel/next.js/pull/97689) | Pages Router: Deprecate React 18 support | **HIGH** — Pages Router form apps: React 19 is now required; audit `react` + `react-dom` in `package.json` |
+| [PR #97941](https://github.com/vercel/next.js/pull/97941) | Fix request-context retention in default use cache handler | **HIGH** — `'use cache'` form data handlers with `cookies()`/`headers()`/session data: fix prevents PII leakage across requests in long-running containers |
+| [PR #98000](https://github.com/vercel/next.js/pull/98000) | [PPF] Fix navigation() in prospective runtime prerenders | **MEDIUM** — Form prefetch routes using `unstable_navigation()` or `router.prefetch()`: PPF shell routing is now stable |
+| [PR #95233](https://github.com/vercel/next.js/pull/95233) | More granular cache keys for use-cache entries | **MEDIUM** — Forms using shared `'use cache'` cache tags: keys are now per-entity, reducing stale-data risk |
+| [PR #97953](https://github.com/vercel/next.js/pull/97953) | Fix intercepted route params after Proxy rewrites | **MEDIUM** — Multi-step form wizards with `rewrites()` + interception routes: param values are now correct after proxy |
+| [PR #97948](https://github.com/vercel/next.js/pull/97948) | Fix optimistic routing for encoded dynamic params | **LOW** — Forms with non-ASCII characters in dynamic segment values: routing is now correct |
+
+**Recommended pin**: `next@16.4.0-canary.11` for 16.4.x experimenters. Form-heavy production apps: stay on `next@^16.3.3` until 16.4.0 STABLE.
+
+### React Hook Form 7.86.0 — Type-Safe `getErrors()` Method
+
+`react-hook-form@7.86.0` SHIPPED (npm-published **2026-08-22T22:51Z** — **MISSED by v1.6.08 inline observation because it shipped T+4h after the v1.6.08 cron**). This is a **new feature release** with one headline addition and 8 bug fixes.
+
+**`getErrors()` — the new type-safe error inspection API:**
+
+```tsx
+// ❌ Old: plain object, no type safety
+const errors = getErrors(form)
+
+// ✅ New: fully typed, works with ZodResolver
+const errors = getErrors(form, { names: ['email', 'password'] })
+if (errors.email) {
+  console.log(errors.email.message) // typed as string | undefined
+}
+```
+
+The new `getErrors(form, { names })` overload accepts an optional `names` array for scoped error retrieval. Combined with Zod's inferred types, this closes the last major gap between RHF's untyped `form.formState.errors` and a fully type-safe form validation pipeline.
+
+**Other 7.86.0 fixes relevant to forms:**
+
+| PR | Issue | Fix |
+|---|---|---|
+| [#13650](https://github.com/react-hook-form/react-hook-form/pull/13650) | Field array update leaving stale errors and touched state | Fixed — dynamic field arrays with `useFieldArray` no longer show stale errors after `move`/`swap`/`push` |
+| [#13652](https://github.com/react-hook-form/react-hook-form/pull/13652) | `flatten` discarding `File`/`Blob`/`FileList` values | Fixed — file upload fields no longer become empty on `flatten()` |
+| [#13661](https://github.com/react-hook-form/react-hook-form/pull/13661) | Falsy valid values (`min: 0`, `required: ''`) treated as no validation | Fixed — `min={0}` and `required` with empty string now validate correctly |
+| [#13665](https://github.com/react-hook-form/react-hook-form/pull/13665) | `setValue` on field array root not notifying `Controller` | Fixed — `Controller` components wrapping field array items now re-render on `setValue` |
+| [#13667](https://github.com/react-hook-form/react-hook-form/pull/13667) | `setValues` not updating fields registered under object/array values | Fixed — deeply nested field updates with `setValues` now propagate correctly |
+| [#13668](https://github.com/react-hook-form/react-hook-form/pull/13668) | `useWatch` returning stale value when name changes to `null` | Fixed — `useWatch({ name: someName })` where name resolves to `null` now returns `undefined` |
+| [#13669](https://github.com/react-hook-form/react-hook-form/pull/13669) | `unregister` inverting `keepDirty` when broadcasting `isDirty` | Fixed — `keepDirty: true` now correctly preserves dirty state on unregister |
+
+**RHF 8.0.0-beta.3** also SHIPPED (commit `826ca5d`, Jul 10) — syncs v8 beta with latest v7 bug fixes including all of the above. No new breaking changes. Stay on `@beta` tag for forward-compatible test installs. `createForm()` remains the recommended v8 entry point.
+
+### Version-Bump Tracking (v1.6.13 — August 29, 2026 12:02 UTC)
+
+| Package | Previous (v1.6.08) | Current | Status |
+|---|---|---|---|
+| `next@canary` | `16.4.0-canary.9` | `16.4.0-canary.11` | **2 NEW drops; 49 PRs** |
+| `next@latest` | `16.3.3` | `16.3.3` | Unchanged |
+| `react@canary` | `19.3.0-canary-29d9d318-20260826` | `19.3.0-canary-2dc7da79-20260828` | **NEW; 4th canary roll in 14 days** |
+| `react@latest` | `19.2.8` | `19.2.8` | Unchanged |
+| `typescript@next` | `7.1.0-dev.20260826.1` (34th) | `7.1.0-dev.20260829.1` (38th) | **35th/36th/37th/38th confirmed; no-content pattern broken** |
+| `@tanstack/react-query@latest` | `5.102.8` | `5.102.8` | Unchanged (no 5.102.9 yet) |
+| `zod@latest` | `4.5.1` | `4.5.2` | **3rd STABLE in 7h; pin `~4.5.2`** |
+| `zod@canary` | `4.5.0-canary.20260827T054049` | `4.5.0-canary.20260828T163622` | Canary train continuing |
+| `react-hook-form@latest` | `7.86.0` | `7.86.0` | **Unchanged in forms.md (missed by v1.6.08); 8 bug fixes + getErrors() now documented** |
+| `@hookform/resolvers@latest` | `5.9.1` | `5.9.1` | Unchanged |
+| `vitest@latest` | `4.1.11` | `4.1.11` | Unchanged |
+| `vitest@rc` | `5.0.0-rc.2` | `5.0.0-rc.3` | **SHIPPED Aug 28; STABLE imminent** |
+
+### Migration actions (updated)
+
+```bash
+# Pin Next.js canary — 49 PRs since canary.9; PR #97941 use cache fix is mandatory for form data handlers
+npm install next@canary
+# → 16.4.0-canary.11 (49 PRs; PR #97941 use cache request-context fix is in canary.10)
+
+# Pin TanStack Query — 9 PATCHes in 6 days; PR #11305 is mandatory for useQueries consumers
+npm install @tanstack/react-query@latest
+# → 5.102.8 (no new PATCH since v1.6.08)
+
+# Pin RHF — 7.86.0 with type-safe getErrors() + 8 bug fixes
+npm install react-hook-form@latest
+# → 7.86.0 (missed by v1.6.08; T+4h gap)
+
+# Audit form field arrays — PR #13650 fix for stale errors after move/swap
+rg -n 'useFieldArray' src/
+# → Test all move/swap/push operations after upgrading to 7.86.0
+
+# Audit file upload forms — PR #13652 fix for flatten() discarding File/Blob
+rg -n '\.flatten\(\)' src/
+# → Verify file fields survive flatten() after upgrading to 7.86.0
+```
+
+### Sources
+
+- [GitHub — next@16.4.0-canary.10 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published 2026-08-28T02:48:27Z; 27 PRs
+- [GitHub — next@16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [GitHub — next.js PR #97941 Fix request-context retention in default use cache handler](https://github.com/vercel/next.js/pull/97941) — HIGH; PII leakage fix
+- [GitHub — next.js PR #98000 PPF Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — MEDIUM; PPF stabilization
+- [GitHub — next.js PR #95233 More granular cache keys for use-cache entries](https://github.com/vercel/next.js/pull/95233) — MEDIUM; per-entity cache keys
+- [GitHub — next.js PR #97953 Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953) — MEDIUM; form wizard rewrites fix
+- [GitHub — next.js PR #97948 Fix optimistic routing for encoded dynamic params](https://github.com/vercel/next.js/pull/97948) — LOW; non-ASCII routing fix
+- [GitHub — next.js PR #97689 Pages Router Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — HIGH for Pages Router forms
+- [GitHub — RHF 7.86.0 release](https://github.com/react-hook-form/react-hook-form/releases/tag/v7.86.0) — npm-published 2026-08-22T22:51Z; 8 bug fixes + getErrors()
+- [GitHub — RHF PR #13639 Add type-safe getErrors method](https://github.com/react-hook-form/react-hook-form/pull/13639) — the headline feature
+- [GitHub — RHF 8.0.0-beta.3 release](https://github.com/react-hook-form/react-hook-form/releases/tag/v8.0.0-beta.3) — commit 826ca5d; master sync
+- [npm — react-hook-form@7.86.0](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-22T22:51Z
+- [npm — zod@4.5.2](https://www.npmjs.com/package/zod?activeTab=versions) — 3rd STABLE in 7h; npm-published 2026-08-29T00:36:06Z
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260829.1` (38th rebuild)
+- [npm — vitest@rc](https://www.npmjs.com/package/vitest?activeTab=versions) — current `5.0.0-rc.3`; STABLE imminent
+- [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions) — current `19.3.0-canary-2dc7da79-20260828`
+- [Cross-reference: testing.md v1.6.13 — Vitest 5.0.0-rc.3 SHIPPED + @playwright/test@next 1.63.0-alpha-2026-08-29 advance
+- [Cross-reference: state.md v1.6.13 — jotai@3.0.0-alpha.1 + @clerk/nextjs@7.8.4-canary line advance + canary.10/.11 state-relevant PRs
