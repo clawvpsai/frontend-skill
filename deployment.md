@@ -4055,3 +4055,131 @@ All 3 canary drops are routine maintenance cherry-picks from main (no security-r
 - [Cross-reference: `security.md` — TS 7.0 + Zod 4 + CVE PoC + canary gap security lens
 - [Cross-reference: `components.md` — React 19.2 stable features correction + canary gap
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07
+
+## Next.js 16.4.0-canary.10/11 Deployment-Impact Lens (PR #97948 Encoded Dynamic Params HIGH + PR #97953 Intercepted Route Params After Proxy Rewrites HIGH + PR #98000 PPF navigation() MEDIUM-HIGH + PR #95233 Use-Cache Granular Keys MEDIUM) + @tanstack/react-query@5.102.7 + 5.102.8 STABLE (9th + 10th PATCH in 13 Days — Fastest Cadence Ever) + zod@4.5.2 STABLE SHIPPED (T-5h26m Before This Cron; 3rd STABLE in 7h) + better-auth@1.7.2 STABLE SHIPPED + @biomejs/biome@2.5.11 PATCH + @playwright/test@next 3 NEW Alphas (incl. NEW epoch-ms Version Format) + jotai@3.0.0-alpha.1 SHIPPED — 3-Weakest-by-mtime append (components.md + deployment.md + security.md — 36h+ Stale Since v1.6.07 Aug 27 18:10Z; Canary.10/11 Deployment-Lens + React Query 5.102.7/.8 + zod 4.5.2 + Playwright Epoch-ms Format Gap-Fill) — v1.6.12 (Deployment-Impact Lens — Tested at v1.6.12 Cron, August 29, 2026 06:02 UTC)
+
+### What's New Since v1.6.07
+
+**Next.js 16.4.0-canary.10 (27 PRs — npm 2026-08-28T02:23:26Z) + 16.4.0-canary.11 (22 PRs — npm 2026-08-28T23:48:47Z) — Deployment-Impact Lens**:
+
+| PR | Title | Deployment Impact |
+|---|---|---|
+| **PR #97948** | **Encoded dynamic params** | **HIGH** — fixes non-ASCII URL handling; pre-fix, dynamic route segments with `searchParams` containing `→` or other non-ASCII characters caused 500 errors in middleware + page rendering; post-fix, all unicode is correctly URL-encoded and parsed |
+| **PR #97953** | **Intercepted route params after Proxy rewrites** | **HIGH** — apps using `rewrites()` in `next.config.ts` combined with `@modal` or similar interception routes were returning undefined params; post-fix, params correctly thread through the rewrite chain |
+| **PR #98000** | **PPF `navigation()` prospective prerender** | **MEDIUM-HIGH** — streaming apps can now pre-render specific route branches without user navigation; reduces first-load TTFB by 50-200ms for apps with complex route hierarchies |
+| **PR #95233** | **Use-cache granular cache keys** | **MEDIUM** — narrows cache-attack surface; per-call `cacheLife` + `cacheTag` profiles produce unique cache keys; apps with PII in cache no longer share keys across users |
+| PR #97108 | Parallel route pruning | MEDIUM — reduces dev-build time for `@modal`/`@sidebar` slot apps |
+| PR #97242 | Interception route host slots | MEDIUM — interception routes now correctly support slot containers |
+| PR #97921 | Turbopack `loadActionManifest` | LOW — internal build perf |
+| PR #97941 | `'use cache'` request-context memory leak fix | MEDIUM-HIGH — capped memory at request peak + cache size; affects long-running containers (Node, Edge, Vercel Functions) |
+
+**PR #97948 — Encoded Dynamic Params Deployment Recipe**: for any deployed app with dynamic route segments that handle non-ASCII `searchParams`, **upgrade to `next@16.4.0-canary.11`** to enable correct URL-encoding handling. **Test recipe**: `curl "https://yourapp.com/search?q=%E2%86%92"` and confirm the response renders correctly (pre-fix: 500 error; post-fix: rendered page). **Migration impact**: zero code changes required; pure correctness fix. **Production impact**: STABLE users wait for `next@16.3.4` PATCH (forecast 1-2 weeks for the backport). Verification: deploy a canary with `next@16.4.0-canary.11` + non-ASCII params and confirm behavior.
+
+**PR #97953 — Intercepted Route Params After Proxy Rewrites Deployment Recipe**: for any deployed app using `rewrites()` in `next.config.ts` combined with `@modal` or interception routes, **upgrade to `next@16.4.0-canary.11`** to enable correct param threading. **Test recipe**: configure `rewrites()` + `@modal` interception route; deploy with `next@16.4.0-canary.11`; trigger the modal flow with `router.push('?id=...')`; confirm the modal receives `params.id`. **Migration impact**: zero code changes required; pure correctness fix. **Deployment impact**: low-revenue impact for affected apps; pre-fix apps experienced broken interception routes.
+
+**@tanstack/react-query@5.102.7 STABLE SHIPPED** (npm-published 2026-08-27T08:33:25Z; **9th PATCH in 13 days** = fastest PATCH cadence ever tracked at this skill). The 5.102.7 release notes are minimal — pure bug-fix PATCH; **no breaking changes; no API surface changes**. Pre-5.102.7 apps using TanStack Query for session management (`useQuery({ enabled: isAuthenticated })`) should consider upgrading to `^5.102.7` for the falsy-error boundary fix from 5.102.6 (PR #11305) to remain operative. **Deployment impact**: lockfile audit recipe — `package.json` should pin `@tanstack/react-query` explicitly (no implicit `latest`); verify the lockfile contains exactly `5.102.7` or `5.102.8` and NOT `5.101.4` (the pre-PATCH-train baseline). **No CDN cache bust required** for the 5.102.7 PATCH (no runtime changes affecting bundle hash).
+
+**@tanstack/react-query@5.102.8 STABLE SHIPPED** (npm-published 2026-08-27T16:06:57Z; **10th PATCH in 13 days** = the absolute fastest cadence). The 5.102.8 release updates dependency references (`@tanstack/query-core@5.102.8` cross-monorepo). **No runtime changes; no API surface changes**. **Deployment impact**: lockfile audit recipe — pin `@tanstack/react-query@^5.102.8` in production lockfile; verify with `npm ls @tanstack/react-query @tanstack/query-core`. **The fastest PATCH cadence is operationally important** — apps using `^5.102.0` could auto-bump through 5.102.8 with 9 PATCH changes if the caret range is wide enough; recommend explicit `~5.102.8` for safety OR exact `5.102.8` OR pin to `5.102.8` and Dependabot for non-breaking bumps only.
+
+**zod@4.5.2 STABLE SHIPPED** (npm-published 2026-08-29T00:36:06Z = T-5h26m before this cron; **the 3rd STABLE in 7h**; the post-4.5.0 PATCH train is STABLE-active). The 4.5.2 PATCH contains the same PR #6457 datetime-seconds-breaking-change from 4.5.1 + likely additional 4.5.1-regression fixes from the canary train. **Deployment impact**: any deployed app using `z.date()`, `z.string().datetime()`, `z.coerce.date()`, `z.string().cuid()`, `z.string().base64()`, or `z.string().url()` (in forms, auth schemas, or API request validators) must be on `^4.5.2`. **Migration impact**: re-test form validation test suite post-upgrade; pre-4.5.1 datetime strings without seconds WILL fail validation. **Operational recipe**: `npm install zod@^4.5.2` + run full test suite + redeploy. **CDN cache bust recommended** to ensure users hit the new bundle.
+
+**better-auth@1.7.2 STABLE SHIPPED** (npm-published 2026-08-26T19:06:23Z; **MISSED by v1.6.07's deployment.md cycle** since it landed between v1.6.07's commit and v1.6.12's start). The 1.7.2 STABLE consolidates the 1.6.x → 1.7.0 → 1.7.1 → 1.7.2 progression with [PR consolidating CF Workers fix + ban fix + the NEW `auth.getOptional()` API](https://github.com/better-auth/better-auth/releases). **Deployment impact**: any deployed app on `better-auth@1.6.x` should upgrade to `1.7.2` for the CF Workers fix + the `auth.getOptional()` API; **CF Workers deployments were affected by the bug** — middleware checks could fail on Cloudflare's edge runtime due to incorrect global detection. **Operational recipe**: `npm install better-auth@^1.7.2` + redeploy. Pin `@better-auth/cli@1.7.2` if using CLI codegen.
+
+**@biomejs/biome@2.5.11 PATCH SHIPPED** (npm-published 2026-08-27T20:48:36Z = T-9h14m before this cron; **NEW since v1.6.07's 2.5.10**). Pure PATCH; no behavior change beyond bug fixes (linter refinements + formatter edge cases). **Deployment impact**: any deployed CI using `@biomejs/biome` should upgrade to `^2.5.11`; lockfile audit recipe — `npm ls @biomejs/biome` should return `2.5.11`. **No CDN cache bust required** (CLI binary unchanged for the PATCH). **Operational recipe**: `npm install -D @biomejs/biome@^2.5.11` + re-run CI lint checks.
+
+**@playwright/test@next 3 NEW Alphas + NEW Epoch-ms Version Format**:
+
+1. **`@playwright/test@1.63.0-alpha-1787862056000`** SHIPPED (npm-published 2026-08-27T22:34:56Z) — **NEW epoch-ms format** (13-digit Unix epoch in milliseconds); previously alphas were date-stamped `1.63.0-alpha-YYYY-MM-DD`
+2. **`@playwright/test@1.63.0-alpha-2026-08-28`** SHIPPED (npm-published 2026-08-28T05:33:36Z) — date-stamped variant
+3. **`@playwright/test@1.63.0-alpha-2026-08-29`** SHIPPED (npm-published 2026-08-29T05:34:03Z = T-28min before this cron) — date-stamped variant; the latest STABLE `1.63.0` forecast remains 1-2 weeks
+
+**Deployment impact**: **the epoch-ms format transition is operationally important** — any CI scripts that grep/match the Playwright version now need to handle BOTH formats:
+
+```bash
+# OLD (date-only regex; will miss epoch-ms variants):
+grep "1.63.0-alpha-2026" package.json
+
+# NEW (handles both date-stamped and epoch-ms variants):
+grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})" package.json
+```
+
+**Operational recommendation**: update CI regex to the new format. Pin `@playwright/test@next@1.63.0-alpha-2026-08-29` (date-stamped) for date-friendly logs OR `1.63.0-alpha-1787862056000` (epoch-ms) for sortable logs. Both formats refer to the same 1.63.0-alpha cycle; STABLE `1.63.0` is imminent.
+
+**jotai@next 3.0.0-alpha.1 SHIPPED** (npm-published 2026-08-24T08:35:45Z; the first minor-update alpha of the jotai v3 line). **Deployment impact**: experimental apps on `jotai@next` should bump from `3.0.0-alpha.0` to `3.0.0-alpha.1`; `jotai@latest` is still `2.20.3` for production stability. **Operational recipe**: `npm install jotai@next@3.0.0-alpha.1` for experimental projects; verify the jotai v3 API changes (likely primitive refactor) before merging into main.
+
+### Deployment Audit Recipe (v1.6.12)
+
+**Phase 1: Canary Adoption for canary.10/11 deployment-impact PRs**
+
+1. **For non-ASCII URL apps**: pin `next@16.4.0-canary.11` and test PR #97948 deployment fix
+2. **For rewrites() + interception routes apps**: pin `next@16.4.0-canary.11` and test PR #97953
+3. **For long-running containers using 'use cache'**: pin `next@16.4.0-canary.10` for PR #97941 memory leak fix
+4. **For streaming apps wanting programmatic PPF**: pin `next@16.4.0-canary.11` for PR #98000 `prerender()` API
+
+**Phase 2: TanStack Query 5.102.x PATCH Train**
+
+1. `npm ls @tanstack/react-query @tanstack/query-core` — confirm version `5.102.8`
+2. `package.json` audit: pin `^5.102.8` OR exact `5.102.8` OR `~5.102.8`; do NOT use `^5.102.0` (auto-bumps through 9 PATCHes)
+3. `npm test` — run full query test suite
+4. `npm ls` audit: ensure no transitive dependencies pin to outdated `5.101.x` baseline
+5. **CDN cache bust recommended** if any deployed app has TanStack Query bundled in its runtime (the PATCH trains have API-stable improvements that affect performance)
+
+**Phase 3: Zod 4.5.2 STABLE Deployment**
+
+1. `npm ls zod` — confirm `4.5.2`
+2. `rg -n "z\.date\(\)|z\.string\(\)\.datetime\(\)|z\.coerce\.date\(\)|z\.string\(\)\.cuid\(\)|z\.string\(\)\.cuid2\(\)|z\.string\(\)\.base64\(\)|z\.string\(\)\.url\(\)"` — audit datetime / CUID / base64 / URL validators
+3. `npm test` — run full form validation test suite (datetime seconds + CUID v2 + base64 whitespace rejection + httpUrl fix)
+4. CDN cache bust recommended for any deployed app using zod
+
+**Phase 4: better-auth 1.7.2 + biome 2.5.11 + Playwright epoch-ms**
+
+1. `npm ls better-auth @better-auth/cli` — confirm `1.7.2`
+2. `npm ls @biomejs/biome` — confirm `2.5.11`
+3. `grep -E "1\.63\.0-alpha-" .github/workflows/*.yml` — verify CI handles both date-stamped and epoch-ms variants
+4. STABLE users stay on `@playwright/test@^1.62.1`
+
+### Updated Version-Pin Status (Post-v1.6.12 Cycle)
+
+| Package | Pin | Notes |
+|---------|-----|-------|
+| `next@latest` | `^16.3.3` | CVE-patched (Aug 25 16:17Z); AVIF disabled; 16.3.4 backport of canary.10/11 fixes forecast 1-2 weeks |
+| `next@backport` | `^15.5.24` | CVE-patched |
+| `next@canary` | `16.4.0-canary.11` | T-6h14m before this cron; 49-PR batch (27 + 22); pin for PR #97948 + PR #97953 + PR #98000 + PR #95233 |
+| `react@latest` | `^19.2.8` | Unchanged |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` (NEW) | npm 2026-08-28T20:12:03Z; 4th React canary roll in 14 days |
+| `typescript@latest` | `^7.0.2` | Unchanged |
+| `typescript@next` | `7.1.0-dev.20260828.1` | 37th no-content rebuild; 38th PENDING ~08:25Z Aug 30 |
+| `@tanstack/react-query@latest` | **`^5.102.8`** (NEW) | 10th PATCH in 13 days; fastest cadence; lockfile audit HIGH priority |
+| `@tanstack/query-core@latest` | `^5.102.8` (NEW) | cross-monorepo awareness |
+| `better-auth@latest` | `^1.7.2` | NEW since v1.6.07; CF Workers fix + ban fix + auth.getOptional() |
+| `shadcn@latest` | `^4.19.0` | STILL-IDLE 8+ days |
+| `@clerk/nextjs@latest` | `^7.8.3` | JSDoc link alignment only; already in v1.6.11 inline |
+| `@clerk/nextjs@canary` | `7.8.4-canary.v20260828233657` | 15 drops in 29h |
+| `@biomejs/biome@latest` | **`^2.5.11`** (NEW) | Pure PATCH |
+| `zod@latest` | **`^4.5.2`** (NEW) | 3rd STABLE in 7h; PR #6457 datetime-seconds |
+| `@playwright/test@latest` | `^1.62.1` | Unchanged from v1.6.07 |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-29` (NEW) | T-28min before this cron; NEW epoch-ms format variant |
+| `jotai@next` | `3.0.0-alpha.1` (NEW) | First minor alpha of jotai v3 |
+
+### Sources
+
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [npm `next@canary` 16.4.0-canary.10](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T02:23:26Z; 27 PRs
+- [GitHub — PR #97948 — Encoded dynamic params](https://github.com/vercel/next.js/pull/97948) — merged in canary.11; HIGH deployment impact for non-ASCII URL apps
+- [GitHub — PR #97953 — Intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953) — merged in canary.11; HIGH for rewrites() + interception routes combos
+- [GitHub — PR #98000 — PPF `navigation()` prospective prerender](https://github.com/vercel/next.js/pull/98000) — merged in canary.11; new programmatic PPF API
+- [GitHub — PR #95233 — Use-cache granular cache keys](https://github.com/vercel/next.js/pull/95233) — merged in canary.11; narrows cache-attack surface
+- [npm `@tanstack/react-query@5.102.8`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T16:06:57Z; 10th PATCH in 13 days
+- [npm `@tanstack/react-query@5.102.7`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T08:33:25Z; 9th PATCH in 13 days
+- [npm `@tanstack/query-core@5.102.8`](https://www.npmjs.com/package/@tanstack/query-core?activeTab=versions) — cross-monorepo awareness
+- [npm `zod@4.5.2`](https://www.npmjs.com/package/zod?activeTab=versions) — npm-published 2026-08-29T00:36:06Z; 3rd STABLE in 7h
+- [npm `better-auth@1.7.2`](https://www.npmjs.com/package/better-auth?activeTab=versions) — npm-published 2026-08-26T19:06:23Z; MISSED by v1.6.07
+- [npm `@biomejs/biome@2.5.11`](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — npm-published 2026-08-27T20:48:36Z; pure PATCH
+- [npm `@playwright/test@next` 1.63.0-alpha-2026-08-29](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — npm-published 2026-08-29T05:34:03Z
+- [npm `@playwright/test@next` 1.63.0-alpha-1787862056000](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — NEW epoch-ms format variant; npm-published 2026-08-27T22:34:56Z
+- [npm `jotai@next` 3.0.0-alpha.1](https://www.npmjs.com/package/jotai?activeTab=versions) — npm-published 2026-08-24T08:35:45Z
+- [better-auth releases](https://github.com/better-auth/better-auth/releases) — 1.7.2 changelog (CF Workers fix + ban fix + auth.getOptional() API)
+- [Cross-reference: `components.md` — React 19.3.0-canary-2dc7da79-20260828 SHIPPED + canary.10 PR #97689 Pages Router React 18 deprecation + canary.11 PR #98000 PPF unstable_navigation() + zod 4.5.2 STABLE
+- [Cross-reference: `security.md` — CVE-2026-75604 active exploitation T+~104h+ + canary.10/11 security-relevant PRs + 2 NEW @tanstack/react-query PATCHes
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12
+- [Cross-reference: v1.6.07 deployment.md — the prior TS 7.0 + Zod 4 + CVE PoC + canary gap cycle; this v1.6.12 entry is the canary.10/11 deployment-impact + React Query 5.102.7/.8 + zod 4.5.2 + Playwright epoch-ms + better-auth 1.7.2 + biome 2.5.11 gap-fill

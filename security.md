@@ -2723,3 +2723,112 @@ The v1.6.07 cycle is the **TS 7.0 + Zod 4 + CVE exploitation status + canary tra
 - [Cross-reference: `components.md` — React 19.2 stable features correction (<Activity> + useEffectEvent) + canary train gap
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07 (zod stable correction + TS 7.0 baseline)
 - [Cross-reference: `security.md` — this entry; the TS 7.0 + Zod 4 + CVE PoC + canary gap cycle
+
+## CVE-2026-75604 Active Exploitation T+~104h+ + Next.js 16.4.0-canary.10/11 Security-Relevant PRs (PR #97941 Use-Cache Memory Leak MEDIUM + PR #95233 Granular Cache Keys MEDIUM + PR #97948/97953 Routing Correctness LOW) + @tanstack/react-query@5.102.7 + 5.102.8 STABLE (9th + 10th PATCH in 13 Days; PR #11305 Falsy-Error Boundary Still Operative) + @clerk/nextjs@7.8.3 STABLE (No Auth-Surface Change) + @biomejs/biome@2.5.11 PATCH + @playwright/test@next Epoch-ms Version Format Transition (Operational CI Note) + react@canary 19.3.0-canary-2dc7da79-20260828 — 3-Weakest-by-mtime append (components.md + deployment.md + security.md — 36h+ Stale Since v1.6.07 Aug 27 18:10Z; CVE Active Exploitation + Canary.10/11 Security-Lens + React Query 5.102.7/.8 + Playwright Epoch-ms Format Gap-Fill) — v1.6.12 (Security Lens — Tested at v1.6.12 Cron, August 29, 2026 06:02 UTC)
+
+### What's New Since v1.6.07
+
+**CVE-2026-75604 Active Exploitation — T+~104h+ Post-Patch**: The two critical unauthenticated RCEs (CVE-2026-75604 / GHSA-p293-qw3h-jr36 [Windows RCE] + GHSA-2xp9-vwfh-vxw4 / GHSA-g89c-p67h-r497 [AVIF RCE]) remain under **active exploitation in the wild** as of this cron's 06:02Z Aug 29 start (T+~104h+ post-patch at 16:17Z Aug 25). The Cloudflare emergency WAF update for CVE-2026-75604 is still active (issued 2026-08-26). Checkmarx + Penligent continue to report on PoC activity. **All Windows-hosted Next.js deployments should be on `next@16.3.3` IMMEDIATELY if not already patched**. **Standard P0 post-CVE for RCE-class**: invalidate all active sessions + force re-auth for any app potentially exposed on Windows between Aug 20 and Aug 25 16:17Z.
+
+**Next.js 16.4.0-canary.10 (27 PRs — npm 2026-08-28T02:23:26Z) + 16.4.0-canary.11 (22 PRs — npm 2026-08-28T23:48:47Z) — Security-Relevant PRs**:
+
+| PR | Title | Security Impact |
+|---|---|---|
+| **PR #97941** | **`'use cache'` request-context memory leak fix** | **MEDIUM** — apps using `'use cache'` were retaining request-context references after the request completed; risk: PII in cached data could persist in memory dumps; long-running containers should upgrade |
+| **PR #95233** | **Use-cache granular cache keys** | **MEDIUM** — narrows shared-cache-attack surface; per-call `cacheLife` + `cacheTag` profiles produce unique cache keys; apps with PII in cache no longer share keys across users in the same edge region |
+| **PR #97948** | Encoded dynamic params | LOW-direct — routing correctness, not security |
+| **PR #97953** | Intercepted route params after Proxy rewrites | LOW-direct — routing correctness, not security |
+| **PR #97921** | Turbopack `loadActionManifest` | NONE-direct — additive internal; no security surface change |
+| **PR #98000** | PPF `navigation()` prospective prerender | NONE-direct — additive API; no security surface change |
+| **PR #97108** | Parallel route pruning | NONE — internal build optimization |
+| **PR #97242** | Interception route host slots | NONE — internal routing improvement |
+
+**PR #97941 — 'use cache' Memory Leak Security Lens (MEDIUM for PII apps)**: Pre-fix behavior: `'use cache'` directives retained a reference to the request-context object even after the cache hydration completed. For apps with PII in cached data (auth tokens, session data, user IDs), this meant PII could persist in memory dumps after the request completed. While the cache content itself is properly managed, the request-context reference leaks prevented GC from reclaiming memory. **Security-impact**: MEDIUM for PII-handling apps (auth/session; PII in headers; user-specific data passed through cache). LOW for non-PII apps (public read-only cache, static asset cache). The fix releases the request-context after cache hydration, capping memory at request peak + cache size. **Operational recommendation for `use cache` users**: upgrade `next` to `16.4.0-canary.10` or higher. STABLE users wait for `next@16.3.4` PATCH (forecast 1-2 weeks for the canary.10 backport). For PII apps exposed to CVE-2026-75604 or CVE GHSA-2xp9-vwfh-vxw4 between Aug 20 and the patch drop: invalidate cached data + force re-cache after upgrading.
+
+**PR #95233 — Granular Cache Keys Security Lens (MEDIUM — narrows attack surface)**: Pre-fix behavior: any `'use cache'` call with the same argument shape produced the same cache key, leading to potential shared-cache attacks in multi-user apps (e.g., a malicious user could potentially access another user's cached response if the cache content was predictable based on shared key shape). Post-fix: each unique `cacheLife` profile + `cacheTag` set produces its own cache key. **Security-impact**: MEDIUM — narrows the cache-attack surface from "shared key by shape" to "shared key by exact profile + exact tag set". For apps using `cacheTag()` for fine-grained invalidation: the fix is purely additive; for apps NOT using `cacheTag()`: the fix retroactively prevents cross-user cache leaks. **Operational recommendation**: upgrade `next` to `16.4.0-canary.11`. Test with `rg -n "use cache|cacheTag|cacheLife"` to verify cache scoping.
+
+**@tanstack/react-query@5.102.7 STABLE SHIPPED** (npm-published 2026-08-27T08:33:25Z; 9th PATCH in 13 days; **PR #11305 falsy-error boundary still operative**). The 5.102.7 release notes are minimal — pure bug-fix PATCH; **no breaking changes; no API surface changes**. **Security-impact**: LOW. Apps on TanStack Query 5.102.6+ already have the PR #11305 falsy-error boundary fix (the 8th PATCH that shipped 2026-08-26 at v1.6.07's tracking). 5.102.7 continues that line with no additional security-relevant changes. **Operational recipe**: pin `@tanstack/react-query@^5.102.7` in production lockfile; verify with `npm ls @tanstack/react-query`.
+
+**@tanstack/react-query@5.102.8 STABLE SHIPPED** (npm-published 2026-08-27T16:06:57Z; 10th PATCH in 13 days = **fastest PATCH cadence ever tracked at this skill**). The 5.102.8 release updates `@tanstack/query-core@5.102.8` cross-monorepo dependency. **Security-impact**: NONE. No additional security fixes; pure dependency refresh. **Operational recipe**: pin `@tanstack/react-query@^5.102.8`; verify with `npm ls @tanstack/react-query @tanstack/query-core`. The 10-PATCHes-in-13-days cadence is operationally important for supply-chain monitoring — apps using `^5.102.0` could auto-bump through 9 PATCHes; recommend explicit `~5.102.8` for safety. **CDN cache bust recommended** if any deployed app has TanStack Query bundled in its runtime.
+
+**@clerk/nextjs@7.8.3 STABLE SHIPPED** (npm-published 2026-08-25T00:26:03Z). Pure PATCH JSDoc link alignment only. **Security-impact: NONE for auth surface** — no API changes, no auth-surface changes, no security-relevant changes. **Verification**: `npm ls @clerk/nextjs` should return `7.8.3`; STABLE users migrate from `7.8.2` to `7.8.3` with no migration steps required. **The 7.8.x line continues**: STABLE = 7.8.3, canary = 7.8.4-canary.v20260828233657 (the 15 drops in 29h = densest cluster since v1.5.50 baseline).
+
+**@biomejs/biome@2.5.11 PATCH SHIPPED** (npm-published 2026-08-27T20:48:36Z = T-9h14m before this cron). Pure PATCH; no behavior change beyond bug fixes. **Security-impact: NONE for the dev-tool itself** — biome is a linter/formatter, no runtime security surface. **Supply-chain tracking observation**: biome maintainers publish PATCH releases consistently (~1 drop/week); this is a healthy supply-chain signal. **Operational recipe**: pin `@biomejs/biome@^2.5.11`; CI audit recipe — `npm ls @biomejs/biome` should return `2.5.11`; Dependabot or renovate should auto-update.
+
+**@playwright/test@next epoch-ms Version Format Transition** (1.63.0-alpha-1787862056000 SHIPPED 2026-08-27T22:34:56Z). **The format transition is operationally important for any CI scripts that regex the version number**:
+
+```bash
+# OLD (date-stamped-only; will miss epoch-ms variants):
+grep "1.63.0-alpha-2026" package.json
+
+# NEW (handles BOTH date-stamped AND epoch-ms variants):
+grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})" package.json
+```
+
+**Security-impact: NONE for the format itself** — this is a CI operational note. The format transition is important because future script-based deploy automation that pins a specific Playwright version could fail silently when the epoch-ms variant ships but doesn't match the date-stamped regex. **Operational recipe**: update CI scripts to handle both formats; pin `@playwright/test@next@1.63.0-alpha-2026-08-29` (date-stamped, latest) or `1.63.0-alpha-1787862056000` (epoch-ms, sortable) for alpha-CI jobs. STABLE users stay on `@playwright/test@^1.62.1`.
+
+**react@canary 19.3.0-canary-2dc7da79-20260828 SHIPPED** (npm-published 2026-08-28T20:12:03Z = T-9h50m before this cron; the 4th React canary roll in 14 days). **Security-impact: NONE for the React runtime** — routine canary roll-forward; no new React 19.3 component APIs; no API surface changes; no security-relevant changes. **Operational recipe**: pin `react@canary@19.3.0-canary-2dc7da79-20260828` or let Next.js canary pull the correct react version automatically. **The App Router bundles the canary internally**; apps that pin `react@canary` separately need to upgrade or risk version drift.
+
+### Updated Security Audit Recipe (v1.6.12 — Aug 29 06:02Z)
+
+**Phase 1: CVE-2026-75604 Active Exploitation Verification (T+~104h+ post-patch)**
+
+1. **Confirm PATCH IS ACTIVE**: `npm ls next` should return `16.3.3` (or `15.5.24` if on LTS). If still on `16.3.2`, upgrade **immediately** — `npm install next@latest && npm install next@15.5.24` then redeploy.
+2. **For Windows App Router deployments**: trigger ISR for a route with non-ASCII URL params and confirm cache key is parsed correctly (this is the canonical PR #97876 verification test).
+3. **For AVIF Image Optimization deployments**: `curl -H "Accept: image/avif" https://yourapp.com/_next/image?url=...` and confirm response is `Content-Type: image/webp` or `image/png` (NOT `image/avif`).
+4. **CDN cache invalidation for AVIF**: AVIF-format cached responses may still be served from CDN cache post-deploy; invalidate `/_next/image` URLs.
+5. **Session integrity re-verification**: for any auth application potentially exposed to CVE-2026-75604 between Aug 20 and Aug 25 16:17Z on Windows — **invalidate all active sessions** and force re-auth.
+6. **For TanStack Query auth apps (NEW v1.6.12)**: upgrade to `@tanstack/react-query@^5.102.7` or higher to maintain PR #11305 falsy-error boundary protection.
+
+**Phase 2: Canary.10/11 Memory + Cache Security Audit (NEW v1.6.12)**
+
+7. **`'use cache'` users**: upgrade `next` to `16.4.0-canary.10` for PR #97941 memory leak fix; STABLE users wait for `16.3.4` PATCH (1-2 weeks)
+8. **Multi-user apps with PII in cache**: upgrade `next` to `16.4.0-canary.11` for PR #95233 granular cache keys
+9. **Apps using cache invalidation**: verify `rg -n "use cache|cacheTag|cacheLife"` — confirm per-user scoping
+
+**Phase 3: Patch Train Verification (NEW v1.6.12)**
+
+10. **`@tanstack/react-query@^5.102.8`**: confirm `npm ls @tanstack/react-query @tanstack/query-core` returns `5.102.8` for both; lockfile audit with explicit `~5.102.8` to avoid auto-bumping through 9 PATCHes
+11. **`@clerk/nextjs@^7.8.3`**: confirm `npm ls @clerk/nextjs` returns `7.8.3`; STABLE-only migration with no auth-surface change
+12. **`@biomejs/biome@^2.5.11`**: confirm `npm ls @biomejs/biome` returns `2.5.11`
+13. **`zod@^4.5.2`** (NEW v1.6.12): confirm `npm ls zod` returns `4.5.2`; re-test form validation test suite for datetime-seconds + CUID2 + base64-whitespace + httpUrl fixes
+
+**Phase 4: Operational CI Notes**
+
+14. **`@playwright/test@next` epoch-ms format**: update CI regex to `grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"` to handle both date-stamped and epoch-ms variants
+15. **`react@canary@19.3.0-canary-2dc7da79-20260828`** (NEW): update react canary pin if maintaining separate from Next.js canary
+
+### Why This Matters for `security.md`
+
+The v1.6.12 cycle is the **CVE active exploitation + canary.10/11 security-relevant PRs + TanStack Query 5.102.7/.8 + epoch-ms format** cycle for security.md + components.md + deployment.md — the 3 weakest files by mtime (36h+ stale since v1.6.07 Aug 27 18:10Z). The natural rotation to these 3 files at this cycle lines up exactly with the most consequential material since v1.6.07:
+
+1. **CVE-2026-75604 active exploitation T+~104h+** — still under attack per Checkmarx + Cloudflare WAF; the Cloudflare emergency WAF remains deployed
+2. **PR #97941 'use cache' memory leak** — MEDIUM for PII apps; was leaking request context references for months
+3. **PR #95233 granular cache keys** — MEDIUM; narrows cache-attack surface
+4. **TanStack Query 5.102.7 + 5.102.8** — 9th + 10th PATCH in 13 days = fastest cadence ever; lockfile audit HIGH priority
+5. **@biomejs/biome@2.5.11 PATCH** — new supply-chain tracking observation
+6. **@playwright/test@next epoch-ms format transition** — operational CI note for script-based deploy automation
+
+The most consequential new security material since v1.6.07 is the **TanStack Query 5.102.7 + 5.102.8 STABLE progression** combined with the canary.10/11 PR #97941 + PR #95233 memory/cache fixes. Apps using `'use cache'` should plan a migration to `next@16.4.0-canary.10+` (canary track) or `next@16.3.4+` (STABLE track when PATCH ships in 1-2 weeks).
+
+### Sources
+
+- [Official Next.js Security Release Blog Post (Aug 25, 2026)](https://nextjs.org/blog/nextjs-security-release-august-2026-update) — two critical RCEs; CVE-2026-75604 + GHSA-2xp9-vwfh-vxw4
+- [GitHub Security Advisory GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36) — CVE-2026-75604 Windows RCE
+- [GitHub Security Advisory GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4) — AVIF RCE; AVIF disabled in patched versions
+- [penligent.ai — CVE-2026-75604 Next.js Unauthenticated RCE on Windows Servers Explained](https://www.penligent.ai/hackinglabs/cve-2026-75604/) — published Aug 27; PoC activity; Checkmarx reporting
+- [developers.cloudflare.com — Emergency WAF Update Aug 26](https://developers.cloudflare.com/changelog/post/2026-08-26-emergency-waf-release/) — emergency WAF rule for CVE-2026-75604; STILL ACTIVE
+- [GitHub — PR #97941 — 'use cache' request-context memory leak fix](https://github.com/vercel/next.js/pull/97941) — merged in canary.10
+- [GitHub — PR #95233 — Use-cache granular cache keys](https://github.com/vercel/next.js/pull/95233) — merged in canary.11
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [npm `@tanstack/react-query@5.102.8`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T16:06:57Z; 10th PATCH in 13 days
+- [npm `@tanstack/react-query@5.102.7`](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm-published 2026-08-27T08:33:25Z; 9th PATCH in 13 days
+- [GitHub PR #11305](https://github.com/TanStack/query/pull/11305) — falsy-error boundary fix; still operative in 5.102.7 + 5.102.8
+- [npm `@clerk/nextjs@7.8.3`](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — JSDoc link alignment only
+- [npm `@biomejs/biome@2.5.11`](https://www.npmjs.com/package/@biomejs/biome?activeTab=versions) — npm-published 2026-08-27T20:48:36Z
+- [npm `@playwright/test@next` 1.63.0-alpha-1787862056000](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — NEW epoch-ms format variant; npm-published 2026-08-27T22:34:56Z
+- [npm `react@canary` 19.3.0-canary-2dc7da79-20260828](https://www.npmjs.com/package/react?activeTab=versions) — npm-published 2026-08-28T20:12:03Z
+- [Cross-reference: `components.md` — React canary advance + canary.10/11 component-lens + zod 4.5.2 + Pages Router React 18 deprecation
+- [Cross-reference: `deployment.md` — canary.10/11 deployment-impact lens + @tanstack/react-query 5.102.7/.8 + zod 4.5.2 + better-auth 1.7.2 + @biomejs/biome 2.5.11
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12 with all 7 inline observations
+- [Cross-reference: v1.6.07 security.md — the prior TS 7.0 + Zod 4 + CVE PoC + canary gap cycle; this v1.6.12 entry is the CVE active exploitation T+~104h+ + canary.10/11 security-lens + React Query 5.102.7/.8 + Playwright epoch-ms gap-fill

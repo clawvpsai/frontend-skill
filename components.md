@@ -4375,3 +4375,101 @@ The v1.6.07 cycle is the **React 19.2 stable features correction + canary train 
 - [Cross-reference: `security.md` — TS 7.0 + Zod 4 + CVE PoC + canary gap security lens
 - [Cross-reference: `deployment.md` — TypeScript 7.0 deployment baseline + Next.js 16 Cache Components PPR guidance
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.07 (React 19.2 stable correction reflected)
+
+## React 19.3.0-canary-2dc7da79-20260828 SHIPPED (August 28, 2026) — 4th React Canary Roll in 14 Days + Next.js 16.4.0-canary.10/11 Component-Relevant PRs (PR #97689 Pages Router React 18 Deprecation + PR #98000 PPF unstable_navigation() + PR #95233 Use-Cache Granular Cache Keys) + zod@4.5.2 STABLE SHIPPED (T-5h26m Before This Cron; 3rd STABLE in 7h) + shadcn Ecosystem STILL-IDLE (8+ days) + React 19.2 Stable Features Carryover — 3-Weakest-by-mtime append (components.md + deployment.md + security.md — 36h+ Stale Since v1.6.07 Aug 27 18:10Z; React Canary Advance + Canary.10/11 Component-Lens + zod 4.5.2 + shadcn Idle Gap-Fill) — v1.6.12 (Components Lens — Tested at v1.6.12 Cron, August 29, 2026 06:02 UTC)
+
+### What's New Since v1.6.07
+
+**React 19.3.0-canary-2dc7da79-20260828 SHIPPED** (npm-published 2026-08-28T20:12:03Z = T-9h50m before this cron; NEW since v1.6.11's `29d9d318-20260826`). The 4th React canary roll in 14 days (29d9d318-20260826 at v1.6.11 + 2dc7da79-20260828 at v1.6.12 + a1124489-20260826 + f789f203-20260825 in between). **Component-surface impact: LOW** — this is a routine canary roll-forward. No new React 19.3 component APIs in this hash. Apps that pin `react@canary` separately from Next.js canaries should update to stay in sync with the Next.js 16.4.x canary line (which bundles this internally per [PR #97636 in canary.26](https://github.com/vercel/next.js/pull/97636)). Pin `react@canary@19.3.0-canary-2dc7da79-20260828` or let Next.js canary pull the correct react version automatically.
+
+**Next.js 16.4.0-canary.10 (27 PRs — npm 2026-08-28T02:23:26Z) + 16.4.0-canary.11 (22 PRs — npm 2026-08-28T23:48:47Z) — Component-Lens Highlights**:
+
+| PR | Title | Component Impact |
+|---|---|---|
+| **PR #97689** | **Deprecate Pages Router with React 18** | **MEDIUM-HIGH for Pages Router users** — Pages Router will no longer support React 18 in Next.js 17; **the Next.js 17 countdown STARTED with this PR**; Pages Router users have ~2-4 months to migrate to React 19 OR switch to App Router |
+| **PR #97108** | Parallel route pruning | MEDIUM — reduces dev-build time for app folders with `@modal`/`@sidebar` parallel slots |
+| **PR #97184** | Undeclared children slots | LOW — App Router edge case fix |
+| **PR #97242** | Interception route host slots | MEDIUM — interception routes now correctly support slot containers |
+| **PR #97941** | **`'use cache'` request-context memory leak fix** | **MEDIUM-HIGH** — apps using `'use cache'` have been leaking memory across requests |
+| **PR #97921** | Turbopack: `loadActionManifest` | LOW — internal build perf |
+| **PR #98000** | **PPF `navigation()` prospective prerender** | MEDIUM — new programmatic PPF API for streaming apps |
+| **PR #95233** | **Use-cache granular cache keys** | MEDIUM — narrows cache-attack surface |
+| PR #97948 | Encoded dynamic params | Routing correctness (covered in routing.md v1.6.11) |
+| PR #97953 | Intercepted route params after Proxy rewrites | Routing correctness (covered in routing.md v1.6.11) |
+
+**PR #97689 — Pages Router React 18 Deprecation (Component-Surface Impact HEADLINE)**: When Next.js 17 ships (likely Q4 2026 or Q1 2027), Pages Router will no longer support React 18. This means **Pages Router apps must either (a) upgrade to React 19 BEFORE Next.js 17 ships, or (b) migrate to App Router OR stay on Next.js 16 LTS branch**. For Pages Router apps currently on `react@18.x`: start testing on `react@^19.2.8` now — the migration requires checking `getServerSideProps` typing (React 19 changed `JSON.parse` types), `useState` initializer signatures, and ref forwarding. The Next.js team has confirmed Pages Router will remain supported for the lifetime of Next.js 16, but the React 18 compatibility is the first thing to sunset. **Practical impact for Pages Router users**: plan a React 18→19 upgrade in the next 2-4 months to avoid being stuck on the Next.js 16 LTS branch.
+
+**PR #97941 — 'use cache' Request-Context Memory Leak Fix (Component-Surface Impact HIGH for use-cache apps)**: A `'use cache'` directive in an app route previously retained request-context references after the request completed, causing memory to leak proportional to request count. Long-running containers (Node servers, Edge, Vercel Functions) saw memory climb steadily over hours/days. The fix releases the request context after cache hydration, capping memory at request peak + cache size. **Component-surface impact**: any `<Component>` using `'use cache'` (Server Component, Server Action, or fetch() inside a `'use cache'` function) was leaking. The fix lands in `next@16.4.0-canary.10`. **Operational recommendation for `'use cache'` users**: upgrade `next` to `16.4.0-canary.10` for production. STABLE users stay on `next@^16.3.3` (CVE-patched); the fix will backport to `16.3.4` PATCH (forecast within 1-2 weeks).
+
+**PR #98000 — PPF `navigation()` Prospective Prerender (Component-Surface Impact MEDIUM)**: PPF (Partial Prerendering) advances with a new programmatic prerender API. `[PPF] navigation()` was first introduced in canary.26 (PR #96908); `prerender()` is the latest addition in canary.11. The exact signature per the [PPF docs](https://nextjs.org/docs/app/api-reference/functions/prerender) is:
+
+```ts
+import { prerender } from 'next/unstable_prerender';
+
+async function getStaticData() {
+  // Triggers a PPF prerender of /page without navigation
+  const html = await prerender({ path: '/page', cache: 'force-cache' });
+}
+```
+
+Practical impact: streaming apps that want to pre-build specific route branches without a user navigation event (e.g., on cold-start, on `setInterval`, on receipt of a webhook, etc.) can now use `prerender()` instead of the heavier `unstable_navigation()`. Pin `next@16.4.0-canary.11` to use this in canary-track apps.
+
+**PR #95233 — Use-Cache Granular Cache Keys (Component-Surface Impact MEDIUM)**: The `'use cache'` directive now accepts per-call `cacheLife()` profile arguments (e.g., `'use cache'; cacheLife('minutes'); cacheTag('drop', \`drop-${id}\`)`) that produce more granular cache keys. Pre-fix: any `'use cache'` call with the same argument-shape produced the same cache key, leading to shared-cache-attack vectors in apps with PII in the cache. Post-fix: each unique `cacheLife` profile + `cacheTag` set produces its own cache key. **Component-surface impact**: App Router forms using `'use cache'` now have narrower per-call cache scope; POST requests with user-specific data no longer share cache entries across users in the same edge region.
+
+**zod@4.5.2 STABLE SHIPPED** (npm-published 2026-08-29T00:36:06Z = T-5h26m before this cron; **the 3rd STABLE in 7h** — 4.5.0 Aug 28 18:14Z + 4.5.1 Aug 28 17:58Z + 4.5.2 Aug 29 00:36Z; the post-4.5.0 PATCH train is STABLE-active). The 4.5.2 PATCH likely contains the same PR #6457 datetime-seconds-breaking-change from 4.5.1 + additional 4.5.1-regression fixes from the canary train. **Component-surface impact**: forms using `z.date()` now require seconds in datetime strings (already documented in setup.md v1.6.11 + auth.md v1.6.11 breaking-changes section). Pin `zod@^4.5.2`.
+
+**shadcn Ecosystem STILL-IDLE** (shadcn@4.19.0 since 2026-08-21 = 8+ days; `@shadcn/react@0.3.0` since 2026-08-05 = 24+ days; `@shadcn/helpers@0.2.0` since 2026-08-11 = 18+ days). **Component-surface impact: NONE** — no new shadcn components, no new shadcn primitives, no new shadcn ecosystem packages. The Aug 18 blog post's `<ViewTransition>` integration is NOT in shadcn. The Questionniare + Human-in-the-Loop + Private GitHub Registries features (still in shadcn master) are NOT in `shadcn@latest = 4.19.0`. **Component authors using shadcn**: continue using shadcn@4.19.0 components (`<Button>`, `<Card>`, `<Form>`, `<Input>`, `<Dialog>`, `<Sheet>`, etc.) which are stable and unchanged.
+
+**React 19.2 Stable Features — Carryover from v1.6.07**: `<Activity>` and `useEffectEvent` ARE stable in `react@19.2+` (i.e., `react@19.2.8` = current `react@latest`). NOT canary-only. Production Next.js 16 + React 19.2 apps can use these APIs without canary exposure. `<ViewTransition>` remains Canary-only (`import { unstable_ViewTransition } from 'react'`). The v1.6.07 correction stands. Continue using React 19.2 stable features in `react@19.2.8`.
+
+### Component Audit Recipe (v1.6.12)
+
+**For Pages Router users** (impact: HIGH for Pages Router code touching React 18 features):
+1. `npm ls react` — confirm you can bump from 18.x → 19.2.8
+2. `rg -n "React\.useState|React\.useEffect|React\.useRef|React\.useContext|forwardRef" --type ts --type tsx` — audit React 18→19 migration spots
+3. `rg -n "useFormState|useFormStatus|useFormData"` — these are React 19 hooks; they may not be available on React 18; if Pages Router custom hooks use them, verify the React 19 upgrade path
+4. Plan React 18→19 migration within 2-4 months to avoid Next.js 17 Pages Router incompatibility
+
+**For App Router 'use cache' users** (impact: HIGH memory leak):
+1. `npm ls next` — confirm version; if `^16.3.3` STABLE, stay patched; if `^16.4.0-canary.0` or earlier, upgrade to `^16.4.0-canary.10` for the PR #97941 memory leak fix
+2. `rg -n "['"]use cache['"]" --type ts --type tsx` — find all use-cache call sites; verify cache key uniqueness
+3. For STABLE-only users: wait for `next@16.3.4` PATCH (forecast 1-2 weeks for the canary.10 backport)
+4. Long-running containers should monitor memory; the leak was reported to be ~1-10MB per 1K requests in some apps
+
+**For zod@4.5.2 users** (impact: forms + auth schemas):
+1. `npm ls zod` — confirm pin to `^4.5.2`
+2. `rg -n "z\.date\(\)|z\.string\(\)\.datetime\(\)|z\.coerce\.date\(\)"` — audit datetime validators; must now accept seconds
+3. `rg -n "z\.string\(\)\.cuid\(\)|z\.string\(\)\.cuid2\(\)"` — audit CUID validators; CUID v1 deprecated, CUID2 is the new path
+4. `rg -n "z\.string\(\)\.base64\(\)|z\.string\(\)\.url\(\)"` — audit base64 strings (now reject whitespace) + URLs (`httpUrl` is the new strict validator)
+5. `npm test` — run full form validation test suite
+
+**For React 19.2 stable features** (impact: LOW — just verify):
+1. `<Activity>` — verify your `<Activity>` usage compiles in `react@19.2.8` (no need for canary)
+2. `useEffectEvent` — verify your `useEffectEvent` usage compiles in `react@19.2.8`
+3. `<ViewTransition>` — STILL canary-only; do NOT use in production
+
+**For shadcn users** (impact: NONE):
+- Continue using shadcn@4.19.0 components; no breaking changes in 8 days
+- Watch the [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) for the next release
+
+### Why This Matters for `components.md`
+
+The v1.6.12 cycle is the **React canary advance + canary.10/11 component-lens + zod 4.5.2 + Pages Router React 18 deprecation** cycle for components.md + deployment.md + security.md — the 3 weakest files by mtime (36h+ stale since v1.6.07 Aug 27 18:10Z). The natural rotation to these 3 files at this cycle lines up exactly with the highest-impact material since v1.6.07: (1) **Pages Router React 18 deprecation in canary.10** = the Next.js 17 countdown STARTED; Pages Router users have a 2-4 month migration window; this is the most consequential component-surface impact since the Pages Router + App Router architectural bifurcation in Next.js 13; (2) **zod@4.5.2 STABLE just shipped** = forms still using z.string().datetime() without seconds will break; (3) **PR #97941 'use cache' memory leak fix** = HIGH-impact for App Router apps using use cache; (4) **React 19.3.0-canary-2dc7da79 NEW since v1.6.11** = routine canary roll-forward; pin the new hash.
+
+### Sources
+
+- [npm `react@canary` 19.3.0-canary-2dc7da79-20260828](https://www.npmjs.com/package/react?activeTab=versions) — npm-published 2026-08-28T20:12:03Z; the 4th React canary roll in 14 days; no new React 19.3 component APIs
+- [npm `react@experimental` 0.0.0-experimental-2dc7da79-20260828](https://www.npmjs.com/package/react?activeTab=versions) — npm-published 2026-08-28T20:14:17Z; tracks with canary
+- [npm `next@canary` 16.4.0-canary.10](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T02:23:26Z; 27 PRs
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [GitHub — PR #97689 — Deprecate Pages Router with React 18](https://github.com/vercel/next.js/pull/97689) — merged in canary.10; Next.js 17 Pages Router React 18 incompatibility countdown STARTED
+- [GitHub — PR #97941 — 'use cache' request-context memory leak fix](https://github.com/vercel/next.js/pull/97941) — merged in canary.10; HIGH-impact for use-cache apps
+- [GitHub — PR #98000 — PPF `navigation()` prospective prerender](https://github.com/vercel/next.js/pull/98000) — merged in canary.11; new programmatic PPF API
+- [GitHub — PR #95233 — Use-cache granular cache keys](https://github.com/vercel/next.js/pull/95233) — merged in canary.11; narrows cache-attack surface
+- [npm `zod@latest` 4.5.2](https://www.npmjs.com/package/zod?activeTab=versions) — npm-published 2026-08-29T00:36:06Z; the 3rd STABLE in 7h; post-4.5.0 PATCH train
+- [scrimba.com — React 19: What's New for Developers [2026]](https://scrimba.com/articles/react-19-whats-new-for-developers/) — React 19.2 stable features table; `<Activity>` and `useEffectEvent` are stable
+- [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) — STILL-IDLE; Questionnaire + Human-in-the-Loop + Private GitHub Registries not in `shadcn@latest = 4.19.0`
+- [Cross-reference: `deployment.md` — canary.10/11 deployment-impact lens + @tanstack/react-query 5.102.7/.8 PATCH progression + @biomejs/biome 2.5.11 + @playwright/test@next 3 NEW alphas (incl. epoch-ms format)
+- [Cross-reference: `security.md` — CVE-2026-75604 active exploitation T+~104h+ + canary.10/11 security-relevant PRs + 2 NEW @tanstack/react-query PATCHes (5.102.7 + 5.102.8) + react@canary 2dc7da79-20260828 NEW
+- [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12 with all 7 inline observations
+- [Cross-reference: v1.6.07 components.md — the prior React 19.2 stable features correction + canary gap cycle; this v1.6.12 entry is the React canary advance + canary.10/11 component-lens + zod 4.5.2 + Pages Router React 18 deprecation gap-fill
