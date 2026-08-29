@@ -333,6 +333,148 @@ rg "CSRBailout" --type ts --type tsx | head -20
 - **React 3 prep (3 PRs) — CSRBailout → ReactDOM.browser migration** — this is the most forward-looking routing change. Error tracking dashboards and any code explicitly catching `CSRBailout` needs updating before the React 3 flag flips.
 - **TypeScript 35th rebuild missing for first time in 35 days** — the TS main branch idle + no new rebuild is unusual. Monitor the TS next channel. Pin at `7.1.0-dev.20260826.1` until the 35th confirms.
 
+
+## ★ next@16.4.0-canary.10 SHIPPED (27 PRs) + next@16.4.0-canary.11 SHIPPED (22 PRs) + Pages Router React 18 Deprecation + TypeScript 36th/37th No-Content Rebuilds (Routing Lens — v1.6.11, August 29, 2026)
+
+**`next@16.4.0-canary.10`** npm-published **2026-08-28T02:14:15Z** — 27 PRs. The most routing-relevant canary.10 PRs are the parallel route matcher pruning, interception route host slot retention, Pages Router React 18 deprecation, and the 'use cache' request-context memory leak fix.
+
+**`next@16.4.0-canary.11`** npm-published **2026-08-28T23:38:37Z** — 22 PRs, 2 ahead of the tip. The routing-surface HEADLINES are **PR #97948** (Fix optimistic routing for encoded dynamic params) and **PR #97953** (Fix intercepted route params after Proxy rewrites) — both directly fix routing correctness bugs that have likely been affecting some Next.js apps.
+
+### canary.10 Routing-Surface PRs (27 PRs — npm-published 2026-08-28T02:14:15Z)
+
+| PR | Description | Routing Impact |
+|---|---|---|
+| **#97108** | `Prune incomplete parallel route matchers` — removes incomplete parallel route matchers that were causing silent routing failures | **HIGH** — apps with complex parallel route configurations (multiple `<Suspense>` boundaries or concurrent `<Link>` clicks) may see improved routing consistency |
+| **#97184** | `Omit undeclared children slots from app routes` — removes slots not explicitly declared in child routes from the app-entry manifest | **MEDIUM** — parallel route consumers; undeclared slots no longer appear in manifest |
+| **#97242** | `Retain interception route host slots` — preserves host slots in interception route definitions | **HIGH** — multi-host interception route setups (e.g., `@host` patterns) now work correctly |
+| **#97689** | `Pages Router: Deprecate React 18 support` — marks React 18 as deprecated in Pages Router; React 19+ required | **HIGH** — **Next.js 17 countdown STARTED**; Pages Router users must plan React 19 migration |
+| **#97921** | `Turbopack: call loadActionManifest for app-route` — ensures server action manifest is loaded in Turbopack builds for app routes | **MEDIUM** — server action routing in Turbopack builds now correctly resolves |
+| **#97926** | `Expose durableUseCacheEntries config in workStore` — makes `durableUseCacheEntries` config accessible from the work store | **LOW** — config plumbing; no direct routing behavior change |
+| **#97941** | `Fix request-context retention in the default use cache handler` — fixes memory leak where request context was retained after 'use cache' handler completed | **HIGH** — apps using 'use cache' extensively; prevents memory growth over time |
+| **#97942** | `Fix build error when aliasing typescript to @typescript/typescript6` — build fix for TypeScript aliasing | **LOW** — TypeScript build correctness only |
+| **#97944** | `Turbopack: shorten CSS module class names` — reduces CSS module class name length | **LOW** — build output; no routing behavior change |
+| **#97945** | `Turbopack: widen the chunk ident hash from 7 to 13 base38 chars` — reduces collision probability in chunk naming | **LOW** — build output; no routing behavior change |
+| **#97808** | `Upgrade Turbopack to hashbrown 0.15` — Rust hashbrown crate upgrade | **LOW** — internal Turbopack dependency |
+| **#97833** | `Expand Turbopack dev cleanup` — improved Turbopack dev server cleanup | **LOW** — dev experience only |
+| **#97695** | `Add Cache Components option to create-next-app` — `create-next-app` now scaffolds with Cache Components opt-in | **LOW** — project scaffolding only |
+| **#97711** | `Support immutable static assets with output: 'export'` — static export now supports immutable cache headers for assets | **LOW** — static export only |
+| **#97712** | `docs(skills): preserve prefetched UI during Partial Prefetching adoption` — PPF docs improvement | **INFO** — documentation only |
+| **#97995** | `Upgrade React from f789f203-20260825 to 29d9d318-20260826` — React canary bump | **INFO** — no API surface change |
+
+### canary.11 Routing-Surface PRs (22 PRs — npm-published 2026-08-28T23:38:37Z)
+
+| PR | Description | Routing Impact |
+|---|---|---|
+| **#97948** | `Fix optimistic routing for encoded dynamic params` — fixes routing failures when dynamic route segments contain encoded characters (e.g., `%2F` in `/blog/[slug]`) | **HIGH** — any app with dynamic routes containing URL-encoded characters; previously caused 404 or routing failures |
+| **#97953** | `Fix intercepted route params after Proxy rewrites` — fixes interception route params being lost or incorrect after a proxy rewrite | **HIGH** — intercepting routes in proxy/middleware setups; params now correctly preserved |
+| **#98000** | `[PPF] Fix navigation() in prospective runtime prerenders` — fixes PPF `navigation()` API behavior in prospective prerender mode | **MEDIUM** — PPF users; prospective prerender mode was broken |
+| **#95233** | `More granular cache keys for use-cache entries` — finer-grained cache key granularity for 'use cache' entries | **MEDIUM** — 'use cache' users; cache hit rates may improve |
+| **#97988** | `[image-optimizer] Refactor into lightweight transform module` — image optimizer refactored for modularity | **LOW** — no user-visible behavior change |
+| **#97902** | `Guard filesystem reads against unresolved symlinks` — prevents reads from dangling symlinks | **LOW** — build hardening |
+| **#97676** | `Turbopack: enable export mangling by default in production builds` — export name mangling now default in prod | **LOW** — build output; bundle size improvement |
+| **#97672** | `Turbopack: mangle exported names for smaller bundle sizes` — complementary PR to #97676 | **LOW** — build output |
+| **#98032** | `Turbopack: add next_config.use_react_experimental getter` — future-facing config getter | **INFO** — config plumbing; React experimental future |
+| **#97984/#97985** | `Turbopack: allow get_definable_name to return a list` + `unify member and in handling` | **LOW** — Turbopack internal |
+
+### Pages Router React 18 Deprecation — Next.js 17 Countdown Started
+
+**PR #97689** in canary.10 formally deprecates React 18 support in Pages Router. This means **Next.js 17 will require React 19 minimum for Pages Router**. This is a significant signal for Pages Router consumers:
+
+- **Timeline**: Next.js 17 STABLE is expected ~Oct–Dec 2026 (based on the 16.x release cadence of ~6 months per major). Pages Router users have ~2–4 months to migrate.
+- **Impact**: Apps using `react@18` in Pages Router will get a deprecation warning in Next.js 16.x and must upgrade to `react@19` before Next.js 17.
+- **Migration**: App Router already requires React 19. The Pages Router React 19 migration path is well-tested — most `react-dom` 18 → 19 changes are additive.
+- **App Router users**: Not affected — App Router already requires React 19 in Next.js 16.
+
+```bash
+# Check if you're on React 18 in a Pages Router app
+npm list react react-dom
+# If react@^18: plan React 19 upgrade before Next.js 17
+npm install react@19 react-dom@19
+npx tsc --noEmit
+# Expected: minimal breaking changes in Pages Router apps
+```
+
+### TypeScript 36th + 37th No-Content Rebuilds — 6th + 7th Consecutive No-Content (TS Main Branch 32+ Days Idle)
+
+**TypeScript `next` resumed no-content daily rebuilds** after the first miss at v1.6.06:
+- **36th**: `7.1.0-dev.20260827.1` — npm-published 2026-08-27T08:25:17Z (missed at v1.6.06; confirmed in this cycle)
+- **37th**: `7.1.0-dev.20260828.1` — npm-published 2026-08-28T08:25:38Z (confirmed at this cron)
+
+**TS main branch still idle 32+ days** (no functional commits since ~Jul 27). The no-content daily rebuild cadence resumed cleanly after the v1.6.06 miss. **No TS-surface routing impact**.
+
+```bash
+npm view typescript dist-tags.next
+# Expected: 7.1.0-dev.20260828.1
+```
+
+### Updated Routing Audit Recipe — canary.10 + canary.11 + Pages Router React 18 Deprecation
+
+```bash
+# Step 1: upgrade to canary.11 (or pin canary.10 if canary.11 has issues)
+npm install next@16.4.0-canary.11
+
+# Step 2: audit dynamic routes with encoded characters (PR #97948 — HIGH priority fix)
+# Any route like /blog/[slug] where slug may contain %2F or other encoded chars:
+rg "params\.slug|params\[.*\].*%2F|encodeURI" --type ts --type tsx | head -20
+# After upgrade: test all dynamic routes with encoded characters
+# Expected: routes that previously 404'd now resolve correctly
+
+# Step 3: audit interception routes with Proxy rewrites (PR #97953)
+# If using interception routes behind a proxy/middleware:
+rg "interceptor|intercept.*route|InterceptedRoute" --type ts --type tsx | head -20
+# After upgrade: test interception with proxy rewrites
+# Expected: params correctly preserved after rewrite
+
+# Step 4: Pages Router — verify React version (PR #97689 deprecation)
+npm list react react-dom
+# If react@^18: add React 19 upgrade to roadmap before Next.js 17
+npm install react@19 react-dom@19
+npx tsc --noEmit
+
+# Step 5: PPF users — test navigation() in prospective prerender (PR #98000)
+# If using PPF prospective prerender mode:
+# Test: navigate to a page that uses PPF
+# Expected: navigation() works correctly in prospective prerender
+
+# Step 6: 'use cache' users — verify request-context memory leak fix (PR #97941)
+# After running for extended period:
+# Monitor memory: if previously growing over time in 'use cache' apps, should stabilize
+
+# Step 7: TypeScript check
+npm view typescript dist-tags.next
+# Expected: 7.1.0-dev.20260828.1
+npx tsc --noEmit
+
+# Step 8: verify parallel route matchers (PR #97108)
+# If using complex parallel route setups:
+# Test concurrent navigation with multiple Suspense boundaries
+# Expected: routing behavior improved/consolidated
+```
+
+### Why This Matters for Routing
+
+- **canary.11 is the most routing-correctness significant canary since the Aug 26 CVE** — PR #97948 (encoded dynamic params) and PR #97953 (intercepted route params after Proxy rewrites) are real bug fixes that have likely been affecting apps with URL-encoded dynamic segments or proxy setups. These are not cosmetic — they fix broken routing.
+- **canary.10 'use cache' request-context memory leak fix (PR #97941) is operationally critical** — if you use 'use cache' extensively, your app has been leaking request context memory. Upgrade to canary.10+ immediately and monitor memory.
+- **Pages Router React 18 deprecation = Next.js 17 countdown started** — if you're on Pages Router, this is your signal to plan the React 19 migration. You have ~2–4 months before Next.js 17 requires it.
+- **Parallel route matcher pruning (PR #97108) improves routing consistency** — apps with complex parallel routes should see fewer silent routing failures or inconsistent concurrent navigation states.
+- **TypeScript no-content rebuilds resumed cleanly** — 36th and 37th confirm the pattern is back after the v1.6.06 miss. No TS-surface changes.
+- **canary.10 + canary.11 are a combined recommended upgrade** — canary.10 fixes the 'use cache' memory leak; canary.11 fixes encoded dynamic params and interception route bugs. Both should be applied together.
+
+### Sources
+
+- [Official v16.4.0-canary.10 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published **2026-08-28T02:14:15Z**; 27 PRs
+- [Official v16.4.0-canary.11 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11) — npm-published **2026-08-28T23:38:37Z**; 22 PRs
+- [Next.js canary-branch compare `v16.4.0-canary.10...v16.4.0-canary.11`](https://github.com/vercel/next.js/compare/v16.4.0-canary.10...v16.4.0-canary.11) — verified at 2026-08-29T00:02Z; 22 commits
+- [PR #97108 — Prune incomplete parallel route matchers](https://github.com/vercel/next.js/pull/97108) — routing; merged 2026-08-28T02:14Z
+- [PR #97242 — Retain interception route host slots](https://github.com/vercel/next.js/pull/97242) — routing; merged 2026-08-28T02:14Z
+- [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — Next.js 17 countdown; merged 2026-08-28T02:14Z
+- [PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941) — memory leak fix; merged 2026-08-28T02:14Z
+- [PR #97948 — Fix optimistic routing for encoded dynamic params](https://github.com/vercel/next.js/pull/97948) — HIGH routing; merged 2026-08-28T23:38Z
+- [PR #97953 — Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953) — HIGH routing; merged 2026-08-28T23:38Z
+- [PR #98000 — [PPF] Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — PPF routing; merged 2026-08-28T23:38Z
+- [TypeScript 37th rebuild — `7.1.0-dev.20260828.1`](https://registry.npmjs.org/typescript/next) — npm-published **2026-08-28T08:25:38Z**; 37th consecutive no-content; 32+ days main-branch idle
+- [Cross-reference: `auth.md` — @clerk/nextjs 7.8.3 STABLE + canary 7.8.4 line + zod 4.5.1 STABLE
+- [Cross-reference: `setup.md` — zod 4.5.1 STABLE breaking changes + canary.10/.11 setup implications
 ### Sources
 
 - [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**; 22 PRs

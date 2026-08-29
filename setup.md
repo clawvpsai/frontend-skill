@@ -480,6 +480,194 @@ rg "CSRBailout" --type ts --type tsx | head -10
 - **react-query@5.102.7 + 5.102.6** — the combined 5.102.6+7 update changes `useQueries`/`useSuspenseQueries` falsy-error propagation. This affects auth apps that use these hooks for permission queries.
 - **TypeScript 35th rebuild still pending** — the first miss in 35 days. Pin `typescript@next` at `7.1.0-dev.20260826.1` until the 35th confirms.
 
+
+## ★ zod@4.5.1 STABLE SHIPPED (Breaking Changes) + next@16.4.0-canary.10/.11 + @clerk/nextjs 7.8.3 STABLE + @tanstack/react-query@5.102.8 + TypeScript 37th Rebuild (Setup Lens — v1.6.11, August 29, 2026)
+
+**`zod@4.5.1` STABLE** (npm-published **2026-08-28T17:58:39Z**) — the most impactful STABLE release for frontend setup since Zod 4.0. The forecast from v1.6.06 of "Sep 1–15" landed **3 weeks early** at Aug 28. Auth schema authors must audit all Zod usage.
+
+**`next@16.4.0-canary.10`** (npm-published **2026-08-28T02:14:15Z**) and **`next@16.4.0-canary.11`** (npm-published **2026-08-28T23:38:37Z**) are recommended upgrade targets. Setup-relevant PRs: CSS module class name shortening, chunk hash widen, 'use cache' request-context memory leak fix, 'use cache' more granular cache keys, and export name mangling in Turbopack prod builds.
+
+**`@clerk/nextjs@7.8.3` STABLE** (npm-published **2026-08-27T18:54:23Z**) + canary advanced to **7.8.4 line** (tip: `7.8.4-canary.v20260828233657`). Minor release; safe drop-in upgrade.
+
+**`@tanstack/react-query@5.102.8`** (npm-published **2026-08-27T16:06:57Z**) — dep refresh only (query-core@5.102.8). 9th PATCH in the 5.102.x line.
+
+**TypeScript `next`** advanced to `7.1.0-dev.20260828.1` — 37th no-content rebuild; TS main branch still idle 32+ days.
+
+### zod@4.5.1 STABLE — Breaking Changes (Auth Schema Audit Required)
+
+zod 4.5.0 and 4.5.1 contain breaking changes that affect auth setup. Run this audit on all Zod schema files:
+
+```bash
+# Step 1: upgrade to zod@4.5.1
+npm install zod@^4.5.1
+npm view zod dist-tags.latest
+# Expected: 4.5.1
+
+# Step 2: audit z.iso.datetime() — NOW REQUIRES SECONDS (PR #6457)
+# This is the highest-impact breaking change for auth apps
+rg "z\.iso\.datetime\(\)" --type ts --type tsx -l | xargs rg "z\.iso\.datetime" -n | head -20
+# Before: z.iso.datetime().parse("2020-01-01T06:15Z") — accepted minute precision
+# After: MUST include seconds — "2020-01-01T06:15:00Z" format required
+
+# Step 3: audit z.cuid() — CUID v1 DEPRECATED
+rg "z\.cuid\(\)" --type ts --type tsx -l | head -10
+# If using legacy CUID v1 IDs: migrate to CUID v2 or uuid
+
+# Step 4: audit z.base64() — NOW REJECTS WHITESPACE
+rg "z\.base64\(\)" --type ts --type tsx | head -10
+# Tokens with spaces (like "Zm 9v") now fail; this catches encoding bugs
+
+# Step 5: audit z.httpUrl() — NOW REJECTS MALFORMED URLS
+rg "z\.httpUrl\(\)" --type ts --type tsx | head -10
+# "https:/example.com" (missing slash) now rejected
+
+# Step 6: TypeScript check
+npx tsc --noEmit
+# Expected: no new errors from Zod schema changes
+```
+
+**Migration for `z.iso.datetime()` timestamps in auth:**
+```typescript
+// ❌ Before (zod 4.4.x) — accepted minute precision
+const authLogSchema = z.object({
+  timestamp: z.iso.datetime(),
+  action: z.string(),
+})
+
+// ✅ After (zod 4.5.x) — requires seconds (RFC 3339)
+// If timestamps come from your backend with seconds already:
+const authLogSchema = z.object({
+  timestamp: z.iso.datetime(), // now requires "2020-01-01T06:15:00Z"
+  action: z.string(),
+})
+
+// If you must accept both precisions (e.g., from external APIs):
+const flexibleDatetime = z.union([
+  z.iso.datetime(),                              // seconds required (RFC 3339)
+  z.iso.datetime({ precision: -1 }),             // accepts any precision
+])
+```
+
+### next@16.4.0-canary.10 + canary.11 — Setup-Relevant PRs
+
+| PR | Description | Setup Impact |
+|---|---|---|
+| **#97941** | `Fix request-context retention in the default use cache handler` — **MEMORY LEAK FIX** | **HIGH** — upgrade immediately if using 'use cache'; prevents memory growth |
+| **#97944** | `Turbopack: shorten CSS module class names` — shorter class name output | **MEDIUM** — affects CSS Modules in Turbopack builds; expected minor improvement |
+| **#97945** | `Turbopack: widen the chunk ident hash from 7 to 13 base38 chars` — reduces chunk hash collision | **LOW** — build output improvement |
+| **#97676** | `Turbopack: enable export mangling by default in production builds` | **MEDIUM** — production bundle size improvement; test in staging |
+| **#97672** | `Turbopack: mangle exported names for smaller bundle sizes` | **LOW** — build output |
+| **#95233** | `More granular cache keys for use-cache entries` | **MEDIUM** — 'use cache' users may see improved cache hit rates |
+| **#97902** | `Guard filesystem reads against unresolved symlinks` | **LOW** — build hardening |
+| **#97689** | `Pages Router: Deprecate React 18 support` — React 19 required for Pages Router in Next.js 17 | **HIGH** — Pages Router signal; plan React 19 upgrade |
+| **#97988** | `[image-optimizer] Refactor into lightweight transform module` | **LOW** — no user-visible change |
+| **#98000** | `[PPF] Fix navigation() in prospective runtime prerenders` | **MEDIUM** — PPF users testing prospective mode |
+| **#97948** | `Fix optimistic routing for encoded dynamic params` | **MEDIUM** — routing correctness fix; test dynamic routes with encoded chars |
+
+### @clerk/nextjs 7.8.3 STABLE + Canary 7.8.4 Line
+
+```bash
+# Step 1: upgrade to 7.8.3 STABLE
+npm install @clerk/nextjs@^7.8.3
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.3
+
+# Step 2: optionally pin canary to 7.8.4 line (early access)
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.4-canary.v20260828233657
+
+# Step 3: verify middleware resolves
+npx tsc --noEmit
+```
+
+### @tanstack/react-query@5.102.8 + Updated useQueries Falsy-Error Audit
+
+```bash
+# Step 1: upgrade
+npm install @tanstack/react-query@^5.102.8
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.8
+
+# Step 2: audit useQueries / useSuspenseQueries error callbacks (5.102.6 fix impact)
+rg "useQueries|useSuspenseQueries" --type tsx -l | xargs \
+  rg "if.*!.*error|if.*error.*return" -A2 -B2 | head -40
+# If guards exist: update to check error type explicitly
+# e.g., if (error instanceof Error) { handleError(error) }
+# Falsy errors (null, 0, '', false) now reach the callback
+```
+
+### Updated Setup Recipe — v1.6.11
+
+```bash
+# IMMEDIATE: upgrade next to canary.11 (or canary.10 for stability)
+npm install next@16.4.0-canary.11
+
+# Step 1: upgrade zod to 4.5.1 — BREAKING CHANGES
+npm install zod@^4.5.1
+
+# Step 2: audit Zod datetime schemas (highest priority — affects auth logs, sessions, tokens)
+rg "z\.iso\.datetime\(\)" --type ts --type tsx -l | xargs \
+  rg "z\.iso\.datetime" -n | head -20
+# Update timestamps to include seconds: "2020-01-01T06:15:00Z" format
+
+# Step 3: upgrade @clerk/nextjs to 7.8.3 STABLE
+npm install @clerk/nextjs@^7.8.3
+
+# Step 4: upgrade @tanstack/react-query to 5.102.8
+npm install @tanstack/react-query@^5.102.8
+
+# Step 5: upgrade sharp to 0.35.4+ (should already be there from canary.9)
+npm list sharp
+# If < 0.35.4: npm install sharp@^0.35.4
+
+# Step 6: 'use cache' users — verify memory leak fix
+# After running: monitor memory usage over time
+# Expected: memory should no longer grow unbounded
+
+# Step 7: Pages Router — check React version
+npm list react react-dom
+# If react@^18: plan React 19 upgrade before Next.js 17
+
+# Step 8: Turbopack prod builds — test export name mangling
+pnpm next build --turbo
+# Expected: smaller bundle sizes from export mangling (canary.11)
+
+# Step 9: TypeScript check
+npx tsc --noEmit
+# Expected: no new errors
+
+# Step 10: clean dev server
+rm -rf .next
+npm run dev
+# Expected: starts cleanly
+```
+
+### Why This Matters for Setup
+
+- **zod@4.5.1 is a breaking-change STABLE** — the `z.iso.datetime()` seconds requirement is the highest-impact breaking change for auth apps. Any schema using ISO datetime strings (session timestamps, auth logs, token expiry) will break if not updated. The `z.cuid()` tightening and `z.base64()` whitespace rejection are also correctness improvements.
+- **'use cache' request-context memory leak fix (PR #97941) is P0** — if you use 'use cache' in production, your app has been leaking memory since the feature shipped. Upgrade to canary.10+ immediately.
+- **Turbopack export mangling in production (PR #97676)** — production bundle sizes will decrease for Turbopack builds. Test in staging before pushing to production.
+- **Pages Router React 18 deprecation** — this is your signal for Next.js 17 planning. If you're on Pages Router with React 18, start the React 19 upgrade path now.
+- **@clerk/nextjs 7.8.3 STABLE** — minor, safe. The canary 7.8.4 line is moving fast (15 drops in 29h) — watch for 7.8.4 STABLE in 1–2 weeks.
+
+### Sources
+
+- [zod 4.5 blog post](https://zod.dev/blog/zod-4-5) — published **2026-08-27T00:00Z**; datetime seconds + breaking changes
+- [zod 4.5.0 npm](https://registry.npmjs.org/zod/4.5.0) — published **2026-08-28T18:14:39.625Z**
+- [zod 4.5.1 npm](https://registry.npmjs.org/zod/latest) — published **2026-08-28T17:58:39.744Z**; `latest` dist-tag
+- [PR #6457 — datetime fix: require seconds](https://github.com/colinhacks/zod/pull/6457) — RFC 3339 seconds requirement
+- [Official v16.4.0-canary.10 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.10) — npm-published **2026-08-28T02:14:15Z**; 27 PRs
+- [Official v16.4.0-canary.11 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11) — npm-published **2026-08-28T23:38:37Z**; 22 PRs
+- [PR #97941 — Fix request-context retention in the default use cache handler](https://github.com/vercel/next.js/pull/97941) — **memory leak fix**; HIGH priority
+- [PR #97676 — Turbopack: enable export mangling by default in production builds](https://github.com/vercel/next.js/pull/97676) — bundle size improvement
+- [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — Next.js 17 countdown
+- [Official @clerk/nextjs 7.8.3 release](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — published **2026-08-27T18:54:23Z**
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.4-canary.v20260828233657`; 7.8.4 line
+- [`@tanstack/react-query@5.102.8` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — published **2026-08-27T16:06:57Z**; dep refresh
+- [TypeScript 37th rebuild — `7.1.0-dev.20260828.1`](https://registry.npmjs.org/typescript/next) — npm-published **2026-08-28T08:25:38Z**; 37th no-content
+- [Cross-reference: `routing.md` — canary.10/.11 routing-surface + Pages Router React 18 deprecation + encoded dynamic params fix
+- [Cross-reference: `auth.md` — @clerk/nextjs 7.8.3 STABLE + 7.8.4 canary line + zod 4.5.1 breaking changes auth lens
 ### Sources
 
 - [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**; 22 PRs

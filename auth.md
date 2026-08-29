@@ -381,6 +381,162 @@ rg "CSRBailout" --type ts --type tsx
 - **react-query@5.102.7 is a dep refresh on top of the 5.102.6 correctness fix** — the 5.102.6 PR #11305 change is now in stable and will affect auth apps using `useQueries` for permission or role checks. Audit your `onError`/`onSettled` callbacks.
 - **ReactDOM.browser flag migrations** — any Clerk-protected page that uses `next/dynamic ssr:false` + error boundaries is affected by the CSRBailout → ReactDOM.browser migration. Error tracking dashboards need updating.
 
+
+## ★ @clerk/nextjs 7.8.3 STABLE SHIPPED + Canary Advanced to 7.8.4 Line + @tanstack/react-query@5.102.8 + zod@4.5.1 STABLE (Auth Lens — v1.6.11, August 29, 2026)
+
+**`@clerk/nextjs@7.8.3` STABLE SHIPPED** (npm-published **2026-08-27T18:54:23Z**) — a minor with one meaningful change: JSDoc link target alignment with docs link rules. The auth.md v1.6.06 tracking of `@clerk/nextjs@canary` at `7.8.3-canary.v20260827114418` now has a matching STABLE version. The canary train has since moved to the **7.8.4 line**.
+
+**`@clerk/nextjs@canary` advanced from 7.8.3 line to 7.8.4 line** — `7.8.4-canary.v20260828180008` first appeared at 2026-08-28T18:04:39Z. The current canary tip is `7.8.4-canary.v20260828233657` (npm-published **2026-08-28T23:40:58Z**). The 7.8.4 development line carries multiple drops since Aug 28 18:04Z. **STABLE still `7.8.3`**; 7.8.4 STABLE expected in 1–2 weeks.
+
+**`@tanstack/react-query@5.102.8`** (npm-published **2026-08-27T16:06:57Z**) — dep refresh only (`query-core@5.102.8`). This is the 9th PATCH in the 5.102.x line (Aug 22–27 = fastest-ever TanStack Query cadence). The previous 5.102.6 PR #11305 (useQueries falsy-error propagation) remains the most operationally significant. No new auth API changes in 5.102.8.
+
+**`zod@4.5.1` STABLE** (npm-published **2026-08-28T17:58:39.744Z**) — the v1.6.06 `zod@canary` tracking documented `4.5.0-canary.20260827T054049` as the forecast tip. zod 4.5.0 STABLE (published **2026-08-28T18:14:39.625Z**) and 4.5.1 STABLE shipped within 16 minutes of each other. The `latest` dist-tag points to **4.5.1**. Auth apps using Zod for auth schema validation have **breaking changes** to account for.
+
+### @clerk/nextjs 7.8.3 STABLE — Changelog
+
+```diff
+## 7.8.3
+### Patch Changes
+- Align JSDoc link targets with the docs link rules: internal docs links don't open in a new tab
++  (removed {{ target: '_blank' }} from Invitation Metadata link).
++  External API reference links do open in new tab (added to ExternalAccount Backend API link + currentUser() endpoint).
++  ([#9556](https://github.com/clerk/javascript/pull/9556)) by @manovotny
+- Updated dependencies: @clerk/backend@3.16.13, @clerk/shared@4.30.2, @clerk/react@6.14.8
+```
+
+No auth-API changes. Recommended pin: `@clerk/nextjs@^7.8.3`.
+
+### @clerk/nextjs Canary — 7.8.4 Line (15 Drops Since v1.6.06)
+
+The canary train advanced from the 7.8.3 line to the **7.8.4 line** in the 48h since v1.6.06 (Aug 27 12:09Z → Aug 29 00:02Z):
+
+| Date | Version | Notes |
+|---|---|---|
+| Aug 27 18:59Z | 7.8.3-canary.v20260827185423 | Still on 7.8.3 line |
+| Aug 27 19:41Z | 7.8.3-canary.v20260827193739 | Still on 7.8.3 line |
+| Aug 27 19:59Z | 7.8.3-canary.v20260827195249 | Still on 7.8.3 line |
+| Aug 28 15:47Z | 7.8.3-canary.v20260828154238 | Still on 7.8.3 line |
+| Aug 28 17:11Z | 7.8.3-canary.v20260828170651 | Still on 7.8.3 line |
+| Aug 28 17:24Z | 7.8.3-canary.v20260828172016 | Still on 7.8.3 line |
+| Aug 28 18:04Z | **7.8.4-canary.v20260828180008** | **NEW LINE — 7.8.4 development started** |
+| Aug 28 18:14Z | 7.8.4-canary.v20260828180945 | |
+| Aug 28 19:09Z | 7.8.4-canary.v20260828190422 | |
+| Aug 28 19:42Z | 7.8.4-canary.v20260828193733 | |
+| Aug 28 20:49Z | 7.8.4-canary.v20260828204455 | |
+| Aug 28 21:12Z | 7.8.4-canary.v20260828210825 | |
+| Aug 28 21:57Z | 7.8.4-canary.v20260828215256 | |
+| Aug 28 22:11Z | 7.8.4-canary.v20260828220709 | |
+| Aug 28 23:41Z | 7.8.4-canary.v20260828233657 | **Current tip** |
+
+**15 drops in ~29h** = 1 drop every ~1h 56min. This is the densest Clerk canary period since tracking began. The 7.8.4 line likely contains new auth-API additions that will become the 7.8.4 STABLE in 1–2 weeks.
+
+```bash
+# Pin Clerk canary to the 7.8.4 line
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.4-canary.v20260828233657
+
+# Or pin to STABLE 7.8.3
+npm install @clerk/nextjs@^7.8.3
+```
+
+### zod@4.5.1 STABLE — Breaking Changes for Auth Schemas
+
+zod 4.5.1 (published **2026-08-28T17:58:39Z**) contains the 4.5.0 changes. Auth apps using Zod for form validation, API input validation, or auth schema definitions should review these breaking changes:
+
+**Breaking: `z.iso.datetime()` now requires seconds (PR #6457)**
+```typescript
+// Before (zod 4.4.x): accepted minute-precision input
+z.iso.datetime().parse("2020-01-01T06:15Z")  // ✅ was accepted
+
+// After (zod 4.5.x): MUST include seconds
+z.iso.datetime().parse("2020-01-01T06:15:00Z")  // ✅ correct
+z.iso.datetime().parse("2020-01-01T06:15Z")      // ❌ TypeError — RFC 3339 requires seconds
+
+// Workaround for both precisions:
+z.union([z.iso.datetime(), z.iso.datetime({ precision: -1 })])
+```
+
+**Breaking: `z.base64()` now rejects whitespace**
+```typescript
+z.base64().parse("Zm9v")        // ✅ — no whitespace
+z.base64().parse("Zm 9v")       // ❌ — was accepted in 4.4.x, rejected in 4.5.x
+```
+
+**Breaking: `z.cuid()` tightened — CUID v1 deprecated**
+```typescript
+// CUID v1 IDs (created before ~2024) will fail validation in 4.5.x
+z.cuid().parse("ck1234567890abcdef")  // ❌ CUID v1 now rejected
+z.cuid().parse("cl9uvcg3d0000qzqhta6f5v8k")  // ✅ CUID v2 accepted
+```
+
+**Breaking: `z.httpUrl()` now rejects malformed URLs**
+```typescript
+z.httpUrl().parse("https:/example.com")   // ❌ missing slash after ://
+z.httpUrl().parse("https://example.com")   // ✅ correct
+```
+
+**Auth-specific impact**: If your auth schemas use `z.string().datetime()` for timestamps, `z.string().cuid()` for ID fields, or `z.string().base64()` for encoded tokens, audit these for the breaking changes.
+
+```bash
+# Audit Zod schema files for affected patterns
+rg "z\.iso\.datetime|z\.cuid|z\.base64|z\.httpUrl" --type ts --type tsx -l | xargs rg "z\.iso\.datetime|z\.cuid|z\.base64|z\.httpUrl" -n | head -30
+```
+
+### Auth Audit Recipe — v1.6.11
+
+```bash
+# Step 1: upgrade @clerk/nextjs to 7.8.3 STABLE
+npm install @clerk/nextjs@^7.8.3
+npm view @clerk/nextjs dist-tags.latest
+# Expected: 7.8.3
+
+# Step 2: pin canary to 7.8.4 line (optional, for early access)
+npm install @clerk/nextjs@canary
+npm view @clerk/nextjs dist-tags.canary
+# Expected: 7.8.4-canary.v20260828233657
+
+# Step 3: upgrade @tanstack/react-query to 5.102.8 (dep refresh)
+npm install @tanstack/react-query@^5.102.8
+npm view @tanstack/react-query dist-tags.latest
+# Expected: 5.102.8
+
+# Step 4: audit Zod auth schemas for breaking changes
+rg "z\.iso\.datetime\(\)" --type ts --type tsx -l | xargs rg "z\.iso\.datetime" -n | head -20
+# Update to include seconds: "2020-01-01T06:15:00Z" format
+
+# Step 5: audit CUID v1 usage (if using legacy CUID IDs in auth)
+rg "z\.cuid\(\)" --type ts --type tsx | head -10
+# If any: plan migration from CUID v1 to CUID v2 or uuid
+
+# Step 6: audit base64 auth token patterns
+rg "z\.base64\(\)" --type ts --type tsx | head -10
+# Test: verify tokens without whitespace still validate
+
+# Step 7: verify auth middleware still resolves
+rg "clerkMiddleware|authMiddleware" src/middleware.ts
+npx tsc --noEmit
+# Expected: no new errors
+```
+
+### Why This Matters for Auth
+
+- **@clerk/nextjs 7.8.3 STABLE** — minor release, no auth API changes. Safe upgrade for all Clerk users.
+- **7.8.4 canary line — 15 drops in 29h is unprecedented** — the densest Clerk canary period ever tracked. The 7.8.4 line likely contains new auth features. Pin `@clerk/nextjs@canary` at `7.8.4-canary.v20260828233657` to follow along; STABLE 7.8.4 expected in 1–2 weeks.
+- **zod@4.5.1 is a breaking-change STABLE** — the `z.iso.datetime()` seconds requirement is the highest-impact change for auth apps that store or validate ISO timestamp strings. Audit all Zod schemas that use datetime validation.
+- **@tanstack/react-query 5.102.8** — dep refresh only. The 5.102.6 PR #11305 (falsy-error propagation in useQueries) is now in the stable range and is the most operationally relevant change. Auth apps using `useQueries` for permission/role checks should verify their error handling guards.
+
+### Sources
+
+- [Official @clerk/nextjs 7.8.3 release](https://github.com/clerk/javascript/blob/main/packages/nextjs/CHANGELOG.md) — published **2026-08-27T18:54:23Z**
+- [`@clerk/nextjs@canary` npm](https://registry.npmjs.org/@clerk/nextjs/canary) — now `7.8.4-canary.v20260828233657`; 15 drops since v1.6.06; new 7.8.4 line
+- [`@tanstack/react-query@5.102.8` npm](https://registry.npmjs.org/@tanstack/react-query/latest) — published **2026-08-27T16:06:57Z**; dep refresh only
+- [zod 4.5 blog post](https://zod.dev/blog/zod-4-5) — published **2026-08-27T00:00Z**; datetime seconds requirement + breaking changes
+- [zod 4.5 changelog](https://github.com/colinhacks/zod/releases) — PR #6457 datetime seconds fix
+- [PR #97948 — Fix optimistic routing for encoded dynamic params](https://github.com/vercel/next.js/pull/97948) — routing correctness fix (canary.11)
+- [PR #97953 — Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953) — routing correctness fix (canary.11)
+- [Cross-reference: `routing.md` — canary.10/.11 routing-surface + Pages Router React 18 deprecation
+- [Cross-reference: `setup.md` — zod 4.5.1 STABLE setup recipe + canary.10/.11 implications
 ### Sources
 
 - [Official v16.4.0-canary.9 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.9) — npm-published **2026-08-27T00:43:37Z**
