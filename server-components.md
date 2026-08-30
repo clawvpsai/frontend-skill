@@ -3079,3 +3079,50 @@ The v1.6.09 cycle is the **canary.9/canary.10 RSC core refresh** for `server-com
 - **`patterns.md` (v1.5.95):** Pattern EE/FF/GG/HH/II/JJ from canary.3 + canary.4. This entry adds Pattern KK: "Agentic RSC + Human-in-the-Loop" from the shadcn @shadcn/helpers AI SDK integration.
 
 **Sources:** [GitHub PR #97689](https://github.com/vercel/next.js/pull/97689) | [PR #97941](https://github.com/vercel/next.js/pull/97941) | [PR #97926](https://github.com/vercel/next.js/pull/97926) | [PR #97242](https://github.com/vercel/next.js/pull/97242) | [PR #97184](https://github.com/vercel/next.js/pull/97184) | [PR #97108](https://github.com/vercel/next.js/pull/97108) | [PR #97711](https://github.com/vercel/next.js/pull/97711) | [PR #97695](https://github.com/vercel/next.js/pull/97695) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)
+
+## Next.js `16.4.0-canary.11` SHIPPED (Aug 28 23:38Z) + `16.3.3` SECURITY STABLE (Aug 25) + Pages Router React 18 Deprecation COUNTDOWN (Server-Components Lens — Tested at v1.6.14 Cron, August 30, 2026 00:02 UTC)
+
+The v1.6.14 cycle is the **server-components + PPF navigation prospective fix** refresh for `server-components.md` — covering the RSC-layer implications of canary.11's headline changes: PPF `navigation()` fix in prospective runtime prerenders + granular cache keys for 'use cache' entries + intercepted route params fix. Plus the missed `next@16.3.3` STABLE security release that was closed-but-missed by v1.6.09–v1.6.13.
+
+### New Material
+
+#### PPF `navigation()` Fix in Prospective Runtime Prerenders (canary.11 — HEADLINE)
+
+- **[GitHub PR #98000 — [PPF] Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000)** — Closes a bug where `navigation()` (the PPF API) returned incorrect values when called during the **prospective rendering phase** (the speculative pre-render pass that runs before the final RSC tree is committed). The prospective pass is what enables the "instant navigation" feel in PPF-enabled apps. The bug: `navigation().navigating` was `true` even when the navigation had already resolved, causing spurious loading states. **Fix: `navigation()` now correctly reflects the committed navigation state in prospective prerenders.** Apps using `useFormStatus`, optimistic `<Link>` clicks, or any `navigation()`-based UX in PPF-enabled apps will see fewer visual flicker and incorrect pending states after upgrading to canary.11.
+
+#### Granular Cache Keys for `'use cache'` Entries (canary.11)
+
+- **[GitHub PR #95233 — More granular cache keys for use-cache entries](https://github.com/vercel/next.js/pull/95233)** — When `'use cache'` wraps a function that references dynamic values (route params, search params, cookies), Next.js now creates **per-argument-hash cache entries** instead of lumping all invocations into one bucket. Previously, a cached function called with `id=1` and `id=2` could return the same cached value if other dynamic inputs were identical. **Fix: cache keys now include the full input argument hash, not just the route segment.** This is a correctness + perf win: more granular keys → more cache hits on repeated dynamic calls. Apps with `'use cache'` + dynamic route segments should see fewer stale reads after upgrading.
+
+#### Fix Intercepted Route Params After Proxy Rewrites (canary.11)
+
+- **[GitHub PR #97953 — Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953)** — When Next.js proxy/middleware rewrites a request to an intercepted route (e.g., a modal route like `@[username]/post/[id]` intercepted over a list page), the intercepted route received **incorrectly resolved dynamic parameters**. Symptoms: `notFound()` triggered on valid intercepted routes when using `params.username` or `params.id`. **Fix: params are now correctly propagated through the proxy rewrite chain.** Apps using intercepted routes (modals over lists, photo grids, etc.) will have fewer false 404s.
+
+#### Fix Optimistic Routing for Encoded Dynamic Params (canary.11)
+
+- **[GitHub PR #97948 — Fix optimistic routing for encoded dynamic params](https://github.com/vercel/next.js/pull/97948)** — Route segments containing URI-encoded characters (e.g. `%20` for space, `%2F` for slash in slugs) caused **incorrect optimistic route matching** in the RSC prefetch layer. Resulted in incorrect cache key generation and double-prefetching on routes with user-generated slugs containing special characters. **Fix: encoded params are now normalized before route matching.** Apps where users can create content with special characters in slugs (spaces, unicode, URL-sensitive chars) benefit.
+
+#### `next@16.3.3` STABLE — August 2026 Security Release (Aug 25)
+
+- **[GitHub Releases — v16.3.3](https://github.com/vercel/next.js/releases/tag/v16.3.3)** — **MISSED by v1.6.09 through v1.6.13 inclusive.** Published Aug 25 after moving up from the scheduled Aug 26 window due to a second Critical CVE discovered in an upstream dependency. **`next@latest` is now `16.3.3`.** Two Critical severity CVEs patched. The Aug 20 monthly security release window was missed for the first time since tracking began (v1.5.0, Jun 19) — resolved with the Aug 25 out-of-cycle release. Windows deployments were under active exploitation per CVE-2026-75604. **Action: `next@^16.3.3` for all production deployments.**
+- **RSC impact:** No RSC API changes. Security-only patch. The AVIF re-enablement (canary.9) and `'use cache'` fixes (canary.10/11) are NOT included in 16.3.3 — those require the canary line. For apps on STABLE, this is the minimum security baseline.
+
+#### Pages Router React 18 Deprecation — Next.js 17 Countdown CONFIRMED
+
+- **[GitHub PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689)** — The deprecation warning is now officially merged and shipped. As of canary.11, Pages Router apps using React 18 will see a build warning: `"React 18 is deprecated in the Pages Router. Next.js 17 will remove support for React 18 in the Pages Router entirely."` **Migration path for Pages Router apps:** Upgrade to Next.js 17 (when released) and migrate to the App Router, or pin `next@16.3.3` and do not upgrade further (long-term support window). No React 19 support for Pages Router is planned.
+- **RSC/Server-Components angle:** App Router remains the only path for React 19 features (Server Components, Actions, `use cache`, `<ViewTransition>`, PPF). The deprecation signals that RSC is App-Router-only for the foreseeable future.
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.09) | Current (v1.6.14) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.2` STABLE | `16.3.3` STABLE | **MISSED** by v1.6.09–v1.6.13; Aug 25 security release |
+| `next@canary` | `16.4.0-canary.10` | `16.4.0-canary.11` | +1 canary; Aug 28; PPF nav() fix + granular cache keys |
+| React (via Next.js) | `29d9d318-20260826` | `2dc7da79-20260828` | +1 React bump (PR #97995) |
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.14):** Turbopack export mangling on-default (PR #97676) + 16.3.3 security bump. The performance-layer view of the same canary.11 changes.
+- **`styling.md` (v1.6.14):** Tailwind Oxide engine dormant at 16 days idle + shadcn v4.19.0 (Aug 21) with Questionnaire + Private GitHub Registries. Styling ecosystem: STABLE.
+- **`api.md` (v1.6.14):** next@16.3.3 + canary.11 changes on the API surface. RSC Actions + route handler patterns unchanged.
+- **`routing.md` (v1.6.11):** Intercepted route params fix (PR #97953) + optimistic routing fix (PR #97948). Routing lens on the same RSC fixes.
+
+**Sources:** [GitHub PR #98000](https://github.com/vercel/next.js/pull/98000) | [PR #95233](https://github.com/vercel/next.js/pull/95233) | [PR #97953](https://github.com/vercel/next.js/pull/97953) | [PR #97948](https://github.com/vercel/next.js/pull/97948) | [PR #97995](https://github.com/vercel/next.js/pull/97995) | [PR #97689](https://github.com/vercel/next.js/pull/97689) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update) | [Next.js 16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11)

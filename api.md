@@ -2923,4 +2923,29 @@ For the API-surface lens, the canary.5/6/7 + 16.3.3/15.5.24 STABLE + 5.102.3 bat
 - [PR #97926 — Expose durableUseCacheEntries config in workStore](https://github.com/vercel/next.js/pull/97926) — by @gnoff; advanced cache handler authors
 - [PR #97942 — Fix build error when aliasing `typescript` to `@typescript/typescript6`](https://github.com/vercel/next.js/pull/97942) — by @andrewbranch; TS experimenters
 - [PR #97695 — Add Cache Components option to create-next-app](https://github.com/vercel/next.js/pull/97695) — `--cache-components` flag for new projects
+
+
+## next@16.4.0-canary.11 SHIPPED (Aug 28 23:38Z) + next@16.3.3 SECURITY STABLE (Aug 25) — Turbopack Export Mangling ON-DEFAULT + PPF navigation() Fix + Granular Cache Keys + React 19.3 canary to `2dc7da79-20260828` (API-Surface Lens — Tested at v1.6.14 Cron, August 30, 2026 00:02 UTC)
+
+**`next@16.4.0-canary.11` SHIPPED** (npm-published 2026-08-28T23:38:34Z; 1 canary drop since canary.10; ~21h gap [canary.10 Aug 28 02:14Z → canary.11 Aug 28 23:38Z]). Notable API-surface PRs:
+
+**API-surface HIGH/MEDIUM PRs:**
+- [PR #97676](https://github.com/vercel/next.js/pull/97676) — `Turbopack: enable export mangling by default in production builds` (by @mischnic): **HEADLINE**: Export name mangling is now **on by default** in production Turbopack builds. Previously opt-in; now automatic. Mangles all non-default exported identifiers in production JS bundles. **~3–8% bundle-size reduction** depending on export surface (larger gains for libraries with many exports). Tree-shaking pairs with `'use turbopack: constants'` directive (PR #90300) for compound wins. No code changes required. **Action**: verify bundle size improvement after upgrading; if you rely on preserved export names for runtime reflection, pin to canary.10 or earlier until an opt-out flag ships.
+- [PR #97672](https://github.com/vercel/next.js/pull/97672) — `Turbopack: mangle exported names for smaller bundle sizes` (by @mischnic): Underlying implementation that PR #97676 enabled by default. All `export { Foo, Bar }` → shorter mangled identifiers in production.
+- [PR #98000](https://github.com/vercel/next.js/pull/98000) — `[PPF] Fix navigation() in prospective runtime prerenders` (by @gnoff): **Fixes a PPF (Partial Prerendering) bug**: `navigation()` returned incorrect values during the prospective rendering phase. `navigation().navigating` was `true` even after navigation resolved. Caused spurious loading states on optimistic `<Link>` clicks and `useFormStatus` in PPF-enabled apps. **Action**: test PPF-enabled apps after upgrading.
+- [PR #95233](https://github.com/vercel/next.js/pull/95233) — `More granular cache keys for use-cache entries` (by @gnoff): `'use cache'` functions now get **per-argument-hash cache entries** instead of lumping all invocations into one bucket. **Action**: monitor cache behavior after upgrading.
+- [PR #97948](https://github.com/vercel/next.js/pull/97948) — `Fix optimistic routing for encoded dynamic params` (by @gnoff): Route segments with URI-encoded characters caused incorrect optimistic route matching. **Fix**: encoded params normalized before route matching.
+- [PR #97953](https://github.com/vercel/next.js/pull/97953) — `Fix intercepted route params after Proxy rewrites` (by @gnoff): Intercepted routes received incorrect params when proxy/middleware rewrite was involved. Caused false `notFound()` on valid intercepted routes.
+- [PR #98032](https://github.com/vercel/next.js/pull/98032) — `Turbopack: add next_config.use_react_experimental getter`: New internal getter. No user-facing impact.
+- [PR #97991](https://github.com/vercel/next.js/pull/97991) — `[ci] Run flake detection and new deploy tests when merged`: CI infrastructure improvement. No user-facing API change.
+- [PR #98047](https://github.com/vercel/next.js/pull/98047) — `Turbopack: drop rust analyzer skip annotation`: Internal cleanup. No user-facing impact.
+
+**React bump (HIGH for RSC):**
+- [PR #97995](https://github.com/vercel/next.js/pull/97995) — `Upgrade React from `29d9d318-20260826` to `2dc7da79-20260828`` (by @react-native-bot): React canary roll-forward. `2dc7da79` is the latest React canary (published Aug 28). 7 React canary drops in 14 days. No RSC type surface changes noted.
+
+**`next@16.3.3` SECURITY STABLE SHIPPED (Aug 25)**
+- **[GitHub Releases — v16.3.3](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Release](https://nextjs.org/blog/august-2026-security-release) | [Update: August Security Release](https://nextjs.org/blog/nextjs-security-release-august-2026-update)** — **`next@latest` is now `16.3.3`** (was `16.3.2` when api.md was last updated at v1.5.95). Two Critical severity CVEs patched (CVE-2026-75604 + second Critical upstream dependency CVE). Windows deployments were under active exploitation. **This was the first Aug monthly security release MISSED by the skill (v1.6.00–v1.6.13).** `next@15.5.24` also published simultaneously. **Action**: `next@^16.3.3` or `next@^15.5.24` for all production deployments immediately. No API changes — pure security patch. AVIF re-enablement (canary.9) is NOT in 16.3.3.
+
+
 - [Cross-references](cross-refs): `patterns.md` → Pattern AG: CSS Module class name shortening from the pattern-surface lens; `styling.md` → CSS module naming section updated; `server-components.md` → RSC lens on durableUseCacheEntries; `routing.md` → `experimental.strictRouteMatching` routing-surface implications; `performance.md` → memory leak in default use cache handler from the perf lens
+

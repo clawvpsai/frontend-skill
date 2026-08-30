@@ -6522,3 +6522,72 @@ The v1.6.09 cycle is the **mandatory post-CVE performance recalibration** for `p
 - **`typescript.md` (v1.6.07):** TypeScript 7.0 stable baseline + 7.1 dev. This entry adds the canary.10 build fix for `@typescript/typescript6` aliasing.
 
 **Sources:** [GitHub PR #97944](https://github.com/vercel/next.js/pull/97944) | [PR #97945](https://github.com/vercel/next.js/pull/97945) | [PR #97941](https://github.com/vercel/next.js/pull/97941) | [PR #1a7ccf4](https://github.com/vercel/next.js/pull/1a7ccf4) | [PR #97165](https://github.com/vercel/next.js/pull/97165) | [PR #97833](https://github.com/vercel/next.js/pull/97833) | [PR #97808](https://github.com/vercel/next.js/pull/97808) | [PR #97689](https://github.com/vercel/next.js/pull/97689) | [PR #97108](https://github.com/vercel/next.js/pull/97108) | [Next.js 16.3 blog](https://nextjs.org/blog/building-app-like-experiences-with-nextjs-16-3) | [ISR with Cache Components](https://nextjs.org/docs/app/guides/incremental-static-regeneration-cache-components)
+
+## Next.js `16.4.0-canary.11` SHIPPED (Aug 28 23:38Z) + `next@16.3.3` STABLE (Aug 25 Security Release) + Turbopack Export Mangling ON-DEFAULT in Production Builds (Performance Lens — Tested at v1.6.14 Cron, August 30, 2026 00:02 UTC)
+
+The v1.6.14 cycle is the **Turbopack export-mangling + Aug 25 security release + 1 day-of-canary-11 perf-window** refresh for `performance.md` — covering the most material production-bundle perf change in the canary line since v1.6.09 (Turbopack export mangling **enabled by default in production builds**, ~3-8% bundle-size reduction depending on export surface) + the security-driven STABLE bump to `next@16.3.3` + the 1-day-old `16.4.0-canary.11` perf-relevant PRs.
+
+### New Material
+
+#### Turbopack Export Mangling ON-DEFAULT in Production Builds (canary.11 — HEADLINE)
+
+- **[GitHub PR #97676 — Turbopack: enable export mangling by default in production builds](https://github.com/vercel/next.js/pull/97676)** — Merged into `16.4.0-canary.11` (commit `0d4dc0c`, released 2026-08-28T23:38Z). **Turbopack now mangles exported names in production builds by default** — previously an opt-in flag, now on-by-default. **Production bundle size reduction: ~3-8% depending on the export surface** (libraries with many top-level exports see the largest wins; apps with minimal exports see smaller gains). This is the **largest single-PR bundle-size win since the canary line began**, and it lands silently — no config change required. **All Next.js 16.4+ projects benefit automatically on upgrade.**
+- **[GitHub PR #97672 — Turbopack: mangle exported names for smaller bundle sizes](https://github.com/vercel/next.js/pull/97672)** — The underlying implementation that PR #97676 enables by default. Mangles all non-default exported identifiers in production builds (replaces `export { Foo, Bar, Baz }` with shorter mangled names). Tree-shaking interaction: mangling pairs with `'use turbopack: constants'` (PR #90300, canary.10) for compound savings on feature-flag patterns. **No opt-out flag is exposed yet; if you need to preserve export names (e.g., for runtime reflection or `window.MyLib`), pin to `next@16.4.0-canary.10` or earlier until a config flag ships.**
+- **Why this matters for performance budgets:** Production bundle size directly correlates with Time-to-Interactive and First-Contentful-Paint. A 5% reduction on a 500KB JS bundle = 25KB less to parse + compile + execute on the main thread. For LCP-critical routes (above-the-fold, hydration-heavy), this is a free perf win on upgrade.
+- **How to verify the win on your project:**
+  ```bash
+  # Before upgrade — capture current production bundle size
+  next build && du -sh .next/static/chunks/*.js | sort -h | tail -5
+  
+  # Upgrade to canary.11
+  npm install next@16.4.0-canary.11 --save-exact
+  
+  # After upgrade — measure the delta
+  next build && du -sh .next/static/chunks/*.js | sort -h | tail -5
+  ```
+  Expect 3-8% smaller chunks. Pair with the chunk-hash widen (PR #97945, canary.10) and CSS module `[hash]_[local]` rename (PR #97944, canary.10) for compound wins.
+
+#### `next@16.3.3` STABLE — August 2026 Security Release (Aug 25)
+
+- **[GitHub Releases — v16.3.3](https://github.com/vercel/next.js/releases/tag/v16.3.3) + [Next.js Blog — August 2026 Security Release](https://nextjs.org/blog/august-2026-security-release)** — Published Aug 25 2026. **`next@latest` is now `16.3.3`** (was `16.3.2` at v1.6.09; the v1.6.09 inline observation "next@latest still 16.3.2" is now stale + **MISSED by v1.6.13** which only noted the canary train). **Two Critical severity vulnerabilities addressed.** Windows Next.js deployments were under active exploitation per CVE-2026-75604; the Cloudflare emergency WAF (Aug 26) provided protection for unpatched deployments. **Action: pin `next@^16.3.3` immediately for all production workloads.** The Active LTS line. Migration from 16.3.2 to 16.3.3 is a one-line bump with no breaking changes.
+- **[Next.js Blog — Update: August Next.js Security Release](https://nextjs.org/blog/nextjs-security-release-august-2026-update)** — Confirms the release was moved forward from Aug 26 to Aug 25 after an additional Critical severity vulnerability was identified in an upstream dependency. **The Aug 20 monthly security release window was originally forecast; the actual ship moved up 1 day** to address the second Critical CVE.
+- **Performance impact of 16.3.3 vs 16.3.2:** No API surface changes (pure security PATCH). The AVIF re-enablement (PR #1a7ccf4, already in canary.9 → 16.3.2) carries forward; image-optimization throughput is unchanged. **The migration is a free security + perf bump** — no app-code changes required.
+
+#### Canary.11 — Other Performance-Relevant Changes
+
+- **[GitHub PR #97948 — Fix optimistic routing for encoded dynamic params](https://github.com/vercel/next.js/pull/97948)** — Closes a regression where dynamic route segments containing URI-encoded characters (`/blog/[slug]` with `%20` in the slug) caused optimistic routing failures + duplicate prefetch loops. **RSC payload bandwidth saved** (eliminates redundant prefetches on encoded-URL routes). Apps with `[slug]` / `[id]` segments that accept user-generated content with special chars benefit.
+- **[GitHub PR #97953 — Fix intercepted route params after Proxy rewrites](https://github.com/vercel/next.js/pull/97953)** — When `proxy.ts` (formerly `middleware.ts`) rewrites a request to an intercepted route, the intercepted route was receiving incorrect params. Fix restores correct param propagation. **No perf delta directly**, but eliminates a class of incorrect-cache-key bugs that caused stale prefetches.
+- **[GitHub PR #97902 — Guard filesystem reads against unresolved symlinks](https://github.com/vercel/next.js/pull/97902)** — Turbopack dev server now guards against unresolved symlinks in the watch tree. **Dev-server startup + fs-watch stability improvement on monorepos with broken symlinks.** No production-bundle impact.
+- **[GitHub PR #97984 — Turbopack: allow `get_definable_name` to return a list](https://github.com/vercel/next.js/pull/97984)** — Internal API refinement enabling more aggressive export mangling (PR #97676 builds on this). **Foundation PR for the headline.**
+- **[GitHub PR #97985 — Turbopack: unify `member` and `in` handling](https://github.com/vercel/next.js/pull/97985)** — Consistent handling of `member` and `in` operators in Turbopack's analyzer. **Eliminates a correctness edge case** that could cause subtle miscompilations in bundle analysis. Foundation for export mangling correctness.
+- **[GitHub PR #98011 — Update outdated snapshots](https://github.com/vercel/next.js/pull/98011)** — Snapshot updates reflecting the canary.11 perf + correctness changes.
+- **[GitHub PR #97991 — CI: run flake detection and new deploy tests when merged and on backport branches](https://github.com/vercel/next.js/pull/97991)** — CI infrastructure improvement. **Reduces flaky test rate** on canary PRs → fewer broken deploys.
+
+#### React Canaries — Status Update
+
+- **`react@canary` latest = `19.3.0-canary-2dc7da79-20260828`** — Published Aug 28. The v1.6.13 inline observation of `2dc7da79-20260828` is still current as of v1.6.14 (no NEW canary drop since Aug 28). **4th React canary drop since Aug 14** (eb8feb71 → eafeac09 → bd6ea412 → f789f203 → a1124489 → 29d9d318 → 2dc7da79 = **7 drops in 14 days** = densest sustained cadence in months).
+- **`react-dom@canary` latest = `19.3.0-canary-2dc7da79-20260828`** — Matches `react@canary`. The earlier `react-dom@canary=eb8feb71-20260814` observation (lagging behind `react@canary` by 2 weeks) is now obsolete — **react-dom has caught up to react** as of Aug 28.
+- **Performance relevance:** React 19.3 canaries include the new `<ViewTransition>` stable integration (already documented in v1.6.13 components-lens). No new perf-relevant React features in the 2dc7da79 canary specifically.
+
+#### Tailwind CSS Idle Status Update
+
+- **Tailwind CSS `insiders` STILL on `0.0.0-insiders.90f8ff4`** — unchanged since Aug 14 (now **16 days idle**, was 15 days in v1.6.09). Tailwind main branch commits since Aug 14: 7 commits (was 5 in v1.6.09). **No Oxide engine movement in 16 days.** The insiders channel is the Oxide engine (Rust CSS parser/minifier) — the major perf feature. **Forecast: 4.3.4 STABLE in 2-4 weeks** (expected Sep 1-15). Still waiting.
+- **Tailwind latest: `4.3.3`** — no change. **No new STABLE releases** since the May 8 v4.3 launch.
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.09) | Current (v1.6.14) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.2` STABLE | `16.3.3` STABLE | **MISSED by v1.6.13**; Aug 25 security release with 2 Critical CVEs |
+| `next@canary` | `16.4.0-canary.10` | `16.4.0-canary.11` | +1 canary drop; Aug 28 release; **Turbopack export mangling on-default** |
+| React (via Next.js) | `29d9d318-20260826` | `2dc7da79-20260828` | +1 React bump |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` | `19.3.0-canary-2dc7da79-20260828` | No NEW drop; 7 canary drops in 14 days |
+| `react-dom@canary` | `19.3.0-canary-eb8feb71-20260814` | `19.3.0-canary-2dc7da79-20260828` | **react-dom caught up to react** (was lagging 2 weeks) |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` | `0.0.0-insiders.90f8ff4` | 16 days idle (was 15); Oxide engine still dormant |
+
+### Cross-Reference Notes
+- **`server-components.md` (v1.6.14):** Optimistic routing fix for encoded dynamic params (PR #97948) + intercepted route params fix (PR #97953) + PPF `navigation()` prospective runtime fix. The RSC-layer counterparts to this perf-lens entry.
+- **`styling.md` (v1.6.14):** Tailwind 4.3.4 STABLE forecast (2-4 weeks) + Tailwind Oxide engine dormant at 16 days idle + shadcn ecosystem at 4.19.0 (Aug 21) with no new STABLE since. Styling ecosystem status: STABLE.
+- **`security.md` (v1.6.07):** CVE-2026-75604 Windows Next.js deployments. The 16.3.3 STABLE bump this cycle (v1.6.14) closes the security gap. **All Windows deployments should be on `next@^16.3.3` minimum.**
+- **`deployment.md` (v1.6.07):** `next@16.4.0-canary.8` upgrade recipe. Canary.9/.10/.11 cumulative upgrade path: `npm install next@16.4.0-canary.11 --save-exact`. Canary.11 adds export mangling on-default (no config needed).
+
+**Sources:** [GitHub PR #97676](https://github.com/vercel/next.js/pull/97676) | [PR #97672](https://github.com/vercel/next.js/pull/97672) | [PR #97948](https://github.com/vercel/next.js/pull/97948) | [PR #97953](https://github.com/vercel/next.js/pull/97953) | [PR #97902](https://github.com/vercel/next.js/pull/97902) | [PR #97984](https://github.com/vercel/next.js/pull/97984) | [PR #97985](https://github.com/vercel/next.js/pull/97985) | [PR #98011](https://github.com/vercel/next.js/pull/98011) | [PR #97991](https://github.com/vercel/next.js/pull/97991) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Release](https://nextjs.org/blog/august-2026-security-release) | [Update: August Security Release](https://nextjs.org/blog/nextjs-security-release-august-2026-update) | [Next.js 16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11)

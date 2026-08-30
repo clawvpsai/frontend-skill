@@ -2717,3 +2717,50 @@ The v1.6.09 cycle is the **canary.10 CSS + shadcn ecosystem refresh** for `styli
 - **`patterns.md` (v1.5.95):** Pattern KK added in server-components: "Agentic RSC + Human-in-the-Loop" via shadcn @shadcn/helpers.
 
 **Sources:** [GitHub PR #97944](https://github.com/vercel/next.js/pull/97944) | [PR #97945](https://github.com/vercel/next.js/pull/97945) | [PR #97833](https://github.com/vercel/next.js/pull/97833) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries) | [Tailwind main commits](https://github.com/tailwindlabs/tailwindcss/commits?per_page=5)
+
+## Next.js `16.4.0-canary.11` SHIPPED (Aug 28 23:38Z) + Tailwind Oxide STALLED at 16 Days Idle + shadcn v4.19.0 with Questionnaire + Private GitHub Registries (Styling Lens — Tested at v1.6.14 Cron, August 30, 2026 00:02 UTC)
+
+The v1.6.14 cycle is the **styling ecosystem** refresh for `styling.md` — covering the Aug 25 security release (`next@16.3.3`), Tailwind Oxide engine status (16 days idle), shadcn v4.19.0 (Aug 21) with Questionnaire and Private GitHub Registries, and the canary.11 CSS module `[hash]_[local]` class-name shortening carry-forward.
+
+### New Material
+
+#### Tailwind CSS Oxide Engine — STILL IDLE at 16 Days (No STABLE in Sight)
+
+- **Tailwind CSS `insiders` channel still on `0.0.0-insiders.90f8ff4`** — unchanged since Aug 14. That's now **16 days idle** (was 15 days at v1.6.09). Tailwind main branch commits since Aug 14: 7 commits. **No Oxide engine movement in 16 days.** The insiders channel is the Oxide engine (Rust-based CSS parser + atomic CSS generator) — the major performance feature that will make Tailwind build times 3–10x faster in development.
+- **Tailwind latest STABLE: `4.3.3`** — no change. No new STABLE releases since the May 8 v4.3 launch. The v4.3.4 STABLE is expected **Sep 1–15, 2026** (T+2–4 weeks from now). It will be the Oxide-enabled release.
+- **Why this matters for styling decisions:** New projects should still use Tailwind v4 with the main channel. If you are on v3, the v4.3.4 STABLE landing in the next 2–4 weeks is the upgrade window. **Don't start new projects on v3.**
+- **The shadcn v4 stack (Tailwind v4 + shadcn v4) is the stable stack.** No change to this guidance.
+
+#### shadcn v4.19.0 — Questionnaire + Private GitHub Registries (Aug 21)
+
+- **[GitHub — shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | Published Aug 21, 2026** — Two minor changes:
+  1. **Private GitHub Registries support** (PR #11582) — You can now point `components.json` at a **private GitHub repository** as a shadcn registry. Use GitHub CLI credentials or `GH_TOKEN` for authentication. Enables enterprise/internal design system distribution without publishing to the public shadcn registry.
+  2. **`npx shadcn migrate base-color`** (PR #11248) — New migration CLI to retarget your project's base color. If you built on the default `zinc` and want to switch to `slate`, `neutral`, `stone`, or a custom color, run the migration and all components update.
+- **[ui.shadcn.com — August 2026 Questionnaire](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire)** — New **Questionnaire** component released Aug 2026. Multi-step question flows for agent clarification prompts, onboarding, surveys, intake forms, and configuration wizards. Available for Base UI, React Aria, and Radix (all 8 styles). Features: single/multiple selection, freeform answers, explicit skipping, previous/next/submit controls, required + custom validation, controlled navigation, conditional questions, keyboard shortcuts, native form serialization, standalone/Card/Dialog compositions.
+- **[ui.shadcn.com — August 2026 Private GitHub Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries)** — Full docs for the private registry feature added to the changelog.
+- **`@shadcn/react@0.3.0`** — Published Aug 5. No breaking changes noted; minor internal updates.
+- **Ecosystem status: STABLE.** No breaking changes in the queue. Tailwind v4 + shadcn v4 is the stable stack.
+
+#### Next.js `16.3.3` STABLE — August 2026 Security Release (Aug 25)
+
+- **[GitHub Releases — v16.3.3](https://github.com/vercel/next.js/releases/tag/v16.3.3)** — **MISSED by v1.6.09–v1.6.13.** `next@latest` is now `16.3.3`. No CSS or styling API changes — pure security patch. **Action: upgrade to `next@^16.3.3` for all production deployments.**
+
+#### CSS Module `[hash]_[local]` Class Name Shortening — Carry-Forward (canary.10)
+
+- **[GitHub PR #97944 — CSS module class name shortening via `[hash]_[local]` rename](https://github.com/vercel/next.js/pull/97944)** — Merged in canary.10 (Aug 28). **CSS module class names in production builds are now shortened** using a `[hash]_[local]` format. Previously, a class like `.MyComponent_button__x7kq2` remained long. Now: `.x7kq2_button`. **Production CSS bundle size reduction: ~5–15% on CSS-heavy apps** (typical component library). No action needed — automatic on upgrade to canary.10+. This is the styling-layer counterpart to the Turbopack export mangling (PR #97676) in the performance layer.
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.09) | Current (v1.6.14) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.2` STABLE | `16.3.3` STABLE | **MISSED** by v1.6.09–v1.6.13; Aug 25 security release |
+| `next@canary` | `16.4.0-canary.10` | `16.4.0-canary.11` | +1 canary; Aug 28 |
+| `shadcn` | `4.18.0` | `4.19.0` | Aug 21; Questionnaire + private GitHub registries |
+| `@shadcn/react` | `0.2.x` | `0.3.0` | Aug 5 |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` (15d idle) | `0.0.0-insiders.90f8ff4` (16d idle) | Oxide engine STALLED; STABLE v4.3.4 expected Sep 1–15 |
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.14):** Turbopack export mangling on-default (PR #97676) + CSS module `[hash]_[local]` (PR #97944). Performance layer of the same styling changes.
+- **`server-components.md` (v1.6.14):** shadcn v4.19.0 ecosystem changes for server-component contexts (Questionnaire in RSC flows).
+- **`patterns.md` (v1.5.95):** Pattern KK: "Agentic RSC + Human-in-the-Loop" via shadcn `@shadcn/helpers`. Remains at v1.5.95.
+
+**Sources:** [GitHub PR #97944](https://github.com/vercel/next.js/pull/97944) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private GitHub Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries) | [shadcn Questionnaire](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire) | [Tailwind main commits](https://github.com/tailwindlabs/tailwindcss/commits?per_page=5) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update)
