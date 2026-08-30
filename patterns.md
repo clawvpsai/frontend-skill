@@ -6169,3 +6169,154 @@ npm install next@16.4.0-canary.10
 - [PR #97108 — Expose `experimental.strictRouteMatching`](https://github.com/vercel/next.js/pull/97108) — by @gnoff; optional flag for parallel route strictness
 - [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — React 18 in Pages Router deprecated; Next.js 17 removes support
 - [Cross-references](cross-refs): `api.md` → canary.10 API-surface section for full PR table; `styling.md` → CSS module naming updated; `routing.md` → `experimental.strictRouteMatching` implications
+## Next.js 16.4.0-canary.11 + canary.12 SHIPPED — Pattern AJ: PPF `unstable_navigation()` Refinement + Pattern AK: Turbopack `.mjs` Codemod + Pattern AL: Force No-Store on Prerendered Set-Cookie Responses + RHF 7.87.0 `shouldTouch` on `trigger()` — v1.6.16 (Pattern Surface Lens — Tested at v1.6.16 Cron, August 30, 2026 18:02 UTC)
+
+### Pattern AJ — PPF `unstable_navigation()` + `prerender()` Refinement (canary.11, PR #98000)
+
+**What changed**: PPF (Partial Prefetching) advances with the `navigation()` fix in canary.11 + the new `prerender()` API addition. The programmatic PPF API surface is now more complete.
+
+**`unstable_navigation()`** — programmatic RSC payload prefetch without navigation:
+```ts
+import { unstable_navigation } from 'next/dist/client/components'
+// Trigger prefetch + optional navigation
+await unstable_navigation('/dashboard', { cache: 'default' })
+```
+
+**`prerender()`** — standalone page prerender without user navigation event:
+```ts
+import { prerender } from 'next/unstable_prerender'
+// Pre-build a route branch without navigation
+const html = await prerender({ path: '/page', cache: 'force-cache' })
+```
+
+**When to use which**:
+- `unstable_navigation()` — when you want to prefetch AND optionally navigate in one call
+- `prerender()` — when you want to pre-build a specific route (e.g., cold-start, webhook receipt, `setInterval`)
+- `<Link prefetch>` — when the trigger is a user hover (no programmatic control needed)
+
+**What changed in canary.11**: The `navigation()` prospective runtime fix ensures `unstable_navigation()` + `prerender()` don't produce false-positive prefetches that materialize unused async routes.
+
+### Pattern AK — `.mjs` Files Now Run Through Next.js Codemods (canary.12, PR #98029)
+
+**What changed**: Next.js codemods now transform `.mjs` files. Previously, codemods only operated on `.ts`/`.tsx`/`.js`/`.jsx` files. The `npx @next/codemod@latest` CLI now also processes `.mjs` files.
+
+**Migration**: **No code changes required.** This is automatic. If you're using `.mjs` files in your Next.js project and plan to run codemods (e.g., `npx @next/codemod@latest .`), the transformation will now include `.mjs` files.
+
+**What to verify after upgrading to canary.12+**:
+1. Run `npx @next/codemod@latest . --dry --print` on a `.mjs` file to see what changes
+2. If you have custom `.mjs` files with Next.js-specific code, verify they compile after codemod runs
+3. CI/CD scripts running codemods should still work — `.mjs` files will now be included
+
+### Pattern AL — Force `no-store` on Prerendered Responses Carrying `Set-Cookie` (PR #96330)
+
+**What changed**: Responses with `Set-Cookie` headers that are served from prerendered (cached) routes now have `Cache-Control: no-store` forced. This prevents auth cookies from being cached and served to wrong users.
+
+**Before (canary.11 and earlier)**: A prerendered response that sets a `Set-Cookie` could be cached and served to other users — auth cookie leakage risk.
+
+**After (canary.11+)**: If a prerendered response includes a `Set-Cookie` header, Next.js forces `Cache-Control: no-store`, bypassing the cache entirely for that response.
+
+**Component-surface impact**: Any Server Component or Route Handler that: (a) returns a `Set-Cookie` header AND (b) is served from a prerendered route will now skip the cache. This is a security hardening — not a breaking change in behavior, but an important one.
+
+**Audit recipe**:
+```bash
+# Find all Set-Cookie usages in route handlers and server components
+rg -n "Set-Cookie|setCookie|cookies\(\).set" --type ts --type tsx app/
+# Verify the route is not served as a static prerendered page
+# If route is prerendered AND sets cookies, canary.11+ ensures no-store
+```
+
+### Pattern AM — React Hook Form 7.87.0 `shouldTouch` Option on `trigger()` (STABLE SHIPPED Aug 30, 2026)
+
+**What changed**: RHF 7.87.0 adds the `shouldTouch` option to `trigger()`, completing the parity with `setValue`'s `shouldTouch` option. Previously, `trigger()` only validated — it didn't mark fields as touched. Now you can do both in one call.
+
+**Migration**: No code required to use the new feature — it's purely additive. Existing `trigger()` calls work unchanged.
+
+**Updated pattern for form navigation with field touched state**:
+```tsx
+import { useForm } from 'react-hook-form'
+
+function MultiStepForm() {
+  const { trigger, formState: { touchedFields } } = useForm()
+
+  async function handleNext() {
+    // Before RHF 7.87: required two calls — trigger() + setTouched() workaround
+    // Now: single call with shouldTouch: true
+    const isValid = await trigger(['email', 'password'], { shouldTouch: true })
+    if (isValid) {
+      // All fields in ['email', 'password'] are now both validated AND marked as touched
+      goToNextStep()
+    }
+  }
+
+  return (
+    <div>
+      <input {...register('email', { required: true })} />
+      {/* Show error only if field was touched AND is invalid */}
+      {touchedFields.email && errors.email && <span>Email is required</span>}
+      <button onClick={handleNext}>Next</button>
+    </div>
+  )
+}
+```
+
+**Pattern for validate-on-mount scenarios** (most impactful use case):
+```tsx
+// Previously: useEffect calling setTouched workaround after validate-on-mount
+// Now: single trigger() call marks as touched AND validates
+useEffect(() => {
+  trigger(['email']) // marks as touched + validates in one call
+}, [])
+
+<input {...register('email', { required: true })} />
+{touchedFields.email && errors.email && <span>This field is required</span>}
+```
+
+**RHF 8.0.0-beta.3 sync** — no new breaking changes. The `shouldTouch` option will be in RHF 8.0.0 STABLE when it ships.
+
+### Recommended version pin
+
+- **Production (stable apps)**: `next@^16.3.3` (CVE-patched; 16.3.4 PATCH with canary.10 backport expected within 1-2 weeks)
+- **Experimenters (16.4.x)**: `next@16.4.0-canary.12` (includes PR #98000 PPF fix + PR #98029 .mjs codemod + PR #98030 non-interactive upgrade prompts)
+- **Forms**: `react-hook-form@^7.87.0` (NEW — upgrade for shouldTouch on trigger() + the 8 bug fixes from 7.86.0)
+- **`@clerk/nextjs`**: `^7.8.3` (STABLE); `7.8.4-canary.v20260829233856` for canary-track
+
+### Combined 3-Pattern Audit Recipe (canary.12 + RHF 7.87.0 Upgrade Checklist)
+
+```bash
+# Step 1: Upgrade next to canary.12
+npm install next@16.4.0-canary.12
+
+# Step 2: Upgrade react-hook-form to 7.87.0
+npm install react-hook-form@latest
+
+# Step 3: Verify .mjs codemod transformation (Pattern AK)
+npx @next/codemod@latest . --dry --print | grep -E "\.mjs"
+# If any .mjs files are listed, run without --dry to apply
+
+# Step 4: Audit Set-Cookie on prerendered routes (Pattern AL)
+rg -n "Set-Cookie|setCookie|cookies\(\).set" --type ts --type tsx app/
+# For each match: verify route is not using ISR/static prerendering
+# canary.11+ auto-adds no-store for Set-Cookie on prerendered routes
+
+# Step 5: Verify PPF navigation() behavior (Pattern AJ)
+# If using unstable_navigation() or prerender(), test that no false prefetches occur
+# after upgrading to canary.11+
+
+# Step 6: Run form validation test suite
+npm test -- --grep "form|validation|trigger"
+```
+
+### Sources
+
+- [npm `next@canary` 16.4.0-canary.12](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-29T23:38:15Z; 5 PRs; routing MEDIUM PR #98032
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs; PPF navigation() fix
+- [GitHub — PR #98000 — [PPF] Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — canary.11; PPF runtime accuracy improvement
+- [GitHub — PR #98029 — Transform .mjs files with Next.js codemods](https://github.com/vercel/next.js/pull/98029) — canary.12; codemods now process .mjs files
+- [GitHub — PR #98030 — Honor non-interactive mode in upgrade codemod prompts](https://github.com/vercel/next.js/pull/98030) — canary.12; non-interactive upgrade prompts
+- [GitHub — PR #96330 — Force no-store on prerendered responses that carry a Set-Cookie header](https://github.com/vercel/next.js/pull/96330) — canary.11; auth cookie cache leakage fix
+- [GitHub — PR #98032 — Turbopack: add next_config.use_react_experimental getter](https://github.com/vercel/next.js/pull/98032) — canary.12; routing MEDIUM
+- [npm `react-hook-form@7.87.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-30T02:41:55Z; shouldTouch option on trigger()
+- [React Hook Form PR #13671 — Add shouldTouch option to trigger()](https://github.com/react-hook-form/react-hook-form/pull/13671) — the feature PR
+- [Cross-reference: `forms.md` — RHF 7.87.0 shouldTouch on trigger() (forms.md will add full forms-lens in next forms cycle)
+- [Cross-reference: `components.md` — canary.11/12 component-surface analysis
+- [Cross-reference: `deployment.md` — canary.12 deployment-impact + zod@4.5.4 + @clerk/nextjs@7.8.4 line

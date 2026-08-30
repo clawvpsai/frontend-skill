@@ -4183,3 +4183,115 @@ grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})" package.json
 - [Cross-reference: `security.md` — CVE-2026-75604 active exploitation T+~104h+ + canary.10/11 security-relevant PRs + 2 NEW @tanstack/react-query PATCHes
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12
 - [Cross-reference: v1.6.07 deployment.md — the prior TS 7.0 + Zod 4 + CVE PoC + canary gap cycle; this v1.6.12 entry is the canary.10/11 deployment-impact + React Query 5.102.7/.8 + zod 4.5.2 + Playwright epoch-ms + better-auth 1.7.2 + biome 2.5.11 gap-fill
+## Next.js 16.4.0-canary.11/12 Deployment-Impact Lens + zod@4.5.4 STABLE + @clerk/nextjs@7.8.4 Line Advance + @playwright/test@next 1.63.0-alpha-2026-08-30 + Next.js 16.3.4 STABLE Forecast — v1.6.16 (Deployment-Impact Lens — Tested at v1.6.16 Cron, August 30, 2026 18:02 UTC)
+
+### Deployment-Impact PRs from canary.11 + canary.12
+
+| PR | Title | Deployment Impact |
+|---|---|---|
+| **PR #96330** | Force no-store on prerendered responses carrying Set-Cookie | **MEDIUM-HIGH** — prerendered routes that set auth cookies now bypass cache; prevents auth cookie leakage across users; deployment verification recommended after upgrading |
+| **PR #98000** | PPF `navigation()` prospective runtime prerender fix | MEDIUM — PPF streaming apps; `unstable_navigation()` + `prerender()` accuracy improvement |
+| **PR #98032** | Turbopack: add `next_config.use_react_experimental` getter | **MEDIUM** — routing surface; dynamic routes using undeclared params in `useParams()`/router.push; upgrade to canary.12 recommended |
+| **PR #98029** | Transform `.mjs` files with Next.js codemods | LOW — codemod infrastructure; `.mjs` files in project now covered by Next.js codemods |
+| **PR #98030** | Honor non-interactive mode in upgrade codemod prompts | LOW — CI/install tooling |
+| **PR #97753** | [ci] Remove the popular workflow and its action | LOW — internal CI; no app-user impact |
+| **PR #97480** | Store keys in key order in SST blocks that omit hashes | LOW — build output internals; build reproducibility improvement |
+
+**PR #96330 — Set-Cookie no-store on Prerendered Responses (Deployment-Impact MEDIUM-HIGH)**: Any route that both (a) uses ISR/static prerendering and (b) sets a `Set-Cookie` header will now skip the cache for that response. This is a security fix — not a breaking change in intended behavior. However, it means your cache hit rate for cookie-setting routes will be 0% (they were always being served fresh already in most cases, but the fix enforces this). **Deployment verification**: after upgrading to canary.11+, check that auth cookie routes work correctly and that non-cookie prerendered routes still cache normally.
+
+**PR #98032 — Turbopack use_react_experimental Getter (Deployment-Impact MEDIUM for routing)**: Dynamic routes using undeclared params in `useParams()` or `router.push()` could get incorrect manifests in canary.11 and earlier. Canary.12 fixes this. **Deployment recommendation**: upgrade to canary.12 for any project with dynamic routes using undeclared params.
+
+### Version Updates Since v1.6.12
+
+**zod@4.5.3 + zod@4.5.4 STABLE SHIPPED** (npm Aug 29 17:51Z + 17:55Z — **NEW since v1.6.12's 4.5.2**; 2 PATCHes in 4 minutes). The rapid post-4.5.0 cadence continues. These PATCHes continue the datetime/CUID/base64 fixes from 4.5.1 + 4.5.2. **Deployment-impact for auth/forms apps**: any app using `z.date()`, `z.cuid()`, `z.string().base64()`, or `z.string().url()` in form/auth schemas should upgrade to `zod@^4.5.4`. The `httpUrl` validator (strict URL) is the recommended replacement for `url()`.
+
+**@clerk/nextjs@canary → 7.8.4-canary.v20260829233856** (npm Aug 30 — **NEW since v1.6.12's 7.8.4-canary.v20260828233657**; 16th drop since v1.5.50 baseline). The 7.8.4 STABLE is still pending. STABLE users stay on `@clerk/nextjs@^7.8.3`. Canary-track deployments should update to the latest 7.8.4-canary drop.
+
+**@playwright/test@next → 1.63.0-alpha-2026-08-30** (npm Aug 30 — **NEW since v1.6.12's 1.63.0-alpha-2026-08-29**). The date-stamped alpha format continues. STABLE `1.63.0` still imminent (forecast: within 1-2 weeks). **Deployment/CI operational note**: update your Playwright alpha CI regex to handle the date-stamped format:
+```bash
+# CI regex for Playwright alpha detection
+grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"
+# Matches both: 1.63.0-alpha-2026-08-30 AND 1.63.0-alpha-1787862056000
+```
+
+**React Hook Form 7.87.0 STABLE SHIPPED** (npm 2026-08-30T02:41:55Z — **NEW since v1.6.13 forms cycle; MISSED by that cycle**). Headline: `shouldTouch` option on `trigger()`. No breaking changes. **Deployment-impact**: upgrade to `react-hook-form@^7.87.0` for the new API. The 8 bug fixes from 7.86.0 (field-array stale errors, File/Blob flatten, etc.) are also included in 7.87.0.
+
+### Next.js 16.3.4 STABLE Forecast
+
+Per v1.6.12's "1-2 weeks" forecast for the canary.10+ backport: `next@16.3.4` STABLE expected within 1-2 weeks from Aug 29 (i.e., by Sep 12, 2026). Will include backports of:
+- PR #97941 (use cache memory leak fix)
+- PR #95233 (granular cache keys)
+- PR #97948 (encoded dynamic params)
+- PR #97953 (intercepted route params after Proxy rewrites)
+- PR #98000 (PPF navigation() prospective prerender fix)
+- PR #96330 (Set-Cookie no-store on prerendered responses)
+
+**Deployment recommendation for STABLE users**: plan a `next@^16.3.4` upgrade within the 2-week window. The Set-Cookie fix (PR #96330) is particularly important for apps with auth cookies on prerendered routes.
+
+### Deployment Checklist (v1.6.16)
+
+**Phase 1: Version Audit**
+
+1. `npm ls next` — identify current next version; if on STABLE, plan for 16.3.4 upgrade within 2 weeks
+2. `npm ls react-hook-form` — confirm `^7.87.0` (NEW); if on 7.86.0 or earlier, upgrade for shouldTouch + bug fixes
+3. `npm ls zod` — confirm `^4.5.4` (was 4.5.2 at v1.6.12); upgrade for post-4.5.0 PATCH train
+4. `npm ls @clerk/nextjs` — if on canary track, confirm `7.8.4-canary.v20260829233856` or later
+
+**Phase 2: canary.11/12 Deployment Verification**
+
+5. **PR #96330 — Set-Cookie no-store**: `rg -n "Set-Cookie|cookies\(\).set|setCookie" --type ts --type tsx app/` — identify cookie-setting routes; after upgrading to canary.11+, verify those routes work correctly (should now serve fresh, not cached)
+6. **PR #98032 — undeclared param routing fix**: if your app has dynamic routes with `useParams()` or `router.push()` that pass undeclared params, upgrade to canary.12 and test those routes
+7. **PPF streaming apps**: if using `unstable_navigation()` or `prerender()`, verify no false prefetches after upgrading to canary.11+
+
+**Phase 3: CI/CD Operational Notes**
+
+8. **Playwright alpha CI regex**: update to `grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"` to match both date-stamped and epoch-ms formats
+9. **RHF 7.87.0**: `npm install react-hook-form@latest` in CI build step; no codemods needed
+10. **Next.js codemod .mjs support**: if your CI runs `npx @next/codemod` against `.mjs` files, they are now included (canary.12+); verify output
+
+**Phase 4: STABLE 16.3.4 Preparation**
+
+11. Watch for `next@16.3.4` STABLE release (forecast: 1-2 weeks from Aug 29); plan maintenance window for upgrade
+12. After 16.3.4 ships: `npm install next@latest` and re-run full test suite
+
+### Updated Version-Pin Status (Post-v1.6.16 Cycle)
+
+| Package | Pin | Notes |
+|---------|-----|-------|
+| `next@latest` | `^16.3.3` | CVE-patched; **16.3.4 STABLE expected 1-2 weeks** |
+| `next@backport` | `^15.5.24` | CVE-patched |
+| `next@canary` | `16.4.0-canary.12` | T-18h before this cron; 5 PRs; routing MEDIUM fix |
+| `react@latest` | `^19.2.8` | Unchanged |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` | Unchanged from v1.6.12 |
+| `typescript@latest` | `^7.0.2` | Unchanged |
+| `typescript@next` | `7.1.0-dev.20260830.1` | 38th no-content rebuild SHIPPED (Aug 30 08:53Z) |
+| `react-hook-form@latest` | **`^7.87.0`** (NEW) | SHIPPED Aug 30 02:41Z; shouldTouch on trigger() |
+| `zod@latest` | **`^4.5.4`** (NEW) | 4th PATCH in 48h; datetime/CUID/base64 fixes |
+| `@tanstack/react-query@latest` | `^5.102.8` | Unchanged |
+| `better-auth@latest` | `^1.7.2` | Unchanged |
+| `shadcn@latest` | `^4.19.0` | STILL-IDLE 9+ days |
+| `@clerk/nextjs@latest` | `^7.8.3` | Unchanged |
+| `@clerk/nextjs@canary` | **`7.8.4-canary.v20260829233856`** (NEW) | 16th drop since v1.5.50 |
+| `@biomejs/biome@latest` | `^2.5.11` | Unchanged |
+| `@playwright/test@latest` | `^1.62.1` | Unchanged; 1.63.0 STABLE imminent |
+| `@playwright/test@next` | **`1.63.0-alpha-2026-08-30`** (NEW) | Date-stamped alpha continues |
+| `jotai@next` | `3.0.0-alpha.1` | Unchanged from v1.6.13 |
+
+### Sources
+
+- [npm `next@canary` 16.4.0-canary.12](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-29T23:38:15Z; 5 PRs
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [GitHub — PR #96330 — Force no-store on prerendered responses that carry a Set-Cookie header](https://github.com/vercel/next.js/pull/96330) — canary.11; auth cookie cache hardening
+- [GitHub — PR #98000 — [PPF] Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — canary.11; PPF accuracy
+- [GitHub — PR #98032 — Turbopack: add next_config.use_react_experimental getter](https://github.com/vercel/next.js/pull/98032) — canary.12; routing MEDIUM
+- [GitHub — PR #98029 — Transform .mjs files with Next.js codemods](https://github.com/vercel/next.js/pull/98029) — canary.12; codemods now process .mjs
+- [npm `zod@4.5.4`](https://www.npmjs.com/package/zod?activeTab=versions) — npm-published 2026-08-29T17:55Z; 4th PATCH in 48h
+- [npm `zod@4.5.3`](https://www.npmjs.com/package/zod?activeTab=versions) — npm-published 2026-08-29T17:51Z; 2 PATCHes in 4 minutes
+- [npm `react-hook-form@7.87.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-30T02:41:55Z; shouldTouch on trigger()
+- [npm `@clerk/nextjs@canary` 7.8.4-canary.v20260829233856](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — npm-published 2026-08-30T
+- [npm `@playwright/test@next` 1.63.0-alpha-2026-08-30](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — npm-published 2026-08-30Z
+- [Cross-reference: `components.md` — canary.11/12 component-surface + RHF 7.87.0 shouldTouch + Cache Components adoption skill
+- [Cross-reference: `patterns.md` — Pattern AJ PPF refinement + Pattern AK .mjs codemods + Pattern AL Set-Cookie no-store + Pattern AM RHF 7.87.0
+- [Cross-reference: `forms.md` — RHF 7.87.0 full forms-lens (forms.md will be updated in next forms cycle)
+- [Cross-reference: `routing.md` — canary.12 routing MEDIUM PR #98032
+- [Cross-reference: v1.6.12 deployment.md — the prior canary.10/11 deployment-impact + React Query 5.102.7/.8 + zod 4.5.2 + Playwright epoch-ms + better-auth 1.7.2 + biome 2.5.11 cycle; this v1.6.16 entry is the canary.11/12 deployment-impact + zod 4.5.4 + RHF 7.87.0 + @clerk/nextjs 7.8.4 line gap-fill

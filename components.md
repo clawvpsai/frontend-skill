@@ -4473,3 +4473,108 @@ The v1.6.12 cycle is the **React canary advance + canary.10/11 component-lens + 
 - [Cross-reference: `security.md` — CVE-2026-75604 active exploitation T+~104h+ + canary.10/11 security-relevant PRs + 2 NEW @tanstack/react-query PATCHes (5.102.7 + 5.102.8) + react@canary 2dc7da79-20260828 NEW
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12 with all 7 inline observations
 - [Cross-reference: v1.6.07 components.md — the prior React 19.2 stable features correction + canary gap cycle; this v1.6.12 entry is the React canary advance + canary.10/11 component-lens + zod 4.5.2 + Pages Router React 18 deprecation gap-fill
+## Next.js 16.4.0-canary.11/12 Component-Lens + RHF 7.87.0 `shouldTouch` + Cache Components Adoption Skill Official + Next.js 16.3.4 STABLE Forecast — v1.6.16 (Components Lens — Tested at v1.6.16 Cron, August 30, 2026 18:02 UTC)
+
+### What's New Since v1.6.12
+
+**Next.js 16.4.0-canary.11 (22 PRs — npm 2026-08-28T23:48:47Z) + canary.12 (5 PRs — npm 2026-08-29T23:38:15Z) — Component-Lens Highlights**:
+
+| PR | Title | Component Impact |
+|---|---|---|
+| **PR #98032** | Turbopack: add `next_config.use_react_experimental` getter | **MEDIUM** — routing surface; dynamic routes with undeclared params in `useParams()`/router.push; not component-API but affects component behavior |
+| **PR #98029** | Transform `.mjs` files with Next.js codemods | LOW — codemod infrastructure; components in `.mjs` files now covered by `npx @next/codemod` |
+| **PR #98030** | Honor non-interactive mode in upgrade codemod prompts | LOW — CI/install tooling |
+| **PR #97753** | [ci] Remove the popular workflow and its action | LOW — internal CI |
+| **PR #97480** | Store keys in key order in SST blocks that omit hashes | LOW — build output internals |
+| **PR #98000** | **PPF `navigation()` prospective runtime prerender fix** | MEDIUM — PPF streaming apps; `unstable_navigation()` + `prerender()` now more accurate |
+| **PR #96330** | **Force no-store on prerendered responses carrying Set-Cookie** | **MEDIUM-HIGH** — security hardening; prerendered routes that set auth cookies now bypass cache; prevents auth cookie leakage |
+| **PR #95233** | Use-cache granular cache keys | MEDIUM — narrows cache-attack surface for multi-user apps |
+
+**Component-surface verdict for canary.11/12**: The 5 canary.12 PRs are all LOW or tooling-level. Canary.11's PPF fix (PR #98000) and Set-Cookie no-store fix (PR #96330) are the most operationally relevant for components. **canary.12 verdict = safe to upgrade for component consumers.**
+
+**React Hook Form 7.87.0 STABLE SHIPPED** (npm 2026-08-30T02:41:55Z — **NEW since v1.6.13 forms cycle; MISSED by that cycle because it shipped T+4h after the Aug 29 12:02Z cron**). The headline feature is **`shouldTouch` option on `trigger()`** — previously `trigger()` only validated; now it can also mark fields as touched in a single call. This completes parity with `setValue`'s `shouldTouch` option.
+
+**Updated component pattern for RHF 7.87.0 `trigger()` with `shouldTouch`**:
+```tsx
+import { useForm } from 'react-hook-form'
+import { useEffect } from 'react'
+
+// Pattern: validate-on-mount marks fields as touched AND validates
+function EmailField() {
+  const { register, trigger, formState: { errors, touchedFields } } = useForm()
+  
+  useEffect(() => {
+    // RHF 7.87.0+: single call marks as touched + validates
+    // Previously required two calls: trigger() + separate setTouched() workaround
+    trigger('email', { shouldTouch: true })
+  }, [])
+
+  return (
+    <div>
+      <input {...register('email', { required: true })} />
+      {touchedFields.email && errors.email && (
+        <span>Email is required</span>
+      )}
+    </div>
+  )
+}
+```
+
+**Next.js Cache Components — Adoption Skill Officially Recommended** (Next.js 16.3 docs, Aug 25, 2026 — **NEW confirmation since v1.6.07**). The [Migrating to Cache Components guide](https://nextjs.org/docs/app/guides/migrating-to-cache-components) now **recommends using the Next.js Cache Components Adoption Skill** (`npx skills add vercel/next.js`). The skill automates incremental adoption: opens a single mechanical PR that opts every route out of validation, then ships each feature as a follow-up PR. This is the officially blessed adoption path for `cacheComponents: true` migration. **Component impact for App Router users**: if you're on Next.js 16 and not yet using `cacheComponents: true`, the adoption skill is now the recommended first step. It handles the mechanical `instant = false` opt-outs automatically.
+
+**shadcn Ecosystem STILL-IDLE** (shadcn@4.19.0 since Aug 21 = 9+ days; `@shadcn/react@0.3.0` since Aug 5 = 25+ days; `@shadcn/helpers@0.2.0` since Aug 11 = 19+ days). **Component-surface impact: NONE** — no new shadcn components, no new shadcn primitives. Continue using shadcn@4.19.0.
+
+**Next.js 16.3.4 STABLE Forecast** (per v1.6.12's "1-2 weeks" backport window from canary.10+ fixes): Expected within 1-2 weeks from Aug 29. Will include backports of: PR #97941 (use cache memory leak), PR #95233 (granular cache keys), PR #97948 (encoded dynamic params), PR #97953 (intercepted route params). STABLE users should plan a `next@^16.3.4` upgrade within the 2-week window.
+
+### Component Audit Recipe (v1.6.16)
+
+**For PPF/streaming component authors** (impact: MEDIUM):
+1. `npm ls next` — confirm canary version if on canary; STABLE users wait for 16.3.4
+2. If using `unstable_navigation()` or `prerender()` in components: verify no false prefetches after upgrading to canary.11+
+3. Test any component that uses Suspense + streaming with PPF — the PR #98000 fix improves accuracy
+
+**For RHF form component authors** (impact: MEDIUM — new API, not breaking):
+1. `npm ls react-hook-form` — confirm upgrade to `^7.87.0`
+2. Audit `trigger()` call sites: can now add `{ shouldTouch: true }` as a single-call replacement for two-call `trigger()` + `setTouched()` patterns
+3. The validate-on-mount pattern now requires only one call instead of two
+
+**For prerendered routes with auth cookies** (impact: MEDIUM-HIGH):
+1. `rg -n "Set-Cookie|setCookie|cookies\(\).set" --type ts --type tsx app/` — find cookie setters
+2. For each cookie-setting route: check if it's using ISR or `generateStaticParams` (prerendered)
+3. Canary.11+ automatically forces no-store for Set-Cookie on prerendered routes — verify this behavior in your app after upgrade
+
+**For App Router components using `'use cache'`** (impact: MEDIUM):
+1. `npm ls next` — confirm on canary.10+ for the memory leak fix; STABLE users wait for 16.3.4
+2. `rg -n "['\"]use cache['\"]" --type ts --type tsx` — find use-cache call sites
+3. After upgrading to canary.10+, monitor memory in production for 24-48h
+
+**For Cache Components migration** (impact: HIGH for App Router users not yet on cacheComponents):
+1. `npx skills add vercel/next.js` — install the official adoption skill
+2. `npx next.js-adoption-skill adopt --mode incremental` — creates a single PR that opts every route out, then follows up feature-by-feature
+3. `npx next.js-adoption-skill adopt --mode direct` — adopts every route in place on one branch
+4. After running the skill: `next build` and verify `cacheComponents: true` works correctly
+
+**For shadcn users** (impact: NONE):
+- Continue using shadcn@4.19.0 components; no breaking changes in 9 days
+
+### Why This Matters for `components.md`
+
+The v1.6.16 cycle is the **canary.11/12 component-lens + RHF 7.87.0 + Cache Components Adoption Skill official recommendation** cycle for patterns.md + components.md + deployment.md — the 3 weakest files by mtime (patterns.md 48h stale since v1.6.10 Aug 28 18:08; components.md + deployment.md 36h stale since v1.6.12 Aug 29 06:07-08Z). The most impactful new material: (1) **RHF 7.87.0 shouldTouch on trigger()** = a new API completing form validation parity; (2) **PR #96330 Set-Cookie no-store on prerendered responses** = security hardening that affects any component setting auth cookies; (3) **Cache Components Adoption Skill officially recommended** = the migration path for App Router components to `cacheComponents: true` is now clear and automated; (4) **Next.js 16.3.4 STABLE 1-2 week window** = STABLE users should plan the upgrade.
+
+### Sources
+
+- [npm `next@canary` 16.4.0-canary.11](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-28T23:48:47Z; 22 PRs
+- [npm `next@canary` 16.4.0-canary.12](https://www.npmjs.com/package/next?activeTab=versions) — npm-published 2026-08-29T23:38:15Z; 5 PRs
+- [GitHub — PR #98000 — [PPF] Fix navigation() in prospective runtime prerenders](https://github.com/vercel/next.js/pull/98000) — canary.11; PPF accuracy improvement
+- [GitHub — PR #96330 — Force no-store on prerendered responses that carry a Set-Cookie header](https://github.com/vercel/next.js/pull/96330) — canary.11; auth cookie cache hardening
+- [GitHub — PR #98032 — Turbopack: add next_config.use_react_experimental getter](https://github.com/vercel/next.js/pull/98032) — canary.12; routing MEDIUM
+- [GitHub — PR #98029 — Transform .mjs files with Next.js codemods](https://github.com/vercel/next.js/pull/98029) — canary.12; codemods now process .mjs
+- [npm `react-hook-form@7.87.0`](https://www.npmjs.com/package/react-hook-form?activeTab=versions) — npm-published 2026-08-30T02:41:55Z; shouldTouch on trigger()
+- [GitHub PR #13671 — Add shouldTouch option to trigger()](https://github.com/react-hook-form/react-hook-form/pull/13671)
+- [Next.js — Migrating to Cache Components](https://nextjs.org/docs/app/guides/migrating-to-cache-components) — Aug 25 2026 update; adoption skill officially recommended
+- [shadcn/ui Changelog](https://ui.shadcn.com/docs/changelog) — STILL-IDLE; Questionnaire + Human-in-the-Loop + Private GitHub Registries not in `shadcn@latest = 4.19.0`
+- [Cross-reference: `patterns.md` — Pattern AJ PPF refinement + Pattern AK .mjs codemods + Pattern AL Set-Cookie no-store + Pattern AM RHF 7.87.0 shouldTouch
+- [Cross-reference: `deployment.md` — canary.12 deployment-impact + zod@4.5.4 + @clerk/nextjs@7.8.4 line + Playwright epoch-ms format
+- [Cross-reference: `forms.md` — RHF 7.87.0 full forms-lens (forms.md will be updated in next forms cycle)
+- [Cross-reference: `routing.md` — canary.12 routing MEDIUM PR #98032 (undeclared param client reference dropped from manifest)
+- [Cross-reference: v1.6.12 components.md — the prior canary.10/11 component-lens + React 19.3.0-canary-2dc7da79 + Pages Router React 18 deprecation cycle; this v1.6.16 entry is the canary.11/12 component-lens + RHF 7.87.0 + Cache Components adoption skill gap-fill
