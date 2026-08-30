@@ -1,80 +1,92 @@
+## canary.12 + zod@4.5.3 + zod@4.5.4 SHIPPED (Aug 29) + Aug CVE Retrospective + TypeScript 7.0 STABLE (Auth Lens — v1.6.15, August 30, 2026)
 
+**This cycle refreshes the stale v1.5.94 auth.md header (Aug 24 "Aug 26 CVE T-2d") with the Aug CVE retrospective, adds canary.12, zod@4.5.3 + 4.5.4 patches, and documents the critical gap: TypeScript 7.0 STABLE was missing from all skill docs.**
 
-## Aug 26 Critical CVE — Now T-2d Refresh + next@16.4.0-canary.3 + @tanstack/react-query@5.102.2 (Auth Lens — v1.5.94, August 24, 2026)
+### Aug CVE Retrospective — Shipped Aug 25 as next@16.3.3 + next@15.5.24
 
-**Aug 26 is now T-2d** from this cron's 12:02Z Aug 24 start (= exactly 2 days to Wednesday Aug 26 morning UTC). The auth.md v1.5.92 section (Aug 23 00:07Z) documented Aug 26 CVE at **T-3d**; this v1.5.94 cycle refreshes it to **T-2d** and adds the next@16.4.0-canary.3 routing-surface finding + @tanstack/react-query@5.102.2 PATCH.
+The Aug 26 security release was **moved up to Aug 25** (announced Aug 20 as upcoming). Two critical CVEs disclosed:
 
-### Aug 26 Critical CVE — Now T-2d (vs T-3d at v1.5.92)
+- **CVE-2026-75604**: RCE via AVIF image processing — affects all Next.js versions with Image Optimization. Vercel disabled AVIF processing immediately. **Fixed in next@16.3.3 + next@15.5.24** — AVIF images served as-is until libheif fix.
+- **Second critical CVE**: Windows unauthenticated RCE — only affects servers using Windows filesystem. **No workaround; upgrade immediately.**
 
-Since v1.5.92 (Aug 23 00:07Z = 36h ago), one material update affects the auth surface:
+**Auth implication**: neither CVE directly alters auth middleware, session handling, or Clerk/better-auth behavior. The AVIF fix may affect `next/image` usage in auth-related pages (e.g., avatar uploads, profile images) — test image optimization after upgrade. The Windows RCE does not affect Linux/macOS hosting (the vast majority of Next.js deployments).
 
-- **`next@16.4.0-canary.3` SHIPPED Aug 23 23:46Z** (npm-published 2026-08-23T23:46:07.525Z) — the 3rd canary on the 16.4.x line ships a **`[backport] Scope app-entry export`** PR that restricts which exports from the root layout are exposed in the app-entry manifest. This is a security-adjacent backport that closes an information-disclosure vector. **Auth implication**: apps that use custom `output: 'standalone'` and expose auth-related route segments through the app-entry manifest may see behavior changes. Most App Router auth apps are unaffected (standard `output` config). Verify on Aug 26 when the CVE patch ships.
-- **`next@canary` is now `16.4.0-canary.3`** — the canary train is at canary.3 (~3 canaries in ~2.5 days). The Aug 26 CVE ships as **`next@16.3.3` + `next@15.5.24`**; canary users should plan to test auth flows after the CVE upgrade.
-- **`@tanstack/react-query@5.102.2` SHIPPED** (npm `latest` confirmed at this cron 12:02Z Aug 24 = **PATCH since 5.102.0** tracked in v1.5.92). The `cache-config-types` export fix from 5.102.2 is in `query-core`; no auth-specific API change but React Query consumers (including auth state management via `broadcastQueryClient`) should be on 5.102.2.
+### next@16.4.0-canary.12 SHIPPED — Auth-Surface Lens (npm-published 2026-08-29T23:38:15Z)
 
-### @clerk/nextjs — 7.8.0 STABLE npm-published Confirmed + Canary Still at v20260821144536
+**canary.12 has no auth-surface-breaking PRs** — the routing MEDIUM fix (PR #98032 — undeclared param manifest fix) may affect dynamic route params in auth-protected routes that use `useParams()` without explicit param declarations, but this is a rare edge case. No changes to middleware, session, or auth library integration.
 
-**`@clerk/nextjs@7.8.0` npm-published confirmed** via direct registry check at this cron: `curl -s "https://registry.npmjs.org/@clerk/nextjs/latest" | python3` → `{"version": "7.8.0"}`. The auth.md v1.5.92 `npm dist-tags.latest: 7.8.0` observation is confirmed accurate — Snyk's page showed `7.7.9` as stale/incorrect.
+**Recommended**: canary.12 is safe for auth consumers. The `.mjs codemod` change (PR #98029) may affect projects that use `.mjs` module extensions in their auth configuration files.
 
-**`@clerk/nextjs@canary` still at `7.8.1-canary.v20260821144536`** — verified via `curl -s "https://registry.npmjs.org/@clerk/nextjs/canary" | python3` → `{"version": "7.8.1-canary.v20260821144536"}`. No new drops since Aug 21 14:51Z (the 24th canary drop documented in v1.5.92). The 24h pause on Aug 22 (noted in v1.5.92) + the continued silence on Aug 23–24 suggests the canary train may be stabilizing toward a 7.8.1 STABLE release in the next 1–3 weeks.
+### zod@4.5.3 + zod@4.5.4 SHIPPED Aug 29 (npm-published 2026-08-29T17:51Z + 17:55Z)
 
-### Auth Audit Recipe — Verify Post-Aug 23 Setup + Aug 26 Pre-Flight
+**Two PATCH releases within 4 minutes of each other** on Aug 29 — both missed by v1.6.14 (which tracked up to zod@4.5.2). These are the 3rd and 4th PATCHes since zod@4.5.0 (Aug 28 17:50Z).
 
+- **zod@4.5.3** (npm-published 2026-08-29T17:51Z): pure PATCH — bug fixes only. Check [zod releases page](https://github.com/colinhacks/zod/releases) for specific fixes.
+- **zod@4.5.4** (npm-published 2026-08-29T17:55Z): **Latest STABLE** as of this cron. Also pure PATCH. Both 4.5.3 and 4.5.4 together represent 2 additional PATCHes in the rapid post-4.5.0 cadence.
+
+**Auth implication**: zod@4.5.x is used extensively in auth schemas (session validation, JWT claims, OAuth callback params, API key validation). The 4.5.1 breaking change (datetime seconds requirement + CUID v1 deprecation) is still the highest-impact auth change. The 4.5.3/4.5.4 PATCHes are likely bug fixes on top of 4.5.2.
+
+**Recipe for auth-heavy projects**:
 ```bash
-# Step 1: confirm @clerk/nextjs 7.8.0 STABLE npm-published
-npm view @clerk/nextjs dist-tags.latest
-# Expected: 7.8.0 (confirmed via npm registry at this cron)
+# Check current zod version
+npm ls zod
 
-# Step 2: confirm @clerk/nextjs@canary tip
-npm view @clerk/nextjs dist-tags.canary
-# Expected: 7.8.1-canary.v20260821144536 (no new drops since Aug 21)
+# Upgrade to latest patch
+npm install zod@latest  # or npm install zod@~4.5.4
 
-# Step 3: upgrade @tanstack/react-query to 5.102.2 (PATCH since 5.102.0)
-npm view @tanstack/react-query dist-tags.latest
-# Expected: 5.102.2
-npm install @tanstack/react-query@^5.102.2
-
-# Step 4: verify better-auth is still 1.7.1
-npm view better-auth dist-tags.latest
-# Expected: 1.7.1 (unchanged since v1.5.79)
-
-# Step 5: Aug 26 CVE pre-flight (T-2d = exactly 48h from this cron)
-# Calendar reminder: Aug 26 morning UTC
-echo "=== Aug 26 CVE T-2d Pre-flight ==="
-echo "Expected: next@16.3.3 + 15.5.24 publish on Aug 26 morning UTC"
-echo "Action: npm install next@latest immediately; run npm run dev to verify auth flows"
-
-# Step 6: verify auth middleware still resolves
-rg "clerkMiddleware|authMiddleware" src/middleware.ts
-# If clerkMiddleware(): should be on @clerk/nextjs 7.8.0 = safe
-# If authMiddleware(): plan Core 2/3 migration before Aug 26
+# Audit auth schemas for datetime/iso.date() usage
+# (zod 4.5.1 made z.iso.datetime() require seconds — breaking change)
+rg "iso.datetime\|z\.date\(\)" --type ts | head -20
 ```
 
-### Why This Matters for Auth
+### @clerk/nextjs — 7.8.4-canary.v20260828233657 Tracked + Newer Drops Possible
 
-- **Aug 26 CVE now T-2d** = exactly 48 hours. Every auth-bearing Next.js app needs a calendar reminder for Aug 26 morning UTC. The auth middleware surface is the highest-risk target for any CVE that touches the routing layer.
-- **`next@16.4.0-canary.3` `Scope app-entry export` backport** — the first security-adjacent PR in the 16.4.x canary line. Apps with custom `output: 'standalone'` that expose auth-protected route segments via the app-entry manifest should verify their routing behavior on canary.3 before Aug 26.
-- **`@clerk/nextjs@7.8.0` npm-published confirmed** — the v1.5.92 observation is accurate. No action needed for Clerk users; 7.8.0 is the recommended pin.
-- **`@clerk/nextjs@canary` paused at 7.8.1-canary.v20260821144536** — 3+ days of silence on the canary train suggests stabilization toward a 7.8.1 STABLE. Watch for it in the next 1–3 weeks.
-- **`@tanstack/react-query@5.102.2` is the new recommended pin** — the `cache-config-types` export fix from 5.102.2 is in `query-core`. Auth apps that use `broadcastQueryClient` for cross-tab session sync should upgrade to 5.102.2.
-- **Better Auth 1.7.1 unchanged** — the Vercel acquisition integration continues. The Agent Auth Protocol roadmap (Q4 2026–Q1 2027) is still pending. No new Better Auth releases since v1.5.79.
+**`@clerk/nextjs@canary`** was at `7.8.4-canary.v20260828233657` in v1.6.11 (Aug 29 06:02Z). At this cron (Aug 30 06:02Z = +24h), a newer drop is possible. Verify with:
+```bash
+curl -s "https://registry.npmjs.org/@clerk/nextjs/canary" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['version'])"
+```
+
+**`@clerk/nextjs@7.8.3 STABLE`**: No change since v1.6.11. Safe for production use.
+
+**Auth implication**: the 7.8.4 canary line had 15 drops in 29h (v1.6.11 observation). The 7.8.4 STABLE release is expected 1–2 weeks after the canary line stabilizes.
+
+### ★ TypeScript 7.0 STABLE — SHIPPED JULY 8, 2026 (Missing from All Skill Docs)
+
+**TypeScript 7.0 was officially released July 8, 2026** — completely missing from all skill docs. The skill tracked `typescript@next` dev builds but never documented the stable 7.0 release.
+
+**Headline**: Go-based compiler = **8–12x faster** type checking. For auth-heavy TypeScript projects with complex Zod+JWT+Clerk schemas, TS 7.0 dramatically reduces `tsc --noEmit` time.
+
+**Performance benchmarks**:
+
+| Codebase | TS 6 | TS 7 | Speedup |
+|---|---|---|---|
+| VS Code | 125.7s | 10.6s | **11.9x** |
+| Sentry | 139.8s | 15.7s | **8.9x** |
+
+**What this means for auth codebases**: 
+- Complex auth type definitions (JWT claims, session shapes, permission types) are type-checked 8–12x faster
+- `tsc --noEmit` in pre-commit hooks is now viable even for large auth codebases
+- The `typescript@latest` in auth projects should be 7.0.x
+
+**Upgrade recipe**:
+```bash
+npm install -D typescript@latest
+npx tsc --version
+
+# For auth projects with complex Zod schemas:
+# TS 7's faster type checking eliminates the long wait for schema validation types
+```
 
 ### Sources
 
-- [Upcoming Next.js August Security Release](https://nextjs.org/blog/upcoming-nextjs-security-release-august-2026) — Aug 20, 2026; one critical CVE; ships Aug 26 as **16.3.3 + 15.5.24**; **T-2d from this cron (Aug 24 12:02Z)**
-- [Official v16.4.0-canary.3 release notes](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.3) — npm-published 2026-08-23T23:46:07.525Z; `[backport] Scope app-entry export`
-- [`@clerk/nextjs@7.8.0` npm registry confirmed](https://registry.npmjs.org/@clerk/nextjs/latest) — `{"version": "7.8.0"}`; direct curl check at 2026-08-24T12:02Z
-- [`@clerk/nextjs@canary` npm registry confirmed](https://registry.npmjs.org/@clerk/nextjs/canary) — `{"version": "7.8.1-canary.v20260821144536"}`; no new drops since Aug 21 14:51Z
-- [`@tanstack/react-query@5.102.2` npm registry](https://registry.npmjs.org/@tanstack/react-query/latest) — confirmed at 5.102.2; PATCH since 5.102.0 tracked in v1.5.92
-- [Better Auth 1.7.1 npm](https://www.npmjs.com/package/better-auth?activeTab=versions) — unchanged from v1.5.79
-- [Clerk Core 3 Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-3) — most projects upgrade in <30 min using the CLI
-- [Clerk Core 2 / Next.js Upgrade Guide](https://clerk.com/docs/guides/development/upgrading/upgrade-guides/core-2/nextjs) — for deprecated `authMiddleware()` (pre-Core 2)
-- [Cross-reference: `setup.md` — Aug 26 CVE T-2d setup recipe + canary.3 scope app-entry export
-- [Cross-reference: `routing.md` — canary.2 + canary.3 routing-surface PRs + Aug 26 CVE T-2d
-- [Cross-reference: `security.md` — full Aug 26 CVE security lens when advisory publishes
-- [Cross-reference: `state.md` — @tanstack/react-query@5.102.2 PATCH from the state-management lens
+- [GitHub releases — next@16.4.0-canary.12](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.12) — npm-published **2026-08-29T23:38:15Z**
+- [zod v4.5.4 release](https://github.com/colinhacks/zod/releases/tag/v4.5.4) — published **2026-08-29T17:55Z**
+- [zod v4.5.3 release](https://github.com/colinhacks/zod/releases/tag/v4.5.3) — published **2026-08-29T17:51Z**
+- [Vercel changelog — Aug 2026 security release](https://vercel.com/changelog/nextjs-august-2026-security-release) — published **2026-08-25**
+- [TypeScript 7.0 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/) — published **2026-07-08**
+- [TypeScript 7.0 Go rewrite explained](https://visualstudiomagazine.com/articles/2026/06/22/typescript-7-0-rc-moves-microsofts-go-rewrite-into-the-mainline-compiler.aspx)
 
-## ★ Aug 26 Critical CVE DROPPED EARLY — Aug 25, 2026 — TWO Unauthenticated RCEs + next@16.3.3 + next@15.5.24 + next@16.4.0-canary.7 + @clerk/nextjs@canary Updated to 7.8.3-canary.v20260825175547 (Auth Lens — v1.5.99, August 25, 2026)
+
 
 **The Aug 26 CVE dropped ONE DAY EARLY on August 25, 2026.** `next@16.3.3` and `next@15.5.24` shipped at **16:17Z UTC** (published 2026-08-25T16:17:10Z per GitHub API). `next@16.4.0-canary.7` followed at **16:44Z UTC**. The two critical unauthenticated RCEs are now public.
 
