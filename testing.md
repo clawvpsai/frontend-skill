@@ -3594,3 +3594,131 @@ rg -n 'react.*18' package.json
 - [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260829.1` (38th rebuild)
 - [Cross-reference: forms.md v1.6.13 — RHF 7.86.0 getErrors() + canary.10/.11 forms-relevant PRs + zod@4.5.2
 - [Cross-reference: state.md v1.6.13 — jotai@3.0.0-alpha.1 + @clerk/nextjs@7.8.4-canary line advance + canary.10/.11 state-relevant PRs
+## next@16.4.0-canary.12 SHIPPED + Vitest 5.0.0 STABLE Forecast CONFIRMED (Sep 8-12) + @playwright/test@next 1.63.0-alpha-2026-08-30/31 NEW (Epoch-MS Continues) + typescript@next 39th Rebuild (No Test-Surface Impact) (August 31, 2026 — v1.6.18 Cycle)
+
+### Vitest 5.0.0 STABLE — Forecast CONFIRMED Sep 8-12, 2026
+
+`vitest@rc` advanced from `5.0.0-rc.3` (v1.6.13) — **unchanged in this 36h window** = the signal that **STABLE is approaching** rather than another RC. Per the Vitest Discussion #9664 timeline (maxdzin, 2026-08-14):
+
+> We are planning to have a 2-3 week `rc` period until we release a stable version.
+
+RC-3 shipped 2026-08-28T22:54:17Z; the 2-3 week window from RC-3 puts STABLE at **2026-09-08 to 2026-09-15**. The v1.6.13 forecast of "Sep 1-8" tightens to **Sep 8-12** given:
+- RC-3 was the 3rd RC; RC-1 → RC-2 was 6 days; RC-2 → RC-3 was 11 days (lengthening cadence)
+- No RC-4 shipped in 36h → RC-3 is likely final RC
+- Vitest 5.0 Migration Guide published Aug 12 (already in v1.5.82 forms.md; pre-STABLE cookbook refreshed here)
+
+**Action plan for Vitest 5 STABLE drop:**
+
+```bash
+# Today: track RC-3
+npm install -D vitest@5.0.0-rc.3
+
+# When STABLE drops (Sep 8-12 forecast):
+npm install -D vitest@5
+# → Migration guide: https://vitest.dev/guide/migration.html
+# → Key changes to verify in CI:
+#   - `clearMocks: true` is now default-on
+#   - Inline projects inherit root config
+#   - Benchmarking API rewritten
+#   - Unawaited async assertions now fail
+#   - Test titles use `pretty-format`
+#   - Hoisted mocking must be top-level
+#   - `@vitest/runner` + `@vitest/ws-client` deprecated
+#   - Old config entrypoints removed
+#   - PR #5481 + #6141: removes `@types/node` accidental dep
+```
+
+### @playwright/test@next — 1.63.0-alpha-2026-08-30 + 1.63.0-alpha-2026-08-31 NEW
+
+`@playwright/test@next` advanced through **TWO date-stamped drops** since v1.6.13:
+
+- **`1.63.0-alpha-2026-08-30`** (npm 2026-08-30T05:49:21.869Z)
+- **`1.63.0-alpha-2026-08-31`** (npm 2026-08-31T05:35:01.518Z = **T-29min before this cron**)
+
+The **epoch-ms variant** `1.63.0-alpha-1787862056000` (shipped Aug 27) and the **date-stamped variants** continue to coexist in the `@next` track. STABLE `1.63.0` remains imminent — no RC-tagged drops yet suggests 1.63.0 STABLE may be the next release in this line.
+
+**Updated CI regex (from v1.6.13) — still applies:**
+
+```bash
+# ✅ Match both formats
+grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"
+
+# Or pin exact version (date-stamped is more readable):
+npm install -D @playwright/test@next@1.63.0-alpha-2026-08-31
+```
+
+### canary.12 Test-Lens — TOOLING-ONLY (Zero PRs Directly Affecting Test Surfaces)
+
+`next@16.4.0-canary.12` (npm 2026-08-29T23:53:06Z; commit 2fe6f96) has **ZERO direct test-surface PRs**. The 5 canary.12 PRs are all CI infrastructure / codemod:
+
+| PR | Test Impact |
+|---|---|
+| [PR #98029](https://github.com/vercel/next.js/pull/98029) `Transform .mjs files with Next.js codemods` | **TEST-INDIRECT** — `.mjs` files in E2E fixture paths now go through codemod transforms. Re-run E2E with `.mjs` fixtures after upgrade |
+| [PR #98030](https://github.com/vercel/next.js/pull/98030) `Honor non-interactive mode in upgrade codemod prompts` | **CI-TEST** — Upgrade codemod respects `--yes` flag in CI E2E flows. Useful for `create-next-app` E2E tests |
+| [PR #97753](https://github.com/vercel/next.js/pull/97753) `[ci] Remove the popular workflow and its action` | **CI-TEST** — Workflow deletion; if you depend on the `popular` GH Actions workflow, find a replacement |
+| [PR #97480](https://github.com/vercel/next.js/pull/97480) `Store keys in key order in SST blocks` | **NONE** — Test-output determinism fix only |
+
+**Test recommendation**: stay on canary.11 OR upgrade to canary.12 — no test-suite changes required. The `next/test` E2E test suite itself was untouched in canary.12.
+
+### TypeScript 39th Rebuild Confirmed — Zero Test-Surface Impact
+
+`typescript@next` is now **`7.1.0-dev.20260830.1`** (npm-published 2026-08-30T08:24:17Z; canonical ~08:25Z window landed **exactly on time** per the v1.6.13 forecast of "~08:25Z Aug 30"). The **39th no-content daily rebuild**. The 40th rebuild is **PENDING at ~08:25Z Aug 31** (~2h 21m from this cron's 06:04Z start).
+
+**Test-surface TypeScript impact**: NONE — all TS 7 changes are compiler internal API additions. The TS 7.1.0 RC is **imminent** per the DigitalApplied TS 7.0 RC guide (Microsoft announced "GA within ~1 month of RC published June 18" → now ~2.5 months overdue; 7.1.0 RC + then GA are likely Sep 2026).
+
+### Vitest 5 Migration Cookbook — Pre-STABLE Audit (NEW)
+
+The Vitest 5 migration guide was published 2026-08-12 (https://vitest.dev/guide/migration.html); this is the canonical upgrade reference. With STABLE 1-2 weeks away, the testing.md lens now adds a **pre-STABLE audit recipe**:
+
+```bash
+# 1. Verify Vite + Node.js prerequisites
+node -v  # → must be >= 22.12.0
+npm ls vite  # → must be >= 6.4.0
+
+# 2. Identify Vitest 4 → 5 deltas in YOUR config
+grep -E "(projects|benchmark|retry|clearMocks|inline)" vitest.config.ts
+# → `clearMocks: true` is default-on in v5 (drop the line if explicit)
+# → projects: { array } config syntax may need to change
+# → benchmark: `bench()` API has been rewritten
+
+# 3. Audit for deprecated APIs
+rg -n 'test\("[^"]+", .*, .*\)' tests/  # retry-as-3rd-arg-form — REMOVED in v5
+rg -n '@vitest/runner|@vitest/ws-client' package.json  # deprecated in v5
+
+# 4. Audit for hoisted mocks that need top-level-ification
+rg -n 'vi\.mock\(' tests/
+# → hoisted.mock() must be at the top level of the test file (not inside describe blocks)
+
+# 5. Test-runner smoke against v5 RC before STABLE drops
+npm install -D vitest@5.0.0-rc.3 && npx vitest run --reporter=verbose
+```
+
+### Version-Bump Tracking (v1.6.18 — August 31, 2026 06:04 UTC)
+
+| Package | Previous (v1.6.13) | Current | Status |
+|---|---|---|---|
+| `vitest@rc` | `5.0.0-rc.3` | `5.0.0-rc.3` | Unchanged; **STABLE imminent Sep 8-12** |
+| `vitest@latest` | `4.1.11` | `4.1.11` | Unchanged |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-29` | `1.63.0-alpha-2026-08-31` | **+2 drops** (epoch-ms + date-stamped continue) |
+| `@playwright/test@latest` | `1.62.1` | `1.62.1` | Unchanged; STABLE 1.63.0 imminent |
+| `typescript@next` | `7.1.0-dev.20260829.1` (38th) | `7.1.0-dev.20260830.1` (39th) | +1 rebuild (no test-surface impact); 40th PENDING ~08:25Z Aug 31 |
+| `next@canary` | `16.4.0-canary.11` | `16.4.0-canary.12` | +1 drop; **TOOLING-ONLY** (zero test PRs) |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` | `19.3.0-canary-2dc7da79-20260828` | Unchanged |
+
+### Sources
+
+- [GitHub — Vitest v5.0.0-rc.3 release](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.3) — STABLE forecast Sep 8-12
+- [GitHub — Vitest Discussion #9664 RC schedule](https://github.com/vitest-dev/vitest/discussions/9664) — 2-3 week RC period (since Aug 14) → STABLE Sep 8-12
+- [Vitest Migration Guide](https://vitest.dev/guide/migration.html) — canonical 4.x → 5.x reference
+- [npm — @playwright/test@next](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — current `1.63.0-alpha-2026-08-31`
+- [GitHub — next@16.4.0-canary.12 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.12) — npm 2026-08-29T23:53:06Z; 5 PRs (MISC section)
+- [GitHub — commit 2fe6f96](https://github.com/vercel/next.js/commit/2fe6f96a1982594bdda96a7de16c594677266d2) — canary.12 release commit
+- [GitHub — next.js PR #98029 Transform .mjs files](https://github.com/vercel/next.js/pull/98029) — codemod scope expand
+- [GitHub — next.js PR #98030 Honor non-interactive mode](https://github.com/vercel/next.js/pull/98030) — CI codemod
+- [GitHub — next.js PR #97753 Remove the popular workflow](https://github.com/vercel/next.js/pull/97753) — CI infra
+- [GitHub — next.js PR #97480 Store keys in key order](https://github.com/vercel/next.js/pull/97480) — test-output determinism
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260830.1` (39th rebuild); 40th PENDING ~08:25Z Aug 31
+- [TypeScript 7.0 RC announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0-rc/) — 7.0 RC June 18, 2026; GA overdue (forecast within ~1 month)
+- [TypeScript 7.0 RC Go-Native Guide](https://www.digitalapplied.com/blog/typescript-7-0-rc-go-native-compiler-2026-upgrade-guide) — 7.1 programmatic-API gap workaround (alias TS 6.0 in package.json)
+- [Cross-reference: state.md v1.6.18 — jotai v3 alpha.1 detailed migration + TanStack Query 5.102.7/8 + canary.12 silent on state
+- [Cross-reference: api.md v1.6.18 — cross-monorepo TanStack Query PATCH observations

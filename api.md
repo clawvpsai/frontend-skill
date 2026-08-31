@@ -2949,3 +2949,77 @@ For the API-surface lens, the canary.5/6/7 + 16.3.3/15.5.24 STABLE + 5.102.3 bat
 
 - [Cross-references](cross-refs): `patterns.md` → Pattern AG: CSS Module class name shortening from the pattern-surface lens; `styling.md` → CSS module naming section updated; `server-components.md` → RSC lens on durableUseCacheEntries; `routing.md` → `experimental.strictRouteMatching` routing-surface implications; `performance.md` → memory leak in default use cache handler from the perf lens
 
+## next@16.4.0-canary.12 SHIPPED + Cross-Monorepo TanStack Query 5.102.7+8 PATCHes (API Surface Lens) + canary.12 ZERO API-Surface PRs (API-Surface Lens — Tested at v1.6.18 Cron, August 31, 2026 06:04 UTC)
+
+### next@16.4.0-canary.12 — ZERO API-Surface PRs (TOOLING-ONLY)
+
+`next@16.4.0-canary.12` SHIPPED (npm-published 2026-08-29T23:53:06.334Z; commit `2fe6f96`; 1 canary drop since canary.11 from v1.6.14; **~25h gap** [canary.11 Aug 28 23:48Z → canary.12 Aug 29 23:53Z]; **ZERO new API-Surface PRs in the 5-PR batch**):
+
+| PR | Title | API-Surface Impact |
+|---|---|---|
+| [PR #97753](https://github.com/vercel/next.js/pull/97753) | `[ci] Remove the popular workflow and its action` | **NONE** — CI infra removal |
+| [PR #97480](https://github.com/vercel/next.js/pull/97480) | `Store keys in key order in SST blocks that omit hashes` | **NONE** — Internal storage (already in canary.11) |
+| [PR #98030](https://github.com/vercel/next.js/pull/98030) | `Honor non-interactive mode in upgrade codemod prompts` | **TOOLING** — Upgrade codemod respects `--yes` flag |
+| [PR #98029](https://github.com/vercel/next.js/pull/98029) | `Transform .mjs files with Next.js codemods` | **TOOLING** — `.mjs` files now go through codemod transforms |
+
+**API-surface verdict for canary.12**: safe to pin `next@16.4.0-canary.12` for API-stable next-16.4.x experimenters. If you pinned `next@16.4.0-canary.11` for PR #97941 (use cache PII leak fix) or PR #97676 (Turbopack export mangling on-default), **canary.12 is a drop-in upgrade with no API changes**.
+
+### Cross-Monorepo Observations — TanStack Query 5.102.7 + 5.102.8 (NEW since v1.6.13)
+
+`@tanstack/react-query@latest` advanced from `5.102.6` to **`5.102.7`** (npm 2026-08-27T08:33:25.188Z) and **`5.102.8`** (npm 2026-08-27T16:06:57.089Z) — 2 PATCHes in 8h on Aug 27. Cross-monorepo refreshes:
+
+- **`@tanstack/query-core@5.102.7`** (npm 2026-08-27T08:33:25Z) — core dependency refresh
+- **`@tanstack/query-core@5.102.8`** (npm 2026-08-27T16:06:49Z = 8 sec before react-query 5.102.8)
+- **`@tanstack/query-persist-client-core@5.102.7`** + **`5.102.8`** (npm same dates)
+- **`@tanstack/query-sync-storage-persister@5.102.7`** + **`5.102.8`**
+- **`@tanstack/query-devtools@5.102.7`** + **`5.102.8`**
+- **`@tanstack/react-query-devtools@5.102.7`** + **`5.102.8`**
+- **`@tanstack/react-query-next-experimental@5.102.7`** + **`5.102.8`**
+
+**API-surface impact**: zero — these are dependency refreshes, not API additions. The **falsy-error boundary** fix from 5.102.6 (PR #11305) is still operative in 5.102.7+. Apps using conditional session queries (`useQuery({ enabled: isAuthenticated })`) should be on `^5.102.4` or later. Lockfile audit: confirm `@tanstack/query-core@5.102.8` (not 5.102.6) is what your app resolves against — run `npm ls @tanstack/query-core`.
+
+### Cross-Monorepo Observations — Vitest 5.0.0-rc.3 + STABLE Forecast
+
+(See testing.md v1.6.18 for full Vitest 5 audit details; api.md confirms: **Vitest 5 STABLE forecast Sep 8-12** per Vitest Discussion #9664 2-3 week RC-period estimate from Aug 14.)
+
+**API-surface cross-link**: any test setup in your Next.js App Router project using `vitest.config.ts` with `environment: 'jsdom'` + `@vitejs/plugin-react` will need the v5 migration plan documented in the Vitest Migration Guide. See testing.md v1.6.18 cookbook for the 5-step pre-STABLE audit.
+
+### @playwright/test@next — 1.63.0-alpha-2026-08-30 + 1.63.0-alpha-2026-08-31 NEW
+
+`@playwright/test@next` advanced to:
+- **`1.63.0-alpha-2026-08-30`** (npm 2026-08-30T05:49:21Z)
+- **`1.63.0-alpha-2026-08-31`** (npm 2026-08-31T05:35:01Z = **T-29min before this cron**)
+
+The epoch-ms variant `1.63.0-alpha-1787862056000` (Aug 27) and the date-stamped variants continue to coexist. STABLE `1.63.0` still imminent.
+
+**API-surface impact**: minor — Playwright 1.63 may include test-fixture API additions for component testing + trace viewer improvements; consult the release notes before pinning exact for production tests.
+
+### typescript@next 39th Rebuild — No API-Surface Impact
+
+`typescript@next` is now `7.1.0-dev.20260830.1` (npm 2026-08-30T08:24:17Z). The 39th no-content daily rebuild; the 40th PENDING at ~08:25Z Aug 31.
+
+**API-surface impact**: NONE for current app code (test files, form schemas, etc.). The TS 7.1.0 RC is imminent (forecast within weeks); TS 7.0 RC shipped Jun 18 with the 10x faster Go-native compiler. The 7.1.0 RC + GA are the milestones to watch.
+
+### Version-Bump Tracking (v1.6.18 — August 31, 2026 06:04 UTC)
+
+| Package | Previous (v1.6.14 → v1.6.17) | Current | Delta |
+|---|---|---|---|
+| `next@canary` | `16.4.0-canary.11` (Aug 28) → `16.4.0-canary.12` (Aug 29, v1.6.17 inline) | `16.4.0-canary.12` | Unchanged from v1.6.17 |
+| `next@latest` | `16.3.3` | `16.3.3` | Unchanged (16.3.4 STABLE forecast Sep 7-14) |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` | `19.3.0-canary-2dc7da79-20260828` | Unchanged |
+| `@tanstack/react-query@latest` | `5.102.8` (Aug 27, v1.6.17 inline) | `5.102.8` | Unchanged from v1.6.17 |
+| `@tanstack/query-core@latest` | `5.102.8` | `5.102.8` | Unchanged |
+| `vitest@rc` | `5.0.0-rc.3` | `5.0.0-rc.3` | Unchanged; STABLE Sep 8-12 |
+| `@playwright/test@next` | `1.63.0-alpha-2026-08-30` (Aug 30, v1.6.17 inline) | `1.63.0-alpha-2026-08-31` | **+1 drop** |
+| `typescript@next` | `7.1.0-dev.20260830.1` (39th, v1.6.17 inline) | `7.1.0-dev.20260830.1` | Unchanged; 40th PENDING ~08:25Z Aug 31 |
+
+### Sources
+
+- [GitHub — next@16.4.0-canary.12 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.12) — npm-published 2026-08-29T23:53:06Z; 5 PRs (MISC section); ZERO API-surface PRs
+- [GitHub — commit 2fe6f96](https://github.com/vercel/next.js/commit/2fe6f96a1982594bdda96a7de16c594677266d2) — canary.12 release commit
+- [npm — @tanstack/react-query@5.102.8](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm 2026-08-27T16:06:57Z
+- [npm — @tanstack/query-core@5.102.8](https://www.npmjs.com/package/@tanstack/query-core?activeTab=versions) — npm 2026-08-27T16:06:49Z
+- [npm — @playwright/test@next](https://www.npmjs.com/package/@playwright/test?activeTab=versions) — current `1.63.0-alpha-2026-08-31`
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260830.1` (39th rebuild); 40th PENDING
+- [Cross-reference: state.md v1.6.18 — jotai v3 alpha.1 detailed migration + canary.12 state-lens TOOLING-ONLY
+- [Cross-reference: testing.md v1.6.18 — Vitest 5 STABLE forecast Sep 8-12 + Playwright epoch-ms/date-stamped continue

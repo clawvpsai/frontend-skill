@@ -2583,3 +2583,160 @@ npm install @tanstack/react-query@latest
 - [GitHub — Vitest v5.0.0-rc.3 release](https://github.com/vitest-dev/vitest/releases/tag/v5.0.0-rc.3) — npm-published 2026-08-28; STABLE imminent
 - [Cross-reference: forms.md v1.6.13 — RHF 7.86.0 getErrors() + canary.10/.11 forms-relevant PRs + zod@4.5.2
 - [Cross-reference: testing.md v1.6.13 — Vitest 5.0.0-rc.3 SHIPPED + @playwright/test@next 1.63.0-alpha-2026-08-29 advance
+## next@16.4.0-canary.12 SHIPPED (Aug 29 23:53Z) + TanStack Query 5.102.7+5.102.8 (NEW since v1.6.13 inline) + Jotai v3.0.0-alpha.1 Migration Details (Aug 31, 2026 — v1.6.18 Cycle)
+
+### next@16.4.0-canary.12 — State-Lens (TOOLING-ONLY — Zero HIGH State PRs)
+
+`next@16.4.0-canary.12` SHIPPED (npm-published 2026-08-29T23:53:06.334Z; commit `2fe6f96`; 1 drop since canary.11 from v1.6.13; ~25h gap). The canary.12 PRs are **all TOOLING/CODEMOD focused** — **ZERO HIGH state-relevant PRs**, ZERO state-cache-correctness fixes. State management apps can stay on canary.11 if they prefer.
+
+| PR | Title | State Impact |
+|---|---|---|
+| [PR #97753](https://github.com/vercel/next.js/pull/97753) | `[ci] Remove the popular workflow and its action` | **NONE** — CI infra removal |
+| [PR #98029](https://github.com/vercel/next.js/pull/98029) | `Transform .mjs files with Next.js codemods` | **LOW** — `.mjs` files (not just `.js`/`.ts`) now run through `next/codemod` transformations. **Action**: re-run `next-codemod` on `.mjs` source files after upgrade if you maintain codemods |
+| [PR #98030](https://github.com/vercel/next.js/pull/98030) | `Honor non-interactive mode in upgrade codemod prompts` | **LOW** — Upgrade codemod respects `--yes` / CI environment variables. **Action**: CI scripts that previously broke on interactive prompts can now pass `--yes` flag to `next upgrade` and similar tools |
+| [PR #97480](https://github.com/vercel/next.js/pull/97480) | `Store keys in key order in SST blocks that omit hashes` | **NONE** — Internal storage; deterministic test output |
+
+**State-management observation**: canary.11 was the HIGH-state-PR batch (49 PRs including PR #97941 use-cache request-context PII leak fix + PR #97676 Turbopack export mangling on-default); canary.12 is the quiet codemod-tooling cycle. If you pinned `next@16.4.0-canary.11` for the PR #97941 fix, you can stay there without missing state-relevant improvements from canary.12.
+
+### @tanstack/react-query@5.102.7 + 5.102.8 NEW since v1.6.13 — Fastest STABLE Patch Cadence Confirmed
+
+`@tanstack/react-query@latest` advanced from `5.102.6` (v1.6.13 baseline) to **`5.102.7`** (npm 2026-08-27T08:33:25.188Z) and **`5.102.8`** (npm 2026-08-27T16:06:57.089Z). The SKILL.md v1.6.17 inline observation recorded these as the **9th + 10th PATCH in 13 days = fastest PATCH cadence ever tracked**. State.md body now confirms the cross-monorepo impact:
+
+- **`@tanstack/query-core@5.102.7`** (npm 2026-08-27T08:33:25Z) — dependency refresh
+- **`@tanstack/query-core@5.102.8`** (npm 2026-08-27T16:06:49Z = 8 sec before react-query 5.102.8)
+- **`@tanstack/query-persist-client-core@5.102.7`** + **`5.102.8`** (npm same dates)
+- **`@tanstack/react-query-devtools@5.102.7`** + **`5.102.8`**
+- **`@tanstack/react-query-next-experimental@5.102.7`** + **`5.102.8`**
+
+**5.102.6 falsy-error boundary fix (PR #11305) is still operative in 5.102.7+.8** — the fix introduced the falsy-error boundary in `useQuery` result handling; apps with conditional session queries (`useQuery({ enabled: isAuthenticated })`) must be on `^5.102.4` or later for the safety net.
+
+**State-management action plan:**
+
+```bash
+# Pin exact to avoid drift through 10 patches in 2 weeks
+npm install @tanstack/react-query@5.102.8
+
+# Audit session-aware queries for the falsy-error guard pattern from 5.102.6 (PR #11305)
+rg -n 'enabled: ' src/
+# → ensure each `enabled:` query has `if (isError) return ...` guards as needed
+
+# Verify networkMode in apps that use offline-first state
+rg -n 'networkMode' src/
+# → 5.102.x stable retains the networkMode='always' | 'online' | 'offlineFirst' trio
+
+# Lockfile audit — confirm @tanstack/query-core resolves to 5.102.8 (not 5.102.6)
+npm ls @tanstack/query-core
+# → if you see 5.102.6 or earlier: explicit pin `overrides` in package.json
+```
+
+### jotai@3.0.0-alpha.1 v3 Migration Direction — Detailed
+
+The v3 path is now clear from the alpha.0 → alpha.1 progression (alpha.0 shipped 2026-07-20T12:27:09Z; alpha.1 shipped 2026-08-24T08:35:45Z; v3 STABLE forecast end-of-2026 per dai-shi's `Ideas for v3 #2889` discussion):
+
+**Drops in v3 (per the v3 migration guide + 2026-07-20 release notes):**
+
+| Drop | Why | Migration |
+|---|---|---|
+| UMD build | Modern ESM-only is the v3 stance | Remove `<script src="unpkg/umd/jotai">`; use ESM `import { atom } from 'jotai'` |
+| SystemJS build | Same as UMD | No migration; rare in 2026 |
+| CommonJS build | Package is **ES modules only** in v3 | `package.json` consumers must use ESM-aware loader (Vite/webpack 5/Rollup all OK) |
+| React < 18 | v3 targets React 18+ only | Verify peer dep |
+| Node < 18 | Modern Node baseline | Verify Node version |
+| TypeScript < 5.0 | Modern TS baseline | `tsc --useDefineForClassFields` etc |
+| **`atomFamily`** util | Now in separate `jotai-family` package | `import { atomFamily } from 'jotai-family'` instead of `jotai/utils` (drop-in replacement per jotai.org docs) |
+| **`loadable`** util | Use `unwrap` from `jotai/utils` (added in v2.17.0+ as `withPending` direction) | `import { unwrap } from 'jotai/utils'` |
+| **`jotai/babel`** plugin | Moved to `jotai-babel` package | `import { jotai/babel }` → `import jotaiBabel from 'jotai-babel'` |
+| **`setSelf`** option in atom read fn | Deprecated in v2.17.0; dropped in v3 | Use third-arg in the writable atom callback directly |
+| `abortableAtom` util | Feature was made always-on | No migration (already on for v2) |
+
+**Added in v3 (per 2026-07-20 release notes):**
+
+| Add | Type | Use case |
+|---|---|---|
+| `useAtomValueRaw` | NEW hook | Returns the raw atom value **without** `use()` resolution (avoids the Suspense boundary implicit in `useAtomValue`) |
+| `useAtomValueRawSync` | NEW hook | Sync version of `useAtomValueRaw` for SSR/hydration boundaries |
+| Building blocks re-design | Library author API | Internal `buildingBlocks` API redesigned; library authors relying on `INTERNAL_overrideCreateStore` need to migrate to `createDevStore` from `jotai-utils` |
+| `withPending` util direction | Naming convention shift | All `atomWith*` utilities moving to `with*` naming (`withPending`, `withSuspense`, etc.) |
+| Module-first `package.json` exports | Build tooling | `import` paths simplified; `jotai/vanilla` entry still available for non-React |
+| `process.env.NODE_ENV` check | Runtime | Drop Rollup build-time replacement in favor of `process.env.NODE_ENV` |
+
+**State-management migration plan v2 → v3 (6 steps):**
+
+```bash
+# 1. Production stays on jotai@latest = 2.20.3 — no action yet
+# 2. Track jotai@next in experimental projects only
+npm install jotai@next  # → 3.0.0-alpha.1
+
+# 3. Audit atomFamily usages (when v3 ships stable; for now, plan ahead):
+rg -n 'atomFamily' src/
+# → When v3 ships: replace `import { atomFamily } from 'jotai/utils'`
+#    with `import { atomFamily } from 'jotai-family'`
+
+# 4. Plan loadable migration (also v3-bound):
+rg -n '\.loadable\(' src/  # → replace with `unwrap` from jotai/utils when v3 ships
+
+# 5. Move jotai/babel references to jotai-babel (when v3 ships)
+
+# 6. v3 is React 19 first-class — verify React >= 18.3.0 in peer deps
+node -e "console.log('react:', require('react/package.json').version)"
+```
+
+### @tanstack/react-form@2.0.0-alpha.2 NEW since v1.6.13
+
+`@tanstack/react-form@alpha` advanced from `2.0.0-alpha.1` (v1.6.13) to **`2.0.0-alpha.2`** (npm 2026-08-21T15:29:29.649Z; 8-day cadence). The alpha.2 release is for **experimentation only**; production stays on `@tanstack/react-form@latest` = `1.33.5` (no churn since Aug 11).
+
+### Version-Bump Tracking (v1.6.18 — August 31, 2026 06:04 UTC)
+
+| Package | Previous (v1.6.13) | Current | Delta |
+|---|---|---|---|
+| `jotai@next` | `3.0.0-alpha.1` | `3.0.0-alpha.1` | Unchanged (alpha.1 still latest in @next tag) |
+| `jotai@latest` | `2.20.3` | `2.20.3` | Unchanged |
+| `@tanstack/react-query@latest` | `5.102.6` | `5.102.8` | **+2 PATCHes** (5.102.7 + 5.102.8 in 8h); fastest STABLE PATCH cadence ever |
+| `@tanstack/query-core@latest` | (5.102.6 implicit) | `5.102.8` | **+2** (cross-monorepo refresh) |
+| `@tanstack/react-form@alpha` | `2.0.0-alpha.1` | `2.0.0-alpha.2` | NEW (8d cadence) |
+| `@tanstack/react-form@latest` | `1.33.5` | `1.33.5` | Unchanged |
+| `@clerk/nextjs@canary` | `7.8.4-canary.v20260828233657` | `7.8.4-canary.v20260829233856` | +1 drop (15→16th drop since v1.5.50 baseline) |
+| `@clerk/nextjs@latest` | `7.8.3` | `7.8.3` | Unchanged |
+| `zustand@latest` | `5.0.15` | `5.0.15` | Unchanged (idle 12d+) |
+| `typescript@next` | `7.1.0-dev.20260829.1` (38th) | `7.1.0-dev.20260830.1` (39th) | +1 rebuild (no-content); no state-surface impact |
+
+### Migration actions (updated)
+
+```bash
+# canary.12 verdict: TOOLING-ONLY state lens — safe to stay on canary.11 OR upgrade to canary.12
+# If you maintain codemods that include .mjs sources:
+npm install next@16.4.0-canary.12
+# → PR #98029 now codemod-transforms .mjs files (in addition to .js/.ts)
+
+# Track jotai@next v3 expansion (still alpha.1; v3 RC forecasted end-of-2026)
+npm install jotai@next
+# → 3.0.0-alpha.1 — for v3 prep; production stays on jotai@latest=2.20.3
+
+# Pin Clerk canary to latest 7.8.4 line (16 drops since v1.5.50)
+npm install @clerk/nextjs@canary@7.8.4-canary.v20260829233856
+
+# Audit PR #97941 use cache PII leak fix (canary.11 is the operative release for state)
+rg -n '"use cache"' src/
+# → still applies; canary.11 introduced the fix; canary.12 is silent on state-cache correctness
+```
+
+### Sources
+
+- [GitHub — next@16.4.0-canary.12 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.12) — npm-published 2026-08-29T23:53:06Z; 5 PRs (MISC section)
+- [GitHub — next.js commit 2fe6f96](https://github.com/vercel/next.js/commit/2fe6f96a1982594bdda96a7de16c594677266d2) — canary.12 release commit
+- [GitHub — next.js PR #98029 Transform .mjs files with Next.js codemods](https://github.com/vercel/next.js/pull/98029) — LOW; codemod scope expand
+- [GitHub — next.js PR #98030 Honor non-interactive mode in upgrade codemod prompts](https://github.com/vercel/next.js/pull/98030) — LOW; CI scripts
+- [GitHub — next.js PR #97753 Remove the popular workflow](https://github.com/vercel/next.js/pull/97753) — NONE; CI infra
+- [GitHub — next.js PR #97480 Store keys in key order in SST blocks](https://github.com/vercel/next.js/pull/97480) — NONE; test-output determinism
+- [npm — jotai@3.0.0-alpha.1](https://www.npmjs.com/package/jotai?activeTab=versions) — npm 2026-08-24T08:35:45Z
+- [Jotai v3 Migration Guide](https://jotai.org/docs/guides/migrating-to-v2-api) — v3 migration plan + alpha.0 release notes from 2026-07-20
+- [Jotai atomFamily docs](https://jotai.org/docs/utilities/family) — atomFamily → jotai-family migration; **"deprecated and will be removed in Jotai v3"**
+- [npm — jotai-family package](https://www.npmjs.com/package/jotai-family) — separate package for atomFamily in v3
+- [GitHub — pmndrs/jotai discussion #2889 Ideas for v3](https://github.com/pmndrs/jotai/discussions/2889) — dai-shi's confirmed v3 plan
+- [whatsnew.fyi — Jotai v3.0.0-alpha.0 release notes](https://whatsnew.fyi/product/jotai/releases/v3.0.0-alpha.0) — 2026-07-20 alpha with add/changed/removed tables
+- [npm — @tanstack/react-query@5.102.8](https://www.npmjs.com/package/@tanstack/react-query?activeTab=versions) — npm 2026-08-27T16:06:57Z; 10th PATCH in 13 days
+- [npm — @tanstack/react-form@alpha](https://www.npmjs.com/package/@tanstack/react-form?activeTab=versions) — `2.0.0-alpha.2` npm 2026-08-21T15:29:29Z
+- [npm — @clerk/nextjs@canary](https://www.npmjs.com/package/@clerk/nextjs?activeTab=versions) — current `7.8.4-canary.v20260829233856`
+- [npm — typescript@next](https://www.npmjs.com/package/typescript?activeTab=versions) — current `7.1.0-dev.20260830.1` (39th rebuild)
+- [Cross-reference: testing.md v1.6.18 — Vitest 5.0.0 STABLE forecast Sep 8-12 + Playwright 1.63.0-alpha-2026-08-30/31
+- [Cross-reference: api.md v1.6.18 — next@16.4.0-canary.12 ZERO API-surface PRs + cross-monorepo TanStack Query 5.102.7+.8
