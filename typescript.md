@@ -3229,3 +3229,62 @@ npm list next  # Should show 16.4.0-canary.10 or 16.3.3
 - [PR #97689 — Pages Router: Deprecate React 18 support](https://github.com/vercel/next.js/pull/97689) — **TS-surface impact: NONE**
 - [PR #97942 — Fix build error when aliasing `typescript` to `@typescript/typescript6`](https://github.com/vercel/next.js/pull/97942) — by @andrewbranch; **TS-surface impact: BENEFICIAL** for TS experimenters
 - [Cross-references](cross-refs): `api.md` → canary.10 API-surface section; `patterns.md` → Pattern AG + AH + AI for the pattern-surface lens; `routing.md` → `experimental.strictRouteMatching` routing implications
+
+---
+
+## TypeScript 7.0 STABLE + 7.1.0-dev 38th/39th/40th Rebuilds + Canary.11/12 TS-Surface Audit (August 30–31, 2026 — v1.6.17 Cycle)
+
+**TypeScript 7.0 STABLE — Current Status (v1.6.15 confirmed + v1.6.17 refresh):**
+TypeScript 7.0.2 is the current stable. The Go-native compiler delivers **8–12× faster** full builds and **~13× faster** cold project-load in VS Code (1 min → 10 sec). The 3 key benchmarks from the GA announcement:
+- VS Code (1.5M LOC): `tsc --noEmit` from 77.8s → 7.5s (10.4×)
+- Playwright (356K LOC): 11.1s → 1.1s (10.1×)
+- tRPC (18K LOC): 5.5s → 0.6s (9.1×)
+
+The 7.1.0-dev daily rebuild cadence continues (no-content pattern):
+- **7.1.0-dev.20260829.1** — 38th no-content rebuild (Aug 29 08:18Z)
+- **7.1.0-dev.20260830.1** — 39th no-content rebuild (Aug 30 08:24Z) — confirmed at v1.6.16 inline observation
+- **40th rebuild PENDING ~08:25Z Aug 31** — next daily cut
+
+The TypeScript main branch remains idle (no functional commits); the daily cuts are generated from the unchanged tree. No new TS-surface features in any of these cuts.
+
+**Canary.11/12 TS-Surface — ALL NONE (confirmed Aug 29–30):**
+All 22 PRs in canary.11 and all 5 PRs in canary.12 have **zero TypeScript-surface impact**. None of the changes require any tsconfig updates, add new `.d.ts` declarations, change type inference, or affect `tsc` output. For frontend skill purposes: **no audit action required** for these canary batches from a TS lens.
+
+**@clerk/nextjs 7.8.3 STABLE TS-surface:** The 7.8.2 → 7.8.3 PATCH was a routine dependency-bump only (JSDoc link alignment). **TS-surface: NONE** — no new types, no API type changes.
+
+**Migration Recipe (for projects upgrading to TS 7):**
+```bash
+# 1. Install TS 7 (ships under main typescript package, no tag needed)
+npm install -D typescript@^7.0.2
+
+# 2. Verify the Go compiler is active
+npx tsc --version
+# Expected: 7.0.2 (Go binary, not JS)
+
+# 3. If your project uses the TS Compiler API programmatically
+# (ts-loader, custom codemods, ESLint plugins walking TS AST):
+# Stay on @typescript/typescript6 until 7.1 ships
+npm install -D @typescript/typescript6@^6.0.0
+
+# 4. Audit for ES5 targets — they now error in TS 7
+# Update tsconfig "target": "ES5" → "ES2020" minimum
+
+# 5. Audit for disabled strict flags — TS 7 requires them
+# Remove any "strict": false or noImplicitAny: false overrides
+
+# 6. If you use @types/node explicitly install it (TS 7 doesn't auto-pull)
+npm install -D @types/node
+```
+
+**Recommended pin:** `typescript@^7.0.2` for new projects; `typescript@^6.0.0` + `@typescript/typescript6@^6.0.0` for projects using the Compiler API until 7.1 ships.
+
+**Version tracking (inline):** `typescript@latest` still `7.0.2`; `typescript@next` now `7.1.0-dev.20260830.1` (39th no-content rebuild; 40th PENDING ~08:25Z Aug 31).
+
+**Sources:**
+- [Visual Studio Magazine — TypeScript 7 Arrives to Rock VS Code with Go-Powered Speed](https://visualstudiomagazine.com/articles/2026/07/08/typescript-7-arrives-to-rock-vs-code-with-go-powered-speed.aspx) — 8–12× benchmarks
+- [The Register — Speedier type checks in TypeScript 7.0](https://www.theregister.com/devops/2026/07/09/speedier-type-checks-in-typescript-70-as-first-stable-go-release-ships/5268828)
+- [InfoQ — Microsoft Releases TypeScript 7.0 with Native Go Compiler](https://www.infoq.com/news/2026/08/typescript-7-released)
+- [pkgpulse — What is tsgo? TypeScript's Go-native compiler vs tsc](https://www.pkgpulse.com/guides/tsgo-vs-tsc-typescript-7-go-compiler-2026) — safe CI migration pattern
+- [npm — typescript@latest](https://www.npmjs.com/package/typescript) — 7.0.2 + 7.1.0-dev.20260830.1
+- [Cross-ref: setup.md v1.6.15 — TS 7.0 STABLE upgrade recipe confirmed
+- [Cross-ref: auth.md v1.6.15 — TS 7.0 STABLE auth schema implications

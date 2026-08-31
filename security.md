@@ -2832,3 +2832,53 @@ The most consequential new security material since v1.6.07 is the **TanStack Que
 - [Cross-reference: `deployment.md` — canary.10/11 deployment-impact lens + @tanstack/react-query 5.102.7/.8 + zod 4.5.2 + better-auth 1.7.2 + @biomejs/biome 2.5.11
 - [Cross-reference: `state.md` — Version-Bump Tracking Table v1.6.12 with all 7 inline observations
 - [Cross-reference: v1.6.07 security.md — the prior TS 7.0 + Zod 4 + CVE PoC + canary gap cycle; this v1.6.12 entry is the CVE active exploitation T+~104h+ + canary.10/11 security-lens + React Query 5.102.7/.8 + Playwright epoch-ms gap-fill
+
+---
+
+## CVE-2026-75604 T+~152h + Next.js 16.3.4 STABLE Forecast 1-2 Weeks + Canary.11/12 Security-Relevant PRs (PR #98032 Routing MEDIUM + PR #98000 PPF + PR #95233 Granular Cache) + @clerk/nextjs@7.8.4-Canary Line Advance + @playwright/test@next 1.63.0-alpha-2026-08-30 (August 31, 2026 — v1.6.17 Cycle — Security Lens)
+
+**CVE-2026-75604 Exploitation Status — T+~152h Post-Patch:**
+The two critical unauthenticated RCEs remain under active exploitation as of this cron's 00:02Z Aug 31 start (T+~152h post-patch at 16:17Z Aug 25). The Cloudflare emergency WAF rules for CVE-2026-75604 and the AVIF Image Optimization RCE are **still active** per the Cloudflare changelog (the Aug 27 entry notes rule metadata refinement, not removal — the rules remain in Block mode). Checkmarx and Penligent continue tracking active PoC tooling.
+
+**Operational status:**
+- **All Windows-hosted Next.js deployments** on `next@16.3.3` or `15.5.24` are patched for CVE1 (Windows ISR backslash fix via PR #97876 in canary.7)
+- **AVIF Image Optimization** remains disabled in patched versions (auto-fallback to WebP/PNG active)
+- **Linux/macOS** are not affected by CVE1
+- **Standard P0 post-CVE for RCE-class**: if your app was potentially exposed on Windows between Aug 20 and Aug 25 16:17Z — session invalidation + re-auth should already be done
+
+**Next.js 16.3.4 STABLE Forecast — 1–2 Weeks (Aug 30 update):**
+Based on the v1.6.16 forecast of "1-2 weeks" from Aug 30 and the canary.10+ backport scope (PR #97941 use cache leak fix + PR #95233 granular cache keys + PR #97948 + PR #97953 + PR #98000 + PR #96330), the most likely ship date is **Sep 7–14, 2026**. The 5 fixes being backported are all confirmed in canary.10+ and are the stabilization candidates for 16.3.4. Plan a maintenance window accordingly.
+
+**Canary.11/12 Security-Relevant PRs:**
+
+| PR | Title | Impact | Security Lens |
+|----|-------|--------|---------------|
+| PR #98032 | Drop undeclared param client reference from manifest | MEDIUM | Affects dynamic routes with undeclared params in `useParams()`/`router.push()` on canary.12 — may cause route-table instability if params are used unsafely |
+| PR #98000 | PPF `unstable_navigation()` prospective prerender fix | MEDIUM | Already documented in v1.6.12; re-confirmed in canary.11; affects streaming apps with prefetch logic |
+| PR #95233 | `use cache` granular cache keys | MEDIUM | Narrows shared-cache-attack-surface; already documented in v1.6.12; confirmed in canary.10 |
+| PR #96330 | Set-Cookie no-store on prerendered responses | MEDIUM-HIGH | **Already documented in patterns.md + components.md** (v1.6.16); affects any prerendered route that sets auth cookies |
+
+**@clerk/nextjs@7.8.4-canary line advance:** The canary train continues on the 7.8.4 development line. Latest drop: `7.8.4-canary.v20260829233856` (npm Aug 29 23:44Z). No auth-surface breaking changes in any 7.8.4 canary drops. Pin `@clerk/nextjs@canary@7.8.4-canary.v20260829233856` for the current line or `@clerk/nextjs@latest@7.8.3` for the stable line.
+
+**@playwright/test@next 1.63.0-alpha-2026-08-30:** The epoch-ms version format (`1.63.0-alpha-1787862056000`) continues to coexist with the date-stamped format (`1.63.0-alpha-2026-08-30`). **CI regex must match both:** `grep -E "1\.63\.0-alpha-([0-9]{4}-[0-9]{2}-[0-9]{2}|[0-9]{13,})"`. STABLE 1.63.0 still imminent (1–2 weeks).
+
+**Security Checklist (v1.6.17 refresh — T+~152h post-CVE):**
+1. **Confirm next@16.3.3 or next@16.4.0-canary.10+** on all Windows-hosted deployments — CVE1 is patched
+2. **Confirm next@16.3.3 or next@15.5.24** on all Linux/macOS deployments — CVE2 (AVIF) is patched
+3. **AVIF audit**: `curl -H "Accept: image/avif" https://yourapp.com/_next/image?url=/favicon.png&w=32` — expect `Content-Type: image/webp` or `image/png`, NOT `image/avif`
+4. **Windows ISR audit**: trigger ISR with `%2F` in URL params; confirm cache key is parsed correctly
+5. **Session integrity re-verification**: for any auth app potentially exposed to CVE-2026-75604 on Windows between Aug 20–25 — invalidate all active sessions + force re-auth (should already be done at T+104h; verify)
+6. **`use cache` PII audit**: if your app uses `'use cache'` with session/auth data — verify `next@16.4.0-canary.10` or wait for `next@16.3.4` (1–2 weeks)
+7. **PPF navigation() audit** (canary.11 fix): if you use `unstable_navigation()` — verify behavior after upgrading
+8. **Dynamic route params audit** (canary.12 fix PR #98032): audit `useParams()` and `router.push()` calls for undeclared params
+
+**Sources:**
+- [nextjs.org/blog — August 2026 Security Release](https://nextjs.org/blog/august-2026-security-release) — official blog; Aug 25, 2026
+- [Cloudflare Developers — Emergency WAF Release Aug 26](https://developers.cloudflare.com/changelog/post/2026-08-26-emergency-waf-release/) — emergency rules for CVE-2026-75604 + AVIF RCE; rules still active as of Aug 27
+- [GitHub Security Advisory GHSA-p293-qw3h-jr36](https://github.com/vercel/next.js/security/advisories/GHSA-p293-qw3h-jr36) — CVE-2026-75604 Windows RCE
+- [GitHub Security Advisory GHSA-2xp9-vwfh-vxw4](https://github.com/vercel/next.js/security/advisories/GHSA-2xp9-vwfh-vxw4) — AVIF RCE in Image Optimization API
+- [penligent.ai — CVE-2026-75604 Next.js Unauthenticated RCE on Windows Explained](https://www.penligent.ai/hackinglabs/cve-2026-75604/)
+- [Cross-ref: deployment.md v1.6.16 — Next.js 16.3.4 STABLE 1-2 week forecast
+- [Cross-ref: patterns.md v1.6.16 — Pattern AL: Set-Cookie no-store PR #96330
+- [Cross-ref: components.md v1.6.16 — canary.11/12 component-lens
+- [Cross-ref: v1.6.12 security.md — the prior CVE T+~104h cycle; this v1.6.17 entry is the T+~152h verification

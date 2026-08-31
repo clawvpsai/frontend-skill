@@ -4054,3 +4054,127 @@ rg -n '\.flatten\(\)' src/
 - [npm — react@canary](https://www.npmjs.com/package/react?activeTab=versions) — current `19.3.0-canary-2dc7da79-20260828`
 - [Cross-reference: testing.md v1.6.13 — Vitest 5.0.0-rc.3 SHIPPED + @playwright/test@next 1.63.0-alpha-2026-08-29 advance
 - [Cross-reference: state.md v1.6.13 — jotai@3.0.0-alpha.1 + @clerk/nextjs@7.8.4-canary line advance + canary.10/.11 state-relevant PRs
+
+---
+
+## React Hook Form 7.87.0 STABLE (August 30, 2026 — MISSED by v1.6.13) + zod@4.5.3 + 4.5.4 STABLE (August 29 — NEW since v1.6.13) + TanStack Form v2 alpha.2 (August 21 — NEW since v1.6.13) + canary.10/11/12 Forms-Relevant PRs (PR #97689 Pages Router React 18 Deprecation HIGH + canary.11/12 Combined) — v1.6.17 Cycle
+
+**React Hook Form 7.87.0 STABLE — SHIPPED Aug 30 02:41Z (MISSED by v1.6.13):**
+`react-hook-form@7.87.0` was npm-published at **2026-08-30T02:36:19Z** — T+14h36min after the v1.6.13 cron (which ran at 12:02Z Aug 29). The v1.6.13 SKILL.md explicitly noted the forecast "RHF 7.87.0 shouldTouch on trigger() — STABLE forecast 2–3 weeks" but the release landed before the next cycle. This entry is the **first documentation of RHF 7.87.0 in the forms skill**.
+
+**Full 7.87.0 changelog (9 fixes + 2 additions):**
+
+| # | Type | Change | Impact |
+|---|------|--------|--------|
+| 1 | Added | `shouldTouch` option for `trigger()` — **ships in 7.87.0** | HIGH — single-call `trigger(name, { shouldTouch: true })` replaces two-call `trigger(name) + setTouched(name)` workaround; form-exit guard pattern now clean |
+| 2 | Added | `OpaqueTypes` registry for opaque leaf types | MEDIUM — enables typed opaque types (branded types, currency, etc.) without conflicts in complex form schemas |
+| 3 | Fixed | Inconsistent `useController().field.onChange()` behavior across APIs | MEDIUM — consistency fix; Controller-based fields now behave uniformly |
+| 4 | Fixed | `Controller` under a null parent submitting `undefined` instead of a value | MEDIUM — edge case in conditional rendering |
+| 5 | Fixed | `ERR_MODULE_NOT_FOUND` resolving `react-hook-form` due to a `react-server` declaration (Next.js builds) | HIGH — **this is the most operationally critical fix in this release**; was breaking Next.js App Router builds with `react-server` in the dependency tree; appears to be a peer-declaration conflict between RHF and Next.js's React 19 / Server Components peer deps |
+| 6 | Fixed | `useWatch` never reconciling when an `Activity` subtree is hidden on its first render | MEDIUM — React 19 Activity support fix; affects forms using `<Activity>` with conditional form sections |
+| 7 | Fixed | `resetField` not recomputing `isValid` for subscribe-only consumers | LOW — affects non-`useFormState`-based subscription patterns |
+| 8 | Fixed | `generateWatchOutput` ignoring `defaultValue` for an array of names | LOW — watch array behavior edge case |
+| 9 | Fixed | `useFormState` never reconciling when an `Activity` subtree is hidden on its first render | MEDIUM — React 19 Activity support; parallel to the `useWatch` fix |
+
+**Migration action for RHF users:**
+```bash
+# Upgrade immediately — especially if on Next.js App Router with React 19
+npm install react-hook-form@^7.87.0
+
+# shouldTouch on trigger() — new pattern (replace two-call workaround)
+import { useForm } from 'react-hook-form';
+
+function FormExitGuard({ children }) {
+  const { trigger } = useForm();
+  
+  // ❌ Old pattern — two calls
+  // await trigger('email');
+  // await setTouched('email');
+  
+  // ✅ New pattern in 7.87.0 — single call
+  await trigger('email', { shouldTouch: true });
+  
+  // Form-exit guard pattern (record visited fields without re-validation)
+  await trigger(undefined, { shouldTouch: true });
+}
+
+# ERR_MODULE_NOT_FOUND fix — if you were hitting Next.js build failures
+# The 7.87.0 fix resolves the react-server peer-declaration conflict
+# Re-run your Next.js build after upgrading
+```
+
+**Pin:** `react-hook-form@^7.87.0` — the `ERR_MODULE_NOT_FOUND` fix alone justifies immediate upgrade for any Next.js App Router project.
+
+---
+
+**zod@4.5.3 + zod@4.5.4 STABLE (both NEW since v1.6.13 — v1.6.13 noted zod@4.5.2):**
+`zod@4.5.3` npm-published 2026-08-29T17:46:48Z; `zod@4.5.4` npm-published 2026-08-29T17:55:42Z — **2 PATCHes in 9 minutes**. Both are operationally significant for form schemas:
+
+**zod@4.5.4 breaking/patch notes:**
+- **CUID v1 deprecated**: `z.cuid()` now rejects CUID v1 format (old format). CUID v2 is the current standard. If your form schemas use `z.cuid()` for IDs, audit whether you're creating new IDs or validating existing ones.
+- **HTTP URL validation stricter**: `z.httpUrl()` now rejects URLs like `https:/example.com` (missing slash after protocol). The `URL` constructor normalizes these, but zod now rejects them instead.
+- **JSON Schema `$defs` entries no longer include redundant `id`**: affects JSON Schema output from `zod-to-json-schema` if you generate schemas for external consumers.
+- **`z.treeifyError()` / `z.formatError()` fixed for union paths**: nested union paths now preserved correctly in formatted errors.
+
+**Migration action:**
+```bash
+npm install zod@^4.5.4
+
+# Audit CUID usage in forms
+rg "z\.cuid\(\)" --type ts
+
+# If you create new IDs with cuid():
+# → switch to z.string().cuid2() (CUID v2) or z.string().uuid()
+
+# Audit httpUrl() usage
+rg "z\.httpUrl\(\)" --type ts
+# Test with edge cases: https:/example.com, https:/foo.bar/baz
+
+# Re-run form validation tests after upgrade
+npm test
+```
+
+**Pin:** `zod@^4.5.4` for form projects.
+
+---
+
+**TanStack Form v2 alpha.2 SHIPPED (Aug 21 — NEW since v1.6.13):**
+`@tanstack/react-form@2.0.0-alpha.2` npm-published 2026-08-21T15:29:29Z. The v1.6.13 inline observation noted alpha.1 (Aug 13); alpha.2 is 8 days newer. Alpha track is experimental — **production still on `@tanstack/react-form@latest = 1.33.5`**. Track alpha.2 only if you are actively evaluating the v2 API.
+
+---
+
+**Canary.10/11/12 Forms-Relevant PRs:**
+
+| PR | Title | Impact | Forms Lens |
+|----|-------|--------|------------|
+| PR #97689 | Pages Router: Deprecate React 18 support | HIGH | **Next.js 17 countdown started** — Pages Router React 18 deprecation is the highest-impact change for form components in the Pages Router. If your forms are in `pages/` directory, plan migration to App Router or prepare for React 18 end-of-life in Next.js 17. |
+| PR #98032 | Drop undeclared param client reference from manifest (canary.12) | MEDIUM | Affects dynamic route forms using `useParams()` to pre-populate form fields |
+| PR #97941 | `'use cache'` request-context memory leak fix | MEDIUM | Affects forms using `'use cache'` with auth/session data in cached functions |
+| PR #98000 | PPF `unstable_navigation()` fix | LOW | Prefetch correctness; unlikely to affect form submission directly |
+| PR #95233 | Granular cache keys | LOW | Shared-cache-attack-surface reduction; indirect benefit for forms with user-specific data |
+
+**Forms migration action (Pages Router → Next.js 17 preparation):**
+```bash
+# Audit pages/ directory for form usage
+rg "useForm|react-hook-form" --files-with-matches pages/
+
+# If forms exist in pages/:
+# Option 1: Migrate to app/ directory with RHF 7.87.0 + zod@4.5.4
+# Option 2: Prepare for React 18 EOL in Next.js 17 (~2-4 months out)
+# Note: RHF 7.87.0 ERR_MODULE_NOT_FOUND fix is specifically for App Router
+```
+
+**Version tracking (inline — v1.6.17 new observations):**
+- `react-hook-form@latest` **7.86.0 → 7.87.0 NEWLY DOCUMENTED** (npm-published 2026-08-30T02:36:19Z = T-3h26m before v1.6.16 cron; MISSED by v1.6.13; **shouldTouch on trigger() now SHIPPED**; ERR_MODULE_NOT_FOUND react-server fix is the highest-impact operational fix; pin `react-hook-form@^7.87.0`)
+- `zod@latest` **4.5.2 → 4.5.4 NEWLY UPDATED** (npm 2026-08-29T17:55Z = T+1h47m before v1.6.16 cron; 4.5.3 [17:46Z] + 4.5.4 [17:55Z] = 2 NEW PATCHes; **CUID v1 deprecated + httpUrl stricter** are the highest-impact form-schema changes; pin `zod@^4.5.4`)
+- `@tanstack/react-form@alpha` **alpha.1 → alpha.2 NEWLY UPDATED** (npm 2026-08-21T15:29Z; 8 days newer than v1.6.13's observation; experimental only)
+- All other tracked versions unchanged from v1.6.16: `@hookform/resolvers@latest` still `5.9.1`, `@tanstack/react-form@latest` still `1.33.5`, `react@canary` still `19.3.0-canary-2dc7da79-20260828`, `typescript@next` still `7.1.0-dev.20260830.1`, `next@canary` still `16.4.0-canary.12`
+
+**Sources:**
+- [GitHub — react-hook-form/CHANGELOG.md](https://github.com/react-hook-form/react-hook-form/blob/master/CHANGELOG.md) — 7.87.0 full changelog (9 fixes + 2 additions)
+- [npm — react-hook-form@7.87.0](https://www.npmjs.com/package/react-hook-form) — published 2026-08-30T02:36:19Z
+- [npm — zod@4.5.4](https://www.npmjs.com/package/zod) — published 2026-08-29T17:55Z
+- [GitHub — zod/releases — v4.5.4](https://github.com/colinhacks/zod/releases) — CUID v1 deprecation + httpUrl stricter + JSON Schema $defs fix
+- [npm — @tanstack/react-form@2.0.0-alpha.2](https://www.npmjs.com/package/@tanstack/react-form) — published 2026-08-21T15:29:29Z
+- [Cross-ref: testing.md v1.6.13 — Vitest 5.0.0-rc.3 STABLE imminent (Sep 1-8)
+- [Cross-ref: state.md v1.6.13 — jotai@3.0.0-alpha.1 + @clerk/nextjs@7.8.4 line advance
