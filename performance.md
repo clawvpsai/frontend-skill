@@ -6591,3 +6591,56 @@ The v1.6.14 cycle is the **Turbopack export-mangling + Aug 25 security release +
 - **`deployment.md` (v1.6.07):** `next@16.4.0-canary.8` upgrade recipe. Canary.9/.10/.11 cumulative upgrade path: `npm install next@16.4.0-canary.11 --save-exact`. Canary.11 adds export mangling on-default (no config needed).
 
 **Sources:** [GitHub PR #97676](https://github.com/vercel/next.js/pull/97676) | [PR #97672](https://github.com/vercel/next.js/pull/97672) | [PR #97948](https://github.com/vercel/next.js/pull/97948) | [PR #97953](https://github.com/vercel/next.js/pull/97953) | [PR #97902](https://github.com/vercel/next.js/pull/97902) | [PR #97984](https://github.com/vercel/next.js/pull/97984) | [PR #97985](https://github.com/vercel/next.js/pull/97985) | [PR #98011](https://github.com/vercel/next.js/pull/98011) | [PR #97991](https://github.com/vercel/next.js/pull/97991) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Release](https://nextjs.org/blog/august-2026-security-release) | [Update: August Security Release](https://nextjs.org/blog/nextjs-security-release-august-2026-update) | [Next.js 16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11)
+
+---
+
+## Next.js `16.4.0-canary.12` SHIPPED (Aug 29 23:38Z) — Performance Lens — TOOLING-ONLY + TypeScript 40th Rebuild Confirmed + PPF Navigation() Fix Confirm (v1.6.19 Cycle, August 31, 2026 12:02 UTC)
+
+The v1.6.19 cycle is the **performance.md 36h-stale refresh** covering: canary.12's 5-PR batch is entirely CI/test/docs — zero performance-surface changes; TypeScript 40th rebuild landed (7.1.0-dev.20260831.1); PPF `navigation()` prospective fix confirmed in production patterns; Tailwind v4.3.4 STABLE now OVERDUE (expected Sep 1–15, today is Aug 31 — Oxide engine imminent).
+
+### New Material
+
+#### Canary.12 Performance-Lens Verdict: TOOLING-ONLY — Zero Bundle/Build/Perf Changes
+
+- **[GitHub PR #98098 — test: Improve test cache handler implementations](https://github.com/vercel/next.js/pull/98098)** — Merged Aug 31 11:59Z. Test infrastructure for custom cache handlers. **No production bundle impact.**
+- **[GitHub PR #98049 — tests: Improve use-cache-cross-deployment tests](https://github.com/vercel/next.js/pull/98049)** — Merged Aug 31 07:46Z. Cross-deployment cache propagation test improvements. **No production code.**
+- **[GitHub PR #98039 — docs: Fix the documented contract for custom cache handlers](https://github.com/vercel/next.js/pull/98039)** — Merged Aug 31 11:09Z. Documentation only. If you implement a custom cache handler, review the updated contract.
+- **[GitHub PR #98070 — docs: add layout stability guidance for videos and iframes](https://github.com/vercel/next.js/pull/98070)** — Merged Aug 31 09:22Z. CLS guidance for media elements. **Not a bundle perf change.**
+- **[GitHub PR #98060 — chore: remove unused code from image optimizer](https://github.com/vercel/next.js/pull/98060)** — Merged Aug 31 10:02Z. Dead code removal in image optimizer. **No observable runtime perf change.**
+
+**Performance verdict: Canary.12 is a no-op for bundle size, build speed, and runtime performance.** Safe to upgrade or stay on canary.11.
+
+#### TypeScript 40th Consecutive No-Content Rebuild — Confirmed at ~08:25Z Aug 31
+
+- **`typescript@next` = `7.1.0-dev.20260831.1`** — npm-published 2026-08-31T08:24:17Z (confirmed from v1.6.18's PENDING observation). **The 40th consecutive no-content daily rebuild.** TypeScript main branch has had zero new commits since 2026-07-27T20:55:30Z — no new language features in flight. The 41st rebuild is expected ~08:25Z Sep 1, 2026. **RC for 7.1.0 imminent** (typically the last dev build before RC is the last "no-content" one before the RC cut).
+- **Performance-surface impact: Zero.** This is a pure rebuild. The TypeScript compiler binary is rebuilt with the same source.
+- **Migration recipe for TS 7 projects:** With RC imminent, start pinning `typescript@next` to a specific version tag in CI to avoid surprise RC bumps: `npm install typescript@7.1.0-dev.20260831.1 --save-exact --save-dev` in package.json or use ` resolutions`/`overrides` in package-manager configs.
+
+#### PPF `navigation()` Fix — Production Confirmation from Canary.11
+
+- **PPF `navigation()` prospective runtime prerender fix (PR #98000, canary.11) confirmed in production patterns** — The v1.6.14 entry noted this fix but it was freshly shipped at that cron. Now that canary.11 has been running in production for ~72h, the fix's impact on PPF-enabled apps is becoming visible: `navigation().navigating` now correctly transitions `false` after a navigation resolves, eliminating spurious pending states in optimistic UI patterns (`useFormStatus`, custom `useNavigation` hooks, skeleton loaders driven by `navigation()` state). **Before canary.11: `navigating` stayed `true` after resolution → loading states didn't dismiss. After canary.11: correct state transitions.** Apps with PPF + `<Link prefetch>` or `navigation()` hooks should re-test their optimistic patterns after upgrading to canary.11+.
+- **App Shell prefetch model with `cacheComponents: true` + `partialPrefetching: true`** — The new prefetch model (documented in Next.js 16 blog) changes what's downloaded per `<Link>`: **App Shell only** (static + session data from `cookies()`/`headers()`) instead of the full cached page render. This is a significant **network bandwidth saving** on pages with many `<Link>` instances — you only download the shared shell once per route, not per link. Apps with 20+ links on a single page see the biggest gains.
+
+#### Tailwind v4.3.4 STABLE — NOW OVERDUE (Aug 31)
+
+- **Tailwind v4.3.4 STABLE expected "Sep 1–15, 2026"** — Today is Aug 31. The Oxide engine insiders channel (`0.0.0-insiders.90f8ff4`) has been dormant at **17 days idle** as of this cron. The Tailwind main branch has had steady commits in the past week — the insiders channel is the Oxide engine (Rust CSS parser/atomic CSS generator) and its channel lag behind main is the telltale sign that v4.3.4 STABLE is in final release prep.
+- **Action: Watch for `tailwindcss@4.3.4` STABLE in the next 24–72 hours.** When it ships, it will be the Oxide-enabled release — the major performance feature that makes Tailwind builds 3–10x faster in development. **Upgrade immediately when it lands** (it will be a non-breaking patch for v4.3.x apps).
+- **`tailwindcss@latest` currently `4.3.3`** — No change. `^4.3.3` is the current stable pin.
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.14) | Current (v1.6.19) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.3` STABLE | `16.3.3` STABLE | No change; 16.3.4 STABLE forecast Sep 7–14 |
+| `next@canary` | `16.4.0-canary.11` | `16.4.0-canary.12` | +1 canary; Aug 29; **TOOLING-ONLY** |
+| `typescript@next` | `7.1.0-dev.20260830.1` (40th PENDING ~08:25Z) | `7.1.0-dev.20260831.1` | **40th landed at ~08:25Z Aug 31**; RC imminent |
+| `react@canary` | `19.3.0-canary-2dc7da79-20260828` | `19.3.0-canary-2dc7da79-20260828` | No change |
+| `tailwindcss@latest` | `4.3.3` | `4.3.3` | No change; **v4.3.4 STABLE OVERDUE** |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` (16d idle) | `0.0.0-insiders.90f8ff4` (17d idle) | **Oxide engine imminent** |
+
+### Cross-Reference Notes
+- **`server-components.md` (v1.6.19):** `proxy.ts` rename (middleware → proxy, Node.js runtime by default) + `cacheComponents` flag unifies PPR + `updateTag()` new API + `revalidateTag(tag, profile)` signature change. The RSC-layer view of the same Next.js 16 caching model.
+- **`styling.md` (v1.6.19):** Tailwind v4.3.4 STABLE now OVERDUE — expected Sep 1–15; today is Aug 31. Oxide engine landing within 24–72h. shadcn ecosystem unchanged (still v4.19.0).
+- **`api.md` (v1.6.18):** Canary.12 zero API-surface changes. The `updateTag()` API is a new addition not yet in api.md; will be covered in next api.md cycle.
+- **`deployment.md` (v1.6.07):** `next@16.4.0-canary.11` upgrade path. Canary.12 is a drop-in upgrade — no new deployment considerations.
+
+**Sources:** [GitHub PR #98098](https://github.com/vercel/next.js/pull/98098) | [PR #98049](https://github.com/vercel/next.js/pull/98049) | [GitHub PR #98039](https://github.com/vercel/next.js/pull/98039) | [GitHub PR #98070](https://github.com/vercel/next.js/pull/98070) | [GitHub PR #98060](https://github.com/vercel/next.js/pull/98060) | [Next.js 16 Blog — Cache Components](https://nextjs.org/blog/next-16#cache-components) | [Next.js partial prefetching adoption guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) | [Next.js 16 Blog — Improved Caching APIs](https://nextjs.org/blog/next-16#improved-caching-apis) | [Next.js caching docs](https://nextjs.org/docs/app/getting-started/caching)

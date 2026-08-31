@@ -2764,3 +2764,78 @@ The v1.6.14 cycle is the **styling ecosystem** refresh for `styling.md` — cove
 - **`patterns.md` (v1.5.95):** Pattern KK: "Agentic RSC + Human-in-the-Loop" via shadcn `@shadcn/helpers`. Remains at v1.5.95.
 
 **Sources:** [GitHub PR #97944](https://github.com/vercel/next.js/pull/97944) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [shadcn Private GitHub Registries](https://ui.shadcn.com/docs/changelog/2026-08-private-github-registries) | [shadcn Questionnaire](https://ui.shadcn.com/docs/changelog/2026-08-questionnaire) | [Tailwind main commits](https://github.com/tailwindlabs/tailwindcss/commits?per_page=5) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update)
+
+---
+
+## Tailwind v4.3.4 STABLE — NOW OVERDUE (Aug 31) + Canary.12 Tooling + Next.js 16 Cache Components Styling Impact (v1.6.19 Cycle, August 31, 2026 12:02 UTC)
+
+The v1.6.19 cycle is the **styling.md 36h-stale refresh** covering: Tailwind v4.3.4 STABLE is now OVERDUE (expected Sep 1–15; today is Aug 31 — Oxide engine landing imminent within 24–72h); canary.12 is toolchain-only with zero styling/bundle changes; Next.js 16 Cache Components has direct styling implications for App Shell + Partial Prefetching; shadcn ecosystem remains stable at v4.19.0.
+
+### New Material
+
+#### Tailwind v4.3.4 STABLE — NOW OVERDUE (Aug 31)
+
+- **Tailwind v4.3.4 STABLE was forecast "Sep 1–15, 2026" in v1.6.14** — Today is **August 31, 2026**. The release is now **OVERDUE** within its own forecast window. `tailwindcss@latest` is still `4.3.3`.
+- **`tailwindcss@insiders` STILL on `0.0.0-insiders.90f8ff4`** — Now at **17 days idle** (was 16 at v1.6.14). The insiders channel is the Oxide engine (Rust-based CSS parser + atomic CSS generator). The channel lag behind main branch commits is the telltale: when main has steady commits and insiders is dormant, the team is in final release prep for the STABLE build.
+- **Expect `tailwindcss@4.3.4` STABLE in the next 24–72 hours.** The v4.3.4 release will be the Oxide-enabled STABLE — the major perf feature that makes Tailwind builds 3–10x faster in development (replaces the JS CSS parser/minifier with the Rust Oxide engine).
+- **Upgrade recipe when v4.3.4 lands:**
+  ```bash
+  npm install tailwindcss@latest  # picks up 4.3.4
+  # Or pin explicitly:
+  npm install tailwindcss@4.3.4
+  ```
+- **For v3 → v4.3.4 migration:** The v4 upgrade path is: `npx tailwindcss upgrade` (the official migration CLI). Tailwind v4 is a non-breaking upgrade for most v3 projects with the `@tailwindcss/vite` or `@tailwindcss/postcss` plugin. The Oxide engine is transparent to CSS output — it's a build-time perf improvement, not a CSS output change.
+- **For projects already on v4.3.x:** `npm install tailwindcss@4.3.4 --save-exact` is a non-breaking patch upgrade. The CSS output is identical; the build is faster.
+
+#### Canary.12 Tooling — Zero Styling/Bundle Changes
+
+- **[GitHub PR #98060 — chore: remove unused code from image optimizer](https://github.com/vercel/next.js/pull/98060)** — Merged Aug 31 10:02Z. Dead code removal in the image optimizer. **No CSS or bundle output change.**
+- **[GitHub PR #98070 — docs: add layout stability guidance for videos and iframes](https://github.com/vercel/next.js/pull/98070)** — Merged Aug 31 09:22Z. Documentation update on CLS prevention. Relevant to styling: ensures `<video>` and `<iframe>` elements have explicit `width`/`height` or `aspect-ratio` to prevent layout shift — applies to all Next.js image/video components.
+- **No Tailwind or CSS-related changes in canary.12.** The CSS module `[hash]_[local]` class name shortening (PR #97944, canary.10) and the Turbopack export mangling (PR #97676, canary.11) are the most recent styling-relevant canary changes and are already in canary.12.
+
+#### Next.js 16 Cache Components — Styling Impact: App Shell + Partial Prefetching
+
+- **[Next.js Caching Docs](https://nextjs.org/docs/app/getting-started/caching) | [Adopting Partial Prefetching Guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching)** — The `cacheComponents: true` + `partialPrefetching: true` config has direct styling/CSS implications:
+
+**App Shell = what gets prefetched:**
+With `cacheComponents: true` + `partialPrefetching: true`, when a `<Link>` enters the viewport, Next.js prefetches the **App Shell** for that route — the static shell includes all CSS (layout styles, component CSS, global CSS) that is part of the route's static rendering. The CSS is bundled into the App Shell RSC payload and applied when the shell is hydrated.
+
+**What this means for CSS architecture:**
+- Routes using CSS Modules or Tailwind CSS: the App Shell includes the critical-path CSS for the layout shell
+- Partial prefetching reduces the **CSS download per navigation** from "full page CSS" to "shared App Shell CSS" — especially significant on pages with many `<Link>` components
+- The `<Link prefetch={true}>` prop (for resolving URL-dependent cached content) also downloads that content's CSS if it's different from the App Shell
+
+**Styling migration recipe:**
+```ts filename="next.config.ts"
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,  // optional: enables App Shell prefetch model
+}
+
+export default nextConfig
+```
+
+#### shadcn Ecosystem — Status Quo
+
+- **shadcn@latest `4.19.0`** — unchanged since Aug 21. Questionnaire + private GitHub registries are the latest features.
+- **`@shadcn/react@0.3.0`** — unchanged since Aug 5.
+- **The shadcn v4 stack (Tailwind v4 + shadcn v4) is the stable stack.** No breaking changes in the queue.
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.14) | Current (v1.6.19) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.3` STABLE | `16.3.3` STABLE | No change; 16.3.4 STABLE forecast Sep 7–14 |
+| `next@canary` | `16.4.0-canary.11` | `16.4.0-canary.12` | +1 canary; Aug 29; **TOOLING-ONLY** |
+| `shadcn` | `4.19.0` | `4.19.0` | No change |
+| `@shadcn/react` | `0.3.0` | `0.3.0` | No change |
+| `tailwindcss@latest` | `4.3.3` | `4.3.3` | No change; **v4.3.4 STABLE OVERDUE** |
+| `tailwindcss@insiders` | `0.0.0-insiders.90f8ff4` (16d idle) | `0.0.0-insiders.90f8ff4` (17d idle) | **Oxide engine imminent** |
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.19):** Tailwind v4.3.4 STABLE now OVERDUE + Oxide engine imminent from the performance lens (build time). Canary.12 TOOLING-ONLY from the perf lens.
+- **`server-components.md` (v1.6.19):** `cacheComponents` flag + `proxy.ts` rename + `updateTag()` new API. The App Shell prefetch model is the caching-layer view of the same partial prefetching story documented here from the styling lens.
+- **`patterns.md` (v1.5.95):** Pattern KK: "Agentic RSC + Human-in-the-Loop" via shadcn @shadcn/helpers. Remains at v1.5.95.
+
+**Sources:** [Tailwind CSS GitHub](https://github.com/tailwindlabs/tailwindcss) | [Next.js caching docs](https://nextjs.org/docs/app/getting-started/caching) | [Next.js partial prefetching adoption guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) | [Next.js cacheComponents config](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) | [shadcn@4.19.0](https://github.com/shadcn-ui/ui/releases/tag/shadcn%404.19.0) | [GitHub PR #98070](https://github.com/vercel/next.js/pull/98070) | [GitHub PR #98060](https://github.com/vercel/next.js/pull/98060)

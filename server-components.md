@@ -3126,3 +3126,122 @@ The v1.6.14 cycle is the **server-components + PPF navigation prospective fix** 
 - **`routing.md` (v1.6.11):** Intercepted route params fix (PR #97953) + optimistic routing fix (PR #97948). Routing lens on the same RSC fixes.
 
 **Sources:** [GitHub PR #98000](https://github.com/vercel/next.js/pull/98000) | [PR #95233](https://github.com/vercel/next.js/pull/95233) | [PR #97953](https://github.com/vercel/next.js/pull/97953) | [PR #97948](https://github.com/vercel/next.js/pull/97948) | [PR #97995](https://github.com/vercel/next.js/pull/97995) | [PR #97689](https://github.com/vercel/next.js/pull/97689) | [Next.js 16.3.3 release](https://github.com/vercel/next.js/releases/tag/v16.3.3) | [August 2026 Security Update](https://nextjs.org/blog/nextjs-security-release-august-2026-update) | [Next.js 16.4.0-canary.11 release](https://github.com/vercel/next.js/releases/tag/v16.4.0-canary.11)
+
+---
+
+## Next.js `16.4.0-canary.12` SHIPPED (Aug 29 23:38Z) + `proxy.ts` + Cache Components PPR Unification + `updateTag()` API (Server-Components Lens — v1.6.19 Cycle, August 31, 2026 12:02 UTC)
+
+The v1.6.19 cycle is the **server-components.md 36h-stale refresh** covering: canary.12 tooling-only verdict (5 PRs = zero RSC/API-surface HIGH/MEDIUM changes); the `proxy.ts` migration (the Next.js 16 conceptual rename from `middleware.ts`); Cache Components + PPR unification (`cacheComponents` flag = single knob that replaces `experimental.ppr` + `experimental.useCache` + `experimental.dynamicIO`); and the new `updateTag()` API + updated `revalidateTag(tag, profile)` signature.
+
+### New Material
+
+#### Canary.12 TOOLING-ONLY Verdict — 0 RSC/API-Surface Changes
+
+- **[GitHub PR #98098 — test: Improve test cache handler implementations](https://github.com/vercel/next.js/pull/98098)** — Merged Aug 31 11:59Z. **Test infrastructure only.** Improves the test doubles for custom cache handlers used in the Next.js test suite. No behavior change for app developers.
+- **[GitHub PR #98049 — tests: Improve use-cache-cross-deployment tests](https://github.com/vercel/next.js/pull/98049)** — Merged Aug 31 07:46Z. **Test coverage only.** Improves cross-deployment cache propagation test scenarios. No production code changes.
+- **[GitHub PR #98039 — docs: Fix the documented contract for custom cache handlers](https://github.com/vercel/next.js/pull/98039)** — Merged Aug 31 11:09Z. **Documentation only.** Clarifies the invariants custom cache handler implementations must uphold. If you implement a custom cache handler (rare — most apps use the default `NextCachedFileCache`), this PR updates the contract docs to match implementation.
+- **[GitHub PR #98070 — docs: add layout stability guidance for videos and iframes](https://github.com/vercel/next.js/pull/98070)** — Merged Aug 31 09:22Z. **Documentation only.** Adds guidance on CLS (Cumulative Layout Shift) prevention for `<video>` and `<iframe>` elements in Next.js App Router.
+- **[GitHub PR #98060 — chore: remove unused code from image optimizer](https://github.com/vercel/next.js/pull/98060)** — Merged Aug 31 10:02Z. **Code cleanup only.** Removes dead code paths in the Next.js image optimizer. No behavior change.
+
+**Verdict: Canary.12 is a drop-in upgrade from canary.11 with zero user-facing RSC, cache, or API-surface changes.** Safe to upgrade immediately or stay on canary.11.
+
+#### `proxy.ts` — The Middleware-to-Proxy Conceptual Rename (Next.js 16 Feature)
+
+- **[Next.js 16 Blog — `proxy.ts` (formerly `middleware.ts`)](https://nextjs.org/blog/next-16#proxyts-formerly-middlewarets)** — Next.js 16 introduces `proxy.ts` as the explicit replacement for `middleware.ts`. The concept shift: `middleware.ts` implied Edge Runtime (which was the default) and "middleware" as a vague processing layer. `proxy.ts` makes the **network boundary** explicit and runs on the **Node.js runtime** by default.
+
+```ts filename="proxy.ts"
+// OLD: middleware.ts
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export function middleware(request: NextRequest) {
+  return NextResponse.redirect(new URL('/home', request.url))
+}
+```
+
+```ts filename="proxy.ts"
+// NEW: proxy.ts
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+
+export default function proxy(request: NextRequest) {
+  return NextResponse.redirect(new URL('/home', request.url))
+}
+```
+
+**Migration:** Rename `middleware.ts` → `proxy.ts` + rename the exported function from `middleware` → `proxy`. Logic is identical.
+
+**Key distinctions:**
+- `middleware.ts` is **deprecated** but still works (will be removed in Next.js 17)
+- `proxy.ts` runs on Node.js runtime (not Edge) — important for apps relying on Node.js APIs in the proxy layer
+- If you need Edge runtime for the proxy, use `export const config = { runtime: 'edge' }` in `proxy.ts`
+- **Why the rename:** "Middleware" is ambiguous — it suggested an Edge-only interceptor. `proxy.ts` makes clear it's the app's network boundary entrypoint and clarifies it runs on Node.js by default.
+
+#### Cache Components — PPR Unification via `cacheComponents` Flag
+
+- **[Next.js Docs — `cacheComponents` config](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents)** — The `cacheComponents: true` flag in `next.config.ts` is the **single unified knob** that replaces three formerly-separate experimental flags: `experimental.ppr`, `experimental.useCache`, and `experimental.dynamicIO`.
+
+```ts filename="next.config.ts"
+import type { NextConfig } from 'next'
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+}
+
+export default nextConfig
+```
+
+**What it does:** Enables Partial Prerendering (PPR) as the default rendering strategy in the App Router. PPR renders the static shell at build/request time and fills in dynamic content from `'use cache'` boundaries. The `experimental.ppr` flag and `experimental_ppr` route segment config are **removed** — `cacheComponents` is the only path.
+
+**With `cacheComponents: true` + `partialPrefetching: true`:**
+- `<Link>` prefetches a **per-route App Shell** (static shell + session data from `cookies()`/`headers()`) — shared across all links to the same route
+- `<Link prefetch={true}>` additionally resolves URL-dependent cached content (`searchParams`, dynamic params) at prefetch time
+- `<Link>` without `prefetch` (or `prefetch={false}`) = no prefetch
+
+**Migration from experimental PPR (Next.js 15):** If you used `experimental: { ppr: true }` in Next.js 15, remove it and set `cacheComponents: true`. The behavior is equivalent.
+
+#### New `updateTag()` API + `revalidateTag()` Signature Change
+
+- **[Next.js 16 Blog — Improved Caching APIs](https://nextjs.org/blog/next-16#improved-caching-apis)** — Two API changes to the cache invalidation surface:
+
+**`updateTag(tag)` — NEW (Next.js 16, for Actions):**
+```ts
+import { updateTag } from 'next/cache'
+
+// In a Server Action — read-your-writes pattern
+export async function updateProfile(formData: FormData) {
+  await db.update(profile).set({ name: formData.get('name') })
+  updateTag('profile') // Bust the 'profile' cache immediately
+}
+```
+Use `updateTag` in **Server Actions** to invalidate a cache tag after a mutation. This is the **read-your-writes** pattern: after writing to the DB, you explicitly bust the matching cache entry.
+
+**`revalidateTag(tag, profile?)` — Updated signature (Next.js 16):**
+The single-argument form `revalidateTag(tag)` is **deprecated**. Use `revalidateTag(tag, profile)` where `profile` is an optional revalidation profile string (for fine-grained SWR behavior). For Actions, prefer `updateTag` instead.
+
+```ts
+// Deprecated (still works, but warns in Next.js 16):
+revalidateTag('profile')
+
+// Preferred in Server Actions:
+updateTag('profile')
+
+// For SWR-style revalidation in Route Handlers:
+revalidateTag('profile', 'stale-while-revalidate')
+```
+
+### Version Tracking Update
+| Package | Last Tracked (v1.6.14) | Current (v1.6.19) | Change |
+|---------|------------------------|-------------------|--------|
+| `next@latest` | `16.3.3` STABLE | `16.3.3` STABLE | No change; 16.3.4 STABLE forecast Sep 7–14 |
+| `next@canary` | `16.4.0-canary.11` | `16.4.0-canary.12` | +1 canary; Aug 29; **TOOLING-ONLY** |
+| React (via Next.js) | `2dc7da79-20260828` | `2dc7da79-20260828` | No change; React canary idle since Aug 28 |
+| `typescript@next` | `7.1.0-dev.20260830.1` (40th PENDING) | `7.1.0-dev.20260831.1` | 40th rebuild LANDED at ~08:25Z Aug 31; no surface impact |
+
+### Cross-Reference Notes
+- **`performance.md` (v1.6.19):** Canary.12 TOOLING-ONLY verdict from the performance lens + TypeScript 40th rebuild confirmed. The same 5-PR batch all codemod/infra with zero perf-surface changes.
+- **`styling.md` (v1.6.19):** Tailwind v4.3.4 STABLE NOW OVERDUE (expected Sep 1–15; today is Aug 31). Tailwind Oxide engine update imminent. shadcn ecosystem unchanged.
+- **`routing.md` (v1.6.11):** Intercepted route params fix (PR #97953). The `proxy.ts` rename doesn't change intercepted route behavior — the fix from PR #97953 applies regardless of filename.
+- **`security.md` (v1.6.15):** Next.js 16.3.4 STABLE forecast Sep 7–14 (backport scope: PR #97941 + #95233 + #97948 + #97953 + #98000 + #96330). The `proxy.ts` rename is a naming-only change with zero security surface delta.
+
+**Sources:** [GitHub PR #98098](https://github.com/vercel/next.js/pull/98098) | [PR #98049](https://github.com/vercel/next.js/pull/98049) | [PR #98039](https://github.com/vercel/next.js/pull/98039) | [PR #98070](https://github.com/vercel/next.js/pull/98070) | [PR #98060](https://github.com/vercel/next.js/pull/98060) | [Next.js 16 Blog — proxy.ts](https://nextjs.org/blog/next-16#proxyts-formerly-middlewarets) | [Next.js 16 Blog — Cache Components](https://nextjs.org/blog/next-16#cache-components) | [Next.js cacheComponents docs](https://nextjs.org/docs/app/api-reference/config/next-config-js/cacheComponents) | [Next.js caching docs](https://nextjs.org/docs/app/getting-started/caching) | [Next.js partial prefetching adoption guide](https://nextjs.org/docs/app/guides/adopting-partial-prefetching) | [Next.js 16 Blog — Improved Caching APIs](https://nextjs.org/blog/next-16#improved-caching-apis)
